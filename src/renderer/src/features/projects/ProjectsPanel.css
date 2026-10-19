@@ -1,0 +1,414 @@
+/* R10-E Projects 面板：黑金 / 硬朗小圆角 / 左侧项目列表 + 右侧编辑 */
+
+.pp-root {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: min(66vh, 620px);
+  min-height: 460px;
+}
+
+/* ── 左侧项目列表 ────────────────────────────────────────────── */
+.pp-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 258px;
+  flex: 0 0 auto;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.pp-side-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.pp-side-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.pp-side-spacer {
+  flex: 1 1 auto;
+}
+
+.pp-side-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 2px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.pp-side-note {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.pp-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0 2px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.pp-project {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--text-2);
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.pp-project:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.pp-project.is-selected {
+  background: var(--surface-active);
+  border-color: var(--line-gold);
+  color: var(--text);
+}
+
+.pp-project.is-selected::before {
+  content: '';
+  position: absolute;
+}
+
+.pp-project-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.pp-pin {
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+
+.pp-project-workspace {
+  display: block;
+  width: 100%;
+  color: var(--text-3);
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-project-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 1px;
+}
+
+/* ── 右侧详情 ────────────────────────────────────────────────── */
+.pp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 16px;
+  overflow-y: auto;
+}
+
+.pp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  padding: 24px;
+}
+
+.pp-form-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.pp-form-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.pp-form-sub {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.pp-form-updated {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.pp-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--patina);
+  font-size: 11.5px;
+}
+
+.pp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pp-switches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+/* ── 知识文件 ────────────────────────────────────────────────── */
+.pp-knowledge {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.pp-knowledge-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.pp-knowledge-count {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.pp-knowledge-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.pp-knowledge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pp-knowledge-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-size: 10.5px;
+}
+
+.pp-knowledge-size {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.pp-knowledge-error {
+  flex: 0 1 auto;
+  color: var(--rust);
+  font-size: 9.5px;
+}
+
+.pp-knowledge-item.is-invalid .pp-knowledge-path {
+  color: var(--rust);
+}
+
+.pp-knowledge-add {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pp-knowledge-add > .field:first-child {
+  flex: 1 1 auto;
+}
+
+/* ── 上下文预览 ──────────────────────────────────────────────── */
+.pp-preview {
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  padding: 9px 11px;
+}
+
+.pp-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold-bright);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.pp-preview-head .mono {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.pp-preview-warn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  color: var(--rust);
+  font-size: 10px;
+}
+
+.pp-preview-text {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 9px 10px;
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── 操作区 / 确认 / 页脚 ────────────────────────────────────── */
+.pp-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.pp-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.pp-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--rust-dim);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.pp-confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.pp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.pp-foot-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.pp-foot > .btn:last-child {
+  margin-left: auto;
+}
+
+.pp-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px dashed var(--line-gold);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.pp-cta .btn {
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .pp-side {
+    width: 208px;
+  }
+
+  .pp-switches {
+    grid-template-columns: 1fr;
+  }
+}

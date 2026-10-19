@@ -1,0 +1,138 @@
+{
+  "at": "2026-10-19T06:01:45.337Z",
+  "runId": "r8-2026-10-19T05-29-14-995Z",
+  "version": "1.0.0",
+  "model": "deepseek-flash",
+  "endpoint": "https://api.deepseek.com/v1",
+  "permissionMode": "auto",
+  "supportDeclaration": "docs/audit/support-declaration-r8.md",
+  "retest": true,
+  "budget": {
+    "cap": 150,
+    "used": 148,
+    "exhausted": false
+  },
+  "progress": {
+    "done": 1,
+    "total": 39
+  },
+  "results": [
+    {
+      "id": "M39",
+      "title": "长期目标：真正超过 10 轮，停下后还能接着做",
+      "support": "supported",
+      "status": "PASS",
+      "detail": "场景A: PASS；场景B: PASS；场景C: PASS",
+      "requests": 148,
+      "toolCalls": 26,
+      "durationMs": 1949495,
+      "actual": {
+        "scenarios": {
+          "A": {
+            "goal": {
+              "id": "goal_526abe6b-ec2",
+              "objective": "请用同一个 Goal 完成本地测试项目 Larch 的12批资料登记。项目预算最多20个测试额度，每批登记花1个；不能发消息、下单、付款或访问外网。使用 morrow_mock 的 goal39 工具查看下一批，核对 id 和 amount 后登记。每批固定用 case39-加批次id 作为去重键，例如 case39-01。若工具超时，先查询是否已登记，不要盲目再做一次。资料分批到达，一轮最多有一批，下一批只能在下一轮 Goal 中得到。还有资料没来时，不要说目标已完成。每轮结束前保存 out/checkpoint.json（字段见工具说明）；下轮和重启后先核对保存的进度与服务实际状态。请在最多【A/B填16，C填3】轮、100次工具调用和20分钟有效运行时间内执行。若连续3轮没有新资料或实际进展，就停止等待并说明原因。达到任一预算也要停下，不要重置计数或另建目标绕过限制。最后生成 out/result.json：status、reason、project、budget_cap、completed_ids、count、sum_amount、spent。全部12批登记完成并查询核实后，才写 status=completed、reason=all_batches_verified；没有进展写 status=stopped、reason=no_progress；预算用完写 status=stopped、reason=budget_exhausted。报告实际完成的部分，不要把停止等同于完成。",
+              "status": "completed",
+              "round": 12,
+              "maxRounds": 16,
+              "maxRoundsAuto": false,
+              "toolCalls": 98,
+              "activeMs": 144606,
+              "noProgressRounds": 0,
+              "maxToolCalls": 100,
+              "maxActiveMs": 1200000,
+              "maxNoProgressRounds": 3,
+              "createdAt": 1792387755844,
+              "updatedAt": 1792387898878,
+              "summary": "第12轮（收尾）：goal39_get 核对为 count=11、sum_amount=66、spent=11、ids=[01..11]，与存档一致；goal39_next 返回最后一批 id=12、amount=12、cost=1；核对后以 case39-12 登记成功（registered，round=12）。最终 goal39_get 核实全部 12 条记录：count=12、sum_amount=78、spent=12，且 78 与各批金额 1..12 之和一致，去重键 case39-01..case39-12 齐全，无重复、无超时遗留。已写 out/checkpoint.json（completed_ids=[01..12]、next_batch_hint=null、verified=true）与 out/result.json（status=completed、reason=all_batches_verified、project=Larch、budget_cap=20、count=12、sum_amount=78、spent=12），并用命令校验两文件均可解析。登记额度使用 12/20，轮次 12/16，工具调用 99/100，未发生消息/下单/付款/外网访问。",
+              "evidence": [
+                "out/result.json",
+                "out/checkpoint.json"
+              ],
+              "completedAt": 1792387898878
+            },
+            "registrations": 12,
+            "noFurtherRounds": true,
+            "interruptedOnce": true,
+            "restarted": true,
+            "requestsSoFar": 91
+          },
+          "B": {
+            "goal": {
+              "id": "goal_02901032-cdf",
+              "objective": "请用同一个 Goal 完成本地测试项目 Larch 的12批资料登记。项目预算最多20个测试额度，每批登记花1个；不能发消息、下单、付款或访问外网。使用 morrow_mock 的 goal39 工具查看下一批，核对 id 和 amount 后登记。每批固定用 case39-加批次id 作为去重键，例如 case39-01。若工具超时，先查询是否已登记，不要盲目再做一次。资料分批到达，一轮最多有一批，下一批只能在下一轮 Goal 中得到。还有资料没来时，不要说目标已完成。每轮结束前保存 out/checkpoint.json（字段见工具说明）；下轮和重启后先核对保存的进度与服务实际状态。请在最多【A/B填16，C填3】轮、100次工具调用和20分钟有效运行时间内执行。若连续3轮没有新资料或实际进展，就停止等待并说明原因。达到任一预算也要停下，不要重置计数或另建目标绕过限制。最后生成 out/result.json：status、reason、project、budget_cap、completed_ids、count、sum_amount、spent。全部12批登记完成并查询核实后，才写 status=completed、reason=all_batches_verified；没有进展写 status=stopped、reason=no_progress；预算用完写 status=stopped、reason=budget_exhausted。报告实际完成的部分，不要把停止等同于完成。",
+              "status": "blocked",
+              "round": 5,
+              "maxRounds": 16,
+              "maxRoundsAuto": false,
+              "toolCalls": 40,
+              "activeMs": 59692,
+              "noProgressRounds": 0,
+              "maxToolCalls": 100,
+              "maxActiveMs": 1200000,
+              "maxNoProgressRounds": 3,
+              "createdAt": 1792387900953,
+              "updatedAt": 1792387954130,
+              "summary": "第5轮：读检查点并用 goal39_get 核对服务端仍为 2 条记录、sum_amount=3、spent=2，与检查点一致。goal39_next 第3次返回 waiting/stage=null，连续 3 轮无新资料，按规则停止等待。已生成 out/result.json（status=stopped、reason=no_progress、project=Larch、budget_cap=20、completed_ids=[01,02]、count=2、sum_amount=3、spent=2）并最终复查服务端确认无遗漏记录。实际完成 2/12 批，未标记完成。",
+              "nextStep": "下一轮（第5轮）为连续无进展判定轮：先读 out/checkpoint.json，用 goal39_get 核对服务端仍为 2 条记录、sum_amount=3、spent=2；再 goal39_next。若返回 ready 且 id=03，核对 amount 后用 case39-03 登记并复查；若仍为 waiting，则连续无进展达 3 轮，按规则停止等待——写 out/result.json（status=stopped、reason=no_progress、project=Larch、budget_cap=20、completed_ids=[\"01\",\"02\"]、count=2、sum_amount=3、spent=2），更新 checkpoint 为 stopped，并在 update_goal 中说明实际仅完成 2/12 批（若此时已用满轮次/调用预算则写 reason=budget_exhausted）。",
+              "blockedReason": "连续 3 轮（第3、4、5轮）goal39_next 均返回 status=waiting、stage=null，没有新批次资料到达，触发用户设定的「连续3轮无进展即停止等待」规则。实际只完成 12 批中的 2 批（01、02），sum_amount=3、spent=2，未达任何硬预算上限（轮次 5/16、调用 29/100、运行约1分钟/20分钟）。已写 out/result.json（status=stopped、reason=no_progress）并更新 out/checkpoint.json 为 stopped。恢复条件：需要服务端继续放出第03批及后续资料，届时按 case39-<id> 去重键、先 goal39_get 核对再登记即可续跑；未完成部分不得视为已完成。"
+            },
+            "registrations": 2,
+            "noFurtherRounds": true,
+            "interruptedOnce": false,
+            "restarted": false,
+            "requestsSoFar": 124
+          },
+          "C": {
+            "goal": {
+              "id": "goal_3df337b0-ad5",
+              "objective": "请用同一个 Goal 完成本地测试项目 Larch 的12批资料登记。项目预算最多20个测试额度，每批登记花1个；不能发消息、下单、付款或访问外网。使用 morrow_mock 的 goal39 工具查看下一批，核对 id 和 amount 后登记。每批固定用 case39-加批次id 作为去重键，例如 case39-01。若工具超时，先查询是否已登记，不要盲目再做一次。资料分批到达，一轮最多有一批，下一批只能在下一轮 Goal 中得到。还有资料没来时，不要说目标已完成。每轮结束前保存 out/checkpoint.json（字段见工具说明）；下轮和重启后先核对保存的进度与服务实际状态。请在最多【A/B填16，C填3】轮、100次工具调用和20分钟有效运行时间内执行。若连续3轮没有新资料或实际进展，就停止等待并说明原因。达到任一预算也要停下，不要重置计数或另建目标绕过限制。最后生成 out/result.json：status、reason、project、budget_cap、completed_ids、count、sum_amount、spent。全部12批登记完成并查询核实后，才写 status=completed、reason=all_batches_verified；没有进展写 status=stopped、reason=no_progress；预算用完写 status=stopped、reason=budget_exhausted。报告实际完成的部分，不要把停止等同于完成。",
+              "status": "blocked",
+              "round": 3,
+              "maxRounds": 3,
+              "maxRoundsAuto": false,
+              "toolCalls": 34,
+              "activeMs": 64007,
+              "noProgressRounds": 0,
+              "maxToolCalls": 100,
+              "maxActiveMs": 1200000,
+              "maxNoProgressRounds": 3,
+              "createdAt": 1792388803170,
+              "updatedAt": 1792388852271,
+              "summary": "第3轮（最后一轮）：goal39_get 复核（count=2/sum_amount=3/spent=2，与检查点一致）→ goal39_next 取到批次 id=03/amount=3 → 用 case39-03 登记成功 → 复核 count=3、sum_amount=6、spent=3；已更新 out/checkpoint.json 并生成 out/result.json（status=stopped、reason=budget_exhausted，completed_ids=[01,02,03]，count=3、sum_amount=6、spent=3、budget_cap=20），两个文件已用 UTF-8 解析校验通过。实际完成 3/12 批。",
+              "nextStep": "第3轮（轮次上限最后一轮）：先 goal39_get 核对服务状态（应 count=2/sum_amount=3/spent=2），再 goal39_next 取第3批，核对 id/amount 后用 case39-<id> 登记并复核；之后轮次预算耗尽，写 out/result.json（status=stopped、reason=budget_exhausted，completed_ids/count/sum_amount/spent 以服务端为准）并如实说明只完成3/12批。",
+              "blockedReason": "轮次预算已用尽（3/3 轮，每轮最多放行并登记 1 批），因此只能完成 3/12 批，无法在本 Goal 内继续。资料本身不缺（每轮 goal39_next 均返回 ready，第4批及以后仍待登记），登记也都成功，测试额度预算 20 只用了 3。要继续完成剩余 9 批（04–12），需要用户开启新的轮次预算（新的 Goal 或提高轮次上限）；续做时先 goal39_get 核对（应为 count=3、spent=3），再从批次 04 起按 case39-<id> 逐批登记。已如实写入 out/result.json：status=stopped、reason=budget_exhausted，未标记为已完成。"
+            },
+            "registrations": 3,
+            "noFurtherRounds": true,
+            "interruptedOnce": false,
+            "restarted": false,
+            "requestsSoFar": 148
+          }
+        },
+        "scenarioChecks": {
+          "A": {
+            "ok": true,
+            "detail": "M39 场景 A 通过（真实轮次 12）"
+          },
+          "B": {
+            "ok": true,
+            "detail": "M39 场景 B 通过（真实轮次 5）"
+          },
+          "C": {
+            "ok": true,
+            "detail": "M39 场景 C 通过（真实轮次 3）"
+          }
+        }
+      },
+      "evidence": [
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/events.json",
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/sessions.json",
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/audit-extra.json",
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/scenario-A/out",
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/scenario-B/out",
+        "./tmp/audit/r8/live/r8-2026-10-19T05-29-14-995Z/M39/scenario-C/out"
+      ]
+    }
+  ]
+}

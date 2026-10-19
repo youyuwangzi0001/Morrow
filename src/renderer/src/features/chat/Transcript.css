@@ -1,0 +1,550 @@
+/* ─────────────────────────────────────────────────────────────
+   对话流：消息、流式、思考、回到最新
+   ───────────────────────────────────────────────────────────── */
+
+.transcript-root {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 兼容两种挂载：App 的 .app-scroll 包裹（高度 100%）或直接 flex 子项 */
+.transcript-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.transcript-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 30px 32px 24px;
+}
+
+.transcript-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  padding: 80px 32px;
+}
+
+.transcript-tail {
+  height: 6px;
+  flex: 0 0 auto;
+}
+
+/* 上下文压缩中的细线提示（sticky 在滚动区顶部） */
+.transcript-compacting {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -12px 0 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--glass);
+  color: var(--text-2);
+  font-size: 11px;
+  backdrop-filter: blur(12px);
+}
+
+.transcript-compacting-line {
+  width: 90px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* 空态（新建会话还没有消息） */
+.transcript-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+  padding-top: 12vh;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.transcript-empty-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.transcript-empty-desc {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.transcript-empty-hint {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+
+.transcript-empty-plus {
+  margin: 0 3px;
+  opacity: 0.6;
+}
+
+/* ── 消息 ─────────────────────────────────────────────────────── */
+
+.message {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  animation: fade-in-up var(--dur-base) var(--ease-out) both;
+}
+
+/* 用户消息：右对齐气泡 */
+.message-user {
+  align-items: flex-end;
+  align-self: flex-end;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.message-user-bubble {
+  max-width: 78%;
+  padding: 10px 16px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--user-bubble);
+  color: var(--text);
+}
+
+.message-user-text {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.72;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-user-text + .message-user-text {
+  margin-top: 8px;
+}
+
+/* 助手消息：无气泡，正文直接排布 */
+.message-assistant {
+  align-items: stretch;
+}
+
+.message-blocks {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 相邻内容块（多段文本 / 轨迹 / 思考）之间的呼吸 */
+.stream-text + .stream-text,
+.spine + .stream-text,
+.thinking + .stream-text,
+.thinking + .spine {
+  margin-top: 8px;
+}
+
+.spine + .thinking,
+.stream-text + .spine {
+  margin-top: 4px;
+}
+
+.message-assistant.is-streaming .message-blocks {
+  padding-bottom: 2px;
+}
+
+/* 流式光标：最后一个文本块末尾的金色竖条 */
+.stream-text.is-streaming .md > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--gold);
+  animation: stream-caret 1.1s ease-in-out infinite;
+}
+
+.stream-text.is-streaming .md > .code-block:last-child::after,
+.stream-text.is-streaming .md > .md-table-wrap:last-child::after,
+.stream-text.is-streaming .md > .md-image-wrap:last-child::after {
+  display: none;
+}
+
+@keyframes stream-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* 还没有文本时的「正在组织回答」 */
+.message-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.message-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: typing-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes typing-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.message-interrupted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.message-interrupted svg {
+  color: var(--rust);
+  opacity: 0.8;
+}
+
+/* 内联错误 */
+.message-inline-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--rust);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--rust-dim);
+}
+
+.message-inline-error p {
+  color: var(--rust);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.message-inline-error-hint {
+  margin-top: 4px;
+  color: var(--text-2) !important;
+  font-size: 11.5px !important;
+}
+
+.message-inline-error-code {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--rust);
+  font-size: 10px;
+  opacity: 0.75;
+  user-select: text;
+}
+
+/* 悬停元信息：时间 + 复制 */
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.message:hover .message-meta,
+.message:focus-within .message-meta {
+  opacity: 1;
+}
+
+.message-meta-user {
+  justify-content: flex-end;
+}
+
+.message-time {
+  color: var(--text-3);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.message-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.message-copy:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+/* ── 思考块 ───────────────────────────────────────────────────── */
+
+.thinking {
+  margin: 2px 0 10px;
+}
+
+.thinking-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  transition: color var(--dur-fast) ease;
+}
+
+.thinking-head:hover {
+  color: var(--text-2);
+}
+
+.thinking-icon {
+  color: var(--mauve);
+  opacity: 0.85;
+}
+
+.thinking-label {
+  font-style: italic;
+}
+
+.thinking.is-streaming .thinking-head {
+  color: var(--mauve);
+}
+
+.thinking-pulse {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--mauve);
+  animation: thinking-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thinking-chevron {
+  transition: transform var(--dur-fast) ease;
+  opacity: 0.7;
+}
+
+.thinking.is-open .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.thinking-body {
+  max-height: 240px;
+  margin: 6px 0 2px 2px;
+  padding-left: 12px;
+  overflow-y: auto;
+  border-left: 1px solid var(--mauve-dim);
+  color: var(--mauve);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: fade-in var(--dur-fast) ease both;
+}
+
+/* ── 回到最新：贴在滚动区底部的渐隐带上 ──────────────────────── */
+
+.transcript-jump-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 64px;
+  padding-bottom: 14px;
+  background: linear-gradient(180deg, transparent, var(--bg) 82%);
+  pointer-events: none;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.transcript-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--glass);
+  color: var(--text-2);
+  font-size: 11px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px) saturate(120%);
+  pointer-events: auto;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.transcript-jump:hover {
+  color: var(--text);
+  border-color: var(--line-gold);
+}
+
+.transcript-jump-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: typing-pulse 1.4s ease-in-out infinite;
+}
+
+/* ── 目标模式续跑行 ───────────────────────────────────────────── */
+
+.message-user.message-continuation {
+  align-self: stretch;
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.goal-cont {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px 8px 11px;
+  border-left: 2px solid color-mix(in srgb, var(--gold) 42%, transparent);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--gold-ghost);
+  animation: fade-in-up var(--dur-base) var(--ease-out) both;
+}
+
+.goal-cont-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--gold);
+  opacity: 0.9;
+}
+
+.goal-cont-label {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.goal-cont-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.7;
+  text-align: left;
+}
+
+.goal-cont-body.is-static {
+  padding-top: 0;
+}
+
+.goal-cont-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow-wrap: anywhere;
+}
+
+.goal-cont-body.is-expanded {
+  color: var(--text-2);
+}
+
+.goal-cont-body.is-expanded .goal-cont-text {
+  display: block;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+}
+
+.goal-cont-body:not(.is-static):hover {
+  color: var(--text-2);
+}
+
+.goal-cont-chevron {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  opacity: 0.7;
+  transition: transform var(--dur-fast) ease;
+}
+
+.goal-cont-body.is-expanded .goal-cont-chevron {
+  transform: rotate(180deg);
+}
+
+.goal-cont-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  line-height: 1.8;
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.goal-cont:hover .goal-cont-time {
+  opacity: 0.8;
+}
+
+@media (max-width: 760px) {
+  .goal-cont-label {
+    white-space: normal;
+  }
+}

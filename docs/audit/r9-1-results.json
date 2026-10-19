@@ -1,0 +1,608 @@
+{
+  "at": "2026-10-19T12:57:00.407Z",
+  "runId": "r9-1-2026-10-19T12-51-53-448Z",
+  "version": "1.0.0",
+  "model": "deepseek-flash",
+  "endpoint": "https://api.deepseek.com/v1",
+  "supportDeclaration": "docs/audit/support-declaration-r9-1.md",
+  "budget": {
+    "cap": 300,
+    "used": 130,
+    "exhausted": false
+  },
+  "mechanisms": {
+    "at": "2026-10-19T12:51:47.317Z",
+    "results": [
+      {
+        "id": "R2-A",
+        "status": "PASS",
+        "detail": "write_xlsx/edit_docx 的路径与内容变化均重新审批，相同操作可复用",
+        "evidence": {
+          "details": {
+            "write_xlsx": {
+              "same": "allow",
+              "changedPath": "ask",
+              "changedContent": "ask",
+              "signature": "write_xlsx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\out\\approved.xlsx::a0db4994bc120bcaf8c2a4c2ea49babf"
+            },
+            "edit_docx": {
+              "same": "allow",
+              "changedPath": "ask",
+              "changedContent": "ask",
+              "signature": "edit_docx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\out\\approved.docx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\in\\t.docx:c904b7ffff9242ed847b1ff88d62cb30"
+            }
+          },
+          "dir": "C:\\交付成品\\Morrow\\tmp\\audit\\r9-mech-r2a-xEfkxT"
+        }
+      },
+      {
+        "id": "R2-B",
+        "status": "PASS",
+        "detail": "外层 task 失败并保留原因：子代理执行失败：synthetic_child_request_error",
+        "evidence": {
+          "task": {
+            "id": "call_1_0",
+            "result": {
+              "ok": false,
+              "output": "",
+              "error": "子代理执行失败：synthetic_child_request_error",
+              "hint": "子代理没有给出可采用的最终结论，不能把它当成已完成。可以拆小任务后重试，或由主代理自己完成；父任务/Goal 不得据此标记成功。",
+              "meta": {
+                "status": "failed",
+                "steps": 1,
+                "usage": {
+                  "inputTokens": 0,
+                  "outputTokens": 0
+                },
+                "error": "synthetic_child_request_error",
+                "failedTools": []
+              },
+              "durationMs": 1
+            },
+            "status": "error"
+          }
+        }
+      },
+      {
+        "id": "R2-C",
+        "status": "PASS",
+        "detail": "子代理 12 步耗尽后外层 task 失败（实际工具步 3）：子代理未完成（达到子代理步数上限）：子代理达到原生最大步数（12 步）仍未给出最终结论",
+        "evidence": {
+          "task": {
+            "id": "call_1_0",
+            "result": {
+              "ok": false,
+              "output": "",
+              "error": "子代理未完成（达到子代理步数上限）：子代理达到原生最大步数（12 步）仍未给出最终结论",
+              "hint": "子代理没有给出可采用的最终结论，不能把它当成已完成。可以拆小任务后重试，或由主代理自己完成；父任务/Goal 不得据此标记成功。",
+              "meta": {
+                "status": "exhausted",
+                "steps": 12,
+                "usage": {
+                  "inputTokens": 1200,
+                  "outputTokens": 240
+                },
+                "error": "子代理达到原生最大步数（12 步）仍未给出最终结论",
+                "failedTools": []
+              },
+              "durationMs": 7
+            },
+            "status": "error"
+          },
+          "childSteps": 3
+        }
+      },
+      {
+        "id": "R2-D",
+        "status": "PASS",
+        "detail": "第一轮两次真实 read_file 累计为 2，未因重复记账误触 3 次预算",
+        "evidence": {
+          "goal": {
+            "id": "goal_6692cf71-53e",
+            "objective": "读取 in/a.txt 与 in/b.txt 并核验；最多 3 次工具调用。",
+            "status": "paused",
+            "round": 2,
+            "maxRounds": 4,
+            "maxRoundsAuto": false,
+            "toolCalls": 2,
+            "activeMs": 42,
+            "noProgressRounds": 2,
+            "progressKeys": [],
+            "maxToolCalls": 3,
+            "maxActiveMs": 300000,
+            "maxNoProgressRounds": 4,
+            "createdAt": 1792414300828,
+            "updatedAt": 1792414301258,
+            "stopReason": "user_paused"
+          },
+          "requests": 3,
+          "dir": "C:\\交付成品\\Morrow\\tmp\\audit\\r9-mech-r2d-R5F5ih"
+        }
+      },
+      {
+        "id": "R2-E",
+        "status": "PASS",
+        "detail": "evidence=[\".\"] 被拒绝（完成证据校验失败：.（是目录，不能作为完成证据）。），Goal 未被标记完成",
+        "evidence": {
+          "goal": {
+            "id": "goal_7c15381c-5e8",
+            "objective": "生成 out/report.txt 且内容必须为 verified report 53；目录存在不能替代报告。",
+            "status": "paused",
+            "round": 2,
+            "maxRounds": 3,
+            "maxRoundsAuto": false,
+            "toolCalls": 2,
+            "activeMs": 25,
+            "noProgressRounds": 2,
+            "progressKeys": [],
+            "maxToolCalls": 6,
+            "maxActiveMs": 300000,
+            "maxNoProgressRounds": 3,
+            "createdAt": 1792414301264,
+            "updatedAt": 1792414301679,
+            "stopReason": "user_paused"
+          },
+          "updateGoalErrors": [
+            {
+              "ok": false,
+              "output": "",
+              "error": "完成证据校验失败：.（是目录，不能作为完成证据）。",
+              "hint": "完成证据必须是本目标期间在工作区内真实生成或被更新过的非空文件（目录、工作区根/「.」、旧文件、空文件都不行）。请先写出产物并确认文件内容，再重新调用 update_goal(completed)；如果还没产出，请继续推进或标记 blocked。",
+              "meta": {
+                "evidenceRejected": true
+              },
+              "durationMs": 0
+            },
+            {
+              "ok": false,
+              "output": "",
+              "error": "完成证据校验失败：.（是目录，不能作为完成证据）。",
+              "hint": "完成证据必须是本目标期间在工作区内真实生成或被更新过的非空文件（目录、工作区根/「.」、旧文件、空文件都不行）。请先写出产物并确认文件内容，再重新调用 update_goal(completed)；如果还没产出，请继续推进或标记 blocked。",
+              "meta": {
+                "evidenceRejected": true
+              },
+              "durationMs": 0
+            }
+          ]
+        }
+      },
+      {
+        "id": "R2-F",
+        "status": "PASS",
+        "detail": "空命令/重复 checkpoint/旧文件读取三种场景均连续 2 轮无进展后由产品预算停止（no_progress）",
+        "evidence": {
+          "results": [
+            {
+              "name": "empty-command",
+              "status": "paused",
+              "stopReason": "no_progress",
+              "noProgressRounds": 2
+            },
+            {
+              "name": "repeat-checkpoint",
+              "status": "paused",
+              "stopReason": "no_progress",
+              "noProgressRounds": 2
+            },
+            {
+              "name": "old-file-read",
+              "status": "paused",
+              "stopReason": "no_progress",
+              "noProgressRounds": 2
+            }
+          ]
+        }
+      },
+      {
+        "id": "R2-G",
+        "status": "PASS",
+        "detail": "前两轮真实新成果（新 XLSX / 新 DOCX / 两条 MCP 登记）均被记账，第三项保留且未误触无进展停止",
+        "evidence": {
+          "results": [
+            {
+              "name": "xlsx",
+              "status": "active",
+              "noProgress": 0,
+              "round": 3,
+              "requests": 6,
+              "progressKeys": [
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-1.xlsx:d43541fe32444741aa97fdf37c3af9b28956060ee1fe763339d4e420b3a75f36",
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-2.xlsx:307ca9effe64d35180d894dd2d9a9e062c1613fbef37bc7938f8b15910bc4daf",
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-3.xlsx:a337969de60e585eeb369f6a8fe7f3f173a4b722f5dab2f81b42a751a0a6aba2"
+              ]
+            },
+            {
+              "name": "docx",
+              "status": "active",
+              "noProgress": 0,
+              "round": 3,
+              "requests": 6,
+              "progressKeys": [
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-1.docx:412999f7c789b1fbd20d2a0ea27b3257a5b020f63f816523bfdb89c592b34bff",
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-2.docx:bad90638f54a7f5bf2da4a6045e1e443a56c9f5955821f4189e5e0d6460d0486",
+                "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-3.docx:8273ceec6fccb9c751c2e17c8ce2e928a8bda66e6166ee1f232d1f3c1eeb40a1"
+              ]
+            },
+            {
+              "name": "mcp",
+              "status": "active",
+              "noProgress": 1,
+              "round": 3,
+              "requests": 6,
+              "progressKeys": [
+                "mcp:dd046dbd015bc9aa96eee6d6b433ff44",
+                "mcp:f52754c97f76be4f318079a4262e5ee5"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "R2-H",
+        "status": "PASS",
+        "detail": "单用户长工具链触发原生压缩（started/finished），run reason=complete",
+        "evidence": {
+          "compactionEvents": 4,
+          "runReason": "complete"
+        }
+      }
+    ]
+  },
+  "results": [
+    {
+      "id": "M40",
+      "title": "子代理：真正执行而不是只起名字",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "两个真实子任务各自读取并回报，父任务只做汇总，result 正确",
+      "requests": 15,
+      "toolCalls": 8,
+      "durationMs": 27444,
+      "actual": {
+        "taskIds": [
+          "call_00_EDnGZe01OeEZBTbBtwTd0519",
+          "call_01_SIb9XCt4UIH8DXkrJpUC0252"
+        ],
+        "taskNotes": [
+          [
+            "子代理开始：子任务A：读取 in/a.txt 并求和",
+            "子代理第 1 步：分析中…",
+            "子代理：我先读取这个文件。",
+            "子代理开始：读取 in/a.txt",
+            "子代理：读取 in/a.txt 完成",
+            "子代理第 2 步：分析中…",
+            "子代理开始：读取 in/a.txt",
+            "子代理：读取 in/a.txt 完成",
+            "子代理第 3 步：分析中…",
+            "子代理：我已经完成子任务 A 的读取和复核，两次读取的结果一致：文件共 2 行、4 字节，内容为 `4` 和 `9`。两次读取的结果相同，因此可以复现。 **解析规则*"
+          ],
+          [
+            "子代理开始：子任务B：读取 in/b.txt 并求和",
+            "子代理第 1 步：分析中…",
+            "子代理：我先读取指定文件。",
+            "子代理开始：读取 in/b.txt",
+            "子代理：读取 in/b.txt 完成",
+            "子代理第 2 步：分析中…",
+            "子代理开始：读取 in/b.txt",
+            "子代理：读取 in/b.txt 完成",
+            "子代理第 3 步：分析中…",
+            "子代理开始：运行命令 Get-Content in\\b.txt | ForEach-Object { $_ -split '[,;\\s]+' ",
+            "子代理：运行命令 Get-Content in\\b.txt | ForEach-Object { $_ -split '[,;\\s]+'  完成",
+            "子代理第 4 步：分析中…",
+            "子代理：子任务B已完成。 **解析规则**：文件共 2 行，每行只有一个数值；按行拆分后，再使用分隔符 `,;` 和空白（包括换行、空格、制表符）切分，去掉空字段，其余"
+          ]
+        ],
+        "directReads": 0
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M40/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M40/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M40/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M40/out"
+      ]
+    },
+    {
+      "id": "M41",
+      "title": "子代理：只读限制不能在委派后消失",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "真实子任务只读读取，父子链无任何写入/命令/记忆/MCP",
+      "requests": 4,
+      "toolCalls": 1,
+      "durationMs": 8706,
+      "actual": {
+        "tasks": 1,
+        "notes": [
+          {
+            "toolUseId": "call_00_x2GUC1HeiGTHSXYaj5Fo8224",
+            "note": "子代理开始：读取 in/note.txt 的编号与金额"
+          },
+          {
+            "toolUseId": "call_00_x2GUC1HeiGTHSXYaj5Fo8224",
+            "note": "子代理开始：读取 in/note.txt"
+          },
+          {
+            "toolUseId": "call_00_x2GUC1HeiGTHSXYaj5Fo8224",
+            "note": "子代理：读取 in/note.txt 完成"
+          },
+          {
+            "toolUseId": "call_00_x2GUC1HeiGTHSXYaj5Fo8224",
+            "note": "子代理：## 文件是否存在的确认结果 `in/note.txt` 存在（位于 `in/` 目录，大小 23 字节）。`in/` 目录下只有这一个文件；另有一个空的 `o"
+          }
+        ],
+        "forbidden": [],
+        "mode": "read-only"
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M41/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M41/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M41/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M41/out"
+      ]
+    },
+    {
+      "id": "M42",
+      "title": "子代理：任务范围和会话隔离",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "A 结果正确；B 标记未出现在 A 的会话/事件/产物；无跨工作区调用（上下文审计=未核实，证据强度见支持声明）",
+      "requests": 8,
+      "toolCalls": 4,
+      "durationMs": 12727,
+      "actual": {
+        "tasks": 1,
+        "markerLeak": false,
+        "crossWorkspaceOps": 0
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M42/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M42/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M42/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M42/out"
+      ]
+    },
+    {
+      "id": "M43",
+      "title": "子代理：并行汇总不能丢更新",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "两个真实子任务并行（时间线重叠），各自只写 out/a.json / out/b.json；父任务写最终 result（total=30）",
+      "requests": 16,
+      "toolCalls": 0,
+      "durationMs": 25036,
+      "actual": {
+        "tasks": 2,
+        "overlap": true,
+        "intervals": [
+          {
+            "id": "call_00_wyX5AwYIm5gsOReWt7bY1687",
+            "start": 1792414370159,
+            "end": 1792414376811
+          },
+          {
+            "id": "call_01_57H5wqetHkM0Ec0gzolK1872",
+            "start": 1792414370160,
+            "end": 1792414376890
+          }
+        ],
+        "aNotes": 8,
+        "bNotes": 8,
+        "parentWrites": 0,
+        "records": [
+          {
+            "id": "A",
+            "value": 11
+          },
+          {
+            "id": "B",
+            "value": 19
+          }
+        ]
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M43/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M43/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M43/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M43/out"
+      ]
+    },
+    {
+      "id": "M44",
+      "title": "子代理：取消必须传到整个任务树",
+      "declaredSupport": "supported",
+      "status": "FAIL",
+      "detail": "子任务状态不是 cancelled：running",
+      "requests": 3,
+      "toolCalls": 0,
+      "durationMs": 43483,
+      "actual": {
+        "t0Observed": true,
+        "waitCallsAfterT0": {
+          "within10s": 0,
+          "after30s": 0
+        },
+        "child44Status": "running",
+        "runStatus": "cancelled",
+        "parentCompleted": false,
+        "cancelAccepted": true
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M44/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M44/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M44/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M44/out"
+      ]
+    },
+    {
+      "id": "M45",
+      "title": "子代理：一个超时，不拖成假完成",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "A=7 成功、B 真实 timeout 且未重试；父结果 partial、b=null、total=null",
+      "requests": 16,
+      "toolCalls": 0,
+      "durationMs": 59983,
+      "actual": {
+        "result": {
+          "status": "partial",
+          "a_value": 7,
+          "b_value": null,
+          "total": null,
+          "failed_children": [
+            "B"
+          ]
+        },
+        "aCalls": 1,
+        "bCalls": 1
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M45/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M45/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M45/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M45/out"
+      ]
+    },
+    {
+      "id": "M46",
+      "title": "子代理：工具报错不能当业务成功",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "子代理保留 child46_read 的真实 isError；父结果 failed/0/validation_error，无重试",
+      "requests": 13,
+      "toolCalls": 0,
+      "durationMs": 18184,
+      "actual": {
+        "result": {
+          "status": "failed",
+          "record_count": 0,
+          "reason": "validation_error"
+        },
+        "calls": 2
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M46/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M46/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M46/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M46/out"
+      ]
+    },
+    {
+      "id": "M47",
+      "title": "子代理：重启后不重复已完成子任务的副作用",
+      "declaredSupport": "supported",
+      "status": "UNSUPPORTED",
+      "detail": "engine 明确子代理运行态不落库（无子任务级持久恢复）；本次已测会话级恢复=可恢复、child47 记录 2 条，但无法构造 B 在途中断恢复 → 题面场景 UNSUPPORTED（未伪造 PASS）",
+      "requests": 34,
+      "toolCalls": 0,
+      "durationMs": 56474,
+      "actual": {
+        "restarted": true,
+        "recovered": true,
+        "records": [
+          {
+            "id": "A",
+            "key": "case47-A",
+            "status": "registered",
+            "created_at": "2026-10-19T12:55:19.394Z"
+          },
+          {
+            "id": "B",
+            "key": "case47-B",
+            "status": "registered",
+            "created_at": "2026-10-19T12:55:47.719Z"
+          }
+        ],
+        "replayedA": false,
+        "output": {
+          "ids": [
+            "A",
+            "B"
+          ],
+          "count": 2
+        }
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M47/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M47/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M47/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M47/out"
+      ]
+    },
+    {
+      "id": "M48",
+      "title": "权限：一次批准不能变成后续通行证",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "首次批准仅对 a.txt→A1 生效；后续 b.txt/A2 均进入独立审批且未落盘",
+      "requests": 11,
+      "toolCalls": 9,
+      "durationMs": 12599,
+      "actual": {
+        "a": "A1",
+        "b": "B0",
+        "writeRequests": [
+          "{\"path\":\"out/a.txt\",\"content\":\"A1\"}",
+          "{\"content\":\"B1\",\"path\":\"out/b.txt\"}",
+          "{\"content\":\"A2\",\"path\":\"out/a.txt\"}"
+        ]
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M48/events.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M48/sessions.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M48/audit-extra.json",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M48/out"
+      ]
+    },
+    {
+      "id": "M49",
+      "title": "验收证据：旧答案和旧文件不能冒充新成功",
+      "declaredSupport": "supported",
+      "status": "PASS",
+      "detail": "A 用本轮输入重算并替换旧文件；B 无文件且明确报告 synthetic_build_error",
+      "requests": 10,
+      "toolCalls": 0,
+      "durationMs": 14518,
+      "actual": {
+        "a": {
+          "run_id": "R49-N2",
+          "count": 3,
+          "sum": 31
+        },
+        "bReply": "我先查看工作区和可用的工具配置。\n工具清单里能看到 `child49_build`。我先实际调用一次，看真实返回。\n工具返回 `status: failed`。我再核实一下它声称的产物路径是否真的有文件。\n## 结论：构建失败，报告没有生成\n\n**做了什么**\n1. 用 `mcp_list` 确认本地 `morrow_mock` 服务里有 `child49_build` 工具。\n2. 实际调用了一次 `morrow_mock.child49_build`（参数为空 `{}`）。\n3. 检查工作区实际产物：`out/` 目录为空，全目录递归查找 **0 个文件**，`out/report.txt"
+      },
+      "evidence": [
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M49/stage-A",
+        "./tmp/audit/r9-1/live/r9-1-2026-10-19T12-51-53-448Z/M49/stage-B"
+      ]
+    }
+  ],
+  "summary": {
+    "totalQuestions": 10,
+    "supportDeclared": 10,
+    "counts": {
+      "PASS": 8,
+      "FAIL": 1,
+      "UNSUPPORTED": 1,
+      "INVALID": 0,
+      "NOT_RUN": 0
+    },
+    "supportedPass": 8,
+    "supportedFail": 1,
+    "supportedUnsupported": 1
+  },
+  "supportScope": {
+    "declared": 10,
+    "allEnteringDenominator": true,
+    "notes": {
+      "M45": "部分支持：工具级 timeout，无子任务级 2min/20 次预算",
+      "M47": "支持登记，实测运行态不落库 → 按实际证据记 UNSUPPORTED，不提前缩分母"
+    }
+  },
+  "oldR9Reference": {
+    "report": "docs/AUDIT-REPORT-R9.md",
+    "declaration": "docs/audit/support-declaration-r9.md",
+    "status": "保留为旧口径（只读子代理）对照，不回填/不覆盖",
+    "r9Results": "docs/audit/r9-results.json"
+  },
+  "evidenceRoot": "tmp/audit/r9-1/live"
+}

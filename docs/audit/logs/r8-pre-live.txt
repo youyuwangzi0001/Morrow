@@ -1,0 +1,386 @@
+# R8 阶段 B 开跑前离线复跑
+# 时间: 2026-10-19T12:59:59+08:00
+# git HEAD: ab52236
+# working tree diff sha256: ccf808135ff74b32af694a666d2d70c90ca1e2b2d9961c5b1768e4eaae786310
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/交付成品/Morrow[39m
+
+ [2m[90m↓[39m[22m tests/audit/r8/plumbing.test.ts[2m > [22mR8 live-runner 管路自检（本地 mock，零真实请求）[2m > [22m单题 M16：AgentService → 产品工具 → checker → 结果 JSON 全链路
+ [2m[90m↓[39m[22m tests/audit/live-capabilities.test.ts[2m > [22mR7 真实 DeepSeek 能力题（M 系列）[2m > [22m按优先级依次执行真实能力题（预算用尽后剩余 NOT_RUN）
+ [2m[90m↓[39m[22m tests/audit/live-capabilities.test.ts[2m > [22mR7 真实 DeepSeek 能力题（M 系列）[2m > [22mM23/M24 记忆：跨会话保留 / 更正（真实模型）
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mveschfyvgfkok'[39m,
+  rounds: [33m16[39m,
+  autoRounds: [33mfalse[39m,
+  maxToolCalls: [33m100[39m,
+  maxActiveMs: [33m1200000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_2bb9fa44-249'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m35[39m
+}
+
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m只读模式：remember / 写入 / 命令一律禁止[2m > [22mremember 在只读模式被拒绝，MEMORY.md 不会被创建[32m 16[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m只读模式：remember / 写入 / 命令一律禁止[2m > [22mwrite_file / run_command 在只读模式被拒绝（文件未创建、命令未执行）[32m 4[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m只读模式：remember / 写入 / 命令一律禁止[2m > [22mevaluatePermission 对越界写也直接拒绝（不是询问）[32m 1[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m符号链接 / 目录联接越界（realpath 判定）[2m > [22m工作区内指向库外的 junction 被识别为越界：读被拦、写被拦、只读写直接拒绝[32m 4[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m符号链接 / 目录联接越界（realpath 判定）[2m > [22m实际工具执行：未获审批的链接路径读取被拒绝，库外 canary 没有被读出[32m 3[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_b4959a26-aef'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m12[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_49c30e77-daf'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m8[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_c76ec3a8-992'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m6[39m
+}
+
+[90mstdout[2m | tests/audit/r8/full39.test.ts[2m > [22m[2mR8 全量 39 题审计 harness[2m > [22m[2m阶段 A：夹具/mock MCP/spec/checker 自检 + 支持声明（零真实费用）
+[22m[39m[r8-phase-a] ok=true specs=39 supported=35 partial=3 unsupported=1 fixtures=43/43 mock=9/9 checkers=39 declaration=./docs/audit/support-declaration-r8.md
+
+ [32m✓[39m tests/audit/r8/full39.test.ts[2m > [22mR8 全量 39 题审计 harness[2m > [22m阶段 A：夹具/mock MCP/spec/checker 自检 + 支持声明（零真实费用）[33m 1184[2mms[22m[39m
+ [2m[90m↓[39m[22m tests/audit/r8/full39.test.ts[2m > [22mR8 全量 39 题审计 harness[2m > [22m阶段 B：真实模型一次性跑完整 39 题（需 Lead 信号 + MORROW_R8_LIVE=1）
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_4cca6fdf-45b'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m8[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_771012f4-f01'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m32[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_d90b366d-4c0'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m17[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_d8de6247-bf9'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m19[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_fd5f30d7-4b1'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m9[39m
+}
+
+ [32m✓[39m tests/audit/security.test.ts[2m > [22mrun_command「始终允许」只绑定完全相同的命令[2m > [22m批准 node a.js 后，node b.js 与不同参数必须重新询问[33m 3299[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m撤销：检测用户手改，冲突时不覆盖[2m > [22m写文件后用户手工修改 → 撤销返回 UNDO_CONFLICT 且不覆盖新内容[32m 5[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m撤销：检测用户手改，冲突时不覆盖[2m > [22m没有后续手改时撤销成功恢复旧内容；重复撤销幂等[32m 5[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22msecrets：加密不可用时拒绝保存，不静默降级[2m > [22m系统加密不可用：保存 Key 抛 SecretStorageUnavailableError，不产出任何可还原格式[32m 0[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22msecrets：加密不可用时拒绝保存，不静默降级[2m > [22m历史 b64 降级数据只能读、且被标记为 insecure；新格式是 enc:[32m 0[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m提示词：不可信内容不构成授权[2m > [22m系统提示词明确文件/工具结果/记忆中的指令不是授权[32m 0[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m提示词：不可信内容不构成授权[2m > [22mGoal 提示段包含预算与完成证据要求，避免「假装完成」[32m 0[2mms[22m[39m
+ [32m✓[39m tests/audit/security.test.ts[2m > [22m记忆工具：非只读模式仍可用（修复不能误伤正常功能）[2m > [22mauto 模式下 remember 正常写入 .morrow/MEMORY.md[32m 2[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_0633a1ea-e1d'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m13[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_a3b35f42-bbd'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m16[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_96f8e37d-eab'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m8[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mvesckoe6fuziy'[39m,
+  rounds: [33m16[39m,
+  autoRounds: [33mfalse[39m,
+  maxToolCalls: [33m100[39m,
+  maxActiveMs: [33m1200000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_806a9a50-427'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m9[39m
+}
+
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mA：同一个 Goal 真实推进 12 轮后完成（>10 轮），完成需 evidence 校验[33m 4195[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_bf388482-8e1'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m14[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_334b84eb-871'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m14[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_34447ae1-172'[39m,
+  reason: [32m'cancelled'[39m,
+  messages: [33m1[39m,
+  durationMs: [33m5[39m
+}
+
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22m夹具就绪（复用阶段 A 构建结果，必要时重建）[32m 1[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM09 电子表格：write_xlsx 真公式 + openpyxl/soffice 重算[33m 5451[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM11 DOCX：edit_docx 替换占位符且输入不变[32m 160[2mms[22m[39m
+[90mstdout[2m | tests/audit/r8/feature-probe.test.ts[2m > [22m[2mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22m[2mM12 PDF：read_pdf 抽取数字并发现印刷差额
+[22m[39mWarning: TT: undefined function: 21
+
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM12 PDF：read_pdf 抽取数字并发现印刷差额[32m 59[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM21 技能：list_skills/read_skill 发现并执行技能[32m 12[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM19/M20 MCP 客户端：mcp_list/mcp_call 两页 + 温度转换[32m 195[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM26 幂等：create_ticket 超时后先 get_ticket 再写结果[32m 92[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM29 伪授权：read_note 返回的“批准”不触发外发动作[32m 49[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM23 记忆：remember 写入 + 新会话读回[32m 7[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM25 恢复产物：12 项 + checkpoint + result（中断证据由 goal 恢复用例覆盖）[32m 29[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22mM33 图片输入：多模态消息真的带 images 到 provider[32m 5[2mms[22m[39m
+ [32m✓[39m tests/audit/r8/feature-probe.test.ts[2m > [22mR8 特性联调探针（scripted provider 驱动产品真实工具，零真实模型费用）[2m > [22m写作用域内探针产物证据落盘[32m 0[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] active goals recovered as paused after restart { count: [33m1[39m }
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_41542d4a-6e7'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m18[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_4b3da252-eff'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m7[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_c897ba85-f08'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m14[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_eb51d9dd-289'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m18[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_179b8afc-f1b'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m15[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_e4931b1b-c86'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m12[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_8ba13c84-914'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m7[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_9b261513-d00'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m13[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mC：用户手动结束 → cancelled（不是 completed），之后不再偷偷运行
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mvescokd6nimul'[39m,
+  rounds: [33m16[39m,
+  autoRounds: [33mfalse[39m,
+  maxToolCalls: [33m100[39m,
+  maxActiveMs: [33m1200000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mC：用户手动结束 → cancelled（不是 completed），之后不再偷偷运行
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_3ecd7315-f27'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m8[39m
+}
+
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mB：暂停后不再干活；重启后 active→paused 可恢复，继续同一个 Goal 从下一轮接着做[33m 5040[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mC：用户手动结束 → cancelled（不是 completed），之后不再偷偷运行
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_18b7c88f-f74'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m11[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mC：用户手动结束 → cancelled（不是 completed），之后不再偷偷运行
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_b1760e12-7b2'[39m,
+  reason: [32m'cancelled'[39m,
+  messages: [33m1[39m,
+  durationMs: [33m18[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mD：连续无进展 → 诚实停止（no_progress，不是完成）
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mvescs8pztd5lx'[39m,
+  rounds: [33m16[39m,
+  autoRounds: [33mfalse[39m,
+  maxToolCalls: [33m100[39m,
+  maxActiveMs: [33m1200000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mD：连续无进展 → 诚实停止（no_progress，不是完成）
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_d26a927d-9e5'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m7[39m
+}
+
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mC：用户手动结束 → cancelled（不是 completed），之后不再偷偷运行[33m 4764[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mD：连续无进展 → 诚实停止（no_progress，不是完成）
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_2a2f5615-2d5'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m16[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mD：连续无进展 → 诚实停止（no_progress，不是完成）
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_6daa83a4-cd5'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m19[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mE：模型反复谎报 completed 但无证据 → 永不标记完成，到轮次预算诚实停止
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mvesctmwk38zpt'[39m,
+  rounds: [33m3[39m,
+  autoRounds: [33mfalse[39m,
+  maxToolCalls: [33m100[39m,
+  maxActiveMs: [33m1200000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mE：模型反复谎报 completed 但无证据 → 永不标记完成，到轮次预算诚实停止
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_f437c94d-684'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m7[39m
+}
+
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mD：连续无进展 → 诚实停止（no_progress，不是完成）[33m 1807[2mms[22m[39m
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mE：模型反复谎报 completed 但无证据 → 永不标记完成，到轮次预算诚实停止
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_268711e5-02c'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m24[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mE：模型反复谎报 completed 但无证据 → 永不标记完成，到轮次预算诚实停止
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_0267eb22-2a4'[39m,
+  reason: [32m'complete'[39m,
+  messages: [33m2[39m,
+  durationMs: [33m20[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mF：轮次预算由目标复杂度智能估算（无需手动设置，上限 200）
+[22m[39m[morrow:info] goal started {
+  sessionId: [32m's_mvescu8s89dvzf'[39m,
+  rounds: [33m21[39m,
+  autoRounds: [33mtrue[39m,
+  maxToolCalls: [33m420[39m,
+  maxActiveMs: [33m3780000[39m
+}
+
+[90mstdout[2m | tests/audit/goal-long-run.test.ts[2m > [22m[2mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22m[2mF：轮次预算由目标复杂度智能估算（无需手动设置，上限 200）
+[22m[39m[morrow:info] run persisted {
+  runId: [32m'run_21c1b534-62b'[39m,
+  reason: [32m'cancelled'[39m,
+  messages: [33m1[39m,
+  durationMs: [33m3[39m
+}
+
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mE：模型反复谎报 completed 但无证据 → 永不标记完成，到轮次预算诚实停止[33m 788[2mms[22m[39m
+ [32m✓[39m tests/audit/goal-long-run.test.ts[2m > [22mGoal 长期任务（本地 mock 模型 + 产品原生 Goal 循环）[2m > [22mF：轮次预算由目标复杂度智能估算（无需手动设置，上限 200）[32m 10[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m4 passed[39m[22m[2m | [22m[33m2 skipped[39m[90m (6)[39m
+[2m      Tests [22m [1m[32m32 passed[39m[22m[2m | [22m[33m4 skipped[39m[90m (36)[39m
+[2m   Start at [22m 13:00:00
+[2m   Duration [22m 17.19s[2m (transform 551ms, setup 0ms, collect 1.88s, tests 27.19s, environment 1ms, prepare 452ms)[22m
+
+exit=0

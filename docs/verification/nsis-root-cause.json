@@ -1,0 +1,114 @@
+{
+  "recordedAt": "2026-10-19T01:25:00+08:00",
+  "environment": {
+    "os": "Windows 10.0.26300 x64",
+    "note": "本机 DSH 会话为完整访问策略，宿主 TEMP 可写；NSIS TEMP 失败用无效 TEMP 路径复现（机制相同）"
+  },
+  "singleFileExe": "release/Morrow-1.0.0-portable.exe（复现时用旧 Electron 38 包；NSIS 外壳模板相同）",
+  "scenarios": [
+    {
+      "name": "A-single-bad-drive",
+      "exe": "release\\Morrow-1.0.0-portable.exe",
+      "temp": "Z:\\Temp",
+      "args": [],
+      "cdpReady": false,
+      "cdpMs": null,
+      "elapsedMs": 5573,
+      "processExit": {
+        "code": 2,
+        "signal": null
+      },
+      "aliveWhenKilled": false,
+      "windowTitle": "(无窗口标题)",
+      "processes": "",
+      "output": ""
+    },
+    {
+      "name": "B-single-temp-is-file",
+      "exe": "release\\Morrow-1.0.0-portable.exe",
+      "temp": "C:\\交付成品\\Morrow\\tmp\\nsis-probe2-1792344189254\\temp-is-a-file",
+      "args": [],
+      "cdpReady": false,
+      "cdpMs": null,
+      "elapsedMs": 8794,
+      "processExit": {
+        "code": 2,
+        "signal": null
+      },
+      "aliveWhenKilled": false,
+      "windowTitle": "(无窗口标题)",
+      "processes": "",
+      "output": ""
+    },
+    {
+      "name": "C-single-no-sandbox",
+      "exe": "release\\Morrow-1.0.0-portable.exe",
+      "temp": "C:\\交付成品\\Morrow\\tmp\\nsis-probe2-1792344189254\\temp-workspace",
+      "args": [],
+      "cdpReady": false,
+      "cdpMs": null,
+      "elapsedMs": 6737,
+      "processExit": {
+        "code": 2147483651,
+        "signal": null
+      },
+      "aliveWhenKilled": false,
+      "windowTitle": "(无窗口标题)",
+      "processes": "",
+      "output": ""
+    },
+    {
+      "name": "D-single-with-sandbox-off",
+      "exe": "release\\Morrow-1.0.0-portable.exe",
+      "temp": "C:\\交付成品\\Morrow\\tmp\\nsis-probe2-1792344189254\\temp-workspace",
+      "args": [
+        "--no-sandbox"
+      ],
+      "cdpReady": true,
+      "cdpMs": 3993,
+      "elapsedMs": 5658,
+      "processExit": {
+        "code": 1,
+        "signal": null
+      },
+      "aliveWhenKilled": true,
+      "windowTitle": "",
+      "processes": "[{\"Id\":5596,\"ProcessName\":\"Morrow\",\"MainWindowTitle\":\"Morrow\"},{\"Id\":7352,\"ProcessName\":\"Morrow\",\"MainWindowTitle\":\"\"},{\"Id\":13644,\"ProcessName\":\"Morrow\",\"MainWindowTitle\":\"\"},{\"Id\":22648,\"ProcessName\":\"Morrow\",\"MainWindowTitle\":\"\"},{\"Id\":24972,\"ProcessName\":\"Morrow-1.0.0-portable\",\"MainWindowTitle\":\"\"}]",
+      "output": ""
+    },
+    {
+      "name": "E-folder-no-sandbox-off",
+      "exe": "release\\Morrow-1.0.0-portable\\Morrow.exe",
+      "temp": "(继承宿主 TEMP)",
+      "args": [],
+      "cdpReady": false,
+      "cdpMs": null,
+      "elapsedMs": 2644,
+      "processExit": {
+        "code": 2147483651,
+        "signal": null
+      },
+      "aliveWhenKilled": false,
+      "windowTitle": "(无窗口标题)",
+      "processes": "",
+      "output": ""
+    }
+  ],
+  "portableMarker": {
+    "scenario": "folder + portable.marker（不传 --data-dir）",
+    "exe": "release/Morrow-1.0.0-portable/Morrow.exe",
+    "cdpReady": true,
+    "dataDirCreatedNextToExe": true,
+    "dataDir": "release/Morrow-1.0.0-portable/Morrow Data",
+    "sampleEntries": [
+      "attachments",
+      "blob_storage",
+      "Cache",
+      "Code Cache",
+      "DawnGraphiteCache",
+      "DawnWebGPUCache"
+    ],
+    "note": "验证后已清理该测试数据目录；zip 在测试前生成，未被污染"
+  },
+  "conclusion": "① 单文件 NSIS 自解压依赖可写 %TEMP%（portable.nsi: StrCpy $INSTDIR \"$PLUGINSDIR\\app\"）；② 受限令牌下 Electron 需 --no-sandbox，否则子进程 0x80000003 崩溃；③ 推荐交付『便携文件夹』并用兼容模式脚本兜底受限宿主。"
+}

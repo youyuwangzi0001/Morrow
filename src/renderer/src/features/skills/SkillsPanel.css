@@ -1,0 +1,669 @@
+/* R10-H 技能库面板：独立 overlay 面板内的「列表 + 详情 + 安装」布局。
+   只使用全局 design tokens，不新增颜色；明暗主题随 html[data-theme] 自动切换。 */
+
+.skills-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: min(68vh, 620px);
+  min-height: 460px;
+}
+
+/* ── 工具条 ─────────────────────────────────────────────────── */
+
+.skills-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.skills-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 200px;
+  min-width: 160px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-inset);
+  color: var(--text-3);
+}
+
+.skills-search:focus-within {
+  border-color: var(--line-gold);
+  box-shadow: 0 0 0 1px var(--gold-ghost);
+}
+
+.skills-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+}
+
+.skills-search-input::placeholder {
+  color: var(--text-3);
+}
+
+.skills-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.skills-sort select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  outline: none;
+  cursor: pointer;
+}
+
+.skills-sort select:focus-visible {
+  border-color: var(--line-gold);
+}
+
+.skills-summary {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  flex: 0 0 auto;
+}
+
+.skills-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--rust-dim);
+  border-left: 2px solid var(--rust);
+  border-radius: var(--r-sm);
+  background: var(--rust-dim);
+  color: var(--text-2);
+  font-size: var(--fs-ui);
+}
+
+.skills-inline-error svg {
+  color: var(--rust);
+  flex: 0 0 auto;
+}
+
+.skills-inline-error span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.skills-inline-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.skills-inline-dismiss:hover {
+  color: var(--text);
+}
+
+.skills-scan-errors {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--amber-dim);
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+}
+
+.skills-scan-errors summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--amber);
+  list-style: none;
+}
+
+.skills-scan-errors summary::-webkit-details-marker {
+  display: none;
+}
+
+.skills-scan-errors ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ── 两栏主体 ───────────────────────────────────────────────── */
+
+.skills-body {
+  display: grid;
+  grid-template-columns: minmax(250px, 37%) minmax(0, 1fr);
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: 0;
+}
+
+.skills-list-loading,
+.skills-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 180px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--text-3);
+  text-align: center;
+}
+
+.skills-list-empty p {
+  margin: 0;
+  max-width: 260px;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+}
+
+.skills-list-empty svg {
+  color: var(--text-3);
+}
+
+.skills-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+  color: var(--text);
+  text-align: left;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: background 120ms var(--ease-out), border-color 120ms var(--ease-out);
+}
+
+.skills-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.skills-card.is-active {
+  border-left-color: var(--gold);
+  background: var(--surface-hover);
+}
+
+.skills-card.is-disabled {
+  opacity: 0.72;
+}
+
+.skills-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.skills-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skills-card-name {
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+
+.skills-card-meta {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-mini-switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 30px;
+  height: 17px;
+  margin-top: 2px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-inset);
+  cursor: pointer;
+  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.skills-mini-switch.is-on {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+}
+
+.skills-mini-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform 140ms var(--ease-out), background 140ms var(--ease-out);
+}
+
+.skills-mini-switch.is-on .skills-mini-switch-thumb {
+  transform: translateX(13px);
+  background: var(--gold-bright);
+}
+
+.skills-mini-switch:hover {
+  border-color: var(--line-gold);
+}
+
+/* ── 详情 ───────────────────────────────────────────────────── */
+
+.skills-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-inset);
+  padding: 12px 14px;
+}
+
+.skills-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.skills-detail-empty h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.skills-detail-empty p {
+  margin: 0;
+  max-width: 300px;
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+}
+
+.skills-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.skills-detail-title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.skills-detail-title h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.skills-detail-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.skills-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.skills-detail-desc {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  flex: 0 0 auto;
+}
+
+.skills-path-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+  flex: 0 0 auto;
+}
+
+.skills-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.skills-hint {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--line-gold);
+  background: var(--gold-ghost);
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+  flex: 0 0 auto;
+}
+
+.skills-detail-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.skills-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.skills-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.skills-section-note {
+  color: var(--text-3);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.skills-md {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--code-bg);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.skills-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.skills-files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.skills-files li:last-child {
+  border-bottom: none;
+}
+
+.skills-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-file-size {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.skills-section-empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+/* ── 安装对话框 ─────────────────────────────────────────────── */
+
+.skills-install {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skills-install-picks {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skills-install-label {
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+}
+
+.skills-install-input {
+  height: 34px;
+  width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  outline: none;
+}
+
+.skills-install-input:focus-visible {
+  border-color: var(--line-gold);
+}
+
+.skills-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--text-3);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+
+.skills-drop-zone:hover,
+.skills-drop-zone.is-dragging {
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.skills-drop-zone p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-ui);
+}
+
+.skills-drop-zone span {
+  font-size: var(--fs-micro);
+}
+
+.skills-install-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+}
+
+.skills-install-hint code {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+.skills-delete-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-ui);
+}
+
+.skills-delete-body p {
+  margin: 0;
+}
+
+/* ── 底部说明 ───────────────────────────────────────────────── */
+
+.skills-footnote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.skills-footnote-path {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.skills-footnote-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* ── 窄窗口：单列堆叠 ───────────────────────────────────────── */
+
+@media (max-width: 820px) {
+  .skills-panel {
+    height: auto;
+    min-height: 420px;
+  }
+
+  .skills-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 34vh) minmax(0, 1fr);
+  }
+
+  .skills-detail {
+    max-height: 46vh;
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "name": "morrow",
+  "productName": "Morrow",
+  "version": "1.0.0",
+  "description": "Morrow — 住在你电脑里的 AI 工作伙伴",
+  "author": "Morrow Studio",
+  "license": "MIT",
+  "private": true,
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "preview": "electron-vite preview",
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "build": "npm run typecheck && electron-vite build",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "probe:live": "node scripts/probe-live.mjs",
+    "dist": "npm run build && node scripts/dist-portable.mjs",
+    "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "verify": "npm run typecheck && npm run test:unit && npm run test:e2e",
+    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
+    "@fontsource-variable/manrope": "5.2.8",
+    "@fontsource-variable/newsreader": "5.2.8",
+    "@fontsource-variable/noto-serif-sc": "^5.3.1",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "diff": "7.0.0",
+    "electron": "^44.9.0",
+    "electron-builder": "26.0.12",
+    "electron-vite": "4.0.1",
+    "lucide-react": "0.544.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-markdown": "10.1.0",
+    "remark-cjk-friendly": "^2.3.2",
+    "remark-gfm": "4.0.1",
+    "shiki": "3.23.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.7",
+    "vitest": "3.2.4",
+    "zustand": "5.0.8"
+  },
+  "build": {
+    "appId": "studio.morrow.agent",
+    "productName": "Morrow",
+    "copyright": "Copyright © 2026 Morrow Studio",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "assets/demo-workspace/**/*",
+      "build/icon.png",
+      "!node_modules/pdf-parse/lib/pdf.js/v1.9.426/**",
+      "!node_modules/pdf-parse/lib/pdf.js/v1.10.88/**",
+      "!node_modules/pdf-parse/lib/pdf.js/v2.0.550/**",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/pdf-parse/**"
+    ],
+    "compression": "maximum",
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Morrow-${version}-portable.${ext}"
+    },
+    "portable": {
+      "artifactName": "Morrow-${version}-portable.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.1"
+  }
+}

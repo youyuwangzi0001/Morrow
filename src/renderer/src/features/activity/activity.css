@@ -1,0 +1,985 @@
+/* ─────────────────────────────────────────────────────────────
+   行动轨迹（Spine）· 权限卡 · 提问卡 · 计划托盘
+   签名元素：1px 竖线 + 6px 菱形节点 + 等宽摘要。
+   ───────────────────────────────────────────────────────────── */
+
+/* ── 轨迹容器 ─────────────────────────────────────────────────── */
+
+.spine {
+  position: relative;
+  margin: 10px 0 16px;
+  padding-left: 22px;
+}
+
+.spine::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 14px;
+  left: 8.5px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--line-strong) 6%,
+    var(--line-strong) 92%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.spine-row {
+  position: relative;
+}
+
+/* 6px 菱形节点：旋转 45°，状态色 */
+.spine-node {
+  position: absolute;
+  left: -16px;
+  top: 12px;
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  transition: background var(--dur-base) ease, border-color var(--dur-base) ease;
+}
+
+.spine-row.is-running .spine-node,
+.spine-row.is-waiting .spine-node {
+  position: absolute;
+}
+
+.spine-row.is-running .spine-node {
+  border-color: var(--gold);
+  background: var(--gold);
+  animation: spine-breathe 1.8s ease-in-out infinite;
+}
+
+.spine-row.is-running .spine-node::after,
+.spine-row.is-waiting .spine-node::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  opacity: 0;
+  animation: spine-ring 1.8s ease-out infinite;
+}
+
+.spine-row.is-running .spine-node {
+  color: var(--gold);
+}
+
+.spine-row.is-waiting .spine-node {
+  color: var(--amber);
+}
+
+.spine-row.is-success .spine-node {
+  border-color: var(--patina);
+  background: var(--patina);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--patina) 11%, transparent);
+}
+
+.spine-row.is-error .spine-node,
+.spine-row.is-denied .spine-node {
+  border-color: var(--rust);
+  background: var(--rust);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rust) 13%, transparent);
+}
+
+.spine-row.is-waiting .spine-node {
+  border-color: var(--amber);
+  background: var(--amber);
+  animation: spine-breathe-amber 1.8s ease-in-out infinite;
+}
+
+.spine-row.is-interrupted .spine-node {
+  border-color: var(--text-3);
+  background: transparent;
+}
+
+.spine-row.is-subagent .spine-node {
+  border-color: var(--mauve);
+  background: var(--mauve);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mauve) 12%, transparent);
+}
+
+.spine-row-body {
+  min-width: 0;
+}
+
+.spine-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 16px);
+  margin-left: -8px;
+  padding: 5px 8px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  text-align: left;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.spine-item:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.spine-item:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}
+
+.spine-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--text-3);
+  transition: color var(--dur-base) ease;
+}
+
+.spine-row.is-running .spine-icon,
+.spine-row.is-waiting .spine-icon {
+  color: var(--gold);
+}
+
+.spine-row.is-success .spine-icon {
+  color: var(--text-2);
+}
+
+.spine-row.is-error .spine-icon,
+.spine-row.is-denied .spine-icon {
+  color: var(--rust);
+}
+
+.spine-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 52%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spine-row.is-running .spine-title {
+  color: var(--gold-bright);
+}
+
+.spine-row.is-denied .spine-title,
+.spine-row.is-interrupted .spine-title {
+  color: var(--text-2);
+}
+
+.spine-tag {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--mauve-dim);
+  border-radius: 4px;
+  color: var(--mauve);
+  font-size: 9.5px;
+  line-height: 15px;
+}
+
+.spine-status {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  font-size: 9px;
+  line-height: 15px;
+  letter-spacing: 0.04em;
+}
+
+.spine-status.is-running,
+.spine-status.is-waiting {
+  border-color: var(--amber-dim);
+  background: var(--amber-dim);
+}
+
+.spine-status.is-error,
+.spine-status.is-denied {
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+}
+
+.spine-status.is-interrupted {
+  border-color: var(--line);
+  background: var(--surface-inset);
+}
+
+.spine-status.is-running,
+.spine-status.is-waiting {
+  color: var(--amber);
+}
+
+.spine-status.is-error,
+.spine-status.is-denied {
+  color: var(--rust);
+}
+
+.spine-status.is-interrupted {
+  color: var(--text-3);
+}
+
+.spine-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 10.5px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spine-duration {
+  flex: 0 0 auto;
+  min-width: 36px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  text-align: right;
+  opacity: 0.85;
+}
+
+.spine-chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  opacity: 0;
+  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) ease;
+}
+
+.spine-item:hover .spine-chevron,
+.spine-item:focus-visible .spine-chevron,
+.spine-row.is-open .spine-chevron,
+.spine-row.is-error .spine-chevron,
+.spine-row.is-denied .spine-chevron {
+  opacity: 1;
+}
+
+.spine-row.is-open .spine-chevron {
+  transform: rotate(90deg);
+}
+
+.spine-row.is-error .spine-item,
+.spine-row.is-denied .spine-item {
+  border-radius: var(--r-xs);
+}
+
+.spine-row.is-error.is-open .spine-item,
+.spine-row.is-denied.is-open .spine-item {
+  background: color-mix(in srgb, var(--rust) 5%, transparent);
+}
+
+/* 展开区：与标题文字对齐，左侧细线承接轨迹 */
+.spine-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 12px 12px;
+  padding: 8px 0 2px 14px;
+  border-left: 1px solid var(--line);
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.spine-section {
+  min-width: 0;
+}
+
+.spine-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+}
+
+.spine-section + .spine-section {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.spine-section-name {
+  color: var(--text-3);
+  opacity: 0.75;
+}
+
+.spine-copy {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--text-3);
+  opacity: 0.7;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease, opacity var(--dur-fast) ease;
+}
+
+.spine-copy:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+  opacity: 1;
+}
+
+.spine-detail .code-block,
+.spine-detail .diff-view {
+  margin: 0;
+}
+
+.spine-error {
+  padding: 9px 12px;
+  border-left: 2px solid var(--rust);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--rust-dim);
+}
+
+.spine-error-title {
+  color: var(--rust);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.spine-error-hint {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.spine-subagent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--mauve-dim);
+  border-radius: var(--r-xs);
+  background: var(--mauve-dim);
+  color: var(--mauve);
+  font-size: 11.5px;
+}
+
+.spine-subagent .mono {
+  margin-left: auto;
+  opacity: 0.8;
+}
+
+.spine-empty {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+/* 撤销文件修改：结果区底部右侧，mono 小字 */
+.spine-undo-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.spine-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.spine-undo:hover:not(:disabled) {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+.spine-undo:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@keyframes spine-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--gold) 18%, transparent);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--gold) 5%, transparent);
+  }
+}
+
+@keyframes spine-breathe-amber {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--amber) 20%, transparent);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--amber) 6%, transparent);
+  }
+}
+
+@keyframes spine-ring {
+  0% {
+    opacity: 0.5;
+    transform: rotate(45deg) scale(0.9);
+  }
+  70% {
+    opacity: 0;
+    transform: rotate(45deg) scale(1.9);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(45deg) scale(1.9);
+  }
+}
+
+/* ── 权限卡 ───────────────────────────────────────────────────── */
+
+.permission-card {
+  margin: 20px 0 8px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--line-gold);
+  border-left: 2px solid var(--amber);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  animation: fade-in-up var(--dur-base) var(--ease-out) both;
+}
+
+.permission-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-risk-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--amber);
+}
+
+.permission-title {
+  display: -webkit-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.permission-risk {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.permission-risk.is-low {
+  color: var(--patina);
+  border-color: var(--patina-dim);
+  background: var(--patina-dim);
+}
+
+.permission-risk.is-medium {
+  color: var(--amber);
+  border-color: var(--amber-dim);
+  background: var(--amber-dim);
+}
+
+.permission-risk.is-high {
+  color: var(--rust);
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+}
+
+.permission-desc {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.72;
+}
+
+.permission-summary {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.permission-preview {
+  margin-top: 12px;
+}
+
+.permission-preview-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.permission-preview-toggle:not(:disabled):hover {
+  color: var(--gold-bright);
+}
+
+.permission-preview-toggle svg {
+  transition: transform var(--dur-fast) ease;
+}
+
+.permission-preview-toggle[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+
+.permission-command {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-height: 104px;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.permission-prompt {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.permission-command-text {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.permission-text {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.permission-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.permission-actions .perm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.permission-actions .perm-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.permission-actions .perm-btn-primary {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.permission-actions .perm-btn-primary:hover {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 24%, transparent);
+  color: var(--gold-bright);
+}
+
+.permission-actions .perm-btn-deny {
+  margin-left: auto;
+  border-color: transparent;
+  color: var(--rust);
+}
+
+.permission-actions .perm-btn-deny:hover {
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.permission-actions .perm-btn .kbd {
+  opacity: 0.6;
+}
+
+[data-theme='light'] .permission-actions .perm-btn-primary {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 13%, var(--surface));
+  color: var(--gold);
+}
+
+[data-theme='light'] .permission-actions .perm-btn-primary:hover {
+  background: color-mix(in srgb, var(--gold) 20%, var(--surface));
+}
+
+.permission-foot {
+  margin-top: 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ── 提问卡 ───────────────────────────────────────────────────── */
+
+.question-card {
+  margin: 20px 0 8px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--mauve);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  animation: fade-in-up var(--dur-base) var(--ease-out) both;
+}
+
+.question-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.question-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--mauve);
+}
+
+.question-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.question-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  text-align: left;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.question-option:hover {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+}
+
+.question-option-index {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 20px;
+}
+
+.question-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.question-option-label {
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.question-option-desc {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.question-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.question-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 12.5px;
+  transition: border-color var(--dur-fast) ease;
+}
+
+.question-input:focus {
+  border-color: var(--line-gold);
+}
+
+.question-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  color: var(--gold-bright);
+  font-size: 12px;
+}
+
+.question-submit:hover:not(:disabled) {
+  background: var(--gold-dim);
+}
+
+.question-foot {
+  margin-top: 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.question-foot .kbd {
+  margin: 0 1px;
+}
+
+/* ── 计划托盘 ─────────────────────────────────────────────────── */
+
+.plan-tray {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+  overflow: hidden;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  color: var(--text-2);
+  text-align: left;
+  transition: background var(--dur-fast) ease;
+}
+
+.plan-head:hover {
+  background: var(--surface);
+}
+
+.plan-icon {
+  flex: 0 0 auto;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.plan-title {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.plan-progress {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.plan-current {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-running {
+  margin-left: auto;
+  color: var(--gold);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  animation: plan-fade 1.8s ease-in-out infinite;
+}
+
+.plan-chevron {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  color: var(--text-3);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.plan-head[aria-expanded='true'] .plan-chevron {
+  transform: rotate(180deg);
+}
+
+.plan-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ease-out);
+}
+
+.plan-tray.is-expanded .plan-collapse {
+  grid-template-rows: 1fr;
+}
+
+.plan-collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 0;
+  padding: 2px 12px 8px;
+}
+
+.plan-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 20px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.plan-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: transparent;
+  transition: background var(--dur-base) ease, border-color var(--dur-base) ease;
+}
+
+.plan-item.is-in_progress {
+  color: var(--text);
+}
+
+.plan-item.is-in_progress .plan-dot {
+  border-color: var(--gold);
+  background: var(--gold);
+  animation: plan-dot-pulse 1.5s ease-in-out infinite;
+}
+
+.plan-item.is-completed .plan-text {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+
+.plan-item.is-completed .plan-dot {
+  border-color: var(--patina);
+  background: var(--patina);
+}
+
+.plan-rule {
+  height: 2px;
+  margin: 0 12px 10px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.plan-rule > span {
+  display: block;
+  height: 100%;
+  background: var(--patina);
+  opacity: 0.75;
+  transition: width 420ms var(--ease-out);
+}
+
+.plan-tray.is-complete .plan-title {
+  color: var(--patina);
+}
+
+@keyframes plan-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--gold-dim);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 3px var(--gold-dim);
+  }
+}
+
+@keyframes plan-fade {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spine-row.is-running .spine-node,
+  .spine-row.is-waiting .spine-node,
+  .plan-item.is-in_progress .plan-dot,
+  .plan-running {
+    animation: none;
+  }
+}

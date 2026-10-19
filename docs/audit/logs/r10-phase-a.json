@@ -1,0 +1,101 @@
+{
+  "at": "2026-10-19T13:30:46.387Z",
+  "stage": "R10 preparation",
+  "matrix": {
+    "path": "./docs/audit/r10-verification-matrix.md",
+    "rows": 65,
+    "requiredKeywords": 14
+  },
+  "fixtures": {
+    "root": "./tmp/audit/r10/fixtures",
+    "files": 21,
+    "crossWorkspaceMarker": "CROSS_WS_R10_SECRET"
+  },
+  "mocks": {
+    "browser": {
+      "ok": true,
+      "detail": "routes=5/5 base=http://127.0.0.1:14963"
+    },
+    "mcp": {
+      "ok": true,
+      "detail": "checks=6/6 calls=3"
+    }
+  },
+  "modules": [
+    {
+      "area": "A 文件",
+      "missing": [
+        "src/main/services/workspace-files.ts",
+        "src/main/features/files.ts",
+        "src/renderer/src/features/files"
+      ],
+      "present": []
+    },
+    {
+      "area": "B/F 编辑器",
+      "missing": [
+        "src/renderer/src/components/editor"
+      ],
+      "present": [
+        "src/main/services/editor-history.ts",
+        "src/main/features/editor-history.ts",
+        "src/renderer/src/features/artifacts"
+      ]
+    },
+    {
+      "area": "C/K1 浏览器",
+      "missing": [
+        "src/main/services/browser-service.ts",
+        "src/main/features/browser.ts",
+        "src/core/browser-bridge.ts",
+        "src/core/tools/browser-tools.ts",
+        "src/renderer/src/features/browser"
+      ],
+      "present": []
+    },
+    {
+      "area": "G/K2 MCP",
+      "missing": [
+        "src/main/features/connectors.ts",
+        "src/renderer/src/features/connectors"
+      ],
+      "present": [
+        "src/main/services/mcp-service.ts"
+      ]
+    },
+    {
+      "area": "H 技能",
+      "missing": [
+        "src/main/services/skills-service.ts",
+        "src/main/features/skills.ts",
+        "src/renderer/src/features/skills"
+      ],
+      "present": []
+    },
+    {
+      "area": "D/E 记忆/项目",
+      "missing": [
+        "src/main/services/memory-service.ts",
+        "src/main/services/project-service.ts",
+        "src/main/features/memory.ts",
+        "src/main/features/projects.ts",
+        "src/renderer/src/features/memory",
+        "src/renderer/src/features/projects"
+      ],
+      "present": []
+    },
+    {
+      "area": "I/K3 搜索/computer",
+      "missing": [
+        "src/main/features/search.ts",
+        "src/renderer/src/features/search",
+        "src/core/tools/computer-tools.ts"
+      ],
+      "present": [
+        "src/main/services/search-service.ts"
+      ]
+    }
+  ],
+  "missingTotal": 23,
+  "note": "准备阶段：未执行产品验收，不判 PASS/FAIL；等 Lead「功能可验收」后跑矩阵与 r10-audit E2E。"
+}

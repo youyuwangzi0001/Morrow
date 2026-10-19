@@ -1,0 +1,238 @@
+{
+  "at": "2026-10-19T12:51:47.317Z",
+  "results": [
+    {
+      "id": "R2-A",
+      "status": "PASS",
+      "detail": "write_xlsx/edit_docx 的路径与内容变化均重新审批，相同操作可复用",
+      "evidence": {
+        "details": {
+          "write_xlsx": {
+            "same": "allow",
+            "changedPath": "ask",
+            "changedContent": "ask",
+            "signature": "write_xlsx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\out\\approved.xlsx::a0db4994bc120bcaf8c2a4c2ea49babf"
+          },
+          "edit_docx": {
+            "same": "allow",
+            "changedPath": "ask",
+            "changedContent": "ask",
+            "signature": "edit_docx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\out\\approved.docx:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2a-xefkxt\\ws\\in\\t.docx:c904b7ffff9242ed847b1ff88d62cb30"
+          }
+        },
+        "dir": "C:\\交付成品\\Morrow\\tmp\\audit\\r9-mech-r2a-xEfkxT"
+      }
+    },
+    {
+      "id": "R2-B",
+      "status": "PASS",
+      "detail": "外层 task 失败并保留原因：子代理执行失败：synthetic_child_request_error",
+      "evidence": {
+        "task": {
+          "id": "call_1_0",
+          "result": {
+            "ok": false,
+            "output": "",
+            "error": "子代理执行失败：synthetic_child_request_error",
+            "hint": "子代理没有给出可采用的最终结论，不能把它当成已完成。可以拆小任务后重试，或由主代理自己完成；父任务/Goal 不得据此标记成功。",
+            "meta": {
+              "status": "failed",
+              "steps": 1,
+              "usage": {
+                "inputTokens": 0,
+                "outputTokens": 0
+              },
+              "error": "synthetic_child_request_error",
+              "failedTools": []
+            },
+            "durationMs": 1
+          },
+          "status": "error"
+        }
+      }
+    },
+    {
+      "id": "R2-C",
+      "status": "PASS",
+      "detail": "子代理 12 步耗尽后外层 task 失败（实际工具步 3）：子代理未完成（达到子代理步数上限）：子代理达到原生最大步数（12 步）仍未给出最终结论",
+      "evidence": {
+        "task": {
+          "id": "call_1_0",
+          "result": {
+            "ok": false,
+            "output": "",
+            "error": "子代理未完成（达到子代理步数上限）：子代理达到原生最大步数（12 步）仍未给出最终结论",
+            "hint": "子代理没有给出可采用的最终结论，不能把它当成已完成。可以拆小任务后重试，或由主代理自己完成；父任务/Goal 不得据此标记成功。",
+            "meta": {
+              "status": "exhausted",
+              "steps": 12,
+              "usage": {
+                "inputTokens": 1200,
+                "outputTokens": 240
+              },
+              "error": "子代理达到原生最大步数（12 步）仍未给出最终结论",
+              "failedTools": []
+            },
+            "durationMs": 7
+          },
+          "status": "error"
+        },
+        "childSteps": 3
+      }
+    },
+    {
+      "id": "R2-D",
+      "status": "PASS",
+      "detail": "第一轮两次真实 read_file 累计为 2，未因重复记账误触 3 次预算",
+      "evidence": {
+        "goal": {
+          "id": "goal_6692cf71-53e",
+          "objective": "读取 in/a.txt 与 in/b.txt 并核验；最多 3 次工具调用。",
+          "status": "paused",
+          "round": 2,
+          "maxRounds": 4,
+          "maxRoundsAuto": false,
+          "toolCalls": 2,
+          "activeMs": 42,
+          "noProgressRounds": 2,
+          "progressKeys": [],
+          "maxToolCalls": 3,
+          "maxActiveMs": 300000,
+          "maxNoProgressRounds": 4,
+          "createdAt": 1792414300828,
+          "updatedAt": 1792414301258,
+          "stopReason": "user_paused"
+        },
+        "requests": 3,
+        "dir": "C:\\交付成品\\Morrow\\tmp\\audit\\r9-mech-r2d-R5F5ih"
+      }
+    },
+    {
+      "id": "R2-E",
+      "status": "PASS",
+      "detail": "evidence=[\".\"] 被拒绝（完成证据校验失败：.（是目录，不能作为完成证据）。），Goal 未被标记完成",
+      "evidence": {
+        "goal": {
+          "id": "goal_7c15381c-5e8",
+          "objective": "生成 out/report.txt 且内容必须为 verified report 53；目录存在不能替代报告。",
+          "status": "paused",
+          "round": 2,
+          "maxRounds": 3,
+          "maxRoundsAuto": false,
+          "toolCalls": 2,
+          "activeMs": 25,
+          "noProgressRounds": 2,
+          "progressKeys": [],
+          "maxToolCalls": 6,
+          "maxActiveMs": 300000,
+          "maxNoProgressRounds": 3,
+          "createdAt": 1792414301264,
+          "updatedAt": 1792414301679,
+          "stopReason": "user_paused"
+        },
+        "updateGoalErrors": [
+          {
+            "ok": false,
+            "output": "",
+            "error": "完成证据校验失败：.（是目录，不能作为完成证据）。",
+            "hint": "完成证据必须是本目标期间在工作区内真实生成或被更新过的非空文件（目录、工作区根/「.」、旧文件、空文件都不行）。请先写出产物并确认文件内容，再重新调用 update_goal(completed)；如果还没产出，请继续推进或标记 blocked。",
+            "meta": {
+              "evidenceRejected": true
+            },
+            "durationMs": 0
+          },
+          {
+            "ok": false,
+            "output": "",
+            "error": "完成证据校验失败：.（是目录，不能作为完成证据）。",
+            "hint": "完成证据必须是本目标期间在工作区内真实生成或被更新过的非空文件（目录、工作区根/「.」、旧文件、空文件都不行）。请先写出产物并确认文件内容，再重新调用 update_goal(completed)；如果还没产出，请继续推进或标记 blocked。",
+            "meta": {
+              "evidenceRejected": true
+            },
+            "durationMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "R2-F",
+      "status": "PASS",
+      "detail": "空命令/重复 checkpoint/旧文件读取三种场景均连续 2 轮无进展后由产品预算停止（no_progress）",
+      "evidence": {
+        "results": [
+          {
+            "name": "empty-command",
+            "status": "paused",
+            "stopReason": "no_progress",
+            "noProgressRounds": 2
+          },
+          {
+            "name": "repeat-checkpoint",
+            "status": "paused",
+            "stopReason": "no_progress",
+            "noProgressRounds": 2
+          },
+          {
+            "name": "old-file-read",
+            "status": "paused",
+            "stopReason": "no_progress",
+            "noProgressRounds": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "R2-G",
+      "status": "PASS",
+      "detail": "前两轮真实新成果（新 XLSX / 新 DOCX / 两条 MCP 登记）均被记账，第三项保留且未误触无进展停止",
+      "evidence": {
+        "results": [
+          {
+            "name": "xlsx",
+            "status": "active",
+            "noProgress": 0,
+            "round": 3,
+            "requests": 6,
+            "progressKeys": [
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-1.xlsx:d43541fe32444741aa97fdf37c3af9b28956060ee1fe763339d4e420b3a75f36",
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-2.xlsx:307ca9effe64d35180d894dd2d9a9e062c1613fbef37bc7938f8b15910bc4daf",
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-xlsx-8t0nr4\\ws\\out\\new-3.xlsx:a337969de60e585eeb369f6a8fe7f3f173a4b722f5dab2f81b42a751a0a6aba2"
+            ]
+          },
+          {
+            "name": "docx",
+            "status": "active",
+            "noProgress": 0,
+            "round": 3,
+            "requests": 6,
+            "progressKeys": [
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-1.docx:412999f7c789b1fbd20d2a0ea27b3257a5b020f63f816523bfdb89c592b34bff",
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-2.docx:bad90638f54a7f5bf2da4a6045e1e443a56c9f5955821f4189e5e0d6460d0486",
+              "file:c:\\交付成品\\morrow\\tmp\\audit\\r9-mech-r2g-docx-29ho3o\\ws\\out\\new-3.docx:8273ceec6fccb9c751c2e17c8ce2e928a8bda66e6166ee1f232d1f3c1eeb40a1"
+            ]
+          },
+          {
+            "name": "mcp",
+            "status": "active",
+            "noProgress": 1,
+            "round": 3,
+            "requests": 6,
+            "progressKeys": [
+              "mcp:dd046dbd015bc9aa96eee6d6b433ff44",
+              "mcp:f52754c97f76be4f318079a4262e5ee5"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "R2-H",
+      "status": "PASS",
+      "detail": "单用户长工具链触发原生压缩（started/finished），run reason=complete",
+      "evidence": {
+        "compactionEvents": 4,
+        "runReason": "complete"
+      }
+    }
+  ]
+}

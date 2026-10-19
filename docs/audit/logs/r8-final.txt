@@ -1,0 +1,18 @@
+# R8 收尾验证（M39 定向复测后）
+# 时间: 2026-10-19T13:24:08+08:00
+
+## typecheck
+> tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit
+
+
+## unit
+ Test Files  16 passed (16)
+      Tests  275 passed (275)
+
+## 离线 audit（含支持声明冻结保护）
+ Test Files  4 passed | 2 skipped (6)
+      Tests  32 passed | 4 skipped (36)
+
+## 支持声明
+状态：**已冻结（首轮 live 开跑前固定，内容未再修改；复测不改变支持范围）**
+应用版本：1.0.0（不改版本号、不打包）

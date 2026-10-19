@@ -1,0 +1,374 @@
+/* R10-D 记忆中心面板：黑金 / 硬朗小圆角 / 克制动效 */
+
+.mc-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 380px;
+}
+
+.mc-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mc-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  padding: 0 8px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-top-spacer {
+  flex: 1 1 auto;
+}
+
+.mc-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 220px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-3);
+  transition: border-color var(--dur-fast) ease;
+}
+
+.mc-search:focus-within {
+  border-color: var(--line-gold);
+}
+
+.mc-search .field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mc-search .text-input {
+  width: 100%;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.mc-search .text-input:focus,
+.mc-search .text-input:focus-visible {
+  outline: none;
+}
+
+.mc-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 22px;
+}
+
+.mc-legacy-hint {
+  color: var(--text-3);
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+.mc-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+
+.mc-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.mc-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--patina);
+  font-size: 11.5px;
+}
+
+/* 注入预览 */
+.mc-injection {
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  padding: 9px 11px;
+}
+
+.mc-injection-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold-bright);
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+
+.mc-injection-head .mono {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.mc-injection-text {
+  margin: 0;
+  max-height: 168px;
+  overflow: auto;
+  padding: 9px 10px;
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 添加表单 */
+.mc-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.mc-add-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.mc-add-row > .field:first-child {
+  flex: 1 1 auto;
+}
+
+.mc-add-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* 确认条 */
+.mc-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--rust-dim);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.mc-confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.mc-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* 列表 */
+.mc-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(38vh, 360px);
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.mc-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+  transition: background var(--dur-fast) ease;
+}
+
+.mc-entry:hover {
+  background: var(--surface-hover);
+}
+
+.mc-entry.is-disabled .mc-entry-text {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+
+.mc-entry-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mc-entry-text {
+  margin: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mc-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.mc-source {
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--text-3);
+}
+
+.mc-source.is-agent {
+  color: var(--gold);
+  border-color: var(--line-gold);
+}
+
+.mc-source.is-migration {
+  color: var(--mauve);
+}
+
+.mc-source.is-user {
+  color: var(--patina);
+}
+
+.mc-dot {
+  opacity: 0.6;
+}
+
+.mc-tag {
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.mc-disabled-note {
+  color: var(--rust);
+}
+
+.mc-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding-top: 1px;
+}
+
+/* 行内启用开关 */
+.mc-toggle {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--surface-inset);
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+
+.mc-toggle .mc-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    background var(--dur-fast) ease;
+}
+
+.mc-toggle.is-on {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+}
+
+.mc-toggle.is-on .mc-toggle-thumb {
+  transform: translateX(13px);
+  background: var(--gold-bright);
+}
+
+.mc-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 行内编辑 */
+.mc-entry-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.mc-entry-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mc-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.mc-foot-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.mc-foot > .btn:last-child {
+  margin-left: auto;
+}

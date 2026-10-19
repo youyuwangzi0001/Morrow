@@ -1,0 +1,152 @@
+/* 差异视图：红绿低饱和、等宽、行号 + 上下文折叠 */
+
+.diff-view {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--code-bg);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.diff-view.is-empty {
+  padding: 10px 12px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--code-bg) 55%, var(--surface));
+}
+
+.diff-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-stats {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 10.5px;
+}
+
+.diff-add-count {
+  color: var(--patina);
+}
+
+.diff-del-count {
+  color: var(--rust);
+}
+
+.diff-body {
+  overflow: auto;
+  max-height: 420px;
+}
+
+.diff-hunk + .diff-hunk {
+  border-top: 1px solid var(--line);
+}
+
+.diff-hunk-head {
+  padding: 3px 12px;
+  color: var(--text-3);
+  font-size: 10px;
+  background: color-mix(in srgb, var(--surface-inset) 55%, transparent);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-collapse {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 12px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  background: color-mix(in srgb, var(--surface-inset) 45%, transparent);
+  border-bottom: 1px solid var(--line);
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.diff-collapse:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  min-height: 19px;
+  line-height: 19px;
+  white-space: pre;
+}
+
+.diff-line.is-add {
+  background: color-mix(in srgb, var(--patina) 8%, transparent);
+}
+
+.diff-line.is-del {
+  background: color-mix(in srgb, var(--rust) 8%, transparent);
+}
+
+.diff-gutter {
+  flex: 0 0 auto;
+  width: 34px;
+  padding-right: 8px;
+  color: var(--text-3);
+  font-size: 10px;
+  text-align: right;
+  user-select: none;
+  opacity: 0.75;
+}
+
+.diff-sign {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--text-3);
+  text-align: center;
+  user-select: none;
+}
+
+.diff-line.is-add .diff-sign {
+  color: var(--patina);
+}
+
+.diff-line.is-del .diff-sign {
+  color: var(--rust);
+}
+
+.diff-code {
+  flex: 1 1 auto;
+  padding-right: 14px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.diff-line.is-ctx .diff-code {
+  color: var(--text-2);
+}
+
+.diff-note {
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 10.5px;
+}

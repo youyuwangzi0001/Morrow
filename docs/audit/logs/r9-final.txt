@@ -1,0 +1,15 @@
+# R9 阶段 B 最终验证
+# 时间: 2026-10-19T20:43:36+08:00
+
+## typecheck
+> tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit
+
+
+## unit
+ Test Files  22 passed (22)
+      Tests  305 passed (305)
+
+## live first pass
+requests 40 statuses M40:PASS M41:PASS M42:PASS M48:FAIL M49:PASS M43:UNSUPPORTED M44:UNSUPPORTED M45:UNSUPPORTED M46:UNSUPPORTED M47:UNSUPPORTED
+M48 retest PASS mechanisms 8/8
+total requests 77 / 300

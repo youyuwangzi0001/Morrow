@@ -1,0 +1,77 @@
+{
+  "ok": true,
+  "mode": "all",
+  "version": "1.0.0",
+  "electronVersion": "44.9.0",
+  "electronBuilderVersion": "26.0.12",
+  "startedAt": "2026-10-19T15:25:16.221Z",
+  "mirrors": {
+    "electron": "https://npmmirror.com/mirrors/electron/",
+    "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  },
+  "steps": [
+    {
+      "name": "dir",
+      "exitCode": 0,
+      "durationMs": 10310,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never"
+    },
+    {
+      "name": "zip",
+      "exitCode": 0,
+      "durationMs": 15914
+    },
+    {
+      "name": "dir",
+      "exitCode": 0,
+      "durationMs": 8729,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never"
+    },
+    {
+      "name": "portable",
+      "exitCode": 0,
+      "durationMs": 16331,
+      "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-1.0.0-portable.exe)"
+    }
+  ],
+  "artifacts": {
+    "portableFolder": {
+      "kind": "folder",
+      "path": "release/Morrow-1.0.0-portable",
+      "exePath": "release/Morrow-1.0.0-portable/Morrow.exe",
+      "exeSizeBytes": 107520,
+      "sizeBytes": 416032200,
+      "sizeMB": 396.76,
+      "fileCount": 147,
+      "extras": [
+        "portable.marker",
+        "启动 Morrow.cmd",
+        "启动 Morrow（兼容模式）.cmd",
+        "创建桌面快捷方式.cmd",
+        "修复图标显示.cmd"
+      ],
+      "note": "推荐交付形态：Morrow.exe 为轻量启动器（自动 --no-sandbox 后启动 Morrow-app.exe），无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）与兼容模式启动脚本"
+    },
+    "portableZip": {
+      "kind": "zip",
+      "path": "release/Morrow-1.0.0-portable-win64.zip",
+      "sizeBytes": 166655475,
+      "sizeMB": 158.94,
+      "sha256": "a7b7031e066c3e0d42fe407dfae97834b315c11d94dfedfe3cc1704e699401e8"
+    },
+    "portableExe": {
+      "kind": "portable-exe",
+      "path": "release/Morrow-1.0.0-portable.exe",
+      "sizeBytes": 166753280,
+      "sizeMB": 159.03,
+      "sha256": "5126138b6077274b378fb6d42b0022f0955d6efe88dfda8cef3737b01013271d",
+      "note": "自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 .morrow-runtime-<ver> 缓存（不依赖 %TEMP%），之后秒开；自动加 --no-sandbox 以兼容本机受限环境；无代码签名，SmartScreen 可能提示未知发布者"
+    }
+  },
+  "logs": {
+    "combined": "docs/verification/logs/dist-all-2026-10-19T15-25-16-134Z.log"
+  },
+  "primaryArtifact": "portableFolder",
+  "finishedAt": "2026-10-19T15:26:08.691Z",
+  "durationMs": 52470
+}

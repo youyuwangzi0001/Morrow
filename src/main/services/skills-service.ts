@@ -1,0 +1,900 @@
+/**
+ * R10-H 技能库服务（主进程）。
+ *
+ * 职责：
+ * - 管理「用户技能库」目录（应用数据目录下 `skills/`）：列出已安装技能、读取 SKILL.md、启停、删除；
+ * - 把用户技能库路径与启停状态文件路径注入 core（环境变量），让 Agent 的
+ *   `list_skills / read_skill / 系统提示` 自动遵循启用状态；
+ * - 本地安装：从一个文件夹或 .zip 技能包复制到用户技能库，安装前做严格校验：
+ *   - 防 zip-slip（绝对路径 / `..` / 盘符 / 反斜杠混淆一律拒绝）；
+ *   - 文件大小、数量、总大小、目录深度上限（防 zip 炸弹/超大技能包）；
+ *   - 扩展名白名单：只允许 Markdown 与资源文件（图片/文本/JSON/YAML/CSV），
+ *     明确拒绝可执行文件/脚本（.exe/.bat/.cmd/.ps1/.js/.py/...），安装完也不会执行任何内容；
+ *   - 符号链接一律拒绝；先写隐藏暂存目录、校验通过后再原子改名，失败不留半成品。
+ *
+ * 纯 Node 实现（不 import electron），数据目录由调用方注入，便于单元测试。
+ * IPC 暴露在 `src/main/features/skills.ts`（feature:skills:*）。
+ */
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  type Stats
+} from 'node:fs'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import JSZip from 'jszip'
+import {
+  describeSkill,
+  listSkillResources,
+  readSkillsState,
+  scanUserSkills,
+  scanWorkspaceSkills,
+  skillStateKey,
+  SKILL_FILE,
+  SKILLS_STATE_FILE_ENV,
+  USER_SKILLS_DIR_ENV,
+  type SkillInfo,
+  type SkillsState,
+  type SkillsStateEntry
+} from '@core/tools/skills'
+
+/* ── 限制与白名单 ─────────────────────────────────────────────── */
+
+const MAX_SKILLS = 200
+const MAX_INSTALL_FILES = 300
+const MAX_FILE_BYTES = 5 * 1024 * 1024
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024
+const MAX_ZIP_BYTES = 25 * 1024 * 1024
+const MAX_DEPTH = 4
+const MAX_SKILL_MD_BYTES = 256 * 1024
+const MAX_DETAIL_FILES = 300
+const MAX_NAME_LENGTH = 64
+
+/** 允许安装进技能库的文件类型（Markdown + 常见文本/资源；不含任何可执行代码） */
+const ALLOWED_EXTENSIONS = new Set([
+  '.md',
+  '.markdown',
+  '.txt',
+  '.json',
+  '.yaml',
+  '.yml',
+  '.csv',
+  '.tsv',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg'
+])
+
+/** 明确拦截的可执行/脚本类型：给出比「不在白名单」更清楚的错误信息 */
+const BLOCKED_EXTENSIONS = new Set([
+  '.exe',
+  '.dll',
+  '.sys',
+  '.msi',
+  '.bat',
+  '.cmd',
+  '.com',
+  '.scr',
+  '.ps1',
+  '.psm1',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.mts',
+  '.cts',
+  '.jsx',
+  '.tsx',
+  '.py',
+  '.pyc',
+  '.rb',
+  '.pl',
+  '.php',
+  '.jar',
+  '.class',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.fish',
+  '.app',
+  '.lnk',
+  '.url',
+  '.reg',
+  '.hta',
+  '.cpl',
+  '.ocx',
+  '.so',
+  '.dylib',
+  '.wasm'
+])
+
+const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
+
+/* ── 返回给渲染层的纯数据类型 ─────────────────────────────────── */
+
+export interface SkillFileEntry {
+  /** 相对技能目录的路径（/ 分隔） */
+  path: string
+  size: number
+}
+
+export interface SkillView {
+  /** 稳定 id：用户技能 `user:<name>`；工作区技能 `workspace:<绝对目录>`（与 core 状态 key 一致） */
+  id: string
+  name: string
+  description: string
+  source: 'workspace' | 'user'
+  enabled: boolean
+  dir: string
+  skillPath: string
+  displayDir: string
+  declaredName?: string
+  installedAt: number | null
+  updatedAt: number
+  fileCount: number
+  sizeBytes: number
+  resources: string[]
+  /** 用户技能被同名工作区技能覆盖（Agent 实际用工作区那份） */
+  shadowed: boolean
+  valid: boolean
+  error?: string
+}
+
+export interface SkillDetail extends SkillView {
+  /** SKILL.md 原文（含 frontmatter） */
+  raw: string
+  rawTruncated: boolean
+  files: SkillFileEntry[]
+}
+
+export interface SkillsSnapshot {
+  userDir: string
+  stateFile: string
+  workspace: string | null
+  skills: SkillView[]
+  /** 发现过程中的问题（不完整的技能目录、失效的状态记录等），UI 顶部提示 */
+  errors: string[]
+  scannedAt: number
+}
+
+export interface InstallSkillOptions {
+  /** 允许覆盖同名技能（默认 false，避免误删用户内容） */
+  overwrite?: boolean
+}
+
+export interface InstallResult {
+  installed: SkillView
+  snapshot: SkillsSnapshot
+}
+
+export interface SkillsServiceOptions {
+  /** 应用数据目录（<dataDir>/skills 为用户技能库，<dataDir>/skills-state.json 为启停状态） */
+  dataDir: string
+}
+
+/* ── 小工具 ───────────────────────────────────────────────────── */
+
+function safeStat(path: string): Stats | null {
+  try {
+    return statSync(path)
+  } catch {
+    return null
+  }
+}
+
+function safeLstat(path: string): Stats | null {
+  try {
+    return lstatSync(path)
+  } catch {
+    return null
+  }
+}
+
+function isInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** 统一路径比较（Windows 大小写不敏感） */
+function pathKey(path: string): string {
+  const absolute = resolve(path).split(sep).join('/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** 技能目录名：去掉路径分隔符/Windows 非法字符，限制长度，避开 Windows 保留名 */
+export function sanitizeSkillDirName(raw: string): string {
+  let name = raw
+    .normalize('NFC')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+    .trim()
+    .replace(/^\.+/, '')
+    .replace(/[.\s]+$/, '')
+  if (!name) name = 'skill'
+  if (name.length > MAX_NAME_LENGTH) name = name.slice(0, MAX_NAME_LENGTH)
+  if (RESERVED_WINDOWS_NAMES.test(name)) name = `skill-${name}`
+  if (!name || name === '.' || name === '..') name = 'skill'
+  return name
+}
+
+/** 校验并归一化 zip 条目名；返回 null 表示目录条目 */
+export function normalizeArchivePath(rawName: string): string | null {
+  if (!rawName || rawName.includes('\0')) throw new Error('技能包里包含非法文件名（NUL 字符）。')
+  const name = rawName.replace(/\\/g, '/')
+  if (name.endsWith('/')) return null
+  if (name.startsWith('/') || /^[A-Za-z]:/.test(name)) {
+    throw new Error(`技能包里包含绝对路径，已拒绝安装（可能是恶意 zip-slip）：${rawName}`)
+  }
+  const segments = name.split('/')
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    throw new Error(`技能包里包含越界路径，已拒绝安装（可能是恶意 zip-slip）：${rawName}`)
+  }
+  for (const segment of segments) {
+    if (/[<>:"|?*\u0000-\u001f]/.test(segment) || /[. ]$/.test(segment)) {
+      throw new Error(`技能包里包含非法文件名（Windows 不支持）：${rawName}`)
+    }
+  }
+  return segments.join('/')
+}
+
+function extensionOf(name: string): string {
+  const ext = extname(name).toLowerCase()
+  return ext
+}
+
+/**
+ * 在交给 JSZip 之前直接检查 ZIP 中央目录里的原始文件名。
+ *
+ * 为什么需要双层校验：JSZip 3.10 在 `loadAsync` 时会自己净化 `../` 路径（安全兜底），
+ * 但那样我们只能看到净化后的名字、无法向用户解释「这个技能包恶意/越界」。
+ * 这里读原始中央目录，把 zip-slip / 绝对路径在解压前明确拒绝。
+ */
+export function assertArchiveEntriesSafe(buffer: Buffer): void {
+  const EOCD_SIG = 0x06054b50
+  const CD_SIG = 0x02014b50
+  let eocd = -1
+  const searchStart = Math.max(0, buffer.length - 65_557)
+  for (let index = buffer.length - 22; index >= searchStart; index -= 1) {
+    if (buffer.readUInt32LE(index) === EOCD_SIG) {
+      eocd = index
+      break
+    }
+  }
+  if (eocd < 0) throw new Error('无法解析技能包：缺少 ZIP 结尾目录（文件可能已损坏）。')
+  const count = buffer.readUInt16LE(eocd + 10)
+  const centralOffset = buffer.readUInt32LE(eocd + 16)
+  if (count === 0xffff || centralOffset === 0xffffffff) {
+    throw new Error('暂不支持 ZIP64 格式的技能包，请用普通 .zip 重新打包。')
+  }
+  let offset = centralOffset
+  const names: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== CD_SIG) {
+      throw new Error('无法解析技能包：ZIP 中央目录结构异常。')
+    }
+    const nameLength = buffer.readUInt16LE(offset + 28)
+    const extraLength = buffer.readUInt16LE(offset + 30)
+    const commentLength = buffer.readUInt16LE(offset + 32)
+    const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString('utf8')
+    names.push(name)
+    offset += 46 + nameLength + extraLength + commentLength
+    if (names.length > MAX_INSTALL_FILES) break
+  }
+  for (const name of names) {
+    // 目录条目（以 / 结尾）也校验，防止构造 `../dir/` 这类条目
+    const normalized = normalizeArchivePath(name)
+    if (!normalized && name) {
+      // 纯目录条目：也要保证路径安全（normalizeArchivePath 已抛错，这里仅兜底）
+      continue
+    }
+  }
+}
+
+/** 校验单个文件：白名单 + 黑名单 + 大小。返回扩展开关用于错误提示 */
+function assertInstallableFile(relativePath: string, size: number): void {
+  const lower = relativePath.toLowerCase()
+  const fileName = basename(relativePath)
+  if (lower === 'skill.md' || fileName.toLowerCase() === 'skill.md') {
+    if (size > MAX_SKILL_MD_BYTES) throw new Error(`SKILL.md 过大（${(size / 1024).toFixed(0)}KB，上限 256KB）。`)
+    return
+  }
+  const ext = extensionOf(fileName)
+  if (BLOCKED_EXTENSIONS.has(ext)) {
+    throw new Error(`技能包里不允许包含可执行/脚本文件：${relativePath}。技能库只接受 Markdown 与资源文件。`)
+  }
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    throw new Error(
+      `技能包里包含不支持的文件类型：${relativePath}。只允许 Markdown（.md）与资源文件（.txt/.json/.yaml/.csv/图片）。`
+    )
+  }
+  if (size > MAX_FILE_BYTES) {
+    throw new Error(`技能包里的文件过大：${relativePath}（${(size / 1024).toFixed(0)}KB，单文件上限 5MB）。`)
+  }
+}
+
+interface StagedFile {
+  /** zip/文件夹内的相对路径（/ 分隔） */
+  path: string
+  size: number
+}
+
+/* ── 服务 ─────────────────────────────────────────────────────── */
+
+export class SkillsService {
+  readonly dataDir: string
+  readonly userDir: string
+  readonly stateFile: string
+
+  constructor(options: SkillsServiceOptions) {
+    if (!options || typeof options.dataDir !== 'string' || !options.dataDir.trim()) {
+      throw new Error('SkillsService 需要 dataDir（应用数据目录）。')
+    }
+    this.dataDir = resolve(options.dataDir)
+    this.userDir = join(this.dataDir, 'skills')
+    this.stateFile = join(this.dataDir, 'skills-state.json')
+  }
+
+  /** 确保数据目录与用户技能库存在 */
+  ensureDirs(): void {
+    mkdirSync(this.dataDir, { recursive: true })
+    mkdirSync(this.userDir, { recursive: true })
+  }
+
+  /** 把技能库路径注入 core 的技能发现逻辑（Agent 通过环境变量读取） */
+  installRuntimeEnv(env: NodeJS.ProcessEnv = process.env): { userDir: string; stateFile: string } {
+    this.ensureDirs()
+    env[USER_SKILLS_DIR_ENV] = this.userDir
+    env[SKILLS_STATE_FILE_ENV] = this.stateFile
+    return { userDir: this.userDir, stateFile: this.stateFile }
+  }
+
+  /* ── 状态读写 ───────────────────────────────────────────────── */
+
+  private readState(): SkillsState {
+    return readSkillsState(this.stateFile)
+  }
+
+  private writeState(state: SkillsState): void {
+    this.ensureDirs()
+    const normalized: SkillsState = { version: 1, skills: { ...state.skills } }
+    const temp = `${this.stateFile}.tmp-${process.pid}`
+    writeFileSync(temp, JSON.stringify(normalized, null, 2) + '\n', 'utf8')
+    try {
+      renameSync(temp, this.stateFile)
+    } catch {
+      // 极端情况下（文件被占用）退回直接写；下次读取会重新解析
+      writeFileSync(this.stateFile, JSON.stringify(normalized, null, 2) + '\n', 'utf8')
+      rmSync(temp, { force: true })
+    }
+  }
+
+  private setStateEntry(key: string, entry: SkillsStateEntry | null): void {
+    const state = this.readState()
+    const skills: Record<string, SkillsStateEntry> = { ...state.skills }
+    if (entry === null) delete skills[key]
+    else skills[key] = { ...(skills[key] ?? {}), ...entry }
+    this.writeState({ version: 1, skills })
+  }
+
+  /* ── 列表 ───────────────────────────────────────────────────── */
+
+  private buildEntry(skill: SkillInfo, workspaceSkills: SkillInfo[]): SkillView {
+    this.ensureDirs()
+    const state = this.readState()
+    const key = skillStateKey(skill)
+    const entry = state.skills[key]
+    const stat = safeStat(skill.dir)
+    const files = this.collectFiles(skill.dir, MAX_DETAIL_FILES)
+    const nameLower = skill.name.toLowerCase()
+    const shadowed =
+      skill.source === 'user' && workspaceSkills.some((candidate) => candidate.name.toLowerCase() === nameLower)
+    const valid = existsSync(skill.skillPath) && safeStat(skill.skillPath)?.isFile() === true
+    return {
+      id: key,
+      name: skill.name,
+      description: skill.description,
+      source: skill.source,
+      enabled: entry?.enabled !== false,
+      dir: skill.dir,
+      skillPath: skill.skillPath,
+      displayDir: skill.displayDir,
+      ...(skill.declaredName ? { declaredName: skill.declaredName } : {}),
+      installedAt: typeof entry?.installedAt === 'number' ? entry.installedAt : null,
+      updatedAt: stat?.mtimeMs ?? 0,
+      fileCount: files.length,
+      sizeBytes: files.reduce((sum, file) => sum + file.size, 0),
+      resources: listSkillResources(skill),
+      shadowed,
+      valid,
+      ...(valid ? {} : { error: 'SKILL.md 不存在或不可读，可能是安装不完整。' })
+    }
+  }
+
+  /** 递归收集技能目录内的文件（有界；跳过隐藏文件与临时目录） */
+  private collectFiles(rootDir: string, limit: number): SkillFileEntry[] {
+    const files: SkillFileEntry[] = []
+    const walk = (dir: string, prefix: string, depth: number): void => {
+      if (files.length >= limit || depth > MAX_DEPTH) return
+      let entries
+      try {
+        entries = readdirSync(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      entries.sort((a, b) => a.name.localeCompare(b.name))
+      for (const entry of entries) {
+        if (files.length >= limit) return
+        if (entry.name.startsWith('.')) continue
+        const absolute = join(dir, entry.name)
+        const relPath = prefix ? `${prefix}/${entry.name}` : entry.name
+        if (entry.isSymbolicLink()) continue
+        if (entry.isDirectory()) {
+          walk(absolute, relPath, depth + 1)
+          continue
+        }
+        if (!entry.isFile()) continue
+        const stat = safeStat(absolute)
+        if (!stat) continue
+        files.push({ path: relPath, size: stat.size })
+      }
+    }
+    walk(rootDir, '', 0)
+    return files
+  }
+
+  /** 列出所有技能（含禁用）；工作区技能在前，用户技能库在后 */
+  list(workspace: string | null): SkillsSnapshot {
+    this.ensureDirs()
+    const errors: string[] = []
+    let workspaceSkills: SkillInfo[] = []
+    if (workspace) {
+      try {
+        workspaceSkills = scanWorkspaceSkills(workspace)
+      } catch (err) {
+        errors.push(`扫描工作区技能失败：${errorMessage(err)}`)
+      }
+    }
+    const userSkills = scanUserSkills(this.userDir)
+    const state = this.readState()
+
+    // 不完整的用户技能目录（有文件夹但没有 SKILL.md）
+    try {
+      for (const entry of readdirSync(this.userDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+        if (!existsSync(join(this.userDir, entry.name, SKILL_FILE))) {
+          errors.push(`技能目录不完整（缺少 ${SKILL_FILE}）：${entry.name}`)
+        }
+      }
+    } catch {
+      // 用户技能库目录刚创建时可能读取失败，忽略
+    }
+
+    const skills: SkillView[] = []
+    const workspaceNames = new Set<string>()
+    for (const skill of workspaceSkills) {
+      if (skills.length >= MAX_SKILLS) break
+      const key = skill.name.toLowerCase()
+      if (workspaceNames.has(key)) continue
+      workspaceNames.add(key)
+      skills.push(this.buildEntry(skill, workspaceSkills))
+    }
+    for (const skill of userSkills) {
+      if (skills.length >= MAX_SKILLS) break
+      // 同名工作区技能优先（Agent 会用工作区那份）；用户技能仍列出并标记 shadowed，
+      // 用户可以看到/删除/改名自己安装的技能，不会「凭空消失」。
+      const entry = this.buildEntry(skill, workspaceSkills)
+      if (!workspaceNames.has(skill.name.toLowerCase())) {
+        const duplicate = skills.some((candidate) => candidate.name.toLowerCase() === skill.name.toLowerCase())
+        if (duplicate) continue
+      }
+      skills.push(entry)
+    }
+
+    // 状态里指向不存在用户技能的记录（例如手动删了目录）
+    const existingUserIds = new Set(userSkills.map((skill) => skillStateKey(skill)))
+    for (const key of Object.keys(state.skills)) {
+      if (!key.startsWith('user:')) continue
+      if (!existingUserIds.has(key)) errors.push(`状态记录指向已不存在的技能：${key.slice('user:'.length)}`)
+    }
+
+    return {
+      userDir: this.userDir,
+      stateFile: this.stateFile,
+      workspace: workspace ?? null,
+      skills,
+      errors,
+      scannedAt: Date.now()
+    }
+  }
+
+  /** 按 id 找到技能（不论启用状态） */
+  private findSkillById(id: string, workspace: string | null): SkillInfo | null {
+    const normalized = id.trim()
+    if (!normalized) return null
+    const all = [...scanWorkspaceSkills(workspace), ...scanUserSkills(this.userDir)]
+    return all.find((skill) => skillStateKey(skill) === normalized || skill.name === normalized) ?? null
+  }
+
+  /** 技能详情：元信息 + SKILL.md 原文 + 文件清单 */
+  detail(id: string, workspace: string | null): SkillDetail {
+    const snapshot = this.list(workspace)
+    const view = snapshot.skills.find((skill) => skill.id === id) ?? snapshot.skills.find((skill) => skill.name === id)
+    if (!view) throw new Error(`没有找到技能：${id}`)
+    const skill = this.findSkillById(view.id, workspace)
+    if (!skill) throw new Error(`技能目录已不存在：${id}`)
+    let raw = ''
+    let rawTruncated = false
+    try {
+      const stat = statSync(skill.skillPath)
+      const buffer = readFileSync(skill.skillPath)
+      rawTruncated = stat.size > MAX_SKILL_MD_BYTES
+      raw = buffer.subarray(0, MAX_SKILL_MD_BYTES).toString('utf8')
+    } catch (err) {
+      throw new Error(`读取 SKILL.md 失败：${errorMessage(err)}`)
+    }
+    return {
+      ...view,
+      raw,
+      rawTruncated,
+      files: this.collectFiles(skill.dir, MAX_DETAIL_FILES)
+    }
+  }
+
+  /* ── 启停 ───────────────────────────────────────────────────── */
+
+  /** 启用/禁用技能（写入状态文件；Agent 下一次 discoverSkills 立即生效） */
+  setEnabled(id: string, enabled: boolean, workspace: string | null): SkillsSnapshot {
+    if (typeof enabled !== 'boolean') throw new Error('enabled 必须是布尔值。')
+    const skill = this.findSkillById(id, workspace)
+    if (!skill) throw new Error(`没有找到技能：${id}`)
+    this.setStateEntry(skillStateKey(skill), { enabled })
+    return this.list(workspace)
+  }
+
+  /* ── 删除 ───────────────────────────────────────────────────── */
+
+  /** 删除用户技能（只能删用户技能库内的目录；工作区技能不允许在这里删除） */
+  remove(id: string, workspace: string | null): SkillsSnapshot {
+    const view = this.list(workspace).skills.find((skill) => skill.id === id) ?? this.list(workspace).skills.find((skill) => skill.name === id)
+    if (!view) throw new Error(`没有找到技能：${id}`)
+    if (view.source !== 'user') {
+      throw new Error('工作区自带的技能不能在这里删除；请直接修改工作区文件。')
+    }
+    this.ensureDirs()
+    const userReal = realpathSync(this.userDir)
+    let dirReal: string
+    try {
+      dirReal = realpathSync(view.dir)
+    } catch {
+      throw new Error(`技能目录已不存在：${view.name}`)
+    }
+    if (!isInside(userReal, dirReal) || pathKey(dirReal) === pathKey(userReal)) {
+      throw new Error('拒绝删除：目标目录不在用户技能库内（疑似符号链接越界）。')
+    }
+    rmSync(dirReal, { recursive: true, force: true })
+    this.setStateEntry(view.id, null)
+    return this.list(workspace)
+  }
+
+  /* ── 安装 ───────────────────────────────────────────────────── */
+
+  async install(sourcePath: string, workspace: string | null, options: InstallSkillOptions = {}): Promise<InstallResult> {
+    this.ensureDirs()
+    if (typeof sourcePath !== 'string' || !sourcePath.trim()) throw new Error('请提供技能包路径（文件夹或 .zip）。')
+    const source = resolve(sourcePath.trim())
+    if (!isAbsolute(sourcePath.trim())) {
+      throw new Error('请提供绝对路径（例如 C:\\\\Users\\\\me\\\\Downloads\\\\release-skill.zip）。')
+    }
+    const stat = safeStat(source)
+    if (!stat) throw new Error(`路径不存在：${source}`)
+    const staging = join(this.userDir, `.staging-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+    mkdirSync(staging, { recursive: true })
+    try {
+      let nameHint: string
+      if (stat.isDirectory()) {
+        nameHint = basename(source)
+        this.stageFromFolder(source, staging)
+      } else if (stat.isFile()) {
+        const ext = extensionOf(source)
+        if (ext !== '.zip') {
+          throw new Error(`只支持安装文件夹或 .zip 技能包，收到的是：${basename(source)}`)
+        }
+        if (stat.size > MAX_ZIP_BYTES) {
+          throw new Error(`技能包过大（${(stat.size / 1024 / 1024).toFixed(1)}MB，上限 25MB）。`)
+        }
+        nameHint = basename(source, extname(source))
+        await this.stageFromZip(source, staging)
+      } else {
+        throw new Error(`不支持的安装来源：${source}`)
+      }
+
+      const skillMd = this.findStagedSkillMd(staging)
+      if (!skillMd) throw new Error('技能包里缺少 SKILL.md（技能必须有 SKILL.md 说明文件）。')
+      const frontmatterName = describeSkill(readFileSync(skillMd, 'utf8')).declaredName
+      const targetName = sanitizeSkillDirName(frontmatterName || nameHint)
+      const targetDir = join(this.userDir, targetName)
+      if (existsSync(targetDir)) {
+        if (options.overwrite !== true) {
+          throw new Error(`技能库已有同名技能「${targetName}」。请先删除旧技能，或改用「覆盖安装」。`)
+        }
+        // 覆盖安装：先删旧目录（仍受 userDir 边界保护）
+        const targetReal = realpathSync(targetDir)
+        const userReal = realpathSync(this.userDir)
+        if (!isInside(userReal, targetReal) || pathKey(targetReal) === pathKey(userReal)) {
+          throw new Error('拒绝覆盖：目标目录不在用户技能库内。')
+        }
+        rmSync(targetReal, { recursive: true, force: true })
+      }
+      try {
+        renameSync(staging, targetDir)
+      } catch {
+        // 跨卷/被占用时退回复制
+        cpSync(staging, targetDir, { recursive: true })
+        rmSync(staging, { recursive: true, force: true })
+      }
+      this.setStateEntry(`user:${targetName.toLowerCase()}`, {
+        enabled: true,
+        installedAt: Date.now(),
+        origin: source
+      })
+      const snapshot = this.list(workspace)
+      const installed =
+        snapshot.skills.find((skill) => skill.source === 'user' && skill.name === targetName) ??
+        snapshot.skills.find((skill) => skill.source === 'user' && skill.name.toLowerCase() === targetName.toLowerCase())
+      if (!installed) throw new Error('安装完成但未能读取技能信息，请尝试重新扫描。')
+      return { installed, snapshot }
+    } finally {
+      rmSync(staging, { recursive: true, force: true })
+    }
+  }
+
+  private findStagedSkillMd(staging: string): string | null {
+    for (const name of readdirSync(staging)) {
+      if (name.toLowerCase() === 'skill.md' && safeStat(join(staging, name))?.isFile()) {
+        // 统一成 SKILL.md（大小写混合会导致 core 发现不到）
+        if (name !== SKILL_FILE) renameSync(join(staging, name), join(staging, SKILL_FILE))
+        return join(staging, SKILL_FILE)
+      }
+    }
+    return null
+  }
+
+  /** 从文件夹拷贝到暂存目录（校验符号链接/白名单/大小/数量） */
+  private stageFromFolder(sourceDir: string, staging: string): void {
+    const files: StagedFile[] = []
+    let totalBytes = 0
+    const walk = (dir: string, prefix: string, depth: number): void => {
+      if (depth > MAX_DEPTH) throw new Error(`技能目录层级过深（上限 ${MAX_DEPTH} 层）。`)
+      const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+      for (const entry of entries) {
+        const absolute = join(dir, entry.name)
+        const relPath = prefix ? `${prefix}/${entry.name}` : entry.name
+        const lst = safeLstat(absolute)
+        if (!lst) continue
+        if (lst.isSymbolicLink()) throw new Error(`技能目录里不允许符号链接：${relPath}`)
+        if (lst.isDirectory()) {
+          walk(absolute, relPath, depth + 1)
+          continue
+        }
+        if (!lst.isFile()) continue
+        if (entry.name.startsWith('.') || entry.name === 'Thumbs.db' || entry.name === 'desktop.ini') continue
+        const size = lst.size
+        assertInstallableFile(relPath, size)
+        totalBytes += size
+        if (totalBytes > MAX_TOTAL_BYTES) throw new Error('技能目录总大小超过 20MB 上限。')
+        files.push({ path: relPath, size })
+        if (files.length > MAX_INSTALL_FILES) throw new Error(`技能目录文件过多（上限 ${MAX_INSTALL_FILES} 个）。`)
+      }
+    }
+    walk(sourceDir, '', 0)
+    if (files.length === 0) throw new Error('技能目录是空的。')
+    for (const file of files) {
+      const target = join(staging, ...file.path.split('/'))
+      mkdirSync(dirname(target), { recursive: true })
+      cpSync(join(sourceDir, ...file.path.split('/')), target)
+    }
+  }
+
+  /** 从 zip 解压到暂存目录（防 zip-slip、大小/数量/白名单/可执行拦截） */
+  private async stageFromZip(zipPath: string, staging: string): Promise<void> {
+    const buffer = readFileSync(zipPath)
+    // 第一层：直接读原始中央目录，恶意的 zip-slip/绝对路径在解压前就拒绝
+    assertArchiveEntriesSafe(buffer)
+    let zip: JSZip
+    try {
+      zip = await JSZip.loadAsync(buffer)
+    } catch (err) {
+      throw new Error(`无法解析技能包（不是有效的 zip 或已损坏/加密）：${errorMessage(err)}`)
+    }
+    const entries: Array<{ path: string; file: JSZip.JSZipObject; size: number }> = []
+    let totalBytes = 0
+    for (const [rawName, file] of Object.entries(zip.files)) {
+      if (file.dir) continue
+      const normalized = normalizeArchivePath(rawName)
+      if (!normalized) continue
+      // 忽略压缩工具自我描述/系统元数据文件
+      const lower = normalized.toLowerCase()
+      if (lower.startsWith('__macosx/') || lower.endsWith('/.ds_store') || lower === '.ds_store') continue
+      if (basename(normalized).startsWith('.')) continue
+      const internalSize = Number((file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0)
+      assertInstallableFile(normalized, internalSize || 0)
+      totalBytes += internalSize
+      if (totalBytes > MAX_TOTAL_BYTES) throw new Error('技能包解压后总大小超过 20MB 上限。')
+      entries.push({ path: normalized, file, size: internalSize })
+      if (entries.length > MAX_INSTALL_FILES) throw new Error(`技能包文件过多（上限 ${MAX_INSTALL_FILES} 个）。`)
+    }
+    if (entries.length === 0) throw new Error('技能包是空的。')
+
+    // 若 zip 只有一个顶层目录（常见打包方式），剥掉这层目录
+    const firstSegments = new Set(entries.map((entry) => entry.path.split('/')[0]))
+    const hasRootSkillMd = entries.some((entry) => entry.path.toLowerCase() === 'skill.md')
+    let prefix = ''
+    if (!hasRootSkillMd && firstSegments.size === 1) {
+      const only = [...firstSegments][0]
+      if (entries.every((entry) => entry.path.includes('/'))) prefix = `${only}/`
+    }
+
+    let actualTotal = 0
+    for (const entry of entries) {
+      const relativePath = prefix && entry.path.startsWith(prefix) ? entry.path.slice(prefix.length) : entry.path
+      if (!relativePath) continue
+      // 剥掉 wrapper 后再次校验
+      normalizeArchivePath(relativePath)
+      assertInstallableFile(relativePath, entry.size)
+      const buffer = await entry.file.async('nodebuffer')
+      if (buffer.length > MAX_FILE_BYTES) throw new Error(`技能包里的文件过大：${relativePath}`)
+      actualTotal += buffer.length
+      if (actualTotal > MAX_TOTAL_BYTES) throw new Error('技能包解压后总大小超过 20MB 上限。')
+      const target = join(staging, ...relativePath.split('/'))
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, buffer)
+    }
+  }
+
+  /* ── 其它 ───────────────────────────────────────────────────── */
+
+  /** 清理状态里指向已删除用户技能 / 已不存在工作区技能的记录（重新扫描时调用） */
+  pruneState(workspace: string | null): SkillsSnapshot {
+    const snapshot = this.list(workspace)
+    const validIds = new Set(snapshot.skills.map((skill) => skill.id))
+    const state = this.readState()
+    let changed = false
+    const skills: Record<string, SkillsStateEntry> = {}
+    for (const [key, entry] of Object.entries(state.skills)) {
+      const isUser = key.startsWith('user:')
+      const isWorkspace = key.startsWith('workspace:')
+      if (!isUser && !isWorkspace) continue
+      if (isUser && !validIds.has(key)) {
+        changed = true
+        continue
+      }
+      skills[key] = entry
+    }
+    if (changed) this.writeState({ version: 1, skills })
+    return this.list(workspace)
+  }
+}
+
+export function createSkillsService(options: SkillsServiceOptions): SkillsService {
+  return new SkillsService(options)
+}
+
+/** 便捷函数：创建服务并把技能库路径注入 core 环境变量 */
+export function installSkillsRuntimeEnv(service: SkillsService, env: NodeJS.ProcessEnv = process.env): {
+  userDir: string
+  stateFile: string
+} {
+  return service.installRuntimeEnv(env)
+}
+
+/* ── feature:skills:* handlers（纯粹逻辑 + 可注入副作用，便于单测） ── */
+
+/** feature 层需要主进程提供的能力（electron dialog/shell）；单测里注入假实现 */
+export interface SkillsFeatureEffects {
+  /** 用系统文件管理器打开某个目录 */
+  revealPath(path: string): Promise<void>
+  /** 打开用户技能库目录 */
+  openUserDir(path: string): Promise<void>
+  /** 选择一个本地 .zip 技能包；取消返回 null */
+  pickZip(): Promise<string | null>
+  /** 选择一个本地技能文件夹；取消返回 null */
+  pickFolder(): Promise<string | null>
+}
+
+export type SkillsFeatureHandler = (payload: unknown) => Promise<unknown>
+
+function readPayload(payload: unknown): Record<string, unknown> {
+  if (payload === undefined || payload === null) return {}
+  if (typeof payload !== 'object' || Array.isArray(payload)) throw new Error('参数格式不正确：需要对象。')
+  return payload as Record<string, unknown>
+}
+
+function readWorkspace(payload: Record<string, unknown>): string | null {
+  const value = payload.workspace
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') throw new Error('workspace 必须是字符串或 null。')
+  return value.trim() || null
+}
+
+function readId(payload: Record<string, unknown>): string {
+  const value = payload.id
+  if (typeof value !== 'string' || !value.trim()) throw new Error('缺少参数 id（技能 id）。')
+  return value.trim()
+}
+
+function readEnabled(payload: Record<string, unknown>): boolean {
+  if (typeof payload.enabled !== 'boolean') throw new Error('缺少参数 enabled（布尔值）。')
+  return payload.enabled
+}
+
+function readSourcePath(payload: Record<string, unknown>): string {
+  const value = payload.sourcePath
+  if (typeof value !== 'string' || !value.trim()) throw new Error('缺少参数 sourcePath（本地文件夹或 .zip 的绝对路径）。')
+  return value.trim()
+}
+
+/**
+ * 构造 `feature:skills:*` 的处理器表（不注册 IPC，方便单测直接调用）。
+ * 频道：
+ *   list / read / setEnabled / install / remove / rescan / reveal / openUserDir / pickZip / pickFolder
+ */
+export function createSkillsFeatureHandlers(
+  service: SkillsService,
+  effects: SkillsFeatureEffects
+): Record<string, SkillsFeatureHandler> {
+  return {
+    'feature:skills:list': async (payload) => {
+      const data = readPayload(payload)
+      return service.list(readWorkspace(data))
+    },
+    'feature:skills:read': async (payload) => {
+      const data = readPayload(payload)
+      return service.detail(readId(data), readWorkspace(data))
+    },
+    'feature:skills:setEnabled': async (payload) => {
+      const data = readPayload(payload)
+      return service.setEnabled(readId(data), readEnabled(data), readWorkspace(data))
+    },
+    'feature:skills:install': async (payload) => {
+      const data = readPayload(payload)
+      return service.install(readSourcePath(data), readWorkspace(data), { overwrite: data.overwrite === true })
+    },
+    'feature:skills:remove': async (payload) => {
+      const data = readPayload(payload)
+      return service.remove(readId(data), readWorkspace(data))
+    },
+    'feature:skills:rescan': async (payload) => {
+      const data = readPayload(payload)
+      return service.pruneState(readWorkspace(data))
+    },
+    'feature:skills:reveal': async (payload) => {
+      const data = readPayload(payload)
+      const detail = service.detail(readId(data), readWorkspace(data))
+      await effects.revealPath(detail.dir)
+      return { path: detail.dir }
+    },
+    'feature:skills:openUserDir': async () => {
+      service.ensureDirs()
+      await effects.openUserDir(service.userDir)
+      return { path: service.userDir }
+    },
+    'feature:skills:pickZip': async () => ({ path: await effects.pickZip() }),
+    'feature:skills:pickFolder': async () => ({ path: await effects.pickFolder() })
+  }
+}

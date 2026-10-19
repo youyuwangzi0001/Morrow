@@ -1,0 +1,149 @@
+/* ─────────────────────────────────────────────────────────────
+   Morrow Design Tokens
+   母题：夜桌与地平线。金色只用于「明天」的暗示与关键动作。
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+
+  /* 字体 */
+  --font-ui: 'Manrope Variable', 'Microsoft YaHei UI', 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Newsreader Variable', 'Noto Serif SC Variable', 'Songti SC', 'SimSun', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+
+  --fs-display: 34px;
+  --fs-h1: 24px;
+  --fs-h2: 17px;
+  --fs-body: 14px;
+  --fs-ui: 13px;
+  --fs-micro: 11px;
+
+  --lh-body: 1.72;
+  --lh-tight: 1.35;
+
+  /* 色板 — 墨夜 */
+  --bg: #0b0d10;
+  --bg-elev: #10141a;
+  --surface: #141922;
+  --surface-hover: #1a2029;
+  --surface-active: #202733;
+  --surface-inset: #0e1217;
+  --line: rgba(237, 231, 218, 0.075);
+  --line-strong: rgba(237, 231, 218, 0.145);
+  --line-gold: rgba(200, 174, 125, 0.32);
+  --text: #ede7da;
+  --text-2: #a39d91;
+  --text-3: #6b675f;
+  --text-invert: #12141a;
+  --gold: #c8ae7d;
+  --gold-bright: #e4ce9e;
+  --gold-dim: rgba(200, 174, 125, 0.14);
+  --gold-ghost: rgba(200, 174, 125, 0.06);
+  --patina: #7fa292;
+  --patina-dim: rgba(127, 162, 146, 0.13);
+  --rust: #c2795f;
+  --rust-dim: rgba(194, 121, 95, 0.13);
+  --amber: #c9a227;
+  --amber-dim: rgba(201, 162, 39, 0.13);
+  --mauve: #9a8fa8;
+  --mauve-dim: rgba(154, 143, 168, 0.13);
+  --danger: #c2795f;
+  --focus: var(--gold);
+  --glow: radial-gradient(1200px 620px at 74% -12%, rgba(200, 174, 125, 0.055), transparent 62%);
+  --vignette: radial-gradient(1400px 900px at 50% 120%, rgba(0, 0, 0, 0.5), transparent 70%);
+  --glass: rgba(16, 20, 26, 0.78);
+  --scrim: rgba(6, 7, 9, 0.62);
+  --shadow-float: 0 24px 80px -24px rgba(0, 0, 0, 0.72), 0 2px 10px rgba(0, 0, 0, 0.38);
+  --shadow-soft: 0 12px 32px -18px rgba(0, 0, 0, 0.6);
+  --grain-opacity: 0.026;
+  --user-bubble: #1a212c;
+  --code-bg: #0d1117;
+
+  /* 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+  --sp-10: 72px;
+
+  /* 圆角 */
+  --r-xs: 4px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 9px;
+  --r-xl: 12px;
+  --r-full: 999px;
+
+  /* 动效 */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-base: 240ms;
+  --dur-slow: 320ms;
+
+  /* 布局 */
+  --titlebar-h: 44px;
+  --sidebar-w: 264px;
+  --sidebar-mini-w: 64px;
+  --content-max: 800px;
+  --composer-max: 920px;
+  --canvas-w: 42%;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-overlay: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* 状态色映射 */
+  --status-running: var(--gold);
+  --status-success: var(--patina);
+  --status-error: var(--rust);
+  --status-waiting: var(--amber);
+  --status-subagent: var(--mauve);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f1ede4;
+  --bg-elev: #f6f2e9;
+  --surface: #fbf7ee;
+  --surface-hover: #f0eadd;
+  --surface-active: #e9e2d3;
+  --surface-inset: #eae4d8;
+  --line: rgba(27, 26, 23, 0.1);
+  --line-strong: rgba(27, 26, 23, 0.18);
+  --line-gold: rgba(138, 106, 60, 0.34);
+  --text: #1b1a17;
+  --text-2: #5c574d;
+  --text-3: #8c867a;
+  --text-invert: #f8f4ea;
+  --gold: #8a6a3c;
+  --gold-bright: #a8844f;
+  --gold-dim: rgba(138, 106, 60, 0.12);
+  --gold-ghost: rgba(138, 106, 60, 0.05);
+  --patina: #4f7263;
+  --patina-dim: rgba(79, 114, 99, 0.12);
+  --rust: #a2543f;
+  --rust-dim: rgba(162, 84, 63, 0.12);
+  --amber: #9a7a12;
+  --amber-dim: rgba(154, 122, 18, 0.12);
+  --mauve: #6f6480;
+  --mauve-dim: rgba(111, 100, 128, 0.12);
+  --danger: #a2543f;
+  --focus: var(--gold);
+  --glow: radial-gradient(1200px 620px at 74% -12%, rgba(138, 106, 60, 0.06), transparent 62%);
+  --vignette: radial-gradient(1400px 900px at 50% 120%, rgba(60, 50, 30, 0.06), transparent 70%);
+  --glass: rgba(246, 242, 233, 0.82);
+  --scrim: rgba(30, 27, 20, 0.32);
+  --shadow-float: 0 24px 80px -28px rgba(50, 40, 20, 0.35), 0 2px 10px rgba(50, 40, 20, 0.1);
+  --shadow-soft: 0 12px 32px -20px rgba(50, 40, 20, 0.28);
+  --grain-opacity: 0.035;
+  --user-bubble: #e8e1d2;
+  --code-bg: #ece6d8;
+}

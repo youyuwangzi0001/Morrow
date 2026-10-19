@@ -1,0 +1,160 @@
+{
+  "at": "2026-10-19T12:51:33.421Z",
+  "mode": "R9.1 subagent full-permission + parallel preparation",
+  "specs": {
+    "ids": [
+      "M40",
+      "M41",
+      "M42",
+      "M43",
+      "M44",
+      "M45",
+      "M46",
+      "M47",
+      "M48",
+      "M49"
+    ],
+    "allSupported": true
+  },
+  "referenceResults": [
+    {
+      "id": "M43",
+      "ok": true,
+      "detail": "两个真实子任务并行（时间线重叠），各自只写 out/a.json / out/b.json；父任务写最终 result（total=30）",
+      "actual": {
+        "tasks": 2,
+        "overlap": true,
+        "intervals": [
+          {
+            "id": "task_a",
+            "start": 1000,
+            "end": 3000
+          },
+          {
+            "id": "task_b",
+            "start": 1200,
+            "end": 2800
+          }
+        ],
+        "aNotes": 2,
+        "bNotes": 2,
+        "parentWrites": 0,
+        "records": [
+          {
+            "id": "A",
+            "value": 11
+          },
+          {
+            "id": "B",
+            "value": 19
+          }
+        ]
+      }
+    },
+    {
+      "id": "M44",
+      "ok": true,
+      "detail": "t0 后 10s/30s 无新 child44_wait；子任务 cancelled；父任务未标完成，无孤儿",
+      "actual": {
+        "t0Observed": true,
+        "waitCallsAfterT0": {
+          "within10s": 0,
+          "after30s": 0
+        },
+        "child44Status": "cancelled",
+        "runStatus": "cancelled",
+        "parentCompleted": false
+      }
+    },
+    {
+      "id": "M45",
+      "ok": true,
+      "detail": "A=7 成功、B 真实 timeout 且未重试；父结果 partial、b=null、total=null",
+      "actual": {
+        "result": {
+          "status": "partial",
+          "a_value": 7,
+          "b_value": null,
+          "total": null,
+          "failed_children": [
+            "B"
+          ]
+        },
+        "aCalls": 1,
+        "bCalls": 1
+      }
+    },
+    {
+      "id": "M46",
+      "ok": true,
+      "detail": "子代理保留 child46_read 的真实 isError；父结果 failed/0/validation_error，无重试",
+      "actual": {
+        "result": {
+          "status": "failed",
+          "record_count": 0,
+          "reason": "validation_error"
+        },
+        "calls": 2
+      }
+    },
+    {
+      "id": "M47",
+      "ok": true,
+      "detail": "真实中断并重开恢复原任务；先查询后只登记 A/B 两条，无重复提交；result ids/count 正确",
+      "actual": {
+        "restarted": true,
+        "recovered": true,
+        "records": [
+          {
+            "id": "A",
+            "key": "case47-A",
+            "status": "registered"
+          },
+          {
+            "id": "B",
+            "key": "case47-B",
+            "status": "registered"
+          }
+        ],
+        "replayedA": false
+      }
+    }
+  ],
+  "mock": {
+    "ok": true,
+    "checks": [
+      {
+        "name": "tools/list",
+        "ok": true,
+        "detail": "tools=22"
+      },
+      {
+        "name": "child44",
+        "ok": true,
+        "detail": "running→cancelled→orphanError=true"
+      },
+      {
+        "name": "child45",
+        "ok": true,
+        "detail": "A={\"label\":\"A\",\"value\":7} B={\"error\":\"timeout\",\"label\":\"B\",\"detail\":\"child45_read B timeout（未返回数值、无副作用）\"} B延迟=62ms"
+      },
+      {
+        "name": "child46",
+        "ok": true,
+        "detail": "readError=true count=0"
+      },
+      {
+        "name": "child47",
+        "ok": true,
+        "detail": "replay=true count=1"
+      },
+      {
+        "name": "child49",
+        "ok": true,
+        "detail": "{\"status\":\"failed\",\"reason\":\"synthetic_build_error\",\"artifact_path\":\"out/report.txt\"}"
+      }
+    ]
+  },
+  "declaration": "./docs/audit/support-declaration-r9-1.md",
+  "note": "阶段 A 零真实费用；真实并行/全权限需 engine task-20 完成并经 Lead 信号后跑 live。"
+}

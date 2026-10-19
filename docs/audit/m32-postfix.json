@@ -1,0 +1,16 @@
+{
+  "question": "M32",
+  "phase": "post-audit lead fix",
+  "date": "2026-10-19",
+  "model": "deepseek-flash",
+  "result": "PASS",
+  "evidence": {
+    "test": "tests/e2e/r7-privacy.spec.ts",
+    "safe_log": "request_id=R-17 email=[REDACTED] token=[REDACTED] error=E_TIMEOUT",
+    "assistant_visible_reply_contains_secret": false,
+    "persisted_assistant_message_contains_secret": false,
+    "duration_ms": 22400
+  },
+  "fix": "src/main/services/output-guard.ts + AgentService output pipeline; unit tests tests/unit/main/output-guard.test.ts",
+  "note": "首轮审计 M32 FAIL 记录保留在 docs/audit/live-capabilities-final.json；本次为修复后的单次真实回归，建议再复测稳定性。"
+}

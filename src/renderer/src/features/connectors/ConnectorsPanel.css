@@ -1,0 +1,500 @@
+/* R10-G 连接器管理面板：只使用全局 tokens（石墨/香槟金），无外边框卡片、无自建主题 */
+
+.conn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 480px;
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────── */
+
+.conn-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.conn-top .btn:first-of-type {
+  margin-left: auto;
+}
+
+.conn-path {
+  margin: -4px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-workspace {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.conn-workspace.is-trusted {
+  background: var(--patina-dim);
+}
+
+.conn-workspace svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.conn-workspace.is-trusted svg {
+  color: var(--patina);
+}
+
+.conn-workspace .btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.conn-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.conn-warn svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--amber);
+}
+
+.conn-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--patina-dim);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ── 主区：左列表 + 右编辑 ───────────────────────────────────── */
+
+.conn-main {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  min-height: 420px;
+}
+
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 250px;
+  flex: 0 0 auto;
+  padding-right: 16px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  max-height: 520px;
+}
+
+.conn-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--r-xs);
+  transition: background var(--dur-fast) ease;
+}
+
+.conn-item:hover {
+  background: var(--surface-hover);
+}
+
+.conn-item.is-active {
+  background: var(--gold-ghost);
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+
+.conn-item-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px 8px 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.conn-item-icon {
+  display: inline-flex;
+  color: var(--text-3);
+}
+
+.conn-item.is-active .conn-item-icon {
+  color: var(--gold);
+}
+
+.conn-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conn-item-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.conn-item-off {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.conn-item .switch {
+  flex: 0 0 auto;
+  margin-right: 8px;
+}
+
+/* 列表行里开关只占位置，不显示「停用 xxx」文案（按钮本身有 aria-label） */
+.conn-item .switch-copy {
+  display: none;
+}
+
+.conn-templates {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conn-template {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.conn-template:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.conn-template-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 编辑区 ───────────────────────────────────────────────────── */
+
+.conn-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  max-height: 520px;
+  padding-right: 4px;
+}
+
+.conn-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.conn-form-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.conn-form-head .field {
+  flex: 1 1 220px;
+}
+
+.conn-form-head .switch {
+  margin-bottom: 6px;
+}
+
+.conn-transport {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.conn-label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.conn-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.conn-empty-inline {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.conn-grid {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.conn-grid .field {
+  flex: 1 1 160px;
+}
+
+.conn-secrets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-secrets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conn-secret-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conn-secret-row .field {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+}
+
+.conn-secret-key {
+  flex: 0 0 0.9;
+}
+
+.conn-secret-value {
+  flex: 1 1 1.2;
+}
+
+.conn-notes {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.75;
+}
+
+.conn-notes li::marker {
+  color: var(--gold);
+}
+
+.conn-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.conn-actions .btn:last-child {
+  margin-left: auto;
+}
+
+/* ── 测试结果 ─────────────────────────────────────────────────── */
+
+.conn-test {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.conn-test-ok {
+  box-shadow: inset 2px 0 0 var(--patina);
+}
+
+.conn-test-error {
+  box-shadow: inset 2px 0 0 var(--rust);
+}
+
+.conn-test-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.conn-test-ok .conn-test-title svg {
+  color: var(--patina);
+}
+
+.conn-test-error .conn-test-title svg {
+  color: var(--rust);
+}
+
+.conn-test-reason {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.conn-test-message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.conn-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.conn-tool {
+  border-radius: var(--r-xs);
+  padding: 4px 6px;
+}
+
+.conn-tool:hover {
+  background: var(--surface-hover);
+}
+
+.conn-tool-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.conn-tool-summary::-webkit-details-marker {
+  display: none;
+}
+
+.conn-tool-name {
+  color: var(--gold);
+  font-size: 11.5px;
+  flex: 0 0 auto;
+}
+
+.conn-tool-desc {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-tool-schema {
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  background: var(--code-bg, var(--surface-inset));
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.conn-spin {
+  animation: conn-spin 900ms linear infinite;
+}
+
+@keyframes conn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .conn-main {
+    flex-direction: column;
+  }
+
+  .conn-list {
+    width: 100%;
+    padding-right: 0;
+    padding-bottom: 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 240px;
+  }
+
+  .conn-detail {
+    max-height: none;
+  }
+}
+
+.conn-mono-area {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}

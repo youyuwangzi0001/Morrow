@@ -1,0 +1,170 @@
+/* 应用布局（Lead 拥有） */
+
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--bg);
+  background-image: var(--glow), var(--vignette);
+  overflow: hidden;
+}
+
+.app-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--glow);
+}
+
+.app-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.app-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+.app-session-loading {
+  padding: 80px 40px;
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+.app-dock {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: calc(var(--composer-max) + 48px);
+  margin: 0 auto;
+  padding: 0 var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  position: relative;
+  z-index: 3;
+}
+
+.app-dock::before {
+  content: '';
+  position: absolute;
+  inset: -28px 0 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--bg) 62%);
+  opacity: 0.85;
+  z-index: -1;
+}
+
+/* 画布打开时对话列收窄，过渡自然 */
+.app-main > .canvas-root {
+  flex: 0 0 auto;
+}
+
+/* 启动/错误态 */
+
+.app-boot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0;
+  background-color: var(--bg);
+  background-image: var(--glow), var(--vignette);
+  overflow: hidden;
+}
+
+.app-boot-mark {
+  font-size: 84px;
+  line-height: 0.9;
+  color: var(--text);
+  letter-spacing: -0.04em;
+  opacity: 0.92;
+  text-shadow: 0 0 60px rgba(200, 174, 125, 0.14);
+}
+
+.app-boot-horizon {
+  width: 64px;
+  height: 1px;
+  margin: 22px 0 26px;
+  background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
+}
+
+.app-boot-text {
+  color: var(--text-3);
+  letter-spacing: 0.18em;
+  animation: fade-in 900ms var(--ease-out) both;
+}
+
+.app-boot-loader {
+  width: 180px;
+  margin-top: 40px;
+}
+
+.app-boot-error {
+  position: relative;
+  z-index: 2;
+  max-width: 460px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+}
+
+.app-boot-error h1 {
+  font-size: 26px;
+  font-weight: 400;
+}
+
+.app-boot-error p {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* 说明：M0 时期的占位样式已全部移除，各 feature 自带独立 CSS。 */
+
+
+
+.app-sidebar-shell {
+  flex: 0 0 auto;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+}
+
+.app-sidebar-shell > .sidebar {
+  width: 100%;
+  height: 100%;
+}

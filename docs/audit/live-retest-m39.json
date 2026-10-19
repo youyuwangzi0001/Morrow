@@ -1,0 +1,32 @@
+{
+  "at": "2026-10-19T05:13:00.499Z",
+  "runId": "r8-2026-10-19T05-11-23-678Z",
+  "version": "1.0.0",
+  "model": "deepseek-flash",
+  "endpoint": "https://api.deepseek.com/v1",
+  "permissionMode": "auto",
+  "supportDeclaration": "docs/audit/support-declaration-r8.md",
+  "retest": true,
+  "budget": {
+    "cap": 50,
+    "used": 50,
+    "exhausted": true
+  },
+  "progress": {
+    "done": 1,
+    "total": 39
+  },
+  "results": [
+    {
+      "id": "M39",
+      "title": "长期目标：真正超过 10 轮，停下后还能接着做",
+      "support": "supported",
+      "status": "FAIL",
+      "detail": "M39 运行失败：record is not defined",
+      "requests": 50,
+      "toolCalls": 0,
+      "durationMs": 95931,
+      "evidence": []
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# R10 最终验证摘要
+# 时间: 2026-10-19T22:35:59+08:00
+
+typecheck: 0
+ Test Files  32 passed (32)
+      Tests  459 passed (459)
+full e2e:
+
+  55 passed (2.5m)
+audit e2e:
+
+  7 passed (11.4s)
+computer-use: 5/5

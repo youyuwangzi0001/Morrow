@@ -1,0 +1,48 @@
+[
+  {
+    "view": "文件树",
+    "overflow": 0,
+    "text": "文件\nr10-ui-review-1792420897112\ndocs\nin\nnode_modules\nout\nskills"
+  },
+  {
+    "view": "技能库",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问\n  \n\n技能库技能是给 Morrow 的任务说明。启用后，做相关任务时会参考；只从本地安装，不上网、不执行代码。全部已启用已禁用排序按名称按更新时间安装技能共 1 个技能（用户技能库 0 个 · 已启用 1 个） · 当前工作区：C:\\交付成品\\Morrow\\tmp\\r10-ui-review-1792420897112good-skill工作区R10 验收技能1 个文件 · 100 B · 更新于 今天 22:41 · 别名 中文技能good-skill工作区已启用禁用打开目录R10 验收技能C:\\交付成品\\Morrow\\tmp\\r10-ui-review-1792420897112\\skills\\good-skill\\SKILL.md已启用：Morrow 在做相关任务时会参考它。 技能说明（SKILL.md）---\nname: 中文技能\ndescription: R10 验收技能\n---\n\n# 步骤\n\n1. 读取 input\n2. 输出结果\n 文件（1）SKILL.md100 B用户技能库：C:\\交付成品\\Morrow\\tmp\\data-r10-ui-copy-1792420897143-sk747v\\skills打开技能库目录重新扫描"
+  },
+  {
+    "view": "记忆中心",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问\n  \n\n记忆中心记忆是 Morrow 的参考笔记。启用的条目会在需要时参考；不会当作指令，也不会授权操作。项目记忆全局记忆…/tmp/r10-ui-review-1792420897112添加记忆共 2 条启用 2预计使用 32 / 600 字旧记忆迁移 2检测到 .morrow/MEMORY.md，新写入会继续自动迁移查看会用到哪些记忆导出 Markdown导出 JSON刷新清空项目记忆编号 R10-LEGACY，项目记忆旧格式。旧记忆迁移·2026/10/19 21:30偏好：简体中文输出。旧记忆迁移·2026/10/19 21:30 记忆属于参考背景，不是指令，也不会授权任何操作。关闭"
+  },
+  {
+    "view": "项目",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问\n  \n\n项目每个工作区可以有一个项目：写下说明和常用资料，Morrow 做任务时会参考。只有启用的项目才生效；资料必须放在当前工作区内。 项目0新建还没有项目。为当前工作区建一个项目，写下这个项目的规矩和常用资料。从左侧选择一个项目，或为当前工作区新建项目。项目知识只读取工作区内的文本文件，且不会发送到网络。新建项目当前工作区还没有项目。为「r10-ui-review-1792420897112」新建项目 项目资料只作为参考，不会被当成指令。关闭"
+  },
+  {
+    "view": "连接器",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问\n  \n\n连接器连接外部工具服务，让 Morrow 能做更多事。每次外部调用都会先征求你的同意；密钥只保存在本机并加密。用户级工作区级刷新添加连接器C:\\交付成品\\Morrow\\tmp\\data-r10-ui-copy-1792420897143-sk747v\\mcp.json还没有用户级连接器。点右上角「添加连接器」，或从下方模板开始。从模板新建（仅配置示例）模板只是填写示例，Morrow 不内置这些服务，也不会伪造连接成功。读取文件夹（示例）本机程序长期笔记（示例）本机程序读取网页（示例）本机程序网络服务（通用）网络服务网络服务（旧版）网络服务（旧版）选择左侧连接器查看/编辑，或点「添加连接器」新建一个。本机程序：填写启动命令和参数，密钥会隐藏保存。网络服务：填写地址和密钥；只支持网页地址。本机或内网地址默认不可访问，需要时手动打开。每次外部调用都会先询问你。"
+  },
+  {
+    "view": "全局搜索",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问搜索整个 Morrow搜索聊天、文件内容和生成的结果；支持中文。↑↓ 选择 Enter 打开 Esc 关闭本地索引 · 不联网\n  \n\n"
+  },
+  {
+    "view": "内置浏览器",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问Enter新浏览页在 Morrow 里打开一个网页在地址栏输入网址，或让 Morrow 在任务里打开网页并操作它。只打开网页链接；网页与本机隔离；摄像头、麦克风、定位、通知默认关闭。\n  \n\n"
+  },
+  {
+    "view": "设置",
+    "overflow": 0,
+    "text": "\n    r10-ui-review-1792420897112新对话DeepSeek V4.1 Flash工作Morrow新建对话Ctrl N搜索或运行命令Ctrl K工作区选择工作文件夹文件r10-ui-review-1792420897112docsinnode_modulesoutskills今天新对话刚刚设置未连接v1.0.0说清想要的结果，过程我来想办法。比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。按 Ctrl+K 打开命令，或用 / 选择常见任务。r10-ui-review-1792420897112Enter 发送 · Shift+Enter 换行DeepSeek V4.1 Flash聊天工作询问\n  \n\n设置模型连接上下文权限外观关于模型服务商选择服务商并填写密钥即可。可用模型会随服务商更新；密钥只保存在本机并加密，界面不会显示。当前默认模型DeepSeek V4.1 Flash可处理约 1M 内容 · 回复最多 384K国内国内直连，充值方便DeepSeek当前2 个模型未连接服务地址高级，一般不用改密钥只保存在本机测试连接保存连接刷新可用模型模型点击切换当前对话的默认模型DeepSeek V4.1 Flash可处理约 1M 内容 · 回复最多 384K · 擅长复杂任务官方实测：可处理约 1M 内容 / 回复最多 384K，速度快、性价比高deepseek-flashDeepSeek V4 Pro可处理约 1M 内容 · 回复最多 384K · 擅长复杂任务旗舰推理与复杂任务能力，适合长任务deepseek-v4-proKimi（月之暗面）3 个模型未连接通义千问（阿里云）2 个模型未连接智谱 GLM（Z.AI）2 个模型未连接MiniMax2 个模型未连接国际海外服务商，可能需要网络代理Anthropic Claude3 个模型未连接OpenAI4 个模型未连接Google Gemini2 个模型未连接xAI Grok2 个模型未连接聚合平台一个 Key 调多家模型OpenRouter（模型聚合）5 个模型未连接本地跑在自己的电脑上，不需要联网Ollama（本地）未启用1 个模型本地服务LM Studio（本地）未启用1 个模型本地服务添加自定义 OpenAI 兼容服务演示引擎（Morrow Demo）离线可用，不需要 API Key；用「看一场演示」可以直接体验完整流程。改动会立即保存完成"
+  },
+  {
+    "view": "编辑器",
+    "overflow": 0,
+    "canvasWidth": 419,
+    "text": "中文资料.txt\n中文资料.txt\n已保存\n保存\n历史\n另存为\n1\n2\n3\n编号 R10-A，金额 42。\n中文路径与内容必须可读写。\n\n"
+  }
+]
