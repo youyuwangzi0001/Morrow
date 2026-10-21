@@ -24,7 +24,7 @@ import { makeToolContext } from './helpers/tool-context'
 import { makeTempWorkspace } from './helpers/workspace'
 
 function permissionPolicy(workspace: string, mode: PermissionPolicyContext['mode']): PermissionPolicyContext {
-  return { mode, workspace, isSubagent: false, isDemo: false, sessionGrants: new Set() }
+  return { mode, workspace, isDemo: false, sessionGrants: new Set() }
 }
 
 function definition(name: string) {
@@ -145,16 +145,25 @@ describe('Windows 守卫与参数校验', () => {
     expect(typeof validateClickInput({ x: COMPUTER_LIMITS.maxCoordinate + 1, y: 0 })).toBe('string')
     expect(validateClickInput({ x: 10, y: 20 })).toEqual({ x: 10, y: 20 })
 
-    expect(typeof validateTypeInput({ text: '' })).toBe('string')
-    expect(typeof validateTypeInput({ text: 'a'.repeat(COMPUTER_LIMITS.maxTextLength + 1) })).toBe('string')
-    expect(typeof validateTypeInput({ text: '第一行\n第二行' })).toBe('string')
-    expect(validateTypeInput({ text: '你好，Morrow' })).toBe('你好，Morrow')
+    expect(validateTypeInput({ text: '' }).ok).toBe(false)
+    expect(validateTypeInput({ text: 'a'.repeat(COMPUTER_LIMITS.maxTextLength + 1) }).ok).toBe(false)
+    expect(validateTypeInput({ text: '第一行\n第二行' }).ok).toBe(false)
+    expect(validateTypeInput({ text: '你好，Morrow' })).toEqual({ ok: true, text: '你好，Morrow' })
+    // 合法文本即使以旧实现的错误提示前缀开头，也必须通过
+    expect(validateTypeInput({ text: '要输入的文字不能为空，这是一句正常的话' })).toEqual({
+      ok: true,
+      text: '要输入的文字不能为空，这是一句正常的话'
+    })
 
     expect(parseKeySequence('ENTER')).toEqual([0x0d])
     expect(parseKeySequence('ctrl+a')).toEqual([0x11, 0x41])
     expect(parseKeySequence('SHIFT+TAB')).toEqual([0x10, 0x09])
+    expect(parseKeySequence('CTRL+SHIFT+A')).toEqual([0x11, 0x10, 0x41])
     expect(typeof parseKeySequence('F4')).toBe('string')
     expect(typeof parseKeySequence('CTRL+ALT+DELETE')).toBe('string')
+    expect(typeof parseKeySequence('SHIFT+DELETE')).toBe('string')
+    expect(typeof parseKeySequence('CTRL+DELETE')).toBe('string')
+    expect(typeof parseKeySequence('CTRL+SHIFT+ESC')).toBe('string')
     expect(typeof parseKeySequence('')).toBe('string')
   })
 
@@ -215,6 +224,8 @@ describe('敏感窗口与截图', () => {
       expect(meta.height).toBe(600)
       expect(ctx.getArtifacts().some((artifact) => artifact.kind === 'file' && artifact.path === join(ws.root, 'out/shot.png'))).toBe(true)
       expect(String(result.output)).toContain('已截取')
+      // 高 DPI 缩放下先启用 DPI 感知，避免截图/坐标按逻辑像素错位
+      expect(fake.calls.some((script) => script.includes('Bitmap') && script.includes('EnableDpiAwareness'))).toBe(true)
     } finally {
       ws.cleanup()
     }
@@ -242,6 +253,7 @@ describe('敏感窗口与截图', () => {
       now += 400
       const third = await click.execute({ x: 5, y: 6 }, ctx)
       expect(third.ok).toBe(true)
+      expect(fake.calls.some((script) => script.includes('mouse_event(0x0002') && script.includes('EnableDpiAwareness'))).toBe(true)
     } finally {
       ws.cleanup()
     }

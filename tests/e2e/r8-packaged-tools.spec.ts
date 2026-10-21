@@ -3,12 +3,17 @@ import { copyFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { launchMorrow, root } from './launch'
+import { getPackagedAppExe } from './packaged-runtime'
 import { configureMockProvider, dismissOnboarding, installEventCollector, readStore, waitForRunFinished, waitForStoreReady } from './store'
 import { startMockLLM } from '../fixtures/mock-llm.mjs'
 
 test('打包版文档工具（asar 内 pdf-parse / jszip）', async () => {
   test.setTimeout(180_000)
-  const appExe = join(root, 'release', 'Morrow-1.0.0-portable', 'Morrow-app.exe')
+  const appExe = await getPackagedAppExe()
+  if (!appExe) {
+    test.skip(true, '需要先构建单文件便携包（npm run dist）再跑打包冒烟')
+    return
+  }
   const mock = await startMockLLM({
     scripts: [
       {

@@ -1,26 +1,35 @@
 /**
- * 「撤销一次文件修改」的安全实现（R7 审计修复）。
+ * 「撤销一次文件修改」的安全实现（R7 / R11 审计修复）。
  *
- * 旧实现（main/ipc.ts）按快照直接写回，会静默覆盖用户在写入之后手工做的修改。
- * 新规则：
- * - 每次写/编辑时 fs-tools 会在快照目录写 `.restore.json`（targetPath / beforeHash / afterHash）；
- * - 撤销前先算目标文件当前哈希：
- *   - 等于 afterHash → 没有被改过，可以安全恢复；
- *   - 等于 beforeHash → 已经是旧内容（重复撤销），幂等返回成功；
- *   - 两者都不是 → 返回 UNDO_CONFLICT，拒绝覆盖；
- *   - 文件不存在 → 允许恢复（没有可被覆盖的手工修改）；
- *   - 缺少清单且文件存在 → 无法证明是否被改过，拒绝并提示。
+ * 每次写/编辑时 fs-tools 会在快照目录写 `.restore.json`（targetPath / beforeHash / afterHash）；
+ * 撤销前必须同时证明三件事：
+ * - 快照确实属于当前会话的 `<snapshotRoot>/<toolUseId>/<filename>`（防跨会话/跨盘读取）；
+ * - 快照内容与清单里的 beforeHash 一致（防备份被替换）；
+ * - 目标文件当前内容等于 afterHash（没有被手工改过）或 beforeHash（重复撤销，幂等）。
+ *
+ * 目标文件不存在时也要求清单与目标一致，避免把任意快照复制到任意工作区路径。
  * 本模块不 import electron，可直接在 Node 单测/审计中验证。
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { createHash } from 'node:crypto'
+import {
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  closeSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { inspectWorkspacePath } from '@core/tools/paths'
-import { sha256 } from '@core/util'
 
 export const RESTORE_MANIFEST_FILE = '.restore.json'
 
 export interface RestoreSnapshotInput {
-  /** 快照根目录（通常是 userData/snapshots） */
+  /** 当前会话的快照根目录（<userData>/snapshots/<sessionId>） */
   snapshotRoot: string
   /** 写前备份文件路径（<snapshotRoot>/<toolUseId>/<filename>） */
   snapshotPath: string
@@ -60,38 +69,102 @@ function fail(
   return { ok: false, code, message, ...(hint ? { hint } : {}) }
 }
 
+/** 严格判断 child 是否在 parent 内（跨盘 relative 返回绝对路径，必须拒绝） */
 function isInside(child: string, parent: string): boolean {
   const rel = relative(parent, child)
-  return rel === '' || (!rel.startsWith('..') && !rel.includes(`..${sep}`))
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function samePath(a: string, b: string): boolean {
+  const fold = (value: string): string => {
+    const absolute = resolve(value)
+    return process.platform === 'win32' ? absolute.toLowerCase() : absolute
+  }
+  return fold(a) === fold(b)
+}
+
+function hashFileSync(path: string): string {
+  const fd = openSync(path, 'r')
+  const hash = createHash('sha256')
+  const buffer = Buffer.allocUnsafe(1024 * 1024)
+  try {
+    let position = 0
+    for (;;) {
+      const read = readSync(fd, buffer, 0, buffer.length, position)
+      if (read === 0) break
+      hash.update(buffer.subarray(0, read))
+      position += read
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return hash.digest('hex')
 }
 
 function readManifest(snapshotPath: string): RestoreManifest | null {
-  const file = join(dirname(snapshotPath), RESTORE_MANIFEST_FILE)
-  if (!existsSync(file)) return null
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as RestoreManifest
+    const parsed = JSON.parse(readFileSync(join(dirname(snapshotPath), RESTORE_MANIFEST_FILE), 'utf8')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const record = parsed as Record<string, unknown>
+    return {
+      ...(typeof record.targetPath === 'string' ? { targetPath: record.targetPath } : {}),
+      ...(typeof record.beforeHash === 'string' || record.beforeHash === null ? { beforeHash: record.beforeHash } : {}),
+      ...(typeof record.afterHash === 'string' ? { afterHash: record.afterHash } : {})
+    }
   } catch {
     return null
   }
 }
 
-/** 原子写回（避免打断时留下半个文件） */
-function atomicWrite(target: string, content: Buffer): void {
+/** 原子复制（避免打断时留下半个文件；不把整个快照读进内存） */
+function atomicCopy(target: string, source: string): void {
   mkdirSync(dirname(target), { recursive: true })
   const tmp = `${target}.${process.pid}.restore.tmp`
-  writeFileSync(tmp, content)
-  renameSync(tmp, target)
+  try {
+    copyFileSync(source, tmp)
+    renameSync(tmp, target)
+  } finally {
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      // 清理失败不影响结果
+    }
+  }
 }
 
 export function restoreSnapshotSafely(input: RestoreSnapshotInput): RestoreSnapshotOutcome {
   try {
     const snapshotRoot = resolve(input.snapshotRoot)
     const snapshot = resolve(input.snapshotPath)
-    const target = resolve(input.targetPath)
-    if (!isInside(snapshot, snapshotRoot) || snapshot === snapshotRoot) {
+    if (!isInside(snapshot, snapshotRoot)) {
       return fail('INVALID_SNAPSHOT', '快照路径不合法。')
     }
-    if (!existsSync(snapshot)) return fail('SNAPSHOT_MISSING', '这个快照已经不存在了。')
+
+    let rootReal: string
+    let snapshotReal: string
+    try {
+      rootReal = realpathSync(snapshotRoot)
+      snapshotReal = realpathSync(snapshot)
+    } catch {
+      return fail('SNAPSHOT_MISSING', '这个快照已经不存在了。')
+    }
+    if (!isInside(snapshotReal, rootReal)) {
+      return fail('INVALID_SNAPSHOT', '快照路径不合法。')
+    }
+    // 只接受 <toolUseId>/<filename> 两层；不能把 .restore.json 或更深层文件当备份恢复
+    const relativeSnapshot = relative(rootReal, snapshotReal)
+    const parts = relativeSnapshot.split(sep)
+    if (parts.length !== 2 || !parts[0] || !parts[1] || parts[1] === RESTORE_MANIFEST_FILE) {
+      return fail('INVALID_SNAPSHOT', '快照路径不合法。')
+    }
+    let snapshotStat
+    try {
+      snapshotStat = statSync(snapshotReal)
+    } catch {
+      return fail('SNAPSHOT_MISSING', '这个快照已经不存在了。')
+    }
+    if (!snapshotStat.isFile()) return fail('INVALID_SNAPSHOT', '快照不是普通文件。')
+
     if (!input.workspace) return fail('NO_WORKSPACE', '这个对话没有绑定工作区，不能恢复文件。')
     // 用与工具一致的 realpath 沙箱判断目标是否真的在工作区内（防符号链接越界）
     let resolvedTarget: ReturnType<typeof inspectWorkspacePath>
@@ -103,25 +176,45 @@ export function restoreSnapshotSafely(input: RestoreSnapshotInput): RestoreSnaps
     if (!resolvedTarget.inside) {
       return fail('OUTSIDE_WORKSPACE', '要恢复的文件不在工作区内，已拒绝。')
     }
+    const target = resolvedTarget.absolute
     const targetReal = resolvedTarget.real
 
-    const manifest = readManifest(snapshot)
-    const currentExists = existsSync(targetReal)
-    const currentHash = currentExists ? sha256(readFileSync(targetReal)) : null
+    const manifest = readManifest(snapshotReal)
+    if (
+      !manifest ||
+      typeof manifest.targetPath !== 'string' ||
+      typeof manifest.afterHash !== 'string' ||
+      typeof manifest.beforeHash !== 'string'
+    ) {
+      return fail(
+        'UNDO_UNVERIFIABLE',
+        '无法确认这个快照对应哪次修改，已拒绝自动覆盖。',
+        '可以先把当前文件另存一份，或从备份中手动恢复。'
+      )
+    }
+    if (!samePath(manifest.targetPath, target)) {
+      return fail('UNDO_CONFLICT', '快照记录的目标文件与要恢复的文件不一致，已拒绝。')
+    }
+    // 备份内容必须与清单记录一致，防止快照文件被替换后当成别的版本恢复
+    if (hashFileSync(snapshotReal) !== manifest.beforeHash) {
+      return fail('UNDO_UNVERIFIABLE', '备份内容与撤销记录不一致，已拒绝自动覆盖。')
+    }
+
+    let currentExists = false
+    try {
+      const current = statSync(targetReal)
+      if (!current.isFile()) {
+        return fail('UNDO_CONFLICT', '要恢复的目标不是普通文件，已拒绝。')
+      }
+      currentExists = true
+    } catch {
+      currentExists = false
+    }
+    const currentHash = currentExists ? hashFileSync(targetReal) : null
 
     if (currentExists) {
-      if (!manifest || typeof manifest.afterHash !== 'string') {
-        return fail(
-          'UNDO_UNVERIFIABLE',
-          '无法确认这个文件在修改后有没有被手工改过，已拒绝自动覆盖。',
-          '可以先把当前文件另存一份，或从备份中手动恢复。'
-        )
-      }
-      if (manifest.targetPath && resolve(manifest.targetPath) !== target) {
-        return fail('UNDO_CONFLICT', '快照记录的目标文件与要恢复的文件不一致，已拒绝。')
-      }
       if (currentHash !== manifest.afterHash) {
-        if (typeof manifest.beforeHash === 'string' && currentHash === manifest.beforeHash) {
+        if (currentHash === manifest.beforeHash) {
           return { ok: true, written: false, message: '文件已经是修改前的内容，无需再次撤销。' }
         }
         return fail(
@@ -132,7 +225,7 @@ export function restoreSnapshotSafely(input: RestoreSnapshotInput): RestoreSnaps
       }
     }
 
-    atomicWrite(targetReal, readFileSync(snapshot))
+    atomicCopy(targetReal, snapshotReal)
     return { ok: true, written: true, message: '已恢复到这次修改之前的内容。' }
   } catch (err) {
     return fail('RESTORE_FAILED', `恢复文件失败：${err instanceof Error ? err.message : String(err)}`)

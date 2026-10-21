@@ -11,15 +11,14 @@
  * - 替换后重新解析 XML 校验良构性；结构不支持的文档（如文本框嵌套段落）会明确报错而不是写坏文件；
  * - 输出前备份旧文件（可撤销），并核对输入文件哈希未变。
  */
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import JSZip from 'jszip'
 import type { ToolResult } from '../../shared/types'
 import type { ToolContext } from '../types'
 import { formatBytes, sha256, truncateText } from '../util'
 import { getBoolean, getNumber, getString } from './args'
 import { ToolExecutionError, ToolInputError } from './errors'
-import { snapshotFile, recordRestoreManifest } from './fs-tools'
+import { atomicWriteFileSync, snapshotFile, recordRestoreManifest } from './fs-tools'
 import { displayPath, resolveWorkspacePath } from './paths'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
@@ -55,14 +54,23 @@ export function decodeXmlText(text: string): string {
 }
 
 export function encodeXmlText(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // XML 1.0 不允许的控制字符会让 Word 打不开文档；替换文本时直接剔除
+  return text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
-/** 收集一段 XML 里所有 <w:t> 的文字（按出现顺序拼接） */
+/** 收集一段 XML 里所有 <w:t> 的文字（按出现顺序拼接；换行/制表符保留为分隔） */
 export function collectWordText(xml: string): string {
   let output = ''
-  const regex = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g
-  for (let match = regex.exec(xml); match; match = regex.exec(xml)) output += decodeXmlText(match[1])
+  const regex = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:br\b[^>]*\/?>|<w:tab\b[^>]*\/?>/g
+  for (let match = regex.exec(xml); match; match = regex.exec(xml)) {
+    if (match[1] !== undefined) output += decodeXmlText(match[1])
+    else if (match[0].startsWith('<w:br')) output += '\n'
+    else output += '\t'
+  }
   return output
 }
 
@@ -73,6 +81,10 @@ async function loadDocxZip(resolvedReal: string, display: string): Promise<JSZip
   } catch (err) {
     throw new ToolExecutionError(`读取文件失败：${display}`, err instanceof Error ? err.message : undefined)
   }
+  return loadDocxZipFromBuffer(buffer, display)
+}
+
+async function loadDocxZipFromBuffer(buffer: Buffer, display: string): Promise<JSZip> {
   if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
     throw new ToolInputError(
       `「${display}」不是有效的 .docx 文件（不是 ZIP 容器，可能是 .doc 旧格式或文件损坏）。`,
@@ -213,7 +225,8 @@ export const readDocxTool: ToolImpl = {
     const rawPath = getString(input, 'path', { required: true })
     const resolved = resolveWorkspacePath(rawPath, ctx.workspace, {
       escapeApproved: ctx.escapeApproved,
-      requireExist: true
+      requireExist: true,
+      allowedExternalFiles: ctx.attachedFiles
     })
     if (resolved.isDirectory) throw new ToolInputError(`「${rawPath}」是一个文件夹，不是 Word 文件。`, '请指定具体的 .docx 文件。')
     const stat = statSync(resolved.real)
@@ -226,8 +239,13 @@ export const readDocxTool: ToolImpl = {
     const documentXml = await readZipText(zip, 'word/document.xml')
     const extracted = extractBody(documentXml)
 
+    const maxChars = Math.min(
+      Math.max(1, Math.round(getNumber(input, 'max_chars', { defaultValue: DEFAULT_MAX_CHARS, min: 1 }))),
+      MAX_CHARS_LIMIT
+    )
     const sections: string[] = [`Word 文档：${display}（正文 ${extracted.paragraphCount} 段、${extracted.tableCount} 个表格，${formatBytes(stat.size)}）`]
-    const bodyText = truncateText(extracted.body || '（正文没有可读取的文字）', DEFAULT_MAX_CHARS)
+    // 先按调用方的 max_chars 截断正文；否则默认 60k 会先把 max_chars>60k 的内容砍掉
+    const bodyText = truncateText(extracted.body || '（正文没有可读取的文字）', maxChars)
     sections.push(bodyText)
 
     if (getBoolean(input, 'include_headers', false)) {
@@ -247,10 +265,6 @@ export const readDocxTool: ToolImpl = {
     if (placeholders.length > 0) {
       sections.push(`发现的占位符（${placeholders.length}）：${placeholders.join('、')}`)
     }
-    const maxChars = Math.min(
-      Math.max(1, Math.round(getNumber(input, 'max_chars', { defaultValue: DEFAULT_MAX_CHARS, min: 1 }))),
-      MAX_CHARS_LIMIT
-    )
     const output = truncateText(sections.join('\n\n'), maxChars)
     return okResult(output, {
       path: display,
@@ -345,7 +359,9 @@ interface ParagraphReplaceResult {
 export function replaceInParagraphXml(
   paragraphXml: string,
   replacements: DocxReplacement[],
-  replaceAll: boolean
+  replaceAll: boolean,
+  /** replace_all=false 时跨段落共享的「已替换」状态，保证全文档只替换第一处 */
+  firstOnlyDone?: boolean[]
 ): ParagraphReplaceResult {
   const normalized = paragraphXml.replace(/<w:t(\s[^>]*?)?\/>/g, (_match, attrs: string | undefined) => `<w:t${attrs ?? ''}></w:t>`)
   const nodes = collectWordTextNodes(normalized)
@@ -367,6 +383,7 @@ export function replaceInParagraphXml(
   for (let replacementIndex = 0; replacementIndex < replacements.length; replacementIndex += 1) {
     const replacement = replacements[replacementIndex]
     if (!replacement.find) continue
+    if (!replaceAll && firstOnlyDone?.[replacementIndex]) continue
     const joined = texts.join('')
     const positions: number[] = []
     let from = 0
@@ -379,6 +396,7 @@ export function replaceInParagraphXml(
     }
     if (positions.length === 0) continue
     counts[replacementIndex] = positions.length
+    if (!replaceAll && firstOnlyDone) firstOnlyDone[replacementIndex] = true
     for (const position of [...positions].reverse()) {
       const start = locate(position)
       const end = locate(position + replacement.find.length)
@@ -421,12 +439,14 @@ interface XmlFileReplaceResult {
 export function replaceInDocxXmlFile(
   xml: string,
   replacements: DocxReplacement[],
-  replaceAll: boolean
+  replaceAll: boolean,
+  firstOnlyDone?: boolean[]
 ): XmlFileReplaceResult {
   const counts = replacements.map(() => 0)
+  const done = firstOnlyDone ?? replacements.map(() => false)
   let changed = false
   const nextXml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g, (paragraphXml) => {
-    const result = replaceInParagraphXml(paragraphXml, replacements, replaceAll)
+    const result = replaceInParagraphXml(paragraphXml, replacements, replaceAll, done)
     result.counts.forEach((count, index) => {
       counts[index] += count
     })
@@ -544,7 +564,8 @@ export const editDocxTool: ToolImpl = {
     const displayOutput = displayPath(resolvedOutput.absolute, ctx.workspace)
     const sourceBuffer = readFileSync(inputReal)
     const inputHashBefore = sha256(sourceBuffer)
-    const zip = await loadDocxZip(inputReal, displayInput)
+    // 用刚读到的 buffer 解析，避免两次读盘之间文件被改导致哈希与内容不一致
+    const zip = await loadDocxZipFromBuffer(sourceBuffer, displayInput)
 
     const partNames = Object.keys(zip.files).filter((name) => DOCX_PARTS_WITH_TEXT.test(name))
     if (partNames.length === 0) throw new ToolInputError('文档里没有可替换的正文部件。', '请确认文件是正常的 .docx。')
@@ -552,10 +573,12 @@ export const editDocxTool: ToolImpl = {
 
     const counts = replacements.map(() => 0)
     const changedParts: string[] = []
+    // replace_all=false 的「只替换第一处」必须跨 document/header/footer 等部件生效
+    const firstOnlyDone = replacements.map(() => false)
     for (const partName of partNames) {
       const xml = await readZipText(zip, partName)
       if (!xml) continue
-      const result = replaceInDocxXmlFile(xml, replacements, replaceAll)
+      const result = replaceInDocxXmlFile(xml, replacements, replaceAll, firstOnlyDone)
       result.counts.forEach((count, index) => {
         counts[index] += count
       })
@@ -581,8 +604,7 @@ export const editDocxTool: ToolImpl = {
       compressionOptions: { level: 6 }
     })
     const snapshot = existsSync(outputReal) ? snapshotFile(outputReal, ctx) : null
-    mkdirSync(dirname(outputReal), { recursive: true })
-    writeFileSync(outputReal, outputBuffer)
+    atomicWriteFileSync(outputReal, outputBuffer)
     const afterHash = sha256(outputBuffer)
     recordRestoreManifest(ctx, outputReal, snapshot?.beforeHash ?? null, afterHash)
 
@@ -622,6 +644,9 @@ export const editDocxTool: ToolImpl = {
       perReplacement,
       changedParts,
       bytes: outputBuffer.length,
+      created: !snapshot,
+      snapshotId: snapshot?.snapshotId ?? null,
+      snapshotPath: snapshot?.snapshotPath ?? null,
       beforeHash: snapshot?.beforeHash ?? null,
       afterHash,
       inputHashBefore,

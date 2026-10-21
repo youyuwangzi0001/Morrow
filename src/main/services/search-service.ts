@@ -67,7 +67,7 @@ export interface SearchResponse {
 
 export interface SearchQueryInput {
   q: string
-  /** 限定工作区（文件与 artifact）；不传 = 不返回文件结果（避免跨工作区泄漏） */
+  /** 限定工作区；不传 = 搜索全部已索引工作区（全局） */
   workspace?: string | null
   limit?: number
 }
@@ -77,6 +77,8 @@ export interface SearchServiceDeps {
   getSession(id: string): Session | null
   /** 用户最近/当前工作区（只索引这些，避免扫描无关磁盘） */
   listWorkspaces(): string[]
+  /** 会话写入/删除版本；变化时绕过节流立即刷新会话索引 */
+  getSessionRevision?: () => number
   /** 数据目录（Morrow Data 永不索引） */
   dataDir?: string
   now?: () => number
@@ -116,6 +118,9 @@ interface FileDoc {
 
 const IGNORED_DIR_NAMES = new Set(['node_modules', '.git', 'Morrow Data', 'out', 'release', 'dist', '.cache'])
 const BINARY_PROBE_BYTES = 8192
+/** 单个会话最多索引的正文字符数（优先保留最近的消息/成品，避免超长会话拖垮内存） */
+export const SEARCH_SESSION_TEXT_BUDGET = 200_000
+export const SEARCH_SESSION_ARTIFACT_BUDGET = 200_000
 
 function normalizeWorkspace(workspace: string | null | undefined): string | null {
   if (!workspace) return null
@@ -166,11 +171,16 @@ function makeSnippet(text: string, query: string): { snippet: string; highlights
   }
   const start = Math.max(0, index - 40)
   const end = Math.min(text.length, index + query.length + 80)
-  const snippet = `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
-  const highlightStart = (start > 0 ? 1 : 0) + (index - start)
+  const prefix = start > 0 ? '…' : ''
+  const suffix = end < text.length ? '…' : ''
+  const before = text.slice(start, index)
+  const matched = text.slice(index, index + query.length)
+  const after = text.slice(index + query.length, end)
+  const normalizedBefore = `${prefix}${before}`.replace(/\s+/g, ' ')
+  const normalizedMatched = matched.replace(/\s+/g, ' ')
   return {
-    snippet: snippet.replace(/\s+/g, ' '),
-    highlights: [{ start: highlightStart, end: highlightStart + query.length }]
+    snippet: `${normalizedBefore}${normalizedMatched}${after}${suffix}`.replace(/\s+/g, ' '),
+    highlights: [{ start: normalizedBefore.length, end: normalizedBefore.length + normalizedMatched.length }]
   }
 }
 
@@ -203,6 +213,7 @@ export class SearchService {
   private started = false
   private lastBuildAt = 0
   private lastRefreshAt = 0
+  private lastSessionRevision = 0
   private workspaceSet = new Set<string>()
 
   constructor(deps: SearchServiceDeps, options: SearchServiceOptions = {}) {
@@ -233,6 +244,7 @@ export class SearchService {
       this.started = true
       this.lastBuildAt = this.now()
       this.lastRefreshAt = this.now()
+      this.lastSessionRevision = this.deps.getSessionRevision?.() ?? 0
     } finally {
       this.building = false
     }
@@ -297,13 +309,28 @@ export class SearchService {
     const q = typeof input.q === 'string' ? input.q.trim() : ''
     const limit = Math.max(1, Math.min(60, Math.trunc(input.limit ?? 20)))
     const workspace = normalizeWorkspace(input.workspace)
+    // 首次查询某个工作区时立即索引，避免它因为自动刷新节流而返回空文件结果。
+    if (workspace && !this.workspaceIndex.has(workspace)) {
+      this.workspaceSet.add(workspace)
+      this.refreshWorkspaceSync(workspace, true)
+      this.lastRefreshAt = this.now()
+    }
+    // 全局搜索：首次查询时补齐启动后才出现的工作区，避免刚新建会话搜不到文件
+    if (!workspace) {
+      for (const raw of this.deps.listWorkspaces()) {
+        const known = normalizeWorkspace(raw)
+        if (!known || this.workspaceIndex.has(known)) continue
+        this.workspaceSet.add(known)
+        this.refreshWorkspaceSync(known, true)
+      }
+    }
     const groups: SearchGroups = { sessions: [], files: [], artifacts: [] }
     if (!q) {
       return { query: q, groups, total: 0, tookMs: this.now() - startedAt, index: this.status() }
     }
     const perGroup = Math.max(1, Math.ceil(limit / 3))
     groups.sessions = this.searchSessions(q, perGroup, workspace)
-    groups.files = workspace ? this.searchFiles(q, workspace, perGroup) : []
+    groups.files = workspace ? this.searchFiles(q, workspace, perGroup) : this.searchFilesAll(q, perGroup)
     groups.artifacts = this.searchArtifacts(q, workspace, perGroup)
     for (const group of [groups.sessions, groups.files, groups.artifacts]) {
       group.sort((a, b) => b.score - a.score || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
@@ -325,8 +352,11 @@ export class SearchService {
   }
 
   private async refreshIfStale(): Promise<void> {
-    if (this.now() - this.lastRefreshAt < this.options.autoRefreshMs) return
+    const revision = this.deps.getSessionRevision?.()
+    const revisionChanged = revision !== undefined && revision !== this.lastSessionRevision
+    if (!revisionChanged && this.now() - this.lastRefreshAt < this.options.autoRefreshMs) return
     this.lastRefreshAt = this.now()
+    if (revision !== undefined) this.lastSessionRevision = revision
     try {
       // 会话：按 updatedAt/messageCount 签名增量更新，新增/删除也同步
       const metas = this.deps.listSessions()
@@ -345,7 +375,20 @@ export class SearchService {
           this.sessionSignatures.delete(id)
         }
       }
-      // 工作区：只刷新已索引过的目录（增量 stat）
+      // 工作区：同步已知集合，删掉不再被最近工作区/会话引用的文件索引
+      const knownWorkspaces = new Set(
+        this.deps
+          .listWorkspaces()
+          .map((workspace) => normalizeWorkspace(workspace))
+          .filter((workspace): workspace is string => Boolean(workspace))
+      )
+      for (const workspace of [...this.workspaceSet]) {
+        if (knownWorkspaces.has(workspace)) continue
+        this.workspaceSet.delete(workspace)
+        this.workspaceIndex.delete(workspace)
+      }
+      for (const workspace of knownWorkspaces) this.workspaceSet.add(workspace)
+      // 只刷新已索引过的目录（增量 stat）
       for (const workspace of this.workspaceSet) this.refreshWorkspaceSync(workspace, false)
     } catch {
       // 索引刷新失败不阻断查询（保留旧索引）
@@ -362,23 +405,36 @@ export class SearchService {
   }
 
   private indexSession(session: Session): void {
+    const visibleMessages = session.messages.filter((message) => !message.hidden)
+    const messages: SessionDoc['messages'] = []
+    let messageBudget = SEARCH_SESSION_TEXT_BUDGET
+    for (let index = visibleMessages.length - 1; index >= 0 && messageBudget > 0; index -= 1) {
+      const message = visibleMessages[index]
+      const text = messageText(message).slice(0, Math.min(this.options.maxTextChars, messageBudget))
+      if (!text.trim()) continue
+      messages.unshift({ id: message.id, role: message.role, text })
+      messageBudget -= text.length
+    }
+    const artifacts: SessionDoc['artifacts'] = []
+    let artifactBudget = SEARCH_SESSION_ARTIFACT_BUDGET
+    for (let index = session.artifacts.length - 1; index >= 0 && artifactBudget > 0; index -= 1) {
+      const artifact = session.artifacts[index]
+      const content = artifact.content
+        ? stripMarkup(artifact.content, artifact.kind).slice(0, Math.min(this.options.maxTextChars, artifactBudget))
+        : undefined
+      artifacts.unshift({
+        artifact: content ? { ...artifact, content } : { ...artifact, content: undefined },
+        sessionTitle: session.title
+      })
+      artifactBudget -= content?.length ?? 0
+    }
     const doc: SessionDoc = {
       id: session.id,
       title: session.title,
       workspace: normalizeWorkspace(session.workspace),
       updatedAt: session.updatedAt,
-      messages: session.messages.map((message) => ({
-        id: message.id,
-        role: message.role,
-        text: messageText(message).slice(0, this.options.maxTextChars)
-      })),
-      artifacts: session.artifacts.map((artifact) => ({
-        artifact: {
-          ...artifact,
-          content: artifact.content ? stripMarkup(artifact.content, artifact.kind).slice(0, this.options.maxTextChars) : undefined
-        },
-        sessionTitle: session.title
-      }))
+      messages,
+      artifacts
     }
     this.sessionIndex.set(session.id, doc)
     this.sessionSignatures.set(session.id, `${session.updatedAt}:${session.messages.length}:${session.title}`)
@@ -484,19 +540,31 @@ export class SearchService {
       if (score <= 0) continue
       const source = titleScore >= bestMessageScore ? doc.title : bestMessage?.text ?? ''
       const snippet = makeSnippet(source, query)
+      // 近期会话优先：0-8 天的衰减加分（旧实现按绝对天数取模，顺序与新旧无关）
+      const ageDays = Math.max(0, (this.now() - (doc.updatedAt ?? 0)) / 86_400_000)
+      const recencyBonus = Math.max(0, 8 - Math.floor(ageDays))
       hits.push({
         kind: 'session',
         id: doc.id,
         title: doc.title,
         snippet: snippet.snippet,
         highlights: snippet.highlights,
-        score: score + Math.min(8, Math.max(0, Math.floor((doc.updatedAt ?? 0) / 86_400_000) % 8)),
+        score: score + recencyBonus,
         sessionId: doc.id,
         ...(titleScore < bestMessageScore && bestMessage ? { messageId: bestMessage.id, role: bestMessage.role } : {}),
         updatedAt: doc.updatedAt
       })
       if (hits.length >= limit * 2) break
     }
+    return hits.slice(0, limit)
+  }
+
+  private searchFilesAll(query: string, limit: number): SearchHit[] {
+    const hits: SearchHit[] = []
+    for (const workspace of this.workspaceIndex.keys()) {
+      hits.push(...this.searchFiles(query, workspace, limit))
+    }
+    hits.sort((a, b) => b.score - a.score || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return hits.slice(0, limit)
   }
 
@@ -559,7 +627,9 @@ export class SearchService {
           ...(artifact.path ? { path: artifact.path } : {}),
           updatedAt: artifact.updatedAt
         })
+        if (hits.length >= limit * 3) break
       }
+      if (hits.length >= limit * 3) break
     }
     return hits.slice(0, limit)
   }

@@ -194,10 +194,6 @@
   text-decoration-color: var(--gold);
 }
 
-.md-link.is-external {
-  white-space: nowrap;
-}
-
 .md-link-icon {
   display: inline-block;
   margin-left: 3px;
@@ -287,6 +283,43 @@
   margin-top: 6px;
   color: var(--text-3);
   font-size: 11.5px;
+}
+
+/* 远程/不可显示图片：不渲染破图，给出域名与安全打开入口 */
+.md-image-unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 4px 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.6;
+  vertical-align: baseline;
+}
+
+.md-image-unavailable-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-image-unavailable-open {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-decoration-color: var(--line-gold);
+  text-underline-offset: 2px;
+}
+
+.md-image-unavailable-open:hover {
+  color: var(--gold-bright);
 }
 
 /* 流式时：末尾代码块可能未闭合，降低块级间距抖动 */

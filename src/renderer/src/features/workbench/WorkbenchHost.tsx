@@ -2,52 +2,80 @@ import { useEffect, useState } from 'react'
 import { SkillsPanel } from '../skills'
 import { MemoryCenter } from '../memory'
 import { ProjectsPanel } from '../projects'
+import { ScheduledTasksPanel } from '../schedules/ScheduledTasksPanel'
 import { ConnectorsPanel } from '../connectors/ConnectorsPanel'
 import { SearchPanel } from '../search'
 import { BrowserSurface } from '../browser'
+import { TerminalPanel } from '../terminal/TerminalPanel'
+import { GitPanel } from '../git/GitPanel'
 import { useAppStore } from '../../state/store'
 import { WORKBENCH_EVENT, parseWorkbenchPanel, type WorkbenchPanel } from './events'
-import { WorkbenchMenu } from './WorkbenchMenu'
+import './workbench.css'
 
 /**
- * 工作台宿主：所有新功能面板由这里统一挂载，避免各功能改 App/Sidebar/Settings。
- * 各队友组件完成后，Lead 在这里加 import 与对应分支。
+ * 功能面板宿主：设置页和命令面板通过事件打开同一个真实面板。
+ * 不再有独立的「工作台」入口或菜单页。
  */
 export function WorkbenchHost(): React.JSX.Element {
-  const [menuOpen, setMenuOpen] = useState(false)
   const [panel, setPanel] = useState<WorkbenchPanel | null>(null)
+  const [panelWorkspace, setPanelWorkspace] = useState<string | null>(null)
+  const [projectView, setProjectView] = useState<'home' | 'settings'>('home')
+  const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
+  const terminalOpen = useAppStore((s) => s.terminalOpen)
+  const openTerminal = useAppStore((s) => s.openTerminal)
+  const closeTerminal = useAppStore((s) => s.closeTerminal)
 
   useEffect(() => {
     const onEvent = (event: Event): void => {
-      const detail = (event as CustomEvent<{ panel?: unknown }>).detail
+      const detail = (event as CustomEvent<{ panel?: unknown; workspace?: unknown; view?: unknown }>).detail
       const requested = parseWorkbenchPanel(detail?.panel)
-      if (requested) {
-        setMenuOpen(false)
-        setPanel(requested)
-      } else {
-        setMenuOpen(true)
+      if (!requested) return
+      if (requested === 'terminal') {
+        openTerminal()
+        return
       }
+      setPanel(requested)
+      setPanelWorkspace(typeof detail?.workspace === 'string' && detail.workspace ? detail.workspace : null)
+      if (detail?.view === 'home' || detail?.view === 'settings') setProjectView(detail.view)
+      else setProjectView('home')
     }
     window.addEventListener(WORKBENCH_EVENT, onEvent)
     return () => window.removeEventListener(WORKBENCH_EVENT, onEvent)
+  }, [openTerminal])
+
+  // Agent 打开/关闭网页时，面板跟随展示同一个可见浏览器实例
+  useEffect(() => {
+    const api = window.morrow?.features
+    if (!api?.on) return undefined
+    const offPresent = api.on('feature:browser:present', () => setPanel('browser'))
+    const offClosed = api.on('feature:browser:closed', () => {
+      setPanel((current) => (current === 'browser' ? null : current))
+    })
+    return () => {
+      offPresent?.()
+      offClosed?.()
+    }
   }, [])
 
-  const close = (): void => setPanel(null)
+  const close = (): void => {
+    setPanel(null)
+    setPanelWorkspace(null)
+  }
 
   return (
     <>
-      <WorkbenchMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        onSelect={(next) => {
-          setMenuOpen(false)
-          setPanel(next)
-        }}
-      />
       <SkillsPanel open={panel === 'skills'} onClose={close} />
       <MemoryCenter open={panel === 'memory'} onClose={close} />
-      <ProjectsPanel open={panel === 'projects'} onClose={close} />
+      <ProjectsPanel
+        open={panel === 'projects'}
+        onClose={close}
+        initialView={projectView}
+        {...(panelWorkspace ? { workspace: panelWorkspace } : {})}
+      />
+      <ScheduledTasksPanel open={panel === 'schedules'} onClose={close} />
       <ConnectorsPanel open={panel === 'connectors'} onClose={close} />
+      <TerminalPanel open={terminalOpen} onClose={closeTerminal} workspace={workspace} />
+      <GitPanel open={panel === 'git'} onClose={close} workspace={workspace} />
       {panel === 'browser' ? (
         <div className="workbench-browser-overlay">
           <BrowserSurface open onClose={close} />
@@ -55,15 +83,40 @@ export function WorkbenchHost(): React.JSX.Element {
       ) : null}
       <SearchPanel
         open={panel === 'search'}
+        workspace={workspace}
         onClose={close}
         onNavigate={(hit) => {
           setPanel(null)
           if (hit.kind === 'session' && hit.sessionId) {
-            void useAppStore.getState().selectSession(hit.sessionId)
-          } else if (hit.kind === 'file' && hit.absolutePath) {
-            window.dispatchEvent(new CustomEvent('morrow:open-file', { detail: { path: hit.absolutePath } }))
-          } else if (hit.kind === 'artifact' && hit.artifactId) {
-            useAppStore.getState().openCanvas(hit.artifactId)
+            const sessionId = hit.sessionId
+            const messageId = hit.messageId
+            void useAppStore
+              .getState()
+              .selectSession(sessionId)
+              .then(() => {
+                if (messageId) useAppStore.getState().focusMessage(messageId)
+              })
+            return
+          }
+          if (hit.kind === 'file' && hit.absolutePath) {
+            window.dispatchEvent(
+              new CustomEvent('morrow:open-file', {
+                detail: {
+                  path: hit.path ?? hit.absolutePath,
+                  absolutePath: hit.absolutePath
+                }
+              })
+            )
+            return
+          }
+          if (hit.kind === 'artifact' && hit.artifactId) {
+            void (async () => {
+              const store = useAppStore.getState()
+              if (hit.sessionId && store.activeSessionId !== hit.sessionId) {
+                await store.selectSession(hit.sessionId)
+              }
+              useAppStore.getState().openCanvas(hit.artifactId)
+            })()
           }
         }}
       />

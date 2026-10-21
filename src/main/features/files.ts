@@ -3,7 +3,9 @@
  *
  * 频道：
  * - feature:files:list       { workspace?, dir?, showHidden? } → { workspace, dir, entries, limited, readOnly }
- * - feature:files:read       { path, workspace?, maxBytes? } → { path, content, size, mtimeMs, encoding, workspace, readOnly }
+ * - feature:files:read       { path, workspace?, maxBytes? } → { path, content, size, mtimeMs, encoding, truncated, workspace, readOnly }
+ * - feature:files:preview    { path, workspace? } → FilePreviewMeta（图片/PDF/DOCX/音视频元数据与受控 URL）
+ * - feature:files:docx-html  { path, workspace? } → { html, size, mtimeMs, warnings }（Mammoth 只读转换）
  * - feature:files:stat       { path, workspace? } → { path, size, mtimeMs, kind, workspace }
  * - feature:files:write      { path, content, expectedMtimeMs?, workspace? } → { path, size, mtimeMs, created, snapshot? }
  * - feature:files:create     { path, kind: 'file'|'dir', workspace? } → WorkspaceFileEntry
@@ -12,7 +14,6 @@
  * - feature:files:delete     { path, recursive?, confirm:true, workspace? } → { deleted, path, kind }
  * - feature:files:inspect    { path, workspace? } → WorkspaceFileEntry & { childCount? }
  * - feature:files:reveal     { path, workspace? } → { ok: true }
- * - feature:files:attachPath { path, workspace? } → Attachment
  * - feature:files:startDrag  { path, workspace? } → { ok: true }（原生拖拽，可直接拖进 Composer）
  *
  * 安全：边界/symlink/大小/二进制/原子写/快照/mtime 冲突都在 services/workspace-files 里；
@@ -22,6 +23,15 @@ import { app, nativeImage, shell, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { registerFeatureHandler } from '../feature-ipc'
+import { resolveWorkspaceDir } from './workspace-roots'
+import { describeFilePreview } from '../services/file-preview'
+import { convertDocxToHtml } from '../services/docx-preview'
+import {
+  convertDocumentToPreview,
+  convertPptxToPreview,
+  convertXlsxToPreview,
+  listArchive
+} from '../services/office-preview'
 import { dataPath } from '../services/paths'
 import { getSettingsStore } from '../services/settings-store'
 import { getSessionStore } from '../services/session-store'
@@ -36,7 +46,6 @@ import {
   readWorkspaceFile,
   renameWorkspaceEntry,
   statWorkspaceFile,
-  workspaceAttachment,
   writeWorkspaceFile
 } from '../services/workspace-files'
 import { log } from '../services/logger'
@@ -112,7 +121,18 @@ function candidateWorkspaces(): string[] {
  */
 function resolveWorkspaceFromPayload(payload: Record<string, unknown>): string {
   const explicit = text(payload.workspace).trim()
-  if (explicit) return resolve(explicit)
+  if (explicit) {
+    try {
+      // 显式 workspace 也必须属于已登记工作区，不能拿任意目录当沙箱根
+      return resolveWorkspaceDir(explicit, '文件操作只能访问已登记的工作区。')
+    } catch (err) {
+      throw new WorkspaceFileError(
+        'NO_WORKSPACE',
+        err instanceof Error ? err.message : '工作区不可用。',
+        '请在左下角重新选择工作文件夹，或从当前会话打开文件。'
+      )
+    }
+  }
   const rawPath = text(payload.path || payload.dir || payload.from)
   const candidates = candidateWorkspaces()
   if (!rawPath) {
@@ -170,6 +190,42 @@ registerFeatureHandler('feature:files:read', (payload) => {
     ...(numberOrUndefined(input.maxBytes) !== undefined ? { maxBytes: numberOrUndefined(input.maxBytes) } : {})
   })
   return { ...result, workspace, ...workspaceMeta() }
+})
+
+registerFeatureHandler('feature:files:preview', (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return describeFilePreview(workspace, text(input.path))
+})
+
+registerFeatureHandler('feature:files:docx-html', async (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return convertDocxToHtml(workspace, text(input.path))
+})
+
+registerFeatureHandler('feature:files:xlsx-preview', async (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return convertXlsxToPreview(workspace, text(input.path))
+})
+
+registerFeatureHandler('feature:files:pptx-preview', async (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return convertPptxToPreview(workspace, text(input.path))
+})
+
+registerFeatureHandler('feature:files:document-preview', async (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return convertDocumentToPreview(workspace, text(input.path))
+})
+
+registerFeatureHandler('feature:files:archive-list', async (payload) => {
+  const input = payloadOf(payload)
+  const workspace = resolveWorkspaceFromPayload(input)
+  return listArchive(workspace, text(input.path))
 })
 
 registerFeatureHandler('feature:files:stat', (payload) => {
@@ -246,12 +302,6 @@ registerFeatureHandler('feature:files:reveal', (payload) => {
   return { ok: true, path: stat.path }
 })
 
-registerFeatureHandler('feature:files:attachPath', (payload) => {
-  const input = payloadOf(payload)
-  const workspace = resolveWorkspaceFromPayload(input)
-  return workspaceAttachment(workspace, text(input.path))
-})
-
 /** 原生拖拽：从文件树把文件拖进 Composer/资源管理器（Composer 已有 files/getPathForFile 处理）。 */
 registerFeatureHandler('feature:files:startDrag', (payload, event: IpcMainInvokeEvent) => {
   const input = payloadOf(payload)
@@ -265,7 +315,7 @@ registerFeatureHandler('feature:files:startDrag', (payload, event: IpcMainInvoke
     event.sender.startDrag({ file: stat.absolutePath, icon })
   } catch (err) {
     log.warn('files startDrag failed', { error: String(err) })
-    throw new WorkspaceFileError('DRAG_FAILED', '启动拖拽失败，可以改用右键「添加到对话」。')
+    throw new WorkspaceFileError('DRAG_FAILED', '启动拖拽失败，可以改用输入框的「添加文件」。')
   }
   return { ok: true, path: stat.path, absolutePath: stat.absolutePath }
 })

@@ -21,10 +21,13 @@ import type {
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
+  PermissionRule,
+  ResearchState,
   ResultError,
   RunFinishReason,
   RuntimeEvent,
   SessionMode,
+  SessionPlan,
   ThinkingBlock,
   TextBlock,
   TodoItem,
@@ -41,12 +44,13 @@ import {
   planCompaction,
   serializeMessagesForSummary
 } from './context'
-import { buildChatModePromptSection, buildGoalPromptSection, buildSystemPrompt } from './prompt'
+import { buildChatModePromptSection, buildGoalPromptSection, buildPlanModePromptSection, buildSystemPrompt } from './prompt'
 import { validateGoalEvidence } from './tools/meta-tools'
 import {
   deniedMessage,
   evaluatePermission,
   isChatModeToolAllowed,
+  isResearchModeToolAllowed,
   type PermissionGate,
   type PermissionPolicyContext,
   type PermissionTarget
@@ -58,13 +62,15 @@ import type {
   RuntimeEventPayload,
   SubagentRequest,
   SubagentResult,
+  SubagentRole,
   ToolContext,
-  ToolDefinition
+  ToolDefinition,
+  TerminalToolHandler,
+  WebSearchHandler
 } from './types'
 import { ProviderError, toProviderError } from './providers/types'
 import {
   GOAL_TOOL_DEFINITION,
-  READ_ONLY_TOOL_DEFINITIONS,
   TOOL_DEFINITIONS,
   executeTool,
   toolCategory,
@@ -97,6 +103,8 @@ export interface RunAgentOptions {
   userMessage: ChatMessage
   /** 绝对路径；null 表示未绑定工作区 */
   workspace: string | null
+  /** 用户在本会话用户消息中显式附加的文件（只读；供 PDF/Office 等文档工具读取工作区外附件） */
+  attachedFiles?: readonly string[]
   permissionMode: PermissionMode
   /**
    * 显式会话模式（审计报告第 5 项）：
@@ -104,15 +112,43 @@ export interface RunAgentOptions {
    * - work / 缺省：行为与之前完全一致（按 permissionMode 三档）。
    */
   mode?: SessionMode
+  /** 深度研究状态：注入研究提示与轮次/来源目标 */
+  research?: ResearchState | null
+  /** 研究计划阶段：不暴露任何工具，只让模型输出可审阅计划 */
+  researchPlanning?: boolean
+  /**
+   * 计划模式：只读探索 + submit_plan；用户批准前不写入、不执行。
+   * 与 chat 互斥（chat 优先）。
+   */
+  planMode?: boolean
   projectMemory?: string
   /** R10：项目指令 + 知识 + 记忆上下文（优先于 projectMemory） */
   projectContext?: string
+  /** 临时对话：不注入项目记忆，也不向模型暴露 remember */
+  temporary?: boolean
+  /** 全局回答风格（仅在主进程没有自带 systemPrompt、由内核构建时使用） */
+  answerStyle?: import('../shared/types').AnswerStyleId
+  answerStyleCustom?: string
   /** 写文件前备份旧内容到这里（<snapshotDir>/<toolUseId>/<filename>） */
   snapshotDir: string
+  /** 联网搜索处理器；未配置时 web_search 不暴露给模型 */
+  webSearch?: WebSearchHandler
+  /** 本机 PDF OCR（主进程注入；扫描页自动识别） */
+  ocrPdf?: import('./types').PdfOcrHandler
+  /** 终端/后台任务处理器（主进程注入） */
+  terminal?: TerminalToolHandler
+  /** 工作区持久化权限规则 */
+  permissionRules?: PermissionRule[]
+  /** 推理强度；仅在模型声明 reasoningStyle 时映射到 provider */
+  reasoningEffort?: import('../shared/types').ReasoningEffort
+  /** 可用的子代理角色（主进程加载内置 + 自定义） */
+  agents?: SubagentRole[]
   signal: AbortSignal
   emit: (event: RuntimeEvent) => void
   onPermission: (request: PermissionRequest) => Promise<PermissionDecision>
   onAskUser: (request: AskUserRequest) => Promise<AskUserAnswer>
+  /** 无人值守运行：拒绝审批时使用「已自动拒绝」文案，而不是「用户拒绝」 */
+  unattended?: boolean
   maxSteps?: number
   demo?: boolean
   /** 是否启用自动上下文压缩（默认 true）；false 时仍可手动 compactSession */
@@ -132,11 +168,17 @@ export interface RunAgentResult {
   reason: RunFinishReason
   /** 本轮新增的 assistant 消息（tool_use block 的 result 已回填） */
   messages: ChatMessage[]
+  /** 发生过自动压缩时，压缩后的完整会话消息（含摘要与保留历史）；否则省略 */
+  compactedMessages?: ChatMessage[]
   usage: Usage
   todos: TodoItem[]
   artifacts: Artifact[]
   /** Goal 模式：本轮结束时的目标状态（含 update_goal 合并结果；非 Goal 模式回显传入值/null） */
   goal?: Goal | null
+  /** 计划模式：本轮结束时的计划（尚未提交则为 null） */
+  plan?: SessionPlan | null
+  /** 本轮是否运行在计划模式 */
+  planMode?: boolean
   error?: ResultError
 }
 
@@ -198,6 +240,8 @@ interface RunContext {
   /** 工作副本：history + 本轮 user + 新增 assistant */
   messages: ChatMessage[]
   newMessages: ChatMessage[]
+  /** 本轮是否实际压缩过上下文（用于把压缩后的完整历史带回主进程） */
+  compacted: boolean
   todos: TodoItem[]
   artifacts: Artifact[]
   systemPrompt: string
@@ -213,6 +257,9 @@ interface RunContext {
   lastRequestUsage: Usage | null
   /** Goal 模式当前目标（update_goal 会合并更新；null = 非目标模式） */
   currentGoal: Goal | null
+  /** 计划模式：本轮提交的计划（submit_plan 写入；null = 尚未提交） */
+  plan: SessionPlan | null
+  planMode: boolean
   lastMessage?: ChatMessage
   interruptFinalized: boolean
   /** 本会话已出现过的 tool_use id：保证跨回合/跨 run 唯一（快照目录、UI 定位都依赖它） */
@@ -227,6 +274,8 @@ const DEFAULT_MAX_STEPS = 60
 const MAX_ALLOWED_STEPS = 200
 const SUBAGENT_MAX_STEPS = 12
 const SUBAGENT_MAX_OUTPUT = 4096
+/** 同一轮最多同时推进的子代理数（集群一次最多 8 个） */
+const MAX_PARALLEL_SUBAGENTS = 8
 const DEFAULT_COMPACT_THRESHOLD = 0.8
 const MIN_COMPACT_THRESHOLD = 0.5
 const MAX_COMPACT_THRESHOLD = 0.98
@@ -256,10 +305,13 @@ function clampSteps(value: number | undefined): number {
 }
 
 function normalizeOptions(options: RunAgentOptions): RunAgentOptions {
+  const mode: SessionMode =
+    options.mode === 'chat' || options.mode === 'research' ? options.mode : 'work'
   return {
     ...options,
     history: options.history ?? [],
-    mode: options.mode === 'chat' ? 'chat' : 'work',
+    mode,
+    planMode: mode === 'work' && options.planMode === true,
     maxSteps: clampSteps(options.maxSteps),
     autoCompact: options.autoCompact !== false,
     compactThreshold: clampThreshold(options.compactThreshold),
@@ -274,6 +326,8 @@ function resolveSystemPrompt(
   goal: Goal | null
 ): string {
   const chatMode = opts.mode === 'chat'
+  const researchMode = opts.mode === 'research'
+  const planMode = !chatMode && !researchMode && opts.planMode === true
   const base = opts.systemPrompt?.trim() ?? ''
   let prompt =
     base.length > 0
@@ -282,12 +336,15 @@ function resolveSystemPrompt(
           workspace: opts.workspace,
           permissionMode: mode,
           mode: opts.mode,
+          research: opts.research ?? null,
+          planMode,
           projectContext: opts.projectContext ?? opts.projectMemory,
           modelLabel: opts.model.label,
           demo: opts.demo,
           tools,
-          readOnly: false,
-          goal
+          goal,
+          answerStyle: opts.answerStyle,
+          answerStyleCustom: opts.answerStyleCustom
         })
   const memory = (opts.projectContext ?? opts.projectMemory)?.trim()
   if (memory) {
@@ -298,6 +355,10 @@ function resolveSystemPrompt(
   // 保证工具被过滤的同时，模型也明确知道当前只讨论、不执行。
   if (chatMode && !prompt.includes('## 聊天模式')) {
     prompt += `\n\n${buildChatModePromptSection()}`
+  }
+  // 计划模式：主进程自建 systemPrompt 时同样必须带「先计划、后批准」约束。
+  if (planMode && !prompt.includes('## 计划模式')) {
+    prompt += `\n\n${buildPlanModePromptSection()}`
   }
   // 主进程可能自己构建了 systemPrompt：goal 段缺失时由 Agent 补上，避免目标上下文丢失
   if (!chatMode && goal && goal.status === 'active' && !prompt.includes('## 目标模式')) {
@@ -378,20 +439,37 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
   const opts = normalizeOptions(options)
   const emit = createEmitter(opts)
   const chatMode = opts.mode === 'chat'
-  // 聊天模式不启用 Goal：即使主进程误传了 active 目标，内核也不注入 update_goal / 目标提示。
-  const initialGoal = !chatMode && opts.goal ? { ...opts.goal } : null
+  const researchMode = opts.mode === 'research'
+  const planMode = !chatMode && !researchMode && opts.planMode === true
+  // 聊天/计划/研究模式不启用 Goal：即使主进程误传了 active 目标，内核也不注入 update_goal / 目标提示。
+  const initialGoal = !chatMode && !planMode && !researchMode && opts.goal ? { ...opts.goal } : null
   const goalMode = Boolean(initialGoal && initialGoal.status === 'active')
-  const runTools = toolDefinitionsForRun(goalMode)
+  const runTools = toolDefinitionsForRun(
+    goalMode,
+    planMode,
+    Boolean(opts.webSearch),
+    researchMode,
+    opts.temporary === true,
+    opts.researchPlanning === true
+  )
   const tools = chatMode
     ? runTools.filter((definition) => isChatModeToolAllowed(definition.name, definition.category))
-    : runTools
-  const effectiveMode: PermissionMode = opts.demo ? 'auto' : chatMode ? 'read-only' : opts.permissionMode
+    : researchMode
+      ? runTools.filter((definition) => isResearchModeToolAllowed(definition.name, definition.category))
+      : runTools
+  // 计划模式固定只读；研究模式由主进程传入 auto（权限层另有研究白名单兜底）。
+  const effectiveMode: PermissionMode = opts.demo
+    ? 'auto'
+    : chatMode || planMode
+      ? 'read-only'
+      : opts.permissionMode
   const contextLimit = opts.model.contextWindow
   const ctx: RunContext = {
     opts,
     emit,
     messages: [...opts.history, opts.userMessage],
     newMessages: [],
+    compacted: false,
     todos: [...(opts.initialTodos ?? [])],
     artifacts: [...(opts.initialArtifacts ?? [])],
     systemPrompt: resolveSystemPrompt(opts, tools, effectiveMode, initialGoal),
@@ -405,6 +483,8 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     requestUsage: { inputTokens: 0, outputTokens: 0 },
     lastRequestUsage: null,
     currentGoal: initialGoal,
+    plan: null,
+    planMode,
     interruptFinalized: false,
     usedToolUseIds: collectToolUseIds([...opts.history, opts.userMessage]),
     toolParseErrors: new Map<string, string>(),
@@ -426,10 +506,13 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     return {
       reason: 'error',
       messages: ctx.newMessages,
+      ...(ctx.compacted ? { compactedMessages: ctx.messages } : {}),
       usage: fallbackUsage,
       todos: ctx.todos,
       artifacts: ctx.artifacts,
       goal: ctx.currentGoal,
+      plan: ctx.plan,
+      planMode: ctx.planMode,
       error: resultError
     }
   }
@@ -472,10 +555,13 @@ async function executeRun(ctx: RunContext): Promise<RunAgentResult> {
   return {
     reason,
     messages: ctx.newMessages,
+    ...(ctx.compacted ? { compactedMessages: ctx.messages } : {}),
     usage,
     todos: ctx.todos,
     artifacts: ctx.artifacts,
     goal: ctx.currentGoal,
+    plan: ctx.plan,
+    planMode: ctx.planMode,
     ...(runError ? { error: runError } : {})
   }
 }
@@ -556,7 +642,14 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
   }
   let textBlock: TextBlock | null = null
   let thinkingBlock: ThinkingBlock | null = null
+  let thinkingStartedAt: number | null = null
+  let thinkingLastAt: number | null = null
   const pendingCalls = new Map<number, { id: string; name: string; args: string }>()
+
+  const finalizeThinkingDuration = (): void => {
+    if (!thinkingBlock || thinkingStartedAt === null) return
+    thinkingBlock.durationMs = Math.max(0, (thinkingLastAt ?? thinkingStartedAt) - thinkingStartedAt)
+  }
 
   const ensureText = (): TextBlock => {
     if (!textBlock) {
@@ -580,7 +673,10 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
       tools: ctx.tools,
       signal: opts.signal,
       workspace: opts.workspace,
-      maxTokens: opts.model.maxOutput
+      maxTokens: opts.model.maxOutput,
+      ...(opts.reasoningEffort && opts.reasoningEffort !== 'auto' && opts.model.reasoningStyle
+        ? { reasoning: { effort: opts.reasoningEffort, style: opts.model.reasoningStyle } }
+        : {})
     }
     for await (const event of iterateWithAbort(opts.provider.stream(request), opts.signal)) {
       switch (event.type) {
@@ -590,6 +686,9 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
           break
         }
         case 'thinking_delta': {
+          const now = Date.now()
+          if (thinkingStartedAt === null) thinkingStartedAt = now
+          thinkingLastAt = now
           ensureThinking().text += event.text
           ctx.emit({ type: 'message_delta', messageId, thinkingDelta: event.text })
           break
@@ -649,6 +748,7 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
       }
     }
 
+    finalizeThinkingDuration()
     // 兜底：只发了 start/delta 没有 end 的工具调用，用累积参数补齐
     for (const [index, call] of pendingCalls) {
       if (!call.name) continue
@@ -680,6 +780,7 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
     ctx.emit({ type: 'message_completed', messageId, message: cloneMessage(message) })
     return { message, toolCalls, interrupted: false }
   } catch (err) {
+    finalizeThinkingDuration()
     commitRequestUsage(ctx)
     if (isAbortError(err) || opts.signal.aborted) {
       return { message, toolCalls: extractToolCalls(message), interrupted: true }
@@ -719,8 +820,10 @@ interface ToolCallRunOptions {
   parentMessageId: string
   /** subagent：父 task 的 toolUseId（子代理工具进度挂到父 task 卡片下） */
   parentToolUseId?: string
+  /** swarm：当前子任务身份，用于把进度写到对应任务行 */
+  swarmTask?: SubagentRequest['swarmTask']
   /** subagent 的工具上下文覆盖（工作区/snapshot/权限与主代理一致，仅禁止嵌套与改 Goal） */
-  toolContextOverrides?: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean }
+  toolContextOverrides?: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean; planMode?: boolean }
 }
 
 interface ToolCallRunResult {
@@ -747,8 +850,7 @@ function emitSubagentProgress(
   ctx: RunContext,
   runOptions: ToolCallRunOptions,
   note: string,
-  status?: ToolStatus,
-  title?: string
+  status?: ToolStatus
 ): void {
   if (runOptions.mode !== 'subagent' || !runOptions.parentToolUseId) return
   ctx.emit({
@@ -757,7 +859,9 @@ function emitSubagentProgress(
     toolUseId: runOptions.parentToolUseId,
     note,
     ...(status ? { status } : {}),
-    ...(title ? { title } : {})
+    ...(runOptions.swarmTask
+      ? { swarmTask: { ...runOptions.swarmTask, status: 'running' as const, note } }
+      : {})
   })
 }
 
@@ -775,18 +879,18 @@ async function runToolCallWithPermissions(
   const policy: PermissionPolicyContext = {
     mode: ctx.effectiveMode,
     workspace: ctx.opts.workspace,
-    // 子代理拥有与主代理相同的权限链：不再因为 isSubagent 自动放行
-    isSubagent: false,
+    attachedFiles: ctx.opts.attachedFiles ?? [],
     isDemo: ctx.demo,
     sessionGrants: ctx.grants,
-    sessionMode: ctx.opts.mode === 'chat' ? 'chat' : 'work'
+    workspaceRules: ctx.opts.permissionRules ?? [],
+    sessionMode: ctx.opts.mode ?? 'work'
   }
   const isMain = runOptions.mode === 'main'
   const emitStarted = (): void => {
     if (isMain) {
       ctx.emit({ type: 'tool_started', messageId: runOptions.parentMessageId, block: { ...call, input: { ...call.input } } })
     } else {
-      emitSubagentProgress(ctx, runOptions, `子代理开始：${call.title}`, 'running', call.title)
+      emitSubagentProgress(ctx, runOptions, `开始：${call.title}`, 'running')
     }
   }
   const emitFinished = (flags: { denied?: boolean } = {}): void => {
@@ -804,9 +908,8 @@ async function runToolCallWithPermissions(
       emitSubagentProgress(
         ctx,
         runOptions,
-        `子代理：${call.title} ${ok ? '完成' : '失败'}${call.result?.error ? `（${truncateText(call.result.error, 160)}）` : ''}`,
-        ok ? 'running' : 'error',
-        call.title
+        `${call.title} ${ok ? '完成' : '失败'}${call.result?.error ? `（${truncateText(call.result.error, 160)}）` : ''}`,
+        ok ? 'running' : 'error'
       )
     }
   }
@@ -872,20 +975,31 @@ async function runToolCallWithPermissions(
       risk: gate.risk,
       input: call.input,
       ...(gate.preview ? { preview: gate.preview } : {}),
+      allowAlways: gate.allowAlways !== false,
       createdAt: Date.now()
     }
-    ctx.emit({ type: 'permission_requested', request })
     let decision: PermissionDecision
     try {
-      decision = await runSerialized(ctx, () => abortable(ctx.opts.onPermission(request), ctx.opts.signal))
+      // 请求事件也必须在串行区内：多个并行子代理不能同时往 UI 推两张审批卡
+      decision = await runSerialized(ctx, async () => {
+        if (ctx.opts.signal.aborted) throw abortError()
+        ctx.emit({ type: 'permission_requested', request })
+        try {
+          const resolved = await abortable(ctx.opts.onPermission(request), ctx.opts.signal)
+          ctx.emit({ type: 'permission_resolved', requestId: request.id, decision: resolved })
+          return resolved
+        } catch (err) {
+          ctx.emit({ type: 'permission_resolved', requestId: request.id, decision: 'deny' })
+          throw err
+        }
+      })
     } catch (err) {
-      ctx.emit({ type: 'permission_resolved', requestId: request.id, decision: 'deny' })
       if (isAbortError(err) || ctx.opts.signal.aborted) {
         const result: ToolResult = { ...INTERRUPTED_RESULT }
         call.result = result
         call.status = 'interrupted'
         call.finishedAt = Date.now()
-        if (!isMain) emitSubagentProgress(ctx, runOptions, `子代理：${call.title} 已中断`, 'error', call.title)
+        if (!isMain) emitSubagentProgress(ctx, runOptions, `${call.title} 已中断`, 'error')
         return { interrupted: true, result }
       }
       const result: ToolResult = { ok: false, output: '', error: `审批失败：${errorMessage(err)}` }
@@ -895,10 +1009,9 @@ async function runToolCallWithPermissions(
       emitFinished()
       return { interrupted: false, result }
     }
-    ctx.emit({ type: 'permission_resolved', requestId: request.id, decision })
-    if (decision === 'always') ctx.grants.add(gate.signature)
+    if (decision === 'always' && gate.allowAlways !== false) ctx.grants.add(gate.signature)
     if (decision === 'deny') {
-      const denied = deniedMessage(target)
+      const denied = deniedMessage(target, ctx.opts.unattended ? 'unattended' : 'user')
       const result: ToolResult = { ok: false, output: '', error: denied.error, hint: denied.hint }
       call.result = result
       call.status = 'denied'
@@ -911,7 +1024,7 @@ async function runToolCallWithPermissions(
     if (isMain) {
       ctx.emit({ type: 'tool_progress', messageId: runOptions.parentMessageId, toolUseId: call.id, status: 'running' })
     } else {
-      emitSubagentProgress(ctx, runOptions, `子代理获得授权：${call.title}`, 'running', call.title)
+      emitSubagentProgress(ctx, runOptions, `获得授权：${call.title}`, 'running')
     }
   }
 
@@ -953,12 +1066,15 @@ async function executeToolCalls(ctx: RunContext, message: ChatMessage, toolCalls
         batch.push(toolCalls[index])
         index += 1
       }
-      const results = await Promise.all(
-        batch.map((item) => runToolCallWithPermissions(ctx, item, { mode: 'main', parentMessageId: message.id }))
-      )
-      if (ctx.opts.signal.aborted || results.some((item) => item.interrupted)) {
-        markPendingInterrupted(ctx, message, toolCalls)
-        return true
+      for (let offset = 0; offset < batch.length; offset += MAX_PARALLEL_SUBAGENTS) {
+        const chunk = batch.slice(offset, offset + MAX_PARALLEL_SUBAGENTS)
+        const results = await Promise.all(
+          chunk.map((item) => runToolCallWithPermissions(ctx, item, { mode: 'main', parentMessageId: message.id }))
+        )
+        if (ctx.opts.signal.aborted || results.some((item) => item.interrupted)) {
+          markPendingInterrupted(ctx, message, toolCalls)
+          return true
+        }
       }
       continue
     }
@@ -1076,7 +1192,9 @@ async function finalizeAtMaxSteps(ctx: RunContext, maxSteps: number): Promise<vo
 function finalizeInterrupted(ctx: RunContext): void {
   if (ctx.interruptFinalized) return
   ctx.interruptFinalized = true
-  const target = ctx.lastMessage ?? findLastAssistant(ctx.messages)
+  // 只收尾本轮新建的 assistant 消息；中断发生在首个模型请求前（如压缩阶段）时，
+  // 不能把历史里最后一条已完成的 assistant 消息改标为 interrupted。
+  const target = ctx.lastMessage ?? [...ctx.newMessages].reverse().find((message) => message.role === 'assistant')
   if (target) {
     markPendingInterrupted(ctx, target, extractToolCalls(target))
     target.interrupted = true
@@ -1090,13 +1208,6 @@ function finalizeInterrupted(ctx: RunContext): void {
     ctx.emit({ type: 'message_completed', messageId: message.id, message: cloneMessage(message) })
   }
   ctx.emit({ type: 'notice', level: 'info', message: '已停止本轮运行。可以继续提问，或让 Morrow 接着完成。' })
-}
-
-function findLastAssistant(messages: ChatMessage[]): ChatMessage | undefined {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].role === 'assistant') return messages[i]
-  }
-  return undefined
 }
 
 function createPlainMessage(ctx: RunContext, id: string, text: string, interrupted: boolean): ChatMessage {
@@ -1117,7 +1228,7 @@ function createToolContext(
   block: ToolUseBlock,
   messageId: string,
   escapeApproved: boolean,
-  overrides: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean } = {}
+  overrides: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean; planMode?: boolean } = {}
 ): ToolContext {
   const opts = ctx.opts
   return {
@@ -1132,8 +1243,12 @@ function createToolContext(
     depth: overrides.depth ?? ctx.depth,
     readOnly: overrides.readOnly ?? ctx.readOnly,
     escapeApproved,
+    attachedFiles: opts.attachedFiles ?? [],
     demo: ctx.demo,
     goal: overrides.goal !== undefined ? overrides.goal : ctx.currentGoal,
+    planMode: overrides.planMode !== undefined ? overrides.planMode : ctx.planMode,
+    getPlan: () => ctx.plan,
+    proposePlan: (plan) => proposePlanInRun(ctx, plan),
     emit: (event) => ctx.emit(event),
     updateGoal: overrides.goal === null ? () => null : (patch) => updateGoalInRun(ctx, patch),
     getTodos: () => ctx.todos,
@@ -1143,13 +1258,29 @@ function createToolContext(
     getArtifacts: () => ctx.artifacts,
     addArtifact: (artifact) => {
       ctx.artifacts = [...ctx.artifacts.filter((item) => item.id !== artifact.id), artifact]
-      ctx.emit({ type: 'artifacts_updated', artifacts: ctx.artifacts })
+      ctx.emit({ type: 'artifacts_updated', artifacts: ctx.artifacts, artifactId: artifact.id })
     },
+    ...(opts.webSearch ? { searchWeb: opts.webSearch } : {}),
+    ...(opts.ocrPdf ? { ocrPdf: opts.ocrPdf } : {}),
+    ...(opts.terminal ? { terminal: opts.terminal } : {}),
     askUser: async (request) => {
-      ctx.emit({ type: 'question_asked', request })
-      const answer = await abortable(opts.onAskUser(request), opts.signal)
-      ctx.emit({ type: 'question_answered', requestId: request.id, answer })
-      return answer
+      // 与审批共用同一条串行队列：并行子代理一次只弹一张交互卡
+      return runSerialized(ctx, async () => {
+        if (opts.signal.aborted) throw abortError()
+        ctx.emit({ type: 'question_asked', request })
+        try {
+          const answer = await abortable(opts.onAskUser(request), opts.signal)
+          ctx.emit({ type: 'question_answered', requestId: request.id, answer })
+          return answer
+        } catch (err) {
+          ctx.emit({
+            type: 'question_answered',
+            requestId: request.id,
+            answer: { value: 'cancelled', label: '已取消' }
+          })
+          throw err
+        }
+      })
     },
     progress: (note, progressOpts) => {
       ctx.emit({
@@ -1158,9 +1289,11 @@ function createToolContext(
         toolUseId: block.id,
         note,
         ...(progressOpts?.status ? { status: progressOpts.status } : {}),
-        ...(progressOpts?.title ? { title: progressOpts.title } : {})
+        ...(progressOpts?.title ? { title: progressOpts.title } : {}),
+        ...(progressOpts?.swarmTask ? { swarmTask: progressOpts.swarmTask } : {})
       })
     },
+    agents: opts.agents ?? [],
     runSubagent:
       overrides.allowSubagent === false
         ? async () => ({
@@ -1178,6 +1311,21 @@ function createToolContext(
  * Goal 模式：合并 update_goal 补丁 → 更新当前目标 → emit goal_updated（完整 Goal 快照）。
  * 返回更新后的 Goal（供工具结果使用）。
  */
+/**
+ * 计划模式：提交/替换本轮计划并广播。
+ * 计划先进入 pending，等待用户批准；批准与执行由主进程驱动。
+ */
+function proposePlanInRun(ctx: RunContext, plan: SessionPlan): SessionPlan {
+  const next: SessionPlan = {
+    ...plan,
+    status: 'pending',
+    updatedAt: Date.now()
+  }
+  ctx.plan = next
+  ctx.emit({ type: 'plan_updated', plan: { ...next }, planMode: true })
+  return next
+}
+
 function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   if (!ctx.currentGoal) return null
   const now = Date.now()
@@ -1201,7 +1349,7 @@ function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   return next
 }
 
-/* ── 子代理（只读、深度 1） ───────────────────────────────────── */
+/* ── 子代理（与主代理同权限链、深度 1） ───────────────────────── */
 
 /**
  * 子代理循环（R9.1：与主代理**权限完全一致**）：
@@ -1218,11 +1366,39 @@ async function runSubagentLoop(
   toolUseId: string
 ): Promise<SubagentResult> {
   const opts = parent.opts
-  const emitProgress = (note: string, status: ToolStatus = 'running'): void => {
-    parent.emit({ type: 'tool_progress', messageId, toolUseId, note, status })
+  const role: SubagentRole | undefined =
+    request.role ?? parent.opts.agents?.find((item) => item.name === 'general')
+  const roleTitle = role?.title ?? '子代理'
+  const emitProgress = (note: string, status: ToolStatus = 'running', stepCount?: number): void => {
+    parent.emit({
+      type: 'tool_progress',
+      messageId,
+      toolUseId,
+      note: `${roleTitle} · ${note}`,
+      status,
+      ...(typeof stepCount === 'number' ? { stepCount } : {}),
+      ...(request.swarmTask
+        ? {
+            swarmTask: {
+              ...request.swarmTask,
+              status: 'running' as const,
+              note,
+              ...(typeof stepCount === 'number' ? { stepCount } : {})
+            }
+          }
+        : {})
+    })
   }
-  // 与主代理一致的工具集（去掉 task 防嵌套、去掉 update_goal 防止子代理篡改父目标）
-  const subagentTools = parent.tools.filter((tool) => tool.name !== 'task' && tool.name !== 'update_goal')
+  // 与主代理一致的工具集；去掉嵌套 task/swarm、update_goal、todo_write，再按角色白名单过滤
+  const allowed = role?.tools ? new Set(role.tools) : null
+  const subagentTools = parent.tools.filter(
+    (tool) =>
+      tool.name !== 'task' &&
+      tool.name !== 'swarm' &&
+      tool.name !== 'update_goal' &&
+      tool.name !== 'todo_write' &&
+      (!allowed || allowed.has(tool.name))
+  )
   const systemPrompt = [
     buildSystemPrompt({
       workspace: opts.workspace,
@@ -1232,10 +1408,13 @@ async function runSubagentLoop(
       modelLabel: opts.model.label,
       tools: subagentTools
     }),
-    '## 子代理',
-    '你是主代理派出的子代理。你拥有与主代理相同的工具与权限：可以读文件、写文件、运行命令、调用 MCP；',
-    '涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批，审批记录归属本轮主任务。',
-    '你不能创建新的子代理，也不能更新父任务的目标状态；请把结论与真实产出路径返回给主代理。'
+    `## 子代理：${roleTitle}`,
+    role?.systemPrompt ??
+      '你是主代理派出的子代理。你拥有与主代理相同的工具与权限：可以读文件、写文件、运行命令、调用 MCP；涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批。',
+    role?.readOnly
+      ? '当前角色是只读的：只分析、检索和给出结论，不要尝试写文件、执行命令或调用外部 MCP。'
+      : '涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批，审批记录归属本轮主任务。',
+    '你不能创建新的子代理、不能更新父任务的目标状态，也不要改动主任务的计划面板；请把结论与真实产出路径返回给主代理。'
   ].join('\n\n')
   const firstMessage: ChatMessage = {
     id: newId('msg'),
@@ -1261,11 +1440,25 @@ async function runSubagentLoop(
   let lastError: string | undefined
   let outcome: SubagentResult['status'] = 'exhausted'
   const failedTools: string[] = []
+  const changedFiles = new Map<string, Record<string, unknown>>()
 
+  try {
   for (let step = 1; step <= SUBAGENT_MAX_STEPS; step += 1) {
     if (opts.signal.aborted) throw abortError()
     steps = step
-    emitProgress(`子代理第 ${step} 步：分析中…`)
+    // 子代理没有主代理的模型摘要通道：上下文过长时用本地摘要折叠早期步骤，避免直接超窗
+    const localPlan = planCompaction(messages, systemPrompt, opts.model.contextWindow, { keepRecent: 6 })
+    let compactedStep = false
+    if (localPlan.shouldCompact) {
+      const older = messages.slice(0, localPlan.cutIndex)
+      messages.splice(
+        0,
+        messages.length,
+        ...applyCompaction(messages, localPlan.cutIndex, localExtractSummary(older))
+      )
+      compactedStep = true
+    }
+    emitProgress(`第 ${step} 步：${compactedStep ? '已折叠早期步骤，继续分析…' : '分析中…'}`, 'running', step)
     const assistant: ChatMessage = {
       id: newId('msg'),
       role: 'assistant',
@@ -1275,7 +1468,6 @@ async function runSubagentLoop(
     }
     let text = ''
     const streamedCalls: ToolUseBlock[] = []
-    const pending = new Map<number, { id: string; name: string; args: string }>()
     let requestUsage: Usage = { inputTokens: 0, outputTokens: 0 }
     try {
       for await (const event of iterateWithAbort(
@@ -1285,7 +1477,10 @@ async function runSubagentLoop(
           tools: subagentTools,
           signal: opts.signal,
           workspace: opts.workspace,
-          maxTokens: Math.min(opts.model.maxOutput ?? SUBAGENT_MAX_OUTPUT, SUBAGENT_MAX_OUTPUT)
+          maxTokens: Math.min(opts.model.maxOutput ?? SUBAGENT_MAX_OUTPUT, SUBAGENT_MAX_OUTPUT),
+          ...(opts.reasoningEffort && opts.reasoningEffort !== 'auto' && opts.model.reasoningStyle
+            ? { reasoning: { effort: opts.reasoningEffort, style: opts.model.reasoningStyle } }
+            : {})
         }),
         opts.signal
       )) {
@@ -1293,31 +1488,30 @@ async function runSubagentLoop(
           case 'text_delta':
             text += event.text
             break
-          case 'tool_call_start': {
-            pending.set(event.index, { id: event.id, name: event.name, args: '' })
-            break
-          }
-          case 'tool_call_delta': {
-            const existing = pending.get(event.index)
-            if (existing) existing.args += event.argsDelta
-            break
-          }
           case 'tool_call_end': {
             const input = event.input ?? {}
+            // 与主代理共用唯一 id 分配：并行子代理/主代理的工具 id 不会撞到同一快照目录
+            const toolUseId = allocateToolUseId(parent, event.id)
+            if (event.parseError) parent.toolParseErrors.set(toolUseId, event.parseError)
             streamedCalls.push({
               type: 'tool_use',
-              id: event.id,
+              id: toolUseId,
               name: event.name,
               title: toolTitleFor(event.name, input),
               category: toolCategory(event.name),
               input,
               status: 'running'
             })
-            pending.delete(event.index)
             break
           }
           case 'usage':
-            requestUsage = { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens }
+            requestUsage = {
+              inputTokens: event.usage.inputTokens,
+              outputTokens: event.usage.outputTokens,
+              ...(typeof event.usage.cacheReadTokens === 'number'
+                ? { cacheReadTokens: event.usage.cacheReadTokens }
+                : {})
+            }
             break
           case 'notice':
             emitProgress(event.message, 'running')
@@ -1334,6 +1528,9 @@ async function runSubagentLoop(
     }
     usage.inputTokens += requestUsage.inputTokens
     usage.outputTokens += requestUsage.outputTokens
+    if (typeof requestUsage.cacheReadTokens === 'number') {
+      usage.cacheReadTokens = (usage.cacheReadTokens ?? 0) + requestUsage.cacheReadTokens
+    }
 
     if (text.trim()) assistant.content.push({ type: 'text', text })
     for (const call of streamedCalls) assistant.content.push(call)
@@ -1341,7 +1538,7 @@ async function runSubagentLoop(
     messages.push(assistant)
     summary = text.trim() || summary
     if (text.trim()) {
-      emitProgress(`子代理：${text.replace(/\s+/g, ' ').trim().slice(0, 80)}`)
+      emitProgress(text.replace(/\s+/g, ' ').trim().slice(0, 80))
     }
 
     if (streamedCalls.length === 0) {
@@ -1379,21 +1576,61 @@ async function runSubagentLoop(
         failedTools.push('update_goal：仅主代理可用')
         continue
       }
+      if (call.name === 'todo_write') {
+        call.result = {
+          ok: false,
+          output: '',
+          error: '子代理不能修改主任务的计划面板。',
+          hint: '请把步骤进展写进最终结论，由主代理更新计划。'
+        }
+        call.status = 'error'
+        call.finishedAt = Date.now()
+        failedTools.push('todo_write：仅主代理可用')
+        continue
+      }
       const runResult = await runToolCallWithPermissions(parent, call, {
         mode: 'subagent',
         parentMessageId: messageId,
         parentToolUseId: toolUseId,
+        ...(request.swarmTask ? { swarmTask: request.swarmTask } : {}),
         toolContextOverrides: {
-          readOnly: parent.readOnly,
+          readOnly: parent.readOnly || role?.readOnly === true,
           depth: parent.depth + 1,
           goal: null,
-          allowSubagent: false
+          allowSubagent: false,
+          planMode: false
         }
       })
       if (runResult.interrupted || opts.signal.aborted) throw abortError()
       if (call.result && call.result.ok === false) {
         failedTools.push(`${call.name}：${call.result.error ?? call.result.output ?? '未知错误'}`)
       }
+      const meta = call.result?.ok === true ? (call.result.meta as Record<string, unknown> | undefined) : undefined
+      if (meta && typeof meta.absolutePath === 'string' && typeof meta.afterHash === 'string') {
+        const existing = changedFiles.get(meta.absolutePath)
+        if (existing) {
+          existing.afterHash = meta.afterHash
+        } else {
+          changedFiles.set(meta.absolutePath, {
+            absolutePath: meta.absolutePath,
+            created: meta.created === true,
+            beforeHash: typeof meta.beforeHash === 'string' ? meta.beforeHash : null,
+            afterHash: meta.afterHash,
+            ...(typeof meta.snapshotPath === 'string' ? { snapshotPath: meta.snapshotPath } : {})
+          })
+        }
+      }
+    }
+  }
+
+  } finally {
+    // 子代理的 token 也属于本次用户运行；计入父用量，避免并行子代理的成本/计费不可见
+    if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+      parent.usage = addUsage(parent.usage, {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        ...(typeof usage.cacheReadTokens === 'number' ? { cacheReadTokens: usage.cacheReadTokens } : {})
+      })
     }
   }
 
@@ -1405,8 +1642,10 @@ async function runSubagentLoop(
     summary: truncateText(summary || '（子代理没有给出最终结论）', 4000),
     steps,
     usage,
+    ...(role ? { role: role.name } : {}),
     ...(lastError ? { error: lastError } : {}),
-    ...(failedTools.length > 0 ? { failedTools: failedTools.slice(0, 20) } : {})
+    ...(failedTools.length > 0 ? { failedTools: failedTools.slice(0, 20) } : {}),
+    ...(changedFiles.size > 0 ? { changedFiles: [...changedFiles.values()].slice(0, 100) } : {})
   }
 }
 
@@ -1432,19 +1671,31 @@ async function maybeCompact(ctx: RunContext): Promise<void> {
   const older = ctx.messages.slice(0, plan.cutIndex)
   let summaryText: string
   try {
-    summaryText = await summarizeHistory({
+    const summary = await summarizeHistory({
       provider: ctx.opts.provider,
       model: ctx.opts.model,
       signal: ctx.opts.signal,
       older
     })
+    summaryText = summary.text
     if (!summaryText.trim()) throw new Error('摘要为空')
+    if (summary.usage) {
+      // 摘要请求也是真实消耗；计入本轮用量，但不要覆盖当前对话的 contextUsed
+      ctx.usage = addUsage(ctx.usage, {
+        inputTokens: summary.usage.inputTokens,
+        outputTokens: summary.usage.outputTokens,
+        ...(typeof summary.usage.cacheReadTokens === 'number' ? { cacheReadTokens: summary.usage.cacheReadTokens } : {})
+      })
+    }
   } catch (err) {
     if (isAbortError(err) || ctx.opts.signal.aborted) throw err
     summaryText = localExtractSummary(older)
     ctx.emit({ type: 'notice', level: 'warn', message: '自动摘要失败，已用本地摘要压缩历史，对话可以继续。' })
   }
   ctx.messages = applyCompaction(ctx.messages, plan.cutIndex, summaryText)
+  ctx.compacted = true
+  // 压缩后旧的 provider usage 已不代表当前上下文，改用新消息估算，避免上下文条停留在压缩前
+  ctx.lastRequestUsage = null
   const after = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
   ctx.emit({ type: 'compaction', phase: 'finished', savedTokens: Math.max(0, plan.estimatedTokens - after) })
   ctx.emit({ type: 'usage_updated', usage: currentUsage(ctx) })
@@ -1458,8 +1709,11 @@ interface SummarizeHistoryOptions {
 }
 
 /** 用模型把较早的历史压成结构化摘要（供自动压缩与手动 /compact 共用） */
-async function summarizeHistory(options: SummarizeHistoryOptions): Promise<string> {
-  const serialized = serializeMessagesForSummary(options.older)
+async function summarizeHistory(options: SummarizeHistoryOptions): Promise<{ text: string; usage?: Usage }> {
+  // 摘要请求本身也要装进上下文：小窗口模型（8k/16k）不能直接塞 24k 字符
+  const contextWindow = options.model.contextWindow > 0 ? options.model.contextWindow : 32_000
+  const summaryInputChars = Math.max(2_000, Math.min(24_000, Math.floor(contextWindow * 0.35)))
+  const serialized = serializeMessagesForSummary(options.older, summaryInputChars)
   const system =
     '你是对话压缩器。把给定的历史对话压缩成结构化的中文摘要，必须保留：用户的目标与偏好、已确认的事实和数字、已创建/修改的文件路径与改动、未完成的事项、重要约束。' +
     '不要编造信息，不要评论，不要调用工具。直接输出摘要正文。'
@@ -1470,6 +1724,7 @@ async function summarizeHistory(options: SummarizeHistoryOptions): Promise<strin
     createdAt: Date.now()
   }
   let text = ''
+  let usage: Usage | undefined
   for await (const event of iterateWithAbort(
     options.provider.stream({
       system,
@@ -1482,8 +1737,9 @@ async function summarizeHistory(options: SummarizeHistoryOptions): Promise<strin
     options.signal
   )) {
     if (event.type === 'text_delta') text += event.text
+    else if (event.type === 'usage') usage = event.usage
   }
-  return truncateText(text.trim(), 6000)
+  return { text: truncateText(text.trim(), 6000), usage }
 }
 
 /* ── 手动 /compact 入口（主进程可直接调用） ───────────────────── */
@@ -1507,6 +1763,8 @@ export interface CompactSessionResult {
   compacted: boolean
   savedTokens: number
   summary?: string
+  /** 摘要请求自身的 token 用量（计入会话总用量） */
+  summaryUsage?: Usage
   error?: ResultError
   reason?: 'below-threshold' | 'no-safe-cut'
 }
@@ -1528,8 +1786,11 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
   }
   const older = messages.slice(0, plan.cutIndex)
   let summaryText: string
+  let summaryUsage: Usage | undefined
   try {
-    summaryText = await summarizeHistory({ provider, model, signal, older })
+    const summary = await summarizeHistory({ provider, model, signal, older })
+    summaryText = summary.text
+    summaryUsage = summary.usage
     if (!summaryText.trim()) throw new Error('摘要为空')
   } catch (err) {
     if (isAbortError(err) || signal.aborted) {
@@ -1543,7 +1804,8 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
     messages: compactedMessages,
     compacted: true,
     savedTokens: Math.max(0, plan.estimatedTokens - after),
-    summary: summaryText
+    summary: summaryText,
+    ...(summaryUsage ? { summaryUsage } : {})
   }
 }
 

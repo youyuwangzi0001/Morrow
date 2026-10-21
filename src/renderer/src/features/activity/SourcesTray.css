@@ -1,0 +1,190 @@
+/* 会话级来源面板：金色编号 + 可展开列表 */
+
+.sources-tray {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--gold);
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+  overflow: hidden;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.sources-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+  transition: background var(--dur-fast) ease;
+}
+
+.sources-head:hover {
+  background: var(--surface);
+}
+
+.sources-icon {
+  flex: 0 0 auto;
+  color: var(--gold);
+  opacity: 0.9;
+}
+
+.sources-title {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.sources-count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-xs);
+  background: var(--gold-ghost);
+  color: var(--gold);
+  font-size: 9.5px;
+  line-height: 15px;
+}
+
+.sources-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.sources-hint {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.sources-chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.sources-tray.is-expanded .sources-chevron {
+  transform: rotate(180deg);
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  margin: 0;
+  padding: 0 12px 10px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sources-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sources-group + .sources-group {
+  margin-top: 4px;
+}
+
+.sources-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0 3px;
+}
+
+.sources-group-query {
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.sources-group-provider {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.sources-group-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.sources-rank {
+  flex: 0 0 auto;
+  width: 24px;
+  color: var(--gold);
+  font-size: 10px;
+  line-height: 18px;
+  opacity: 0.9;
+}
+
+.sources-body {
+  min-width: 0;
+}
+
+.sources-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.sources-link:hover {
+  color: var(--gold-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sources-link svg {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.sources-link-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources-snippet {
+  display: -webkit-box;
+  margin: 3px 0 2px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sources-url {
+  display: block;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme='light'] .sources-tray {
+  background: var(--surface);
+}

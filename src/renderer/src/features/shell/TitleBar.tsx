@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Folder, LayoutGrid, MessageCircle, Minus, PanelLeft, PanelRight, Square, Target, Wrench, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronDown, Folder, Ghost, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
 import { findModel } from '@shared/models'
 import { useAppStore } from '../../state/store'
-import { openWorkbench } from '../workbench/events'
-import { Dropdown, IconButton, type DropdownItem } from '../../ui'
+import { IconButton } from '../../ui'
 import {
   contextSnapshot,
   contextSourceLabel,
@@ -12,7 +11,7 @@ import {
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
 import './TitleBar.css'
 
-/** 当前会话标题：双击（或 F2）就地重命名 */
+/** 当前对话标题：双击（或 F2）就地重命名 */
 function SessionTitle(): React.JSX.Element {
   const session = useAppStore((s) => s.session)
   const activeSessionId = useAppStore((s) => s.activeSessionId)
@@ -77,15 +76,33 @@ function SessionTitle(): React.JSX.Element {
           startEditing()
         }
       }}
-      title={activeSessionId ? '双击重命名这条对话' : undefined}
-      aria-label={activeSessionId ? `当前对话：${title}，双击重命名` : '当前对话：新对话'}
+      title={
+        session?.temporary
+          ? '临时对话：关闭应用后消失，不进入历史与搜索。双击可重命名'
+          : activeSessionId
+            ? '双击重命名这条对话'
+            : undefined
+      }
+      aria-label={
+        session?.temporary
+          ? `当前是临时对话：${title}，不会保存`
+          : activeSessionId
+            ? `当前对话：${title}，双击重命名`
+            : '当前对话：新对话'
+      }
     >
       <span className="truncate">{title}</span>
+      {session?.temporary ? (
+        <span className="tb-temp-badge mono">
+          <Ghost size={10} strokeWidth={1.6} aria-hidden />
+          临时
+        </span>
+      ) : null}
     </button>
   )
 }
 
-/** 当前工作区（点击切换文件夹） */
+/** 当前文件夹（点击切换） */
 function WorkspaceChip(): React.JSX.Element {
   const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace)
   const pickWorkspace = useAppStore((s) => s.pickWorkspace)
@@ -96,106 +113,14 @@ function WorkspaceChip(): React.JSX.Element {
     <button
       type="button"
       className={['tb-workspace', workspace ? '' : 'is-empty'].filter(Boolean).join(' ')}
-      title={running ? '生成中，结束后再切换工作区' : (workspace ?? '选择一个工作文件夹')}
-      aria-label={workspace ? `当前工作区：${workspace}，点击切换` : '未选择工作区，点击选择文件夹'}
+      title={running ? '生成中，结束后再切换文件夹' : (workspace ?? '选择一个文件夹')}
+      aria-label={workspace ? `当前文件夹：${workspace}，点击切换` : '未选择文件夹，点击选择'}
       onClick={() => void pickWorkspace()}
       disabled={running}
     >
       <Folder size={13} strokeWidth={1.5} aria-hidden />
       <span className="tb-workspace-name truncate">{name ?? '未选择文件夹'}</span>
       <ChevronDown size={11} strokeWidth={1.5} aria-hidden />
-    </button>
-  )
-}
-
-/** 模型 chip：下拉切换模型，末尾可进设置管理连接；未连接时圆点为锈红并直接去设置 */
-function ModelChip(): React.JSX.Element {
-  const settings = useAppStore((s) => s.settings)
-  const session = useAppStore((s) => s.session)
-  const setModel = useAppStore((s) => s.setModel)
-  const openSettings = useAppStore((s) => s.openSettings)
-  const ref = session?.model ?? settings.defaultModel
-  const model = findModel(settings.providers, ref)
-
-  const items = useMemo<DropdownItem[]>(() => {
-    const list: DropdownItem[] = []
-    const available = settings.providers.filter(
-      (provider) =>
-        provider.enabled &&
-        (provider.kind === 'demo' || provider.apiKeyStored || provider.id === ref.providerId)
-    )
-    for (const provider of available) {
-      for (const info of provider.models) {
-        const current = provider.id === ref.providerId && info.id === ref.modelId
-        list.push({
-          id: `${provider.id}:${info.id}`,
-          label: current ? `${info.label}（当前）` : info.label,
-          shortcut: provider.kind === 'demo' ? '离线' : provider.name,
-          onSelect: () => void setModel(info.id, provider.id)
-        })
-      }
-    }
-    list.push({ id: 'manage', label: '管理模型连接…', separatorBefore: true, onSelect: openSettings })
-    return list
-  }, [settings.providers, ref.providerId, ref.modelId, setModel, openSettings])
-
-  const disconnected = !useAppStore((s) => s.hasAnyApiKey) && ref.providerId !== 'demo'
-
-  return (
-    <Dropdown
-      ariaLabel="切换模型"
-      align="end"
-      trigger={({ onClick, ...rest }) => (
-        <button
-          type="button"
-          className={['tb-model', model ? '' : 'is-muted', disconnected ? 'is-disconnected' : '']
-            .filter(Boolean)
-            .join(' ')}
-          onClick={disconnected ? openSettings : onClick}
-          title={
-            disconnected
-              ? '模型未连接，点这里去设置里填 API Key'
-              : model
-                ? `${model.label}${model.note ? ` · ${model.note}` : ''}；点击切换`
-                : '选择模型'
-          }
-          aria-label={disconnected ? '模型未连接，打开设置' : `当前模型：${model?.label ?? '未选择'}，点击切换`}
-          {...rest}
-        >
-          <span className={['tb-model-dot', disconnected ? 'is-offline' : ''].join(' ')} aria-hidden />
-          <span className="tb-model-label truncate">{model?.label ?? '选择模型'}</span>
-        </button>
-      )}
-      items={items}
-    />
-  )
-}
-
-/** 会话模式小 chip：显示当前「聊天 / 工作」，点击切换（运行中由 store 提示先停止） */
-function ModeChip(): React.JSX.Element | null {
-  const session = useAppStore((s) => s.session)
-  const setSessionMode = useAppStore((s) => s.setSessionMode)
-  if (!session) return null
-  const chat = session.mode === 'chat'
-  const next = chat ? 'work' : 'chat'
-  const detail = chat
-    ? '当前：聊天模式（只讨论，不改文件、不跑命令）。点击切到工作模式。'
-    : '当前：工作模式（可读写文件、执行命令，受权限档位约束）。点击切到聊天模式。'
-  return (
-    <button
-      type="button"
-      className={['tb-mode', chat ? 'is-chat' : 'is-work'].join(' ')}
-      title={detail}
-      aria-label={`${detail} 当前模式可点击切换`}
-      aria-pressed={chat}
-      onClick={() => void setSessionMode(next)}
-    >
-      {chat ? (
-        <MessageCircle size={13} strokeWidth={1.5} aria-hidden />
-      ) : (
-        <Wrench size={13} strokeWidth={1.5} aria-hidden />
-      )}
-      <span className="tb-mode-label">{chat ? '聊天' : '工作'}</span>
     </button>
   )
 }
@@ -236,12 +161,13 @@ function ContextMeter(): React.JSX.Element | null {
   )
 }
 
-/** 目标指示：只在当前会话有 goal 时出现，靠近模型 chip，不挤压窗控 */
+/** 目标指示：只在当前对话有 goal 时出现，靠近模型 chip，不挤压窗控 */
 function GoalIndicator(): React.JSX.Element | null {
-  const goal = useAppStore((s) => s.session?.goal ?? null)
+  const session = useAppStore((s) => s.session)
+  const goal = session?.goal ?? null
   const run = useAppStore((s) => s.run)
   if (!goal) return null
-  const running = !!run && goal.status === 'active'
+  const running = !!run && goal.status === 'active' && run.sessionId === session?.id
   const detail = [
     goal.objective,
     `${GOAL_STATUS_LABEL[goal.status]} · 第 ${goal.round}/${goal.maxRounds} 轮`,
@@ -266,7 +192,24 @@ function GoalIndicator(): React.JSX.Element | null {
   )
 }
 
-/** 画布开关：未打开时打开（优先选最近产物），已打开时收起 */
+/** 底部终端开关 */
+function TerminalToggle(): React.JSX.Element {
+  const open = useAppStore((s) => s.terminalOpen)
+  const toggleTerminal = useAppStore((s) => s.toggleTerminal)
+  return (
+    <IconButton
+      label={open ? '隐藏终端' : '打开终端'}
+      size={30}
+      active={open}
+      className="tb-terminal-toggle"
+      onClick={toggleTerminal}
+    >
+      <SquareTerminal size={15} strokeWidth={1.5} aria-hidden />
+    </IconButton>
+  )
+}
+
+/** 画布开关：未打开时打开（优先选最近成品），已打开时收起 */
 function CanvasToggle(): React.JSX.Element {
   const open = useAppStore((s) => s.canvas.open)
   const toggleCanvas = useAppStore((s) => s.toggleCanvas)
@@ -331,8 +274,8 @@ function WindowControls(): React.JSX.Element {
 }
 
 /**
- * 无边框标题栏：拖动区 + 当前工作区 + 居中会话标题（双击重命名）
- * + 模型 / 上下文 / 画布开关 + 命令面板入口 + 窗口控制（唯一允许直连 window.morrow 的地方）。
+ * 无边框标题栏：拖动区 + 当前文件夹 + 居中对话标题（双击重命名）
+ * + 目标 / 上下文状态 + 画布开关 + 窗口控制（唯一允许直连 window.morrow 的地方）。
  */
 export function TitleBar(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
@@ -344,6 +287,9 @@ export function TitleBar(): React.JSX.Element {
   return (
     <header className={['titlebar', 'tb-root', 'drag-region', isMac ? 'is-mac' : ''].filter(Boolean).join(' ')}>
       <div className="tb-left no-drag">
+        <span className="tb-app-brand serif" aria-label="Morrow">
+          Morrow
+        </span>
         <IconButton label="收起侧栏 (Ctrl+B)" onClick={toggleSidebar} size={30} active={!sidebarCollapsed}>
           <PanelLeft size={15} strokeWidth={1.5} aria-hidden />
         </IconButton>
@@ -361,15 +307,11 @@ export function TitleBar(): React.JSX.Element {
       </div>
 
       <div className="tb-right no-drag">
-        <ModelChip />
-        <ModeChip />
         <GoalIndicator />
         <ContextMeter />
         <span className="tb-sep" aria-hidden />
+        <TerminalToggle />
         <CanvasToggle />
-        <IconButton label="打开工作台 (Ctrl+Shift+W)" onClick={() => openWorkbench()} size={30}>
-          <LayoutGrid size={14} strokeWidth={1.5} aria-hidden />
-        </IconButton>
         <WindowControls />
       </div>
     </header>

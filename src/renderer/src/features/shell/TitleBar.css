@@ -27,6 +27,21 @@
   min-width: 0;
 }
 
+/* 应用字标：顶栏最左侧；与 30px 侧栏按钮共用同一条垂直中线 */
+.tb-app-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0 8px 0 7px;
+  color: var(--gold);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
 /* 当前工作区 chip */
 .tb-workspace {
   display: inline-flex;
@@ -77,6 +92,9 @@
 }
 
 .tb-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   max-width: min(46vw, 520px);
   padding: 3px 10px;
   border-radius: var(--r-xs);
@@ -98,6 +116,21 @@
 
 .tb-title.is-muted {
   color: var(--text-3);
+}
+
+.tb-temp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid rgba(200, 174, 125, 0.35);
+  border-radius: var(--r-full);
+  color: var(--gold);
+  background: var(--gold-ghost);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
 }
 
 .tb-title-input {
@@ -128,61 +161,6 @@
   height: 16px;
   margin: 0 2px;
   background: var(--line);
-}
-
-/* 模型 chip */
-.tb-model {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 210px;
-  height: 26px;
-  padding: 0 11px;
-  border: 1px solid transparent;
-  border-radius: var(--r-xs);
-  color: var(--text-2);
-  font-size: 12px;
-  transition:
-    background var(--dur-fast) ease,
-    border-color var(--dur-fast) ease,
-    color var(--dur-fast) ease;
-  -webkit-app-region: no-drag;
-}
-
-.tb-model:hover {
-  border-color: var(--line);
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.tb-model.is-muted {
-  color: var(--text-3);
-}
-
-.tb-model-dot {
-  width: 5px;
-  height: 5px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--patina);
-  box-shadow: 0 0 0 2px var(--patina-dim);
-}
-
-.tb-model-dot.is-offline {
-  background: var(--rust);
-  box-shadow: 0 0 0 2px var(--rust-dim);
-}
-
-.tb-model.is-disconnected {
-  color: var(--text-3);
-}
-
-.tb-model.is-disconnected:hover {
-  color: var(--text-2);
-}
-
-.tb-model-label {
-  max-width: 170px;
 }
 
 /* 上下文环：默认金，压力升高转为琥珀/锈红 */
@@ -254,54 +232,6 @@
     max-width: 96px;
   }
 
-  .tb-model-label {
-    max-width: 118px;
-  }
-}
-
-/* R5：模型下拉可能较长（多 provider/多模型），限制高度并滚动 */
-.dropdown-menu {
-  max-height: min(440px, calc(100vh - 96px));
-  overflow-y: auto;
-}
-
-/* R8：显式会话模式 chip（聊天 / 工作，可点击切换；不挤压窗控） */
-.tb-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 9px;
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-full);
-  background: var(--surface-inset);
-  color: var(--text-2);
-  font-size: 10.5px;
-  transition:
-    background var(--dur-fast) ease,
-    border-color var(--dur-fast) ease,
-    color var(--dur-fast) ease;
-  -webkit-app-region: no-drag;
-}
-
-.tb-mode:hover {
-  border-color: var(--line-gold);
-  background: var(--gold-ghost);
-  color: var(--text);
-}
-
-.tb-mode.is-chat {
-  color: var(--gold-bright);
-  border-color: var(--line-gold);
-}
-
-.tb-mode.is-work {
-  color: var(--text-2);
-}
-
-.tb-mode-label {
-  letter-spacing: 0.02em;
 }
 
 /* R6：目标指示（有 goal 时才出现，不挤压窗控） */

@@ -1,0 +1,149 @@
+/* 运行中心：多会话活动任务 */
+
+.run-center {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--patina);
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+  overflow: hidden;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+
+.run-center-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+}
+
+.run-center-head:hover {
+  background: var(--surface);
+}
+
+.run-center-icon {
+  flex: 0 0 auto;
+  color: var(--patina);
+}
+
+.run-center-title {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.run-center-count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--patina-dim);
+  border-radius: var(--r-xs);
+  background: var(--patina-dim);
+  color: var(--patina);
+  font-size: 9.5px;
+  line-height: 15px;
+}
+
+.run-center-hint {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.run-center-chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.run-center.is-expanded .run-center-chevron {
+  transform: rotate(180deg);
+}
+
+.run-center-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 190px;
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.run-center-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.run-center-item.is-waiting .run-center-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+
+.run-center-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  border: 1px solid var(--patina);
+  background: var(--patina);
+}
+
+.run-center-item.is-current .run-center-dot {
+  border-color: var(--gold);
+  background: var(--gold);
+  animation: spine-breathe 1.8s ease-in-out infinite;
+}
+
+.run-center-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.run-center-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.run-center-main:hover .run-center-name {
+  color: var(--text);
+}
+
+.run-center-meta {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.run-center-stop {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.run-center-stop:hover {
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+[data-theme='light'] .run-center {
+  background: var(--surface);
+}

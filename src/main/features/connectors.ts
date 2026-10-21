@@ -12,6 +12,7 @@
  * - 测试连接是用户显式动作，仍走 URL 协议 + SSRF 校验后再真实连接。
  */
 import { registerFeatureHandler } from '../feature-ipc'
+import { resolveWorkspaceDir } from './workspace-roots'
 import type {
   ConnectorSaveInput,
   ConnectorScope,
@@ -20,8 +21,13 @@ import type {
 import {
   deleteConnector,
   getConnector,
+  getConnectorCatalog,
   getConnectorPaths,
-  getConnectorTemplates,
+  connectorOAuthStatus,
+  detectConnectorRuntime,
+  installCatalogConnector,
+  revokeConnectorOAuth,
+  startConnectorOAuth,
   listConnectorTools,
   listConnectors,
   saveConnector,
@@ -39,10 +45,15 @@ export const CONNECTOR_CHANNELS = {
   setEnabled: 'feature:connectors:set-enabled',
   test: 'feature:connectors:test',
   tools: 'feature:connectors:tools',
-  templates: 'feature:connectors:templates',
+  catalog: 'feature:connectors:catalog',
+  runtime: 'feature:connectors:runtime',
+  install: 'feature:connectors:install',
   paths: 'feature:connectors:paths',
   trustWorkspace: 'feature:connectors:trust-workspace',
-  secretStatus: 'feature:connectors:secret-status'
+  secretStatus: 'feature:connectors:secret-status',
+  oauthStart: 'feature:connectors:oauth-start',
+  oauthStatus: 'feature:connectors:oauth-status',
+  oauthRevoke: 'feature:connectors:oauth-revoke'
 } as const
 
 export type ConnectorChannel = (typeof CONNECTOR_CHANNELS)[keyof typeof CONNECTOR_CHANNELS]
@@ -67,7 +78,7 @@ function readWorkspace(payload: Record<string, unknown>, scope: ConnectorScope):
   const workspace = payload.workspace
   if (typeof workspace !== 'string' || !workspace.trim()) throw new Error('工作区级连接器需要 workspace 路径。')
   if (workspace.length > 4096) throw new Error('workspace 路径过长。')
-  return workspace
+  return resolveWorkspaceDir(workspace, '工作区级连接器只能操作已登记的工作区。')
 }
 
 function readString(payload: Record<string, unknown>, key: string, options: { required?: boolean; max?: number } = {}): string | undefined {
@@ -146,6 +157,30 @@ function readSaveInput(payload: Record<string, unknown>, scope: ConnectorScope, 
   if (transportRaw !== undefined && transportRaw !== null && transportRaw !== 'stdio' && transportRaw !== 'http' && transportRaw !== 'sse' && transportRaw !== 'streamable-http') {
     throw new Error('transport 只能是 stdio / http / sse。')
   }
+  const env = readSecretFields(payload, 'env')
+  const headers = readSecretFields(payload, 'headers')
+  let oauth: ConnectorSaveInput['oauth']
+  if (payload.oauth === null) {
+    oauth = null
+  } else if (payload.oauth !== undefined) {
+    const raw = payload.oauth
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('参数「oauth」应该是一个对象或 null。')
+    const record = raw as Record<string, unknown>
+    const authorizationUrl = readString(record, 'authorizationUrl', { max: 2048 })
+    const tokenUrl = readString(record, 'tokenUrl', { max: 2048 })
+    const clientId = readString(record, 'clientId', { max: 300 })
+    if (authorizationUrl || tokenUrl || clientId) {
+      if (!authorizationUrl || !tokenUrl || !clientId) {
+        throw new Error('OAuth 需要同时提供 authorizationUrl、tokenUrl 与 clientId。')
+      }
+      oauth = {
+        authorizationUrl,
+        tokenUrl,
+        clientId,
+        ...(readStringArray(record, 'scopes') ? { scopes: readStringArray(record, 'scopes')!.slice(0, 20) } : {})
+      }
+    }
+  }
   return {
     scope,
     ...(workspace ? { workspace } : {}),
@@ -157,12 +192,13 @@ function readSaveInput(payload: Record<string, unknown>, scope: ConnectorScope, 
     ...(readString(payload, 'cwd', { max: 4096 }) ? { cwd: readString(payload, 'cwd', { max: 4096 }) } : {}),
     ...(readString(payload, 'url', { max: 2048 }) ? { url: readString(payload, 'url', { max: 2048 }) } : {}),
     ...(readString(payload, 'description', { max: 500 }) ? { description: readString(payload, 'description', { max: 500 }) } : {}),
-    ...(readSecretFields(payload, 'env') ? { env: readSecretFields(payload, 'env') } : {}),
-    ...(readSecretFields(payload, 'headers') ? { headers: readSecretFields(payload, 'headers') } : {}),
+    ...(env ? { env } : {}),
+    ...(headers ? { headers } : {}),
     ...(readNumber(payload, 'timeoutMs', 250, 120_000) !== undefined ? { timeoutMs: readNumber(payload, 'timeoutMs', 250, 120_000) } : {}),
     ...(readNumber(payload, 'retries', 0, 5) !== undefined ? { retries: readNumber(payload, 'retries', 0, 5) } : {}),
     ...(readBoolean(payload, 'allowPrivateNetwork') !== undefined ? { allowPrivateNetwork: readBoolean(payload, 'allowPrivateNetwork') } : {}),
-    ...(readBoolean(payload, 'enabled') !== undefined ? { enabled: readBoolean(payload, 'enabled') } : {})
+    ...(readBoolean(payload, 'enabled') !== undefined ? { enabled: readBoolean(payload, 'enabled') } : {}),
+    ...(oauth !== undefined ? { oauth } : {})
   }
 }
 
@@ -228,21 +264,67 @@ registerFeatureHandler(CONNECTOR_CHANNELS.tools, (payload) => {
   return listConnectorTools(scope, name, readWorkspace(record, scope))
 })
 
-registerFeatureHandler(CONNECTOR_CHANNELS.templates, () => getConnectorTemplates())
+registerFeatureHandler(CONNECTOR_CHANNELS.catalog, () => ({ entries: getConnectorCatalog() }))
+
+registerFeatureHandler(CONNECTOR_CHANNELS.runtime, (payload) => {
+  if (payload === undefined || payload === null) return detectConnectorRuntime()
+  const record = asRecord(payload)
+  if (record.force !== undefined && typeof record.force !== 'boolean') throw new Error('force 必须是布尔值。')
+  return detectConnectorRuntime(record.force === true)
+})
+
+registerFeatureHandler(CONNECTOR_CHANNELS.install, async (payload) => {
+  const record = asRecord(payload)
+  const scope = readScope(record)
+  const id = readString(record, 'id', { required: true, max: 64 }) as string
+  const token = readString(record, 'token', { max: 8192 })
+  const folder = readString(record, 'folder', { max: 4096 })
+  if (record.test !== undefined && typeof record.test !== 'boolean') throw new Error('test 必须是布尔值。')
+  return installCatalogConnector({
+    scope,
+    ...(scope === 'workspace' ? { workspace: readWorkspace(record, scope) } : {}),
+    id,
+    ...(token ? { token } : {}),
+    ...(folder ? { folder } : {}),
+    test: record.test !== false
+  })
+})
 
 registerFeatureHandler(CONNECTOR_CHANNELS.paths, (payload) => {
   const record = asRecord(payload)
-  const workspace = typeof record.workspace === 'string' && record.workspace.trim() ? record.workspace.trim() : null
+  const requested = typeof record.workspace === 'string' && record.workspace.trim() ? record.workspace.trim() : ''
+  const workspace = requested ? resolveWorkspaceDir(requested, '连接器路径只能查看已登记的工作区。') : null
   return getConnectorPaths(workspace)
 })
 
 registerFeatureHandler(CONNECTOR_CHANNELS.trustWorkspace, (payload) => {
   const record = asRecord(payload)
   const workspace = readString(record, 'workspace', { required: true, max: 4096 }) as string
-  return trustWorkspaceConfig(workspace)
+  return trustWorkspaceConfig(resolveWorkspaceDir(workspace, '只能信任已登记工作区的连接器配置。'))
 })
 
 registerFeatureHandler(CONNECTOR_CHANNELS.secretStatus, () => {
   const paths = getConnectorPaths()
   return { mode: paths.secretStorage, secretsPath: paths.secretsPath }
+})
+
+registerFeatureHandler(CONNECTOR_CHANNELS.oauthStart, (payload) => {
+  const record = asRecord(payload)
+  const scope = readScope(record)
+  const name = readString(record, 'name', { required: true, max: 64 }) as string
+  return startConnectorOAuth({ scope, name, workspace: readWorkspace(record, scope) })
+})
+
+registerFeatureHandler(CONNECTOR_CHANNELS.oauthStatus, (payload) => {
+  const record = asRecord(payload)
+  const scope = readScope(record)
+  const name = readString(record, 'name', { required: true, max: 64 }) as string
+  return connectorOAuthStatus(scope, name, readWorkspace(record, scope))
+})
+
+registerFeatureHandler(CONNECTOR_CHANNELS.oauthRevoke, (payload) => {
+  const record = asRecord(payload)
+  const scope = readScope(record)
+  const name = readString(record, 'name', { required: true, max: 64 }) as string
+  return { removed: revokeConnectorOAuth(scope, name, readWorkspace(record, scope)) }
 })

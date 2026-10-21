@@ -32,6 +32,33 @@ describe('SSEParser', () => {
     expect(frames[0].data).toBe('line1\nline2')
   })
 
+  it('混合换行（LF 结束数据行 + CRLF 空行）也能正确分帧', () => {
+    const parser = new SSEParser()
+    const frames = parser.push('data: a\n\r\ndata: b\r\n\r\ndata: c\r\r')
+    expect(frames.map((frame) => frame.data)).toEqual(['a', 'b'])
+    // 块尾孤立 \r 需要等 flush 确认不是 CRLF 的前半
+    expect(parser.flush().map((frame) => frame.data)).toEqual(['c'])
+  })
+
+  it('CRLF 被 chunk 边界切开时不会丢帧', () => {
+    const parser = new SSEParser()
+    expect(parser.push('data: hello\r')).toEqual([])
+    expect(parser.push('\n\r')).toEqual([])
+    expect(parser.push('\ndata: world\r\n\r\n').map((frame) => frame.data)).toEqual(['hello', 'world'])
+  })
+
+  it('event 字段只作用于当前帧，不泄漏到下一帧', () => {
+    const parser = new SSEParser()
+    const frames = parser.push('event: ping\ndata: 1\n\ndata: 2\n\n')
+    expect(frames.map((frame) => frame.event)).toEqual(['ping', null])
+  })
+
+  it('只有 event/id 没有 data 的帧不派发', () => {
+    const parser = new SSEParser()
+    expect(parser.push('event: ping\nid: 3\n\n')).toEqual([])
+    expect(parser.push('data: ok\n\n').map((frame) => frame.data)).toEqual(['ok'])
+  })
+
   it('flush 收下没有末尾空行的最后一帧', () => {
     const parser = new SSEParser()
     expect(parser.push('data: {"done":true}')).toEqual([])

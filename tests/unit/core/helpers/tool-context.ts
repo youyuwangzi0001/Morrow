@@ -2,7 +2,7 @@
  * 测试辅助：构造 ToolContext（文档类工具测试用）。
  * 与 tools.test.ts 里的 makeCtx 保持一致；单独抽出来供新测试复用，不改旧测试。
  */
-import type { Artifact, TodoItem } from '../../../../src/shared/types'
+import type { Artifact, SessionPlan, TodoItem } from '../../../../src/shared/types'
 import type { ToolContext } from '../../../../src/core/types'
 import type { TempWorkspace } from './workspace'
 
@@ -17,6 +17,7 @@ export function makeToolContext(
   overrides: Partial<ToolContext> = {},
   state: ToolContextState = { todos: [], artifacts: [], progressNotes: [] }
 ): ToolContext {
+  let plan: SessionPlan | null = null
   return {
     sessionId: 'session_docs',
     runId: 'run_docs',
@@ -31,6 +32,12 @@ export function makeToolContext(
     escapeApproved: false,
     demo: false,
     goal: null,
+    planMode: false,
+    getPlan: () => plan,
+    proposePlan: (next) => {
+      plan = next
+      return next
+    },
     emit: () => undefined,
     updateGoal: () => null,
     getTodos: () => state.todos,

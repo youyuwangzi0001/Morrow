@@ -32,6 +32,7 @@
  */
 import { dialog, shell } from 'electron'
 import { resolveDataDir } from '../services/paths'
+import { ensureBuiltinSkills } from '../services/builtin-skills'
 import {
   createSkillsFeatureHandlers,
   createSkillsService,
@@ -91,7 +92,9 @@ const effects: SkillsFeatureEffects = {
  * 同时把用户技能库路径/状态文件注入 core 环境变量。
  */
 export function registerSkillsFeature(register: RegisterFeatureChannel): void {
-  const service = createSkillsService({ dataDir: resolveDataDir() })
+  const dataDir = resolveDataDir()
+  ensureBuiltinSkills(dataDir)
+  const service = createSkillsService({ dataDir })
   installSkillsRuntimeEnv(service)
   for (const [channel, handler] of Object.entries(createSkillsFeatureHandlers(service, effects))) {
     register(channel, handler)

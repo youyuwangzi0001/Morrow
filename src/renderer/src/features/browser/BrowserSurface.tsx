@@ -10,7 +10,7 @@
  * `feature:browser:set-bounds` 同步给主进程，窗口缩放/全屏时持续同步。
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Globe, Loader2, RotateCw, ShieldAlert, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, Loader2, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
 import './browser.css'
 
 export interface BrowserSurfaceProps {
@@ -31,6 +31,7 @@ interface BrowserState {
   canGoBack: boolean
   canGoForward: boolean
   error: { code: string; message: string } | null
+  automationActive: boolean
 }
 
 interface DownloadRequest {
@@ -40,6 +41,15 @@ interface DownloadRequest {
   suggestedPath: string
   totalBytes: number
   createdAt: number
+}
+
+interface DownloadResolved {
+  id: string
+  filename?: string
+  allow: boolean
+  path?: string
+  error?: string
+  pending?: boolean
 }
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string; hint?: string } }
@@ -52,7 +62,8 @@ const EMPTY_STATE: BrowserState = {
   loading: false,
   canGoBack: false,
   canGoForward: false,
-  error: null
+  error: null,
+  automationActive: false
 }
 
 const featureApi = () => window.morrow?.features
@@ -85,16 +96,24 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
   const [address, setAddress] = useState('')
   const [bootError, setBootError] = useState<string | null>(null)
   const [download, setDownload] = useState<DownloadRequest | null>(null)
+  const [savedDownload, setSavedDownload] = useState<{ filename: string; path: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const addressRef = useRef<HTMLInputElement | null>(null)
   const lastBounds = useRef<string>('')
   const initialUrlSent = useRef(false)
+  // WebContentsView 是原生层，永远盖在渲染层之上；有底部浮层时给原生视图让出空间
+  const overlayReserve = download ? 150 : savedDownload ? 64 : actionError ? 96 : 0
+  const overlayReserveRef = useRef(overlayReserve)
+  overlayReserveRef.current = overlayReserve
 
   const applyResult = useCallback((next: BrowserState, error: unknown = null) => {
     setState(next)
     if (!next.error) setActionError(null)
-    if (error) setActionError(error instanceof Error ? error.message : String(error))
+    if (error) {
+      setSavedDownload(null)
+      setActionError(error instanceof Error ? error.message : String(error))
+    }
   }, [])
 
   /* ── 订阅主进程状态/下载事件 ─────────────────────────────────── */
@@ -105,15 +124,103 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
       if (payload && typeof payload === 'object') setState(payload as BrowserState)
     })
     const offDownload = api.on('feature:browser:download', (payload) => {
-      if (payload && typeof payload === 'object') setDownload(payload as DownloadRequest)
+      if (!payload || typeof payload !== 'object') return
+      setSavedDownload(null)
+      setActionError(null)
+      setDownload(payload as DownloadRequest)
     })
-    const offResolved = api.on('feature:browser:download-resolved', () => setDownload(null))
+    const offResolved = api.on('feature:browser:download-resolved', (payload) => {
+      setDownload(null)
+      if (!payload || typeof payload !== 'object') return
+      const resolved = payload as DownloadResolved
+      if (resolved.pending) return
+      if (resolved.allow && resolved.path) {
+        setActionError(null)
+        setSavedDownload({ filename: resolved.filename || '文件', path: resolved.path })
+        return
+      }
+      if (resolved.error) {
+        setSavedDownload(null)
+        setActionError(resolved.error)
+      }
+    })
     return () => {
       offState?.()
       offDownload?.()
       offResolved?.()
     }
   }, [])
+
+  /* ── viewport bounds 持续同步（含窗口缩放/全屏） ─────────────── */
+  const measureBounds = useCallback((): { x: number; y: number; width: number; height: number } | null => {
+    const element = viewportRef.current
+    if (!element) return null
+    const rect = element.getBoundingClientRect()
+    const height = Math.round(rect.height) - overlayReserveRef.current
+    if (rect.width < 1 || height < 1) return null
+    return {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height
+    }
+  }, [])
+
+  const syncBounds = useCallback(
+    (force = false) => {
+      const bounds = measureBounds()
+      const api = featureApi()
+      if (!bounds || !api?.invoke) return
+      const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`
+      if (!force && key === lastBounds.current) return
+      lastBounds.current = key
+      void api.invoke('feature:browser:set-bounds', bounds).catch(() => undefined)
+    },
+    [measureBounds]
+  )
+
+  useLayoutEffect(() => {
+    if (!open) {
+      lastBounds.current = ''
+      return
+    }
+    syncBounds()
+    const element = viewportRef.current
+    if (!element) return
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncBounds()) : null
+    observer?.observe(element)
+    const onResize = (): void => {
+      requestAnimationFrame(() => syncBounds())
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open, syncBounds])
+
+  /* 原生视图创建后强制补一次 bounds：首次同步可能早于 surface 创建而被丢弃 */
+  useEffect(() => {
+    if (!open || !state.open) return
+    lastBounds.current = ''
+    const frame = requestAnimationFrame(() => syncBounds(true))
+    return () => cancelAnimationFrame(frame)
+  }, [open, state.open, syncBounds])
+
+  /* 下载确认/提示出现或消失时重新让位，避免原生网页盖住浮层 */
+  useEffect(() => {
+    if (!open || !state.open) return
+    lastBounds.current = ''
+    const frame = requestAnimationFrame(() => syncBounds(true))
+    return () => cancelAnimationFrame(frame)
+  }, [download, savedDownload, actionError, open, state.open, syncBounds])
+
+  // Agent 导航时地址栏跟随当前页面；用户正在输入时不抢焦点内容
+  useEffect(() => {
+    if (!state.url) return
+    if (document.activeElement === addressRef.current) return
+    setAddress(state.url)
+  }, [state.url])
 
   /* ── open/initialUrl 驱动 ───────────────────────────────────── */
   useEffect(() => {
@@ -127,11 +234,25 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
       try {
         const current = await invoke<BrowserState>('feature:browser:get-state')
         if (cancelled) return
+        if (current.open) {
+          // 面板可能只是被隐藏过（surface 还活着）：重新展开时恢复原生视图
+          const shown = await invoke<BrowserState>('feature:browser:set-visible', { visible: true })
+          if (!cancelled) {
+            setState(shown)
+            setAddress(shown.url || '')
+          }
+          return
+        }
         setState(current)
         setAddress(current.url || '')
         if (!current.open && initialUrl && !initialUrlSent.current) {
           initialUrlSent.current = true
-          const next = await invoke<BrowserState>('feature:browser:open', { url: initialUrl })
+          // 创建原生视图时一并传 bounds，避免 view 以 0×0/隐藏状态存在
+          const bounds = measureBounds()
+          const next = await invoke<BrowserState>('feature:browser:open', {
+            url: initialUrl,
+            ...(bounds ? { bounds } : {})
+          })
           if (!cancelled) {
             setState(next)
             setAddress(next.url)
@@ -144,46 +265,7 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
     return () => {
       cancelled = true
     }
-  }, [open, initialUrl])
-
-  /* ── viewport bounds 持续同步（含窗口缩放/全屏） ─────────────── */
-  const syncBounds = useCallback(() => {
-    const element = viewportRef.current
-    const api = featureApi()
-    if (!element || !api?.invoke) return
-    const rect = element.getBoundingClientRect()
-    if (rect.width < 1 || rect.height < 1) return
-    const bounds = {
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height)
-    }
-    const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`
-    if (key === lastBounds.current) return
-    lastBounds.current = key
-    void api.invoke('feature:browser:set-bounds', bounds).catch(() => undefined)
-  }, [])
-
-  useLayoutEffect(() => {
-    if (!open) {
-      lastBounds.current = ''
-      return
-    }
-    syncBounds()
-    const element = viewportRef.current
-    if (!element) return
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncBounds()) : null
-    observer?.observe(element)
-    const onResize = (): void => {
-      requestAnimationFrame(syncBounds)
-    }
-    window.addEventListener('resize', onResize)
-    return () => {
-      observer?.disconnect()
-      window.removeEventListener('resize', onResize)
-    }
-  }, [open, syncBounds])
+  }, [open, initialUrl, measureBounds])
 
   /* ── 面板卸载时关闭浏览器视图，避免留下孤儿 WebContentsView ─── */
   useEffect(
@@ -201,16 +283,20 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
       setActionError(null)
       try {
         const current = await invoke<BrowserState>('feature:browser:get-state')
+        const bounds = measureBounds()
         const next = current.open
           ? await invoke<BrowserState>('feature:browser:navigate', { url: trimmed })
-          : await invoke<BrowserState>('feature:browser:open', { url: trimmed })
+          : await invoke<BrowserState>('feature:browser:open', {
+              url: trimmed,
+              ...(bounds ? { bounds } : {})
+            })
         applyResult(next)
         setAddress(next.url || trimmed)
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err))
       }
     },
-    [applyResult]
+    [applyResult, measureBounds]
   )
 
   const runAction = useCallback(
@@ -244,10 +330,20 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
     []
   )
 
+  const revealSavedDownload = useCallback(async () => {
+    if (!savedDownload) return
+    try {
+      await invoke('feature:browser:reveal-download', { path: savedDownload.path })
+    } catch (err) {
+      setSavedDownload(null)
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }, [savedDownload])
+
   if (!open) return null
 
   const ready = state.open
-  const title = state.title?.trim() || (state.url ? displayHost(state.url) : '新浏览页')
+  const title = state.title?.trim() || (state.url ? displayHost(state.url) : '空白页')
   const error = state.error ?? (bootError ? { code: 'FEATURE', message: bootError } : null)
 
   return (
@@ -305,7 +401,7 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
             className="browser-address-input mono"
             value={address}
             spellCheck={false}
-            placeholder="输入网址，例如 example.com 或 http://localhost:3000"
+            placeholder="输入网址，例如 example.com"
             aria-label="浏览器地址栏"
             onChange={(event) => setAddress(event.target.value)}
             onFocus={(event) => event.currentTarget.select()}
@@ -317,6 +413,12 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
         </form>
 
         <div className="browser-meta">
+          {state.automationActive ? (
+            <span className="browser-agent-chip" role="status" title="Morrow 正在操作这个页面">
+              <Sparkles size={11} strokeWidth={1.6} aria-hidden />
+              Morrow 操作中
+            </span>
+          ) : null}
           <span className="browser-title truncate" title={title}>
             {title}
           </span>
@@ -350,7 +452,7 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
           <div className="browser-empty">
             <p className="browser-empty-title serif">在 Morrow 里打开一个网页</p>
             <p className="browser-empty-hint">在地址栏输入网址，或让 Morrow 在任务里打开网页并操作它。</p>
-            <p className="browser-empty-note mono">只打开网页链接；网页与本机隔离；摄像头、麦克风、定位、通知默认关闭。</p>
+            <p className="browser-empty-note mono">网页只在这里打开；摄像头、麦克风、定位和通知默认关闭。</p>
           </div>
         ) : null}
         {state.loading && !state.url ? <div className="browser-loading-hint mono">正在打开…</div> : null}
@@ -378,9 +480,21 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
         </div>
       ) : null}
 
+      {savedDownload ? (
+        <div className="browser-toast is-success" role="status">
+          <span className="browser-toast-message truncate">已保存「{savedDownload.filename}」</span>
+          <button type="button" className="browser-toast-action" onClick={() => void revealSavedDownload()}>
+            打开文件夹
+          </button>
+          <button type="button" aria-label="关闭提示" onClick={() => setSavedDownload(null)}>
+            <X size={13} strokeWidth={1.5} />
+          </button>
+        </div>
+      ) : null}
+
       {actionError ? (
         <div className="browser-toast" role="status">
-          <span>{actionError}</span>
+          <span className="browser-toast-message">{actionError}</span>
           <button type="button" aria-label="关闭提示" onClick={() => setActionError(null)}>
             <X size={13} strokeWidth={1.5} />
           </button>

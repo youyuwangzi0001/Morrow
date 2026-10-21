@@ -1,8 +1,8 @@
-import { memo, type ComponentPropsWithoutRef, type ReactNode } from 'react'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import { memo, useMemo, type ComponentPropsWithoutRef, type ReactNode } from 'react'
+import ReactMarkdown, { type Components, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, ImageOff } from 'lucide-react'
 import { useAppStore } from '../../state/store'
 import { CodeBlock } from './CodeBlock'
 import './Markdown.css'
@@ -26,7 +26,37 @@ function extractText(children: ReactNode): string {
   return ''
 }
 
-const components: Components = {
+/**
+ * 渲染层只允许应用自身可信来源的图片：data:image、blob:、morrow-file:。
+ * 远程 http(s) 图片在 CSP 里本就被拦截，直接渲染只会出现破图；
+ * 这里改成带域名和「打开链接」的占位条，既避免破图，也不把 IP/Referer 发给第三方。
+ */
+const SAFE_IMAGE_SRC = /^(?:data:image\/|blob:|morrow-file:)/i
+
+/**
+ * react-markdown 默认会清空 data: 图片地址；这里显式放行应用可信图片协议。
+ * 相对链接保留用于展示/复制，但点击一律不导航（见 a 组件），避免把整个应用导航到 file://。
+ */
+const markdownUrlTransform: UrlTransform = (url, _key, node) => {
+  if (!url) return ''
+  if (/^(?:https?:\/\/|mailto:)/i.test(url)) return url
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return url
+  if (node.tagName === 'img' && SAFE_IMAGE_SRC.test(url)) return url
+  return ''
+}
+
+function imageFallbackLabel(src: string, alt?: string): string {
+  try {
+    const url = new URL(src)
+    if (url.protocol === 'http:' || url.protocol === 'https:') return `${alt || '远程图片'} · ${url.host}`
+  } catch {
+    // 非标准 URL：走通用文案
+  }
+  return alt || '图片无法显示'
+}
+
+function createComponents(streaming: boolean): Components {
+  return {
   h1: ({ children }) => <h1 className="md-h1">{children}</h1>,
   h2: ({ children }) => <h2 className="md-h2">{children}</h2>,
   h3: ({ children }) => <h3 className="md-h3">{children}</h3>,
@@ -53,9 +83,9 @@ const components: Components = {
         title={title}
         className={external ? 'md-link is-external' : 'md-link'}
         onClick={(event) => {
-          if (!external || !href) return
+          // 任何链接都不在应用窗口内导航：外部链接交给系统浏览器，其余保持只读
           event.preventDefault()
-          void useAppStore.getState().openExternal(href)
+          if (external && href) void useAppStore.getState().openExternal(href)
         }}
         {...rest}
       >
@@ -64,12 +94,41 @@ const components: Components = {
       </a>
     )
   },
-  img: ({ src, alt, title }) => (
-    <span className="md-image-wrap">
-      <img className="md-image" src={src} alt={alt ?? ''} title={title} loading="lazy" />
-      {alt ? <span className="md-image-caption">{alt}</span> : null}
-    </span>
-  ),
+  img: ({ src, alt, title }) => {
+    const raw = typeof src === 'string' ? src : ''
+    if (!SAFE_IMAGE_SRC.test(raw)) {
+      const external = /^https?:\/\//i.test(raw)
+      return (
+        <span className="md-image-unavailable" title={raw.length > 0 && raw.length <= 300 ? raw : undefined}>
+          <ImageOff size={13} strokeWidth={1.5} aria-hidden />
+          <span className="md-image-unavailable-label">{imageFallbackLabel(raw, alt ?? undefined)}</span>
+          {external ? (
+            <button
+              type="button"
+              className="md-image-unavailable-open"
+              onClick={() => void useAppStore.getState().openExternal(raw)}
+            >
+              打开链接
+            </button>
+          ) : null}
+        </span>
+      )
+    }
+    return (
+      <span className="md-image-wrap">
+        <img
+          className="md-image"
+          src={raw}
+          alt={alt ?? ''}
+          title={title}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+        {alt ? <span className="md-image-caption">{alt}</span> : null}
+      </span>
+    )
+  },
   table: ({ children, node: _node, ...rest }: DivProps) => (
     <div className="md-table-wrap">
       <table className="md-table" {...rest}>
@@ -97,7 +156,7 @@ const components: Components = {
     // 围栏代码块在 mdast 里以换行结尾；行内代码不含换行
     const isBlock = Boolean(language) || raw.includes('\n')
     if (!isBlock) return <code className="md-inline-code">{children}</code>
-    return <CodeBlock code={raw.replace(/\n$/, '')} language={language ?? null} />
+    return <CodeBlock code={raw.replace(/\n$/, '')} language={language ?? null} streaming={streaming} />
   },
   input: ({ type, checked, disabled, node: _node }) => {
     if (type !== 'checkbox') return null
@@ -107,6 +166,7 @@ const components: Components = {
       </span>
     )
   }
+  }
 }
 
 /**
@@ -114,9 +174,14 @@ const components: Components = {
  * 代码块交给 CodeBlock 异步高亮；流式时父组件控制重渲染频率。
  */
 export const Markdown = memo(function Markdown({ text, streaming = false }: MarkdownProps): React.JSX.Element {
+  const components = useMemo(() => createComponents(streaming), [streaming])
   return (
     <div className={['md', streaming ? 'is-streaming' : ''].join(' ')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkCjkFriendly]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
+        components={components}
+        urlTransform={markdownUrlTransform}
+      >
         {text}
       </ReactMarkdown>
     </div>

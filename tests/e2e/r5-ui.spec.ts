@@ -41,6 +41,21 @@ test.describe('R5 UI 交互', () => {
     const { page } = morrow
     await dismissOnboarding(page)
     await page.screenshot({ path: screenshotPath('r5-final-welcome.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('light')
+    })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await page.waitForTimeout(320)
+    await page.screenshot({ path: screenshotPath('r5-final-welcome-light.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('dark')
+    })
 
     const shell = page.locator('.app-sidebar-shell')
     await expect(shell).toHaveCount(1)
@@ -100,7 +115,7 @@ test.describe('R5 UI 交互', () => {
     await expect(page.locator('.canvas-root')).toHaveCount(0)
   })
 
-  test('设置：最新模型分组 / 上下文 Tab / 自动压缩开关', async () => {
+  test('设置：模型服务选择 / 上下文 Tab / 自动压缩开关', async () => {
     morrow = await launchMorrow({ name: 'r5-settings', waitForSelector: '.sidebar' })
     const { page } = morrow
     await dismissOnboarding(page)
@@ -110,31 +125,54 @@ test.describe('R5 UI 交互', () => {
     const dialog = page.locator('[role="dialog"]').first()
     await expect(dialog).toBeVisible()
 
-    // 分组、provider 名称与当前默认模型
-    for (const group of ['国内', '国际', '聚合平台', '本地']) {
-      await expect(dialog.getByText(group, { exact: true }).first()).toBeVisible()
-    }
-    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'OpenRouter（模型聚合）', 'Ollama（本地）', 'LM Studio（本地）']) {
+    // 服务选择器包含所有服务；当前默认模型与 DeepSeek 模型可见
+    await dialog.getByRole('button', { name: '选择模型服务' }).click()
+    const providerOptions = dialog.getByRole('option')
+    expect(await providerOptions.count()).toBeGreaterThanOrEqual(14)
+    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', '小米 MiMo', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'Meta（Muse）', 'OpenRouter（模型聚合）', 'Ollama（本地）', 'LM Studio（本地）']) {
       await expect(dialog.getByText(provider, { exact: true }).first()).toBeVisible()
     }
-    await expect(dialog.getByText(/可用模型会随服务商更新/)).toBeVisible()
+    await dialog.getByRole('button', { name: '选择模型服务' }).click()
+    await expect(dialog.getByText(/填上 API Key 就能用/)).toBeVisible()
     await expect(dialog.getByText('DeepSeek V4.1 Flash').first()).toBeVisible()
-    const providerCount = await dialog.locator('.st-provider').count()
-    expect(providerCount).toBeGreaterThanOrEqual(12)
+    await expect(dialog.locator('.st-provider')).toHaveCount(1)
     await page.waitForTimeout(450)
     await page.screenshot({ path: screenshotPath('r5-final-settings-models.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('light')
+    })
+    await page.waitForTimeout(320)
+    await page.screenshot({ path: screenshotPath('r5-final-settings-models-light.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('dark')
+    })
 
-    // 逐个 provider 检查最新模型
+    const pickProvider = async (label: string): Promise<void> => {
+      await dialog.getByRole('button', { name: '选择模型服务' }).click()
+      await dialog.getByRole('option').filter({ hasText: label }).click()
+    }
+
+    // 逐个服务检查最新模型
     const latestByProvider: Array<[string, string[]]> = [
       ['OpenAI', ['GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']],
       ['智谱 GLM（Z.AI）', ['GLM-5.3', 'GLM-5.3 Flash']],
       ['xAI Grok', ['Grok 4.7']],
       ['Google Gemini', ['Gemini 4 Argon', 'Gemini 3.8 Flash']],
       ['DeepSeek', ['DeepSeek V4.1 Flash', 'DeepSeek V4 Pro']],
-      ['Anthropic Claude', ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']]
+      ['Anthropic Claude', ['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']],
+      ['小米 MiMo', ['MiMo V2.6 Pro', 'MiMo V2.6 Flash']],
+      ['Meta（Muse）', ['Muse Spark 1.3']],
+      ['MiniMax', ['MiniMax M3', 'MiniMax M3.1 Flash']],
+      ['通义千问（阿里云）', ['Qwen3.8 Max', 'Qwen3.8 Flash Next']]
     ]
     for (const [provider, models] of latestByProvider) {
-      await dialog.getByRole('radio', { name: new RegExp(provider) }).click()
+      await pickProvider(provider)
       for (const model of models) {
         await expect(dialog.getByText(new RegExp(model)).first()).toBeVisible()
       }
@@ -143,8 +181,10 @@ test.describe('R5 UI 交互', () => {
         await page.screenshot({ path: screenshotPath('r5-final-settings-models-openai.png') })
       }
     }
+    await expect(dialog.getByText('Qwen Plus')).toHaveCount(0)
+    await expect(dialog.getByText('MiniMax M2.5')).toHaveCount(0)
     // 回到默认 provider，保持默认模型卡片与顶部一致
-    await dialog.getByRole('radio', { name: /DeepSeek/ }).click()
+    await pickProvider('DeepSeek')
 
     // 上下文 Tab
     await dialog.locator('#st-tab-context').click()
@@ -158,6 +198,68 @@ test.describe('R5 UI 交互', () => {
     expect(after.autoCompact).toBe(!before.autoCompact)
     await page.waitForTimeout(350)
     await page.screenshot({ path: screenshotPath('r5-final-settings-context.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('light')
+    })
+    await page.waitForTimeout(320)
+    await page.screenshot({ path: screenshotPath('r5-final-settings-context-light.png') })
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { setTheme: (value: string) => void } }
+      }).__morrowStore
+      store.getState().setTheme('dark')
+    })
+  })
+
+  test('设置：清除已保存密钥需二次确认，清除后连接状态同步', async () => {
+    morrow = await launchMorrow({ name: 'r5-clear-key', waitForSelector: '.sidebar' })
+    const { page } = morrow
+    await dismissOnboarding(page)
+    await page.evaluate(async () => {
+      const store = (window as unknown as {
+        __morrowStore: {
+          getState: () => {
+            settings: { providers: Array<Record<string, unknown>> }
+            saveProvider: (input: { config: Record<string, unknown>; apiKey: string }) => Promise<void>
+          }
+        }
+      }).__morrowStore.getState()
+      const provider = store.settings.providers.find((item) => item.id === 'deepseek')!
+      await store.saveProvider({ config: provider, apiKey: 'sk-e2e-clear-key' })
+    })
+    await page.evaluate(() => {
+      ;(window as unknown as { __morrowStore: { getState: () => { openSettings: () => void } } }).__morrowStore.getState().openSettings()
+    })
+    const dialog = page.locator('[role="dialog"]').first()
+    await expect(dialog).toBeVisible()
+    const clear = dialog.getByRole('button', { name: /清除 .* 的密钥/ })
+    await expect(clear).toBeVisible({ timeout: 10_000 })
+    await clear.click()
+    await expect(dialog.getByText('清除已保存的密钥？')).toBeVisible()
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('settings-clear-key-dark.png') })
+    await page.evaluate(() => {
+      ;(window as unknown as { __morrowStore: { getState: () => { setTheme: (theme: string) => void } } }).__morrowStore
+        .getState()
+        .setTheme('light')
+    })
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('settings-clear-key-light.png') })
+
+    await dialog.getByRole('button', { name: '确认清除' }).click()
+    await expect(dialog.getByText('已清除保存的密钥')).toBeVisible({ timeout: 10_000 })
+    await expect(dialog.getByRole('button', { name: /清除 .* 的密钥/ })).toHaveCount(0)
+    await expect
+      .poll(async () => {
+        const state = await storeState(page)
+        const settings = state.settings as { providers: Array<{ id: string; apiKeyStored: boolean }> }
+        return settings.providers.find((provider) => provider.id === 'deepseek')?.apiKeyStored
+      })
+      .toBe(false)
+    expect(Boolean((await storeState(page)).hasAnyApiKey)).toBe(false)
   })
 
   test('真实 DeepSeek 对话：上下文用量 = 最近一次请求 input+output', async () => {

@@ -1,17 +1,17 @@
 // 打包产物冒烟：真实启动「文件夹版」或「单文件便携 exe」，验证窗口出现、渲染正常并截图。
 //
 // 用法：
-//   node scripts/smoke-packaged.mjs                # 测单文件便携 exe（release/Morrow-<ver>-portable.exe）
-//   node scripts/smoke-packaged.mjs --folder       # 测便携文件夹版（release/Morrow-<ver>-portable/Morrow.exe）★推荐
+//   node scripts/smoke-packaged.mjs                # 测单文件便携 exe（deliver/Morrow-<ver>-portable.exe）
+//   node scripts/smoke-packaged.mjs --folder       # 测便携文件夹版（deliver/Morrow-<ver>-portable/Morrow.exe）★推荐
 //   node scripts/smoke-packaged.mjs --all          # 两种都测（最终验收用）
-//   node scripts/smoke-packaged.mjs --exe=<path>   # 指定任意 exe
+//   node scripts/smoke-packaged.mjs --exe=<path>   # 指定任意 exe（例如 C:/Temp 下的解压副本）
 //
 // 本机环境要点：
 // - 受限令牌下启动：必须 --no-sandbox；Chromium user-data-dir 与 Morrow data-dir 放项目 tmp/；
-// - 单文件 portable 是 NSIS 自解压外壳：启动时把整个应用解压到 %TEMP%，受限宿主 TEMP 不可写会报
-//   「Error writing temporary file」。所以单文件冒烟把 TEMP/TMP 指到项目 tmp/（并记录 tempMode）；
+// - 单文件版是自研启动器：首次把内嵌 zip 解压到 exe 同级 .morrow-runtime-<ver>，不依赖 %TEMP%；
+//   冒烟仍把 TEMP/TMP 指到项目 tmp/，用来模拟受限宿主并记录 tempMode；
 // - 文件夹版没有自解压步骤，默认**继承宿主 TEMP**启动（证明不依赖 TEMP），可用 --redirect-temp 强制定向；
-// - Playwright 的 _electron.launch 直连 Electron 主进程，穿过 NSIS 外壳不稳定；统一用
+// - Playwright 的 _electron.launch 直连 Electron 主进程，穿过自研启动器不稳定；统一用
 //   「--remote-debugging-port + chromium.connectOverCDP」连接，对两种形态都成立。
 //
 // 证据（docs/verification/）：
@@ -84,7 +84,7 @@ function taskkill(pid) {
   }
 }
 
-/** 等 CDP 端口就绪；若应用启动即退出（如 NSIS TEMP 错误）会尽快失败并带上退出码。 */
+/** 等 CDP 端口就绪；若应用启动即退出（如首次解压失败）会尽快失败并带上退出码。 */
 async function waitForCdp(port, child, log, timeoutMs = 90_000) {
   const started = Date.now()
   let lastError = ''
@@ -211,11 +211,12 @@ async function runSmoke(kind) {
   const stamp = Date.now()
   const startedAt = Date.now()
   const defaultExe = isFolder
-    ? join(root, 'release', `Morrow-${pkg.version}-portable`, 'Morrow.exe')
-    : join(root, 'release', `Morrow-${pkg.version}-portable.exe`)
+    ? join(root, 'deliver', `Morrow-${pkg.version}-portable`, 'Morrow.exe')
+    : join(root, 'deliver', `Morrow-${pkg.version}-portable.exe`)
   const exe = resolve(getArg('exe', defaultExe))
   const screenshotName = isFolder ? 'packaged-folder-smoke.png' : 'packaged-smoke.png'
-  const summaryPath = join(root, 'docs', 'verification', isFolder ? 'smoke-packaged-folder.json' : 'smoke-packaged.json')
+  const summaryName = getArg('summary', isFolder ? 'smoke-packaged-folder.json' : 'smoke-packaged.json')
+  const summaryPath = join(root, 'docs', 'verification', summaryName)
   const logPath = join(logsDir, `smoke-packaged-${kind}.log`)
   writeFileSync(logPath, '')
   const log = (message) => {
@@ -246,7 +247,7 @@ async function runSmoke(kind) {
   }
 
   if (!existsSync(exe)) {
-    result.error = `未找到打包产物 ${exe}。请先运行 node scripts/dist-portable.mjs --all`
+    result.error = `未找到打包产物 ${exe}。请先运行 npm run dist`
     writeFileSync(summaryPath, JSON.stringify(result, null, 2))
     log(`失败：${result.error}`)
     return result
@@ -272,7 +273,7 @@ async function runSmoke(kind) {
     ]
     const extraEnv = { MORROW_TEST: '1' }
     if (tempMode === 'workspace-redirect') {
-      // NSIS 自解压/临时文件指到工作区内（受限令牌可写）
+      // 启动器的临时文件/首次解压指到工作区内（受限令牌可写）
       extraEnv.TEMP = tempDir
       extraEnv.TMP = tempDir
       extraEnv.TMPDIR = tempDir
@@ -299,16 +300,16 @@ async function runSmoke(kind) {
     result.windowUrl = page.url()
     log(`窗口 URL：${page.url()}`)
 
-    // 3) 判断运行位置：文件夹版应在 release/<folder>/ 原地运行；单文件应发生在解压临时目录
-    const folderPathFragment = `/release/Morrow-${pkg.version}-portable/`
+    // 3) 判断运行位置：文件夹版应在 deliver/<folder>/ 原地运行；单文件应发生在 .morrow-runtime-<ver>
+    const folderPathFragment = `/${relative(dirname(exe)).replace(/\\/g, '/')}/`
     result.runsFromExtractedTemp = !page.url().includes(folderPathFragment.replace(/\//g, '/'))
     if (isFolder) {
       if (!page.url().includes(folderPathFragment.replace(/\//g, '/'))) {
         throw new Error(`文件夹版未在交付目录原地运行：${page.url()}`)
       }
-      log('运行位置校验：文件夹版在 release/ 原地运行（无自解压）✓')
+      log('运行位置校验：文件夹版在交付目录原地运行（无自解压）✓')
     } else if (result.runsFromExtractedTemp) {
-      log('运行位置：单文件 exe 已解压到临时目录运行（NSIS 自解压，符合预期）')
+      log('运行位置：单文件 exe 已解压到 .morrow-runtime-<ver> 运行（符合预期）')
     }
 
     // 4) 关掉首次引导层（--test-mode 下 store 可用），让截图展示主界面

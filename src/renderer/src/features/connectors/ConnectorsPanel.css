@@ -4,7 +4,9 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 480px;
+  /* 预留模态标题与内边距：外层不滚动，只在左右两栏内部滚动 */
+  height: min(calc(84vh - 140px), 760px);
+  min-height: 320px;
 }
 
 /* ── 顶栏 ─────────────────────────────────────────────────────── */
@@ -13,7 +15,16 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto;
   flex-wrap: wrap;
+}
+
+/* 顶部工具条/路径/提示不参与收缩，剩余高度由左右两栏内部滚动 */
+.conn-path,
+.conn-warn,
+.conn-workspace,
+.conn-notice {
+  flex: 0 0 auto;
 }
 
 .conn-top .btn:first-of-type {
@@ -94,7 +105,8 @@
   display: flex;
   align-items: stretch;
   gap: 18px;
-  min-height: 420px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .conn-list {
@@ -103,10 +115,10 @@
   gap: 4px;
   width: 250px;
   flex: 0 0 auto;
+  min-height: 0;
   padding-right: 16px;
   border-right: 1px solid var(--line);
   overflow-y: auto;
-  max-height: 520px;
 }
 
 .conn-item {
@@ -187,55 +199,16 @@
   display: none;
 }
 
-.conn-templates {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conn-template {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 8px;
-  border: none;
-  border-radius: var(--r-xs);
-  background: none;
-  color: var(--text-2);
-  font-size: 12px;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) ease,
-    color var(--dur-fast) ease;
-}
-
-.conn-template:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.conn-template-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ── 编辑区 ───────────────────────────────────────────────────── */
 
 .conn-detail {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
-  max-height: 520px;
   padding-right: 4px;
 }
 
@@ -343,15 +316,25 @@
 }
 
 .conn-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding-top: 4px;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-elev);
 }
 
 .conn-actions .btn:last-child {
   margin-left: auto;
+}
+
+.conn-action-hint {
+  margin: 0;
+  font-size: 11px;
 }
 
 /* ── 测试结果 ─────────────────────────────────────────────────── */
@@ -497,4 +480,107 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* MCP 资源 / 提示词目录（P1-14） */
+.conn-catalog {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+}
+
+.conn-catalog-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  color: var(--text-2);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.conn-catalog-sub {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.conn-catalog-list {
+  padding: 4px 6px 6px;
+}
+
+.conn-catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--r-xs);
+}
+
+.conn-catalog-row:hover {
+  background: var(--surface);
+}
+
+.conn-catalog-row.is-template .conn-catalog-name {
+  color: var(--text-3);
+}
+
+.conn-catalog-name {
+  flex: 0 1 auto;
+  max-width: 46%;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.conn-catalog-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.conn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.conn-copy:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+/* OAuth（P1-14） */
+.conn-oauth {
+  margin: 10px 0 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.conn-oauth-title {
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.conn-oauth-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.conn-oauth-status {
+  color: var(--text-3);
+  font-size: 10px;
 }

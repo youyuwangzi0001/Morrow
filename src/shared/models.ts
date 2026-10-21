@@ -14,7 +14,7 @@ const deepseekModels: ModelInfo[] = [
     maxOutput: 393_216,
     supportsTools: true,
     supportsReasoning: true,
-    note: '官方实测：可处理约 1M 内容 / 回复最多 384K，速度快、性价比高'
+    note: '速度快、性价比高'
   },
   {
     id: 'deepseek-v4-pro',
@@ -35,7 +35,7 @@ const kimiModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '可处理约 1M 内容，支持图片'
+    note: '支持图片输入'
   },
   {
     id: 'kimi-k2.7-code',
@@ -44,7 +44,7 @@ const kimiModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '面向代码与 Agent 的 256K 模型'
+    note: '面向代码与 Agent 任务'
   },
   {
     id: 'kimi-k2.6',
@@ -64,20 +64,30 @@ const qwenModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '通义千问旗舰，可处理约 1M 内容'
+    note: '通义千问旗舰，适合复杂任务'
   },
   {
-    id: 'qwen-plus',
-    label: 'Qwen Plus',
+    id: 'qwen3.8-flash-next',
+    label: 'Qwen3.8 Flash Next',
     contextWindow: 1_000_000,
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '成本更低的通用选择'
+    note: '最新高性价比版本，速度快，适合日常任务'
   }
 ]
 
 const anthropicModels: ModelInfo[] = [
+  {
+    id: 'claude-fable-5-1',
+    label: 'Claude Fable 5.1',
+    contextWindow: 1_000_000,
+    maxOutput: 128_000,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: '长程编程与复杂任务；自适应思考默认开启',
+    pricing: { inputPerMTok: 10, outputPerMTok: 50, cacheReadPerMTok: 2.5 }
+  },
   {
     id: 'claude-opus-5-5',
     label: 'Claude Opus 5.5',
@@ -85,7 +95,7 @@ const anthropicModels: ModelInfo[] = [
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,
-    note: 'Anthropic 旗舰，可处理约 1M 内容 / 回复最多 128K'
+    note: 'Anthropic 旗舰，适合长任务与复杂写作'
   },
   {
     id: 'claude-sonnet-5-5',
@@ -114,7 +124,7 @@ const openaiModels: ModelInfo[] = [
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,
-    note: 'OpenAI 当前默认旗舰（2026-10-09 发布），1.05M 上下文 / 128K 输出'
+    note: 'OpenAI 当前默认旗舰（2026-10-09 发布）'
   },
   {
     id: 'gpt-6-astra',
@@ -123,7 +133,7 @@ const openaiModels: ModelInfo[] = [
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,
-    note: '最复杂推理与编码旗舰（2026-09-04 发布），1.05M 上下文 / 128K 输出'
+    note: '最复杂推理与编码旗舰（2026-09-04 发布）'
   },
   {
     id: 'gpt-6-sol',
@@ -152,7 +162,7 @@ const geminiModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: 'Google 前沿旗舰（2026-10 上线）：可处理约 1M 内容；单次回复默认 65K，长内容可更长'
+    note: 'Google 前沿旗舰（2026-10 上线），适合超长资料'
   },
   {
     id: 'gemini-3.8-flash',
@@ -161,7 +171,7 @@ const geminiModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '高性价比档位（2026-10 最新 Flash），1M 输入 / 65K 输出'
+    note: '高性价比档位（2026-10 最新 Flash）'
   }
 ]
 
@@ -173,7 +183,7 @@ const glmModels: ModelInfo[] = [
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,
-    note: '智谱旗舰（2026-10-15），可处理约 1M 内容 / 回复最多 128K，默认深入思考'
+    note: '智谱旗舰（2026-10-15），默认深入思考'
   },
   {
     id: 'glm-5.3-flash',
@@ -188,21 +198,56 @@ const glmModels: ModelInfo[] = [
 
 const miniMaxModels: ModelInfo[] = [
   {
-    id: 'MiniMax-M3.1-Flash-Preview',
-    label: 'MiniMax M3.1 Flash Preview',
-    contextWindow: 524_288,
+    id: 'MiniMax-M3',
+    label: 'MiniMax M3',
+    contextWindow: 1_000_000,
+    maxOutput: 512_000,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: '擅长代码和 Agent 任务'
+  },
+  {
+    id: 'MiniMax-M3.1-Flash',
+    label: 'MiniMax M3.1 Flash',
+    contextWindow: 1_000_000,
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '官方 Codex 文档标注 512K 上下文'
+    note: '最新轻量版，速度优先'
+  }
+]
+
+const xiaomiModels: ModelInfo[] = [
+  {
+    id: 'mimo-v2.6-pro',
+    label: 'MiMo V2.6 Pro',
+    contextWindow: 1_048_576,
+    maxOutput: 131_072,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: '小米旗舰，擅长工具调用与复杂推理'
   },
   {
-    id: 'MiniMax-M2.5',
-    label: 'MiniMax M2.5',
-    contextWindow: 204_800,
-    maxOutput: 65_536,
+    id: 'mimo-v2.6-flash',
+    label: 'MiMo V2.6 Flash',
+    contextWindow: 1_048_576,
+    maxOutput: 131_072,
     supportsTools: true,
-    supportsReasoning: true
+    supportsReasoning: true,
+    note: '速度与成本优先'
+  }
+]
+
+const metaModels: ModelInfo[] = [
+  {
+    id: 'muse-spark-1.3',
+    label: 'Muse Spark 1.3',
+    contextWindow: 1_048_576,
+    maxOutput: 131_072,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: 'Meta 的 Agent 与编程模型',
+    pricing: { inputPerMTok: 1.25, outputPerMTok: 4.25, cacheReadPerMTok: 0.15 }
   }
 ]
 
@@ -214,7 +259,7 @@ const xaiModels: ModelInfo[] = [
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: 'xAI 当前旗舰（2026-09-21），500K 上下文，文本+图片输入'
+    note: 'xAI 当前旗舰（2026-09-21），支持图片输入'
   },
   {
     id: 'grok-4.1-fast',
@@ -284,6 +329,46 @@ const localModels: ModelInfo[] = [
 export const DEMO_PROVIDER_ID = 'demo'
 export const DEMO_MODEL_ID = 'morrow-demo'
 
+/** 参考价（美元 / 百万 tokens），仅用于成本估算；实际以服务商账单为准。 */
+const PRICING_TABLE: Array<[RegExp, { inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number }]> = [
+  [/deepseek.*flash/i, { inputPerMTok: 0.14, outputPerMTok: 0.28, cacheReadPerMTok: 0.014 }],
+  [/deepseek/i, { inputPerMTok: 0.55, outputPerMTok: 2.19, cacheReadPerMTok: 0.055 }],
+  [/kimi/i, { inputPerMTok: 0.6, outputPerMTok: 2.5 }],
+  [/claude.*fable/i, { inputPerMTok: 10, outputPerMTok: 50, cacheReadPerMTok: 2.5 }],
+  [/claude.*haiku/i, { inputPerMTok: 0.8, outputPerMTok: 4 }],
+  [/claude/i, { inputPerMTok: 3, outputPerMTok: 15, cacheReadPerMTok: 0.3 }],
+  [/muse.*spark/i, { inputPerMTok: 1.25, outputPerMTok: 4.25, cacheReadPerMTok: 0.15 }],
+  [/gpt-6|gpt-5/i, { inputPerMTok: 2.5, outputPerMTok: 10, cacheReadPerMTok: 0.25 }],
+  [/gemini.*flash/i, { inputPerMTok: 0.3, outputPerMTok: 1.2 }],
+  [/gemini/i, { inputPerMTok: 1.25, outputPerMTok: 5 }],
+  [/glm/i, { inputPerMTok: 0.6, outputPerMTok: 2.2 }],
+  [/grok/i, { inputPerMTok: 2, outputPerMTok: 10 }],
+  [/qwen/i, { inputPerMTok: 0.4, outputPerMTok: 1.2 }],
+  [/minimax/i, { inputPerMTok: 0.3, outputPerMTok: 1.2 }]
+]
+
+export function pricingForModel(modelId: string): ModelInfo['pricing'] {
+  const found = PRICING_TABLE.find(([pattern]) => pattern.test(modelId))
+  return found ? { ...found[1] } : undefined
+}
+
+/** 给内置模型补充推理映射与参考价；未知模型不猜测价格。 */
+function enrichModels(models: ModelInfo[], providerId: string): ModelInfo[] {
+  return models.map((model) => {
+    // OpenAI 兼容协议（DeepSeek/Kimi/Qwen/GLM 等）同样使用 reasoning_effort；
+    // 只有 Anthropic 走 thinking.budget_tokens。缺失 style 会导致 UI 隐藏推理选项。
+    const reasoningStyle =
+      model.reasoningStyle ??
+      (model.supportsReasoning ? (providerId === 'anthropic' ? 'thinking' : 'effort') : undefined)
+    const pricing = model.pricing ?? pricingForModel(model.id)
+    return {
+      ...model,
+      ...(reasoningStyle ? { reasoningStyle } : {}),
+      ...(pricing ? { pricing } : {})
+    }
+  })
+}
+
 export function builtinProviders(): ProviderConfig[] {
   return [
     {
@@ -291,7 +376,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'DeepSeek',
       baseUrl: 'https://api.deepseek.com/v1',
-      models: deepseekModels,
+      models: enrichModels(deepseekModels, 'deepseek'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -302,7 +387,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'Kimi（月之暗面）',
       baseUrl: 'https://api.moonshot.cn/v1',
-      models: kimiModels,
+      models: enrichModels(kimiModels, 'kimi'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -313,7 +398,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: '通义千问（阿里云）',
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      models: qwenModels,
+      models: enrichModels(qwenModels, 'qwen'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -324,7 +409,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: '智谱 GLM（Z.AI）',
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-      models: glmModels,
+      models: enrichModels(glmModels, 'glm'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -335,7 +420,18 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'MiniMax',
       baseUrl: 'https://api.minimax.io/v1',
-      models: miniMaxModels,
+      models: enrichModels(miniMaxModels, 'minimax'),
+      apiKeyStored: false,
+      enabled: true,
+      isBuiltin: true,
+      category: 'cn'
+    },
+    {
+      id: 'mimo',
+      kind: 'openai-compat',
+      name: '小米 MiMo',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+      models: enrichModels(xiaomiModels, 'mimo'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -346,7 +442,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'anthropic',
       name: 'Anthropic Claude',
       baseUrl: 'https://api.anthropic.com',
-      models: anthropicModels,
+      models: enrichModels(anthropicModels, 'anthropic'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -357,7 +453,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'OpenAI',
       baseUrl: 'https://api.openai.com/v1',
-      models: openaiModels,
+      models: enrichModels(openaiModels, 'openai'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -368,7 +464,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'Google Gemini',
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-      models: geminiModels,
+      models: enrichModels(geminiModels, 'gemini'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -379,7 +475,18 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'xAI Grok',
       baseUrl: 'https://api.x.ai/v1',
-      models: xaiModels,
+      models: enrichModels(xaiModels, 'xai'),
+      apiKeyStored: false,
+      enabled: true,
+      isBuiltin: true,
+      category: 'global'
+    },
+    {
+      id: 'meta',
+      kind: 'openai-compat',
+      name: 'Meta（Muse）',
+      baseUrl: 'https://api.meta.ai/v1',
+      models: enrichModels(metaModels, 'meta'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -390,7 +497,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'OpenRouter（模型聚合）',
       baseUrl: 'https://openrouter.ai/api/v1',
-      models: openRouterModels,
+      models: enrichModels(openRouterModels, 'openrouter'),
       apiKeyStored: false,
       enabled: true,
       isBuiltin: true,
@@ -401,7 +508,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'Ollama（本地）',
       baseUrl: 'http://127.0.0.1:11434/v1',
-      models: localModels.map((m) => ({ ...m, label: 'Ollama 本地模型（改成实际 ID）' })),
+      models: enrichModels(localModels, 'local').map((m) => ({ ...m, label: 'Ollama 本地模型（改成实际 ID）' })),
       apiKeyStored: false,
       enabled: false,
       isBuiltin: true,
@@ -412,7 +519,7 @@ export function builtinProviders(): ProviderConfig[] {
       kind: 'openai-compat',
       name: 'LM Studio（本地）',
       baseUrl: 'http://127.0.0.1:1234/v1',
-      models: localModels.map((m) => ({ ...m, label: 'LM Studio 本地模型（改成实际 ID）' })),
+      models: enrichModels(localModels, 'local').map((m) => ({ ...m, label: 'LM Studio 本地模型（改成实际 ID）' })),
       apiKeyStored: false,
       enabled: false,
       isBuiltin: true,
@@ -444,9 +551,20 @@ export const DEFAULT_MODEL: ModelRef = { providerId: 'deepseek', modelId: 'deeps
 
 export const DEMO_MODEL: ModelRef = { providerId: DEMO_PROVIDER_ID, modelId: DEMO_MODEL_ID }
 
+/**
+ * 老版本保存/同步的模型可能只有 supportsReasoning、没有 reasoningStyle。
+ * 这里统一补齐：Anthropic 用 thinking budget，其余 OpenAI 兼容协议用 reasoning_effort。
+ * demo 模型不推断，避免演示模式意外带出推理参数。
+ */
+export function normalizeReasoningStyle(model: ModelInfo, kind: ProviderConfig['kind']): ModelInfo {
+  if (model.reasoningStyle || model.supportsReasoning !== true || kind === 'demo') return model
+  return { ...model, reasoningStyle: kind === 'anthropic' ? 'thinking' : 'effort' }
+}
+
 export function findModel(providers: ProviderConfig[], ref: ModelRef): ModelInfo | null {
   const provider = providers.find((p) => p.id === ref.providerId)
-  return provider?.models.find((m) => m.id === ref.modelId) ?? null
+  const model = provider?.models.find((m) => m.id === ref.modelId) ?? null
+  return model && provider ? normalizeReasoningStyle(model, provider.kind) : null
 }
 
 export function defaultSettings(): Settings {
@@ -470,7 +588,22 @@ export function defaultSettings(): Settings {
     autoCompact: true,
     compactThreshold: 0.8,
     canvasWidth: 420,
-    layoutVersion: 2
+    layoutVersion: 2,
+    webSearch: {
+      enabled: false,
+      provider: 'tavily',
+      apiKeyStored: false,
+      maxResults: 5
+    },
+    closeToTray: true,
+    notifyOnFinish: true,
+    islandEnabled: true,
+    islandPosition: null,
+    reasoningEffort: 'auto',
+    answerStyle: 'balanced',
+    answerStyleCustom: '',
+    hooks: [],
+    terminalShell: ''
   }
 }
 

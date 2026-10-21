@@ -12,7 +12,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { launchMorrow, root, screenshotPath, type MorrowApp } from './launch'
-import { dismissOnboarding, waitForStoreReady } from './store'
+import { dismissOnboarding, openToolPanel, waitForStoreReady } from './store'
 
 const PANELS = ['技能库', '记忆中心', '项目', '连接器', '全局搜索', '内置浏览器']
 
@@ -45,6 +45,9 @@ test.describe('R10 UI 文案与布局复审', () => {
     const fixtureRoot = join(root, 'tmp', 'audit', 'r10', 'fixtures', 'ws-main')
     if (existsSync(fixtureRoot)) cpSync(fixtureRoot, workspace, { recursive: true })
     else mkdirSync(join(workspace, 'in'), { recursive: true })
+    // 不依赖审计 fixtures 是否生成：编辑器用例自己准备一个中文文本文件
+    mkdirSync(join(workspace, 'in'), { recursive: true })
+    writeFileSync(join(workspace, 'in', '中文资料.txt'), '# 中文资料\n\n这是一份用于界面检查的中文文本。\n', 'utf8')
     morrow = await launchMorrow({ name: 'r10-ui-copy', waitForSelector: '.sidebar', timeoutMs: 90_000 })
     page = morrow.page
     await waitForStoreReady(page)
@@ -78,11 +81,9 @@ test.describe('R10 UI 文案与布局复审', () => {
       text: await page.locator('.file-tree').innerText()
     })
 
-    // 工作台 6 面板
+    // 功能面板 6 项
     for (const panel of PANELS) {
-      await page.keyboard.press('Control+Shift+W')
-      await expect(page.locator('.workbench-card')).toHaveCount(6)
-      await page.locator('.workbench-card').filter({ hasText: panel }).click()
+      await openToolPanel(page, panel)
       await page.waitForTimeout(750)
       await page.screenshot({ path: screenshotPath(`r10-ui-copy-${panel}.png`) })
       observations.push({

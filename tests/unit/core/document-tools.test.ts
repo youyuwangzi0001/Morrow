@@ -5,16 +5,18 @@
  * - template.docx / split-run.docx：python-docx 生成（M11 场景 + 跨 run 占位符健壮性）；
  * - invoice.pdf：python-docx 写的 invoice.docx 经 LibreOffice 导出（M12 场景，独立实现）；
  * - input.xlsx：openpyxl 生成（读取公式/共享字符串/布尔）；
- * - blank.pdf：无文字 PDF（错误路径）。
+ * - blank.pdf：无文字 PDF（错误路径）；
+ * - scanned-zh.pdf：只有一张 JPEG、没有文字层的扫描件，供本机 OCR 与回执测试。
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import { executeTool, isReadOnlyTool, TOOL_DEFINITIONS } from '../../../src/core/tools/registry'
-import { checkXmlWellFormed } from '../../../src/core/tools/docx-tools'
+import { checkXmlWellFormed, collectWordText, replaceInDocxXmlFile } from '../../../src/core/tools/docx-tools'
 import { evaluateSheet } from '../../../src/core/tools/xlsx-formula'
 import { sha256 } from '../../../src/core/util'
+import { restoreSnapshotSafely } from '../../../src/main/services/snapshot-restore'
 import { makeToolContext } from './helpers/tool-context'
 import { makeTempWorkspace, type TempWorkspace } from './helpers/workspace'
 
@@ -113,6 +115,31 @@ describe('read_pdf（M12：发票数字核对）', () => {
     }
   })
 
+  it('pages 一次选择过多时拒绝，避免 1-10000 撑爆页码与说明', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      copyFixture(ws, 'invoice.pdf', 'invoice.pdf')
+      const result = await executeTool('read_pdf', { path: 'invoice.pdf', pages: '1-600' }, makeToolContext(ws))
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('500')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('PDF 文件头允许出现在前 1024 字节内（BOM/空行）', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const pdf = readFileSync(fixturePath('invoice-zh.pdf'))
+      writeFileSync(join(ws.root, 'leading.pdf'), Buffer.concat([Buffer.from('\uFEFF\n', 'utf8'), pdf]))
+      const result = await executeTool('read_pdf', { path: 'leading.pdf' }, makeToolContext(ws))
+      expect(result.ok).toBe(true)
+      expect(result.output).toContain('发票编号')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
   it('非法 pages 参数给出可自修复错误', async () => {
     const ws = makeTempWorkspace()
     try {
@@ -141,7 +168,7 @@ describe('read_pdf（M12：发票数字核对）', () => {
     }
   })
 
-  it('无文字/扫描件 PDF 明确报错（不能猜内容）', async () => {
+  it('无文字/扫描件 PDF 在没有本机 OCR 时明确报错（不能猜内容）', async () => {
     const ws = makeTempWorkspace()
     try {
       copyFixture(ws, 'blank.pdf', 'scan.pdf')
@@ -149,6 +176,63 @@ describe('read_pdf（M12：发票数字核对）', () => {
       expect(result.ok).toBe(false)
       expect(result.error).toContain('PDF')
       expect(result.hint).toContain('扫描件')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('扫描页自动调用本机 OCR，并把识别文字交给模型', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      copyFixture(ws, 'blank.pdf', 'scan.pdf')
+      const base = makeToolContext(ws)
+      const calls: number[][] = []
+      const result = await executeTool(
+        'read_pdf',
+        { path: 'scan.pdf' },
+        {
+          ...base,
+          ocrPdf: async ({ pages }) => {
+            calls.push(pages)
+            return {
+              totalPages: 1,
+              language: 'zh-Hans-CN',
+              engine: 'Windows.Media.Ocr',
+              pages: pages.map((page) => ({ page, text: '扫描发票\n合计：9821.50 元' }))
+            }
+          }
+        }
+      )
+      expect(calls).toEqual([[1]])
+      expect(result.ok).toBe(true)
+      expect(result.output).toContain('本机 OCR 已识别 1 个扫描页')
+      expect(result.output).toContain('扫描发票')
+      expect(result.output).toContain('9821.50')
+      expect(result.meta).toMatchObject({ ocr: true, ocrPages: [1], ocrLanguage: 'zh-Hans-CN' })
+      expect(result.output).toContain('关键数字请对照原页复核')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('OCR 失败时不伪造内容，并说明失败原因', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      copyFixture(ws, 'blank.pdf', 'scan.pdf')
+      const result = await executeTool(
+        'read_pdf',
+        { path: 'scan.pdf' },
+        {
+          ...makeToolContext(ws),
+          ocrPdf: async () => {
+            throw new Error('本机没有 Windows OCR 语言包')
+          }
+        }
+      )
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('本机 OCR 没有完成')
+      expect(result.error).toContain('语言包')
+      expect(result.hint).toContain('截图')
     } finally {
       ws.cleanup()
     }
@@ -222,7 +306,7 @@ describe('read_docx / edit_docx（M11：DOCX 定点替换）', () => {
         makeToolContext(ws)
       )
       expect(result.ok).toBe(true)
-      expect(result.meta).toMatchObject({ replacements: 2, inputUnchanged: true })
+      expect(result.meta).toMatchObject({ replacements: 2, inputUnchanged: true, created: true })
       expect(result.meta?.perReplacement).toEqual([
         { find: '{{NAME}}', count: 1 },
         { find: '{{DATE}}', count: 1 }
@@ -257,6 +341,94 @@ describe('read_docx / edit_docx（M11：DOCX 定点替换）', () => {
       expect(documentXml).toContain('<w:tbl')
       expect(documentXml).toContain('CONFIDENTIAL - internal only')
       expect(documentXml).toContain('林宁')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('替换文本里的 XML 非法控制字符会被剔除，避免生成打不开的 Word', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      copyFixture(ws, 'template.docx', 'in/template.docx')
+      const result = await executeTool(
+        'edit_docx',
+        {
+          path: 'in/template.docx',
+          output_path: 'out/control.docx',
+          replacements: [{ find: '{{NAME}}', replace: '林\u0000宁' }]
+        },
+        makeToolContext(ws)
+      )
+      expect(result.ok).toBe(true)
+      const reread = await executeTool('read_docx', { path: 'out/control.docx' }, makeToolContext(ws))
+      expect(reread.ok).toBe(true)
+      expect(reread.output).toContain('林宁')
+      expect(reread.output).not.toContain('\u0000')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('覆盖已有输出文档时备份并可撤销', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      copyFixture(ws, 'template.docx', 'in/template.docx')
+      const output = copyFixture(ws, 'template.docx', 'out/letter.docx')
+      const before = readFileSync(output)
+      const result = await executeTool(
+        'edit_docx',
+        {
+          path: 'in/template.docx',
+          output_path: 'out/letter.docx',
+          replacements: [{ find: '{{NAME}}', replace: '林宁' }]
+        },
+        makeToolContext(ws)
+      )
+      expect(result.ok).toBe(true)
+      expect(result.meta?.snapshotPath).toBeTruthy()
+      expect(sha256(readFileSync(output))).not.toBe(sha256(before))
+      const restored = restoreSnapshotSafely({
+        snapshotRoot: ws.snapshotDir,
+        snapshotPath: String(result.meta?.snapshotPath),
+        targetPath: output,
+        workspace: ws.root
+      })
+      expect(restored.ok).toBe(true)
+      expect(sha256(readFileSync(output))).toBe(sha256(before))
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('Word 文本保留换行/制表符分隔，相邻 run 不会粘在一起', () => {
+    const xml = '<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>World</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>End</w:t></w:r></w:p>'
+    expect(collectWordText(xml)).toBe('Hello\nWorld\tEnd')
+  })
+
+  it('replace_all=false 在整个文档只替换第一处，而不是每段各替换一次', () => {
+    const paragraph = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`
+    const xml = `<w:document><w:body>${paragraph('A {{X}} B')}${paragraph('C {{X}} D')}</w:body></w:document>`
+    const firstOnly = replaceInDocxXmlFile(xml, [{ find: '{{X}}', replace: 'Y' }], false)
+    expect(firstOnly.counts[0]).toBe(1)
+    expect(firstOnly.xml).toContain('A Y B')
+    expect(firstOnly.xml).toContain('C {{X}} D')
+    const all = replaceInDocxXmlFile(xml, [{ find: '{{X}}', replace: 'Y' }], true)
+    expect(all.counts[0]).toBe(2)
+  })
+
+  it('read_docx 的 max_chars 大于默认 60k 时不会被提前截断', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const zip = new JSZip()
+      const body = '长文本'.repeat(40_000)
+      zip.file('word/document.xml', `<w:document><w:body><w:p><w:r><w:t>${body}</w:t></w:r></w:p></w:body></w:document>`)
+      writeFileSync(join(ws.root, 'long.docx'), await zip.generateAsync({ type: 'nodebuffer' }))
+      const result = await executeTool('read_docx', { path: 'long.docx', max_chars: 80_000 }, makeToolContext(ws))
+      expect(result.ok).toBe(true)
+      const output = String(result.output)
+      expect(output.length).toBeGreaterThan(60_000)
+      // truncateText 会在正文后附加「已截断」说明，允许少量说明文字
+      expect(output.length).toBeLessThanOrEqual(80_200)
     } finally {
       ws.cleanup()
     }
@@ -496,8 +668,18 @@ describe('write_xlsx / read_xlsx（M09：可重算工作簿）', () => {
       expect(second.meta?.snapshotId).toBe('call_docs')
       const backup = join(ws.snapshotDir, 'call_docs', 'data.xlsx')
       expect(existsSync(backup)).toBe(true)
+      expect(second.meta?.snapshotPath).toBe(backup)
       expect(sha256(readFileSync(backup))).toBe(firstHash)
       expect(String(second.meta?.afterHash)).not.toBe(firstHash)
+
+      const restored = restoreSnapshotSafely({
+        snapshotRoot: ws.snapshotDir,
+        snapshotPath: String(second.meta?.snapshotPath),
+        targetPath: join(ws.root, 'out/data.xlsx'),
+        workspace: ws.root
+      })
+      expect(restored.ok).toBe(true)
+      expect(sha256(readFileSync(join(ws.root, 'out/data.xlsx')))).toBe(firstHash)
     } finally {
       ws.cleanup()
     }
@@ -518,6 +700,22 @@ describe('write_xlsx / read_xlsx（M09：可重算工作簿）', () => {
       )
       expect(badCell.ok).toBe(false)
       expect(badCell.error).toContain('不支持的值类型')
+
+      const tooLongText = await executeTool(
+        'write_xlsx',
+        { path: 'out/long-text.xlsx', sheets: [{ name: 'A', rows: [['x'.repeat(32_768)]] }] },
+        ctx
+      )
+      expect(tooLongText.ok).toBe(false)
+      expect(tooLongText.error).toContain('文本过长')
+
+      const tooLongFormula = await executeTool(
+        'write_xlsx',
+        { path: 'out/long-formula.xlsx', sheets: [{ name: 'A', rows: [[`=${'1+'.repeat(5_000)}1`]] }] },
+        ctx
+      )
+      expect(tooLongFormula.ok).toBe(false)
+      expect(tooLongFormula.error).toContain('公式过长')
 
       const badSuffix = await executeTool('write_xlsx', { path: 'out/a.xls', sheets: [{ name: 'A', rows: [[1]] }] }, ctx)
       expect(badSuffix.ok).toBe(false)

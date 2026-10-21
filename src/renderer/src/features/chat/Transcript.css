@@ -69,6 +69,63 @@
   animation: shimmer 2s linear infinite;
 }
 
+/* 上下文压缩：折叠成系统标记；摘要按需展开，不再铺满对话 */
+.message-compaction {
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.compaction-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+  transition:
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+button.compaction-head:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-elev);
+  color: var(--text-2);
+}
+
+.compaction-hint {
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.compaction-chevron {
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.compaction-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.compaction-body {
+  width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.72;
+}
+
 /* 空态（新建会话还没有消息） */
 .transcript-empty {
   display: flex;
@@ -114,10 +171,37 @@
   animation: fade-in-up var(--dur-base) var(--ease-out) both;
 }
 
+/* 全局搜索命中：滚动到原消息后短暂金色呼吸，不改变布局 */
+.message.is-search-hit {
+  border-radius: var(--r-md);
+  animation: search-hit-glow 2.8s var(--ease-out) both;
+}
+
+@keyframes search-hit-glow {
+  0% {
+    background: color-mix(in srgb, var(--gold) 10%, transparent);
+    box-shadow:
+      0 0 0 1px var(--line-gold),
+      0 0 34px -16px var(--gold);
+  }
+  65% {
+    background: color-mix(in srgb, var(--gold) 6%, transparent);
+    box-shadow:
+      0 0 0 1px var(--line-gold),
+      0 0 30px -18px var(--gold);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 1px transparent;
+  }
+}
+
 /* 用户消息：右对齐气泡 */
 .message-user {
   align-items: flex-end;
-  align-self: flex-end;
+  /* 占满内容列：若继续 flex-end 收缩，气泡的 78% 上限会按收缩后的宽度计算，
+     几个字的短消息也会被迫换行。右对齐交给 align-items + 气泡自身完成。 */
+  align-self: stretch;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -126,6 +210,7 @@
 }
 
 .message-user-bubble {
+  width: fit-content;
   max-width: 78%;
   padding: 10px 16px 11px;
   border: 1px solid var(--line);
@@ -144,6 +229,68 @@
 
 .message-user-text + .message-user-text {
   margin-top: 8px;
+}
+
+.message-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.message-user-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 320px);
+  max-height: 240px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.message-user-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.message-user-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.message-user-attachment-name {
+  max-width: 220px;
+}
+
+.message-user-attachment-size {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.message-user-attachment.is-warn {
+  border-color: color-mix(in srgb, var(--rust) 40%, var(--line));
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.message-user-attachment-warn {
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 /* 助手消息：无气泡，正文直接排布 */
@@ -317,6 +464,96 @@
 .message-copy:hover {
   color: var(--gold-bright);
   background: var(--gold-ghost);
+}
+
+.message-copy:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.message-copy:disabled:hover {
+  color: var(--text-3);
+  background: transparent;
+}
+
+.message-copy.is-danger {
+  color: var(--danger);
+}
+
+.message-copy.is-danger:hover {
+  background: var(--rust-dim);
+}
+
+/* 就地编辑用户消息 */
+.message-user-bubble.is-editing {
+  width: min(78%, 640px);
+  border-color: var(--line-gold);
+}
+
+.message-user-editor {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: 1.72;
+}
+
+.message-edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.message-edit-hint {
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.message-edit-send {
+  padding: 4px 12px;
+  border-radius: var(--r-xs);
+  background: var(--gold);
+  color: #14181d;
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: background var(--dur-fast) ease;
+}
+
+.message-edit-send:hover:not(:disabled) {
+  background: var(--gold-bright);
+}
+
+.message-edit-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.message-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+  border-radius: var(--r-xs);
+  background: var(--rust-dim);
+}
+
+.message-confirm-text {
+  margin-right: auto;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 /* ── 思考块 ───────────────────────────────────────────────────── */
@@ -547,4 +784,59 @@
   .goal-cont-label {
     white-space: normal;
   }
+}
+
+/* 消息编辑与操作 */
+.message-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: min(520px, 100%);
+}
+
+.message-edit-input {
+  width: 100%;
+  min-height: 70px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.message-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.message-action:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.message-action.is-primary {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.message-action:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

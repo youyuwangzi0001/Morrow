@@ -29,20 +29,7 @@
 
 /* 标题：Newsreader 斜体英文 + 中文衬线 */
 .welcome-title {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
   margin: 0;
-}
-
-.welcome-en {
-  font-size: clamp(14px, 1.25vw, 17px);
-  font-weight: 400;
-  font-style: italic;
-  color: var(--text-3);
-  letter-spacing: 0;
-  line-height: 1.25;
-  margin-bottom: 1px;
 }
 
 .welcome-zh {
@@ -91,24 +78,23 @@
   background: var(--gold-dim);
 }
 
+[data-theme='light'] .welcome-demo {
+  color: var(--text);
+  background: var(--gold-dim);
+}
+
+[data-theme='light'] .welcome-demo svg {
+  color: var(--gold);
+}
+
+[data-theme='light'] .welcome-demo:hover {
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+}
+
 .welcome-demo-meta {
   color: var(--text-3);
   font-size: 9.5px;
   letter-spacing: 0.04em;
-}
-
-.welcome-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 2px;
-  color: var(--text-2);
-  font-size: 12.5px;
-  transition: color var(--dur-fast) ease;
-}
-
-.welcome-link:hover {
-  color: var(--gold-bright);
 }
 
 /* 三张不对称纸片：一张横向大卡 + 两张窄卡，内容统一顶对齐 */
@@ -233,14 +219,6 @@
 
 .welcome-foot-item.is-action:hover {
   color: var(--text-2);
-}
-
-.welcome-foot-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--text-3);
-  opacity: 0.55;
 }
 
 .welcome-model-dot {

@@ -1,5 +1,0 @@
-
-> morrow@1.0.0 typecheck
-> tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit
-
-typecheck exit=0

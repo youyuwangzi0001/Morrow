@@ -373,6 +373,48 @@
   opacity: 0.8;
 }
 
+.spine-swarm-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spine-swarm-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+}
+
+.spine-swarm-index {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 9.5px;
+}
+
+.spine-swarm-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.spine-swarm-role {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 9px;
+  line-height: 16px;
+}
+
 .spine-empty {
   color: var(--text-3);
   font-size: 11.5px;
@@ -642,6 +684,16 @@
 
 .permission-actions .perm-btn .kbd {
   opacity: 0.6;
+}
+
+.permission-once-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 4px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 [data-theme='light'] .permission-actions .perm-btn-primary {
@@ -923,6 +975,29 @@
   animation: plan-dot-pulse 1.5s ease-in-out infinite;
 }
 
+.plan-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-item-state {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+/* 运行已结束但步骤未完成：保留淡金色标记与「未完成」，停止「正在推进」的脉冲 */
+.plan-tray.is-idle .plan-item.is-in_progress .plan-dot {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+  animation: none;
+}
+
 .plan-item.is-completed .plan-text {
   color: var(--text-3);
   text-decoration: line-through;
@@ -982,4 +1057,158 @@
   .plan-running {
     animation: none;
   }
+}
+
+/* 联网搜索来源（工具卡展开区） */
+.spine-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spine-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  font-size: 11.5px;
+  text-align: left;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.spine-source:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.spine-source-rank {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 9.5px;
+}
+
+.spine-source-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spine-source svg {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+/* Swarm 实时任务板：每个子任务一行，状态、进度、结论都可见 */
+.spine-swarm-goal {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.spine-swarm-goal .mono {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.spine-swarm-task {
+  align-items: flex-start;
+  padding: 8px 9px;
+}
+
+.spine-swarm-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.spine-swarm-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spine-swarm-status {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.spine-swarm-status.is-queued {
+  color: var(--text-3);
+}
+
+.spine-swarm-status.is-running {
+  color: var(--gold);
+}
+
+.spine-swarm-status.is-completed {
+  color: var(--patina);
+}
+
+.spine-swarm-status.is-failed,
+.spine-swarm-status.is-cancelled,
+.spine-swarm-status.is-exhausted {
+  color: var(--rust);
+}
+
+.spine-swarm-steps {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.spine-swarm-note {
+  color: var(--text-3);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.spine-swarm-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.spine-swarm-error {
+  color: var(--rust);
+  font-size: 10.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.spine-swarm-task.is-running {
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.spine-swarm-task.is-completed {
+  border-color: color-mix(in srgb, var(--patina) 30%, var(--line));
+}
+
+.spine-swarm-task.is-failed,
+.spine-swarm-task.is-cancelled,
+.spine-swarm-task.is-exhausted {
+  border-color: color-mix(in srgb, var(--rust) 38%, var(--line));
 }

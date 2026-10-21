@@ -8,7 +8,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProviderConfig, RuntimeEvent } from '../../../src/shared/types'
-import { createProvider } from '../../../src/core/providers'
+import type { Provider } from '../../../src/core/types'
+import { OpenAICompatProvider, createProvider } from '../../../src/core/providers'
 import { resetAllPermissionGrants, runAgent, type RunAgentResult } from '../../../src/core/agent'
 import { anthropicTextFrames, anthropicToolFrames, openAITextFrames, openAIToolFrames, startMockLLM, type MockLLM } from './helpers/mock-llm'
 import { makeTempWorkspace } from './helpers/workspace'
@@ -38,10 +39,11 @@ async function runWithMock(
   config: ProviderConfig,
   workspace: string,
   snapshotDir: string,
-  systemPrompt: string
+  systemPrompt: string,
+  providerOverride?: Provider
 ): Promise<{ events: RuntimeEvent[]; result: RunAgentResult }> {
   const events: RuntimeEvent[] = []
-  const provider = createProvider(config, 'sk-mock', 'mock-model')
+  const provider = providerOverride ?? createProvider(config, 'sk-mock', 'mock-model')
   const result = await runAgent({
     runId: 'run_http',
     sessionId: 'session_http',
@@ -162,6 +164,55 @@ describe('Mock HTTP SSE：Anthropic 完整 run', () => {
       ws.cleanup()
     }
   }, 30_000)
+})
+
+describe('Mock HTTP SSE：空流与断流', () => {
+  it('200 空流重试后以 error 结束，不再伪装成正常空回复', async () => {
+    resetAllPermissionGrants()
+    const ws = makeTempWorkspace()
+    const server = await startMockLLM(() => ({ frames: [], done: false }))
+    servers.push(server)
+    try {
+      const config = providerConfig('mock-empty', 'openai-compat', server.baseUrl)
+      const provider = new OpenAICompatProvider(config, 'sk-mock', 'mock-model', { retryDelays: [1, 1, 1] })
+      const { events, result } = await runWithMock(server, config, ws.root, ws.snapshotDir, '你是测试助手。', provider)
+      expect(result.reason).toBe('error')
+      expect(result.error?.code).toBe('empty_response')
+      expect(server.requests).toHaveLength(4)
+      const message = result.messages[0]
+      expect(message.error?.code).toBe('empty_response')
+      expect(message.content).toContainEqual(expect.objectContaining({ type: 'error', code: 'empty_response' }))
+      expect(message.content.some((block) => block.type === 'text' && block.text.includes('模型没有返回内容'))).toBe(false)
+      expect(events.some((event) => event.type === 'error')).toBe(true)
+    } finally {
+      ws.cleanup()
+    }
+  }, 20_000)
+
+  it('文本流中途断流：保留已收到文本并以 error 结束', async () => {
+    resetAllPermissionGrants()
+    const ws = makeTempWorkspace()
+    const server = await startMockLLM(() => ({
+      frames: [{ choices: [{ index: 0, delta: { content: '半截回答' } }] }],
+      done: false
+    }))
+    servers.push(server)
+    try {
+      const config = providerConfig('mock-truncated', 'openai-compat', server.baseUrl)
+      const provider = new OpenAICompatProvider(config, 'sk-mock', 'mock-model', { retryDelays: [1, 1, 1] })
+      const { result } = await runWithMock(server, config, ws.root, ws.snapshotDir, '你是测试助手。', provider)
+      expect(result.reason).toBe('error')
+      expect(result.error?.code).toBe('incomplete_stream')
+      // 已产出内容后不重试，避免重复半截文本
+      expect(server.requests).toHaveLength(1)
+      const message = result.messages[0]
+      expect(message.error?.code).toBe('incomplete_stream')
+      expect(message.content.some((block) => block.type === 'text' && block.text === '半截回答')).toBe(true)
+      expect(message.content.some((block) => block.type === 'error')).toBe(false)
+    } finally {
+      ws.cleanup()
+    }
+  })
 })
 
 function writeEvidence(

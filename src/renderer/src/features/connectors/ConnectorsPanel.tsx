@@ -1,25 +1,25 @@
 /**
- * R10-G MCP 连接器管理面板（独立受控组件，Lead 负责挂载）。
+ * R10-G MCP 外部工具管理面板（独立受控组件，Lead 负责挂载）。
  *
  * 用法：
  *   <ConnectorsPanel open={connectorsOpen} onClose={() => setConnectorsOpen(false)} />
- *   // 可选 workspace={string|null} 覆盖；不传时自动取当前会话/最近工作区。
+ *   // 可选 workspace={string|null} 覆盖；不传时自动取当前对话/最近文件夹。
  *
- * 能力：列表（名称/transport/启用状态）、新增/编辑/删除/启停、测试连接并查看工具列表、
+ * 能力：目录一键安装（推荐）、列表（名称/transport/启用状态）、新增/编辑/删除/启停、测试连接并查看工具列表、
  * stdio（command/args/env/cwd）与 HTTP/SSE（url/headers）表单、密钥掩码（不显示明文，只写新值）、
- * 用户级/工作区级切换、模板（仅配置示例）、安全说明。
+ * 用户级/文件夹级切换、安全说明。
  * 样式全部使用全局 tokens（石墨/香槟金），无自建主题、无外边框卡片。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, Loader2, Plus, RefreshCw, Server, ShieldCheck, Terminal, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Copy, LayoutGrid, Loader2, Plus, RefreshCw, Server, ShieldCheck, Terminal, Trash2 } from 'lucide-react'
 import { Badge, Button, EmptyHint, ErrorNote, IconButton, Modal, Segmented, Switch, TextArea, TextInput } from '../../ui'
 import { useAppStore } from '../../state/store'
 import {
   connectorsApi,
   CONNECTOR_CHANNELS,
   type ConnectorListResult,
+  type ConnectorOAuthStatus,
   type ConnectorScope,
-  type ConnectorTemplate,
   type ConnectorTestResult,
   type ConnectorToolInfo,
   type ConnectorTransport,
@@ -27,12 +27,13 @@ import {
   type ConnectorPaths,
   type SecretStorageMode
 } from './connectors-api'
+import { ConnectorDirectory } from './ConnectorDirectory'
 import './ConnectorsPanel.css'
 
 export interface ConnectorsPanelProps {
   open: boolean
   onClose: () => void
-  /** 可选：显式指定工作区；不传时用当前会话/最近工作区 */
+  /** 可选：显式指定文件夹；不传时用当前对话/最近文件夹 */
   workspace?: string | null
 }
 
@@ -59,6 +60,10 @@ interface Draft {
   allowPrivateNetwork: boolean
   description: string
   enabled: boolean
+  oauthAuthorizationUrl: string
+  oauthTokenUrl: string
+  oauthClientId: string
+  oauthScopes: string
 }
 
 const TRANSPORT_LABEL: Record<ConnectorTransport, string> = {
@@ -82,7 +87,11 @@ function emptyDraft(): Draft {
     retries: '',
     allowPrivateNetwork: false,
     description: '',
-    enabled: true
+    enabled: true,
+    oauthAuthorizationUrl: '',
+    oauthTokenUrl: '',
+    oauthClientId: '',
+    oauthScopes: ''
   }
 }
 
@@ -101,19 +110,12 @@ function fromView(view: ConnectorView): Draft {
     retries: view.retries !== undefined ? String(view.retries) : '',
     allowPrivateNetwork: view.allowPrivateNetwork,
     description: view.description ?? '',
-    enabled: view.enabled
+    enabled: view.enabled,
+    oauthAuthorizationUrl: view.oauth?.authorizationUrl ?? '',
+    oauthTokenUrl: view.oauth?.tokenUrl ?? '',
+    oauthClientId: view.oauth?.clientId ?? '',
+    oauthScopes: (view.oauth?.scopes ?? []).join(' ')
   }
-}
-
-function draftFromTemplate(template: ConnectorTemplate): Draft {
-  const draft = emptyDraft()
-  draft.transport = template.transport
-  draft.command = template.command ?? ''
-  draft.argsText = (template.args ?? []).join('\n')
-  draft.url = template.url ?? ''
-  draft.description = template.description
-  draft.headers = (template.headerKeys ?? []).map((key) => ({ key, value: '', hasSecret: false, plaintext: false }))
-  return draft
 }
 
 function transportIcon(transport: ConnectorTransport): React.JSX.Element {
@@ -199,6 +201,84 @@ function ToolList({ tools }: { tools: ConnectorToolInfo[] }): React.JSX.Element 
   )
 }
 
+function CopyChip({ value, label }: { value: string; label: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="conn-copy"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1200)
+        })
+      }}
+    >
+      {copied ? <Check size={10} strokeWidth={1.8} aria-hidden /> : <Copy size={10} strokeWidth={1.6} aria-hidden />}
+      {copied ? '已复制' : '复制'}
+    </button>
+  )
+}
+
+function ResourceCatalog({ resources }: { resources: NonNullable<ConnectorTestResult['resources']> }): React.JSX.Element {
+  return (
+    <details className="conn-catalog">
+      <summary className="conn-catalog-summary">
+        资源 <span className="mono">{resources.resources.length}</span>
+        <span className="conn-catalog-sub">模板 <span className="mono">{resources.templates.length}</span></span>
+      </summary>
+      <div className="conn-catalog-list">
+        {resources.resources.map((item) => (
+          <div className="conn-catalog-row" key={item.uri}>
+            <span className="conn-catalog-name mono truncate" title={item.uri}>
+              {item.uri}
+            </span>
+            <span className="conn-catalog-desc truncate">{item.name || item.description || item.mimeType || ''}</span>
+            <CopyChip value={item.uri} label={`复制资源 URI ${item.uri}`} />
+          </div>
+        ))}
+        {resources.templates.map((item) => (
+          <div className="conn-catalog-row is-template" key={item.uriTemplate}>
+            <span className="conn-catalog-name mono truncate" title={item.uriTemplate}>
+              {item.uriTemplate}
+            </span>
+            <span className="conn-catalog-desc truncate">{item.name || item.description || 'URI 模板'}</span>
+            <CopyChip value={item.uriTemplate} label={`复制资源模板 ${item.uriTemplate}`} />
+          </div>
+        ))}
+        {resources.resources.length === 0 && resources.templates.length === 0 ? (
+          <p className="conn-hint">该 server 没有公布资源。</p>
+        ) : null}
+      </div>
+    </details>
+  )
+}
+
+function PromptCatalog({ prompts }: { prompts: NonNullable<ConnectorTestResult['prompts']> }): React.JSX.Element {
+  return (
+    <details className="conn-catalog">
+      <summary className="conn-catalog-summary">
+        提示词 <span className="mono">{prompts.prompts.length}</span>
+      </summary>
+      <div className="conn-catalog-list">
+        {prompts.prompts.map((prompt) => (
+          <div className="conn-catalog-row" key={prompt.name}>
+            <span className="conn-catalog-name mono truncate">{prompt.name}</span>
+            <span className="conn-catalog-desc truncate">
+              {prompt.description || ''}
+              {prompt.arguments?.length ? ` · 参数：${prompt.arguments.map((arg) => arg.name).join('、')}` : ''}
+            </span>
+            <CopyChip value={prompt.name} label={`复制提示词名称 ${prompt.name}`} />
+          </div>
+        ))}
+        {prompts.prompts.length === 0 ? <p className="conn-hint">该 server 没有公布提示词。</p> : null}
+      </div>
+    </details>
+  )
+}
+
 function TestResult({ result }: { result: ConnectorTestResult }): React.JSX.Element {
   if (result.ok) {
     return (
@@ -206,6 +286,8 @@ function TestResult({ result }: { result: ConnectorTestResult }): React.JSX.Elem
         <p className="conn-test-title">
           <Check size={14} strokeWidth={1.8} aria-hidden /> 连接成功 · {TRANSPORT_LABEL[result.transport]} · {result.latencyMs}ms ·{' '}
           {result.tools?.length ?? 0} 个工具
+          {result.resources?.supported ? ` · ${result.resources.resources.length} 个资源` : ''}
+          {result.prompts?.supported ? ` · ${result.prompts.prompts.length} 个提示词` : ''}
         </p>
         {result.warnings && result.warnings.length > 0 ? (
           <ul className="conn-notes">
@@ -215,6 +297,14 @@ function TestResult({ result }: { result: ConnectorTestResult }): React.JSX.Elem
           </ul>
         ) : null}
         {result.tools && result.tools.length > 0 ? <ToolList tools={result.tools} /> : <p className="conn-hint">该 server 没有公布工具。</p>}
+        {result.resources?.supported ? <ResourceCatalog resources={result.resources} /> : null}
+        {result.prompts?.supported ? <PromptCatalog prompts={result.prompts} /> : null}
+        {result.resources?.supported || result.prompts?.supported ? (
+          <p className="conn-hint">
+            资源和提示词可在对话中让 Morrow 通过 <code className="mono">mcp_resources</code> /{' '}
+            <code className="mono">mcp_prompt</code> 读取；每次读取都会单独请求审批。
+          </p>
+        ) : null}
       </div>
     )
   }
@@ -238,21 +328,30 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
   const [scope, setScope] = useState<ConnectorScope>('user')
   const [list, setList] = useState<ConnectorListResult | null>(null)
   const [paths, setPaths] = useState<ConnectorPaths | null>(null)
-  const [templates, setTemplates] = useState<ConnectorTemplate[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<null | 'save' | 'test' | 'delete'>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [oauthStatus, setOauthStatus] = useState<ConnectorOAuthStatus | null>(null)
+  const [oauthBusy, setOauthBusy] = useState(false)
+  const [oauthMessage, setOauthMessage] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<ConnectorTestResult | null>(null)
   const [deleteArmed, setDeleteArmed] = useState(false)
   const [secretMode, setSecretMode] = useState<SecretStorageMode>('encrypted')
+  const [catalogOpen, setCatalogOpen] = useState(false)
 
   const workspaceRequired = scope === 'workspace' && !workspace
 
   const refresh = useCallback(
     async (nextScope: ConnectorScope = scope): Promise<void> => {
+      if (nextScope === 'workspace' && !workspace) {
+        setList(null)
+        setLoading(false)
+        setError(null)
+        return
+      }
       setLoading(true)
       setError(null)
       try {
@@ -260,7 +359,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
         setList(result)
         setSecretMode(result.secretsMode)
       } catch (err) {
-        setError(errorText(err, '读取连接器列表失败。'))
+        setError(errorText(err, '读取外部工具列表失败。'))
       } finally {
         setLoading(false)
       }
@@ -270,6 +369,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
 
   useEffect(() => {
     if (!open) return
+    setCatalogOpen(false)
     setDeleteArmed(false)
     setTestResult(null)
     setNotice(null)
@@ -280,16 +380,14 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     if (!open) return
     void (async () => {
       try {
-        const [templateList, pathInfo, secretStatus] = await Promise.all([
-          connectorsApi.templates(),
+        const [pathInfo, secretStatus] = await Promise.all([
           connectorsApi.paths(workspace),
           connectorsApi.secretStatus()
         ])
-        setTemplates(templateList)
         setPaths(pathInfo)
         setSecretMode(secretStatus.mode)
       } catch (err) {
-        setError(errorText(err, '读取连接器配置信息失败。'))
+        setError(errorText(err, '读取外部工具配置信息失败。'))
       }
     })()
   }, [open, workspace])
@@ -303,17 +401,20 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
       setTestResult(null)
       setError(null)
       setNotice(null)
+      setOauthMessage(null)
       setDeleteArmed(false)
     },
     [list]
   )
 
-  const startNew = (template?: ConnectorTemplate): void => {
-    setDraft(template ? draftFromTemplate(template) : emptyDraft())
+  const startNew = (): void => {
+    setDraft(emptyDraft())
     setIsNew(true)
     setTestResult(null)
     setError(null)
-    setNotice(template ? `已套用「${template.name}」配置示例；这只是示例，Morrow 不内置该服务。` : null)
+    setNotice('手动添加外部工具：需要自己填写服务地址或启动命令。')
+    setOauthStatus(null)
+    setOauthMessage(null)
     setDeleteArmed(false)
   }
 
@@ -324,6 +425,84 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
   }
 
   const selectedName = !isNew && draft?.originalName ? draft.originalName : null
+
+  useEffect(() => {
+    if (!open || !selectedName) {
+      setOauthStatus(null)
+      return
+    }
+    let cancelled = false
+    void connectorsApi
+      .oauthStatus(scope, selectedName, workspace)
+      .then((status) => {
+        if (!cancelled) setOauthStatus(status)
+      })
+      .catch(() => {
+        if (!cancelled) setOauthStatus(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, selectedName, scope, workspace])
+
+  useEffect(() => {
+    if (!open || !selectedName) return
+    return window.morrow.features.on(CONNECTOR_CHANNELS.oauthEvent, (payload) => {
+      const event = payload as { name?: string; status?: string; message?: string }
+      if (event.name !== selectedName) return
+      if (event.status === 'success') {
+        setOauthMessage('授权成功，已保存加密令牌。')
+      } else if (event.status === 'refreshed') {
+        setOauthMessage('访问令牌已自动刷新。')
+      } else if (event.status === 'revoked') {
+        setOauthMessage('授权已清除。')
+      } else if (event.status === 'error') {
+        setOauthMessage(event.message ?? '授权失败。')
+      } else {
+        return
+      }
+      void connectorsApi
+        .oauthStatus(scope, selectedName, workspace)
+        .then(setOauthStatus)
+        .catch(() => undefined)
+    })
+  }, [open, selectedName, scope, workspace])
+
+  const authorizeOAuth = async (): Promise<void> => {
+    if (!selectedName) {
+      setOauthMessage('请先保存外部工具，再开始 OAuth 授权。')
+      return
+    }
+    if (!draft) return
+    setOauthBusy(true)
+    setOauthMessage(null)
+    try {
+      // 授权读取的是磁盘配置；先保存当前表单，避免用旧端点发起授权
+      const saved = await persist(draft)
+      if (!saved) return
+      const { authorizationUrl } = await connectorsApi.oauthStart(scope, saved.name, scope === 'workspace' ? workspace : null)
+      await window.morrow.app.openExternal(authorizationUrl)
+      setOauthMessage('已在浏览器打开授权页；完成后回到这里查看状态。')
+    } catch (err) {
+      setOauthMessage(errorText(err, '开始授权失败'))
+    } finally {
+      setOauthBusy(false)
+    }
+  }
+
+  const revokeOAuth = async (): Promise<void> => {
+    if (!selectedName) return
+    setOauthBusy(true)
+    try {
+      await connectorsApi.oauthRevoke(scope, selectedName, scope === 'workspace' ? workspace : null)
+      setOauthStatus(await connectorsApi.oauthStatus(scope, selectedName, scope === 'workspace' ? workspace : null))
+      setOauthMessage('授权已清除。')
+    } catch (err) {
+      setOauthMessage(errorText(err, '清除授权失败'))
+    } finally {
+      setOauthBusy(false)
+    }
+  }
 
   const buildPayload = (current: Draft): Parameters<typeof connectorsApi.save>[0] => {
     const transport = current.transport
@@ -355,7 +534,20 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
             url: current.url.trim(),
             headers: current.headers
               .filter((row) => row.key.trim())
-              .map((row) => ({ key: row.key.trim(), ...(row.value ? { value: row.value } : {}) }))
+              .map((row) => ({ key: row.key.trim(), ...(row.value ? { value: row.value } : {}) })),
+            oauth:
+              current.oauthAuthorizationUrl.trim() &&
+              current.oauthTokenUrl.trim() &&
+              current.oauthClientId.trim()
+                ? {
+                    authorizationUrl: current.oauthAuthorizationUrl.trim(),
+                    tokenUrl: current.oauthTokenUrl.trim(),
+                    clientId: current.oauthClientId.trim(),
+                    ...(current.oauthScopes.trim()
+                      ? { scopes: current.oauthScopes.trim().split(/\s+/).filter(Boolean).slice(0, 20) }
+                      : {})
+                  }
+                : null
           }),
       ...(numeric(current.timeoutMs) !== undefined ? { timeoutMs: numeric(current.timeoutMs) } : {}),
       ...(numeric(current.retries) !== undefined ? { retries: numeric(current.retries) } : {}),
@@ -366,12 +558,20 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
   }
 
   const validateDraft = (current: Draft): string | null => {
-    if (!current.name.trim()) return '请填写连接器名称。'
+    if (!current.name.trim()) return '请填写外部工具名称。'
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(current.name.trim())) {
       return '名称只能包含字母、数字、下划线、点、短横线，最长 64 字符。'
     }
-    if (current.transport === 'stdio' && !current.command.trim()) return 'stdio 连接器需要填写启动命令（command）。'
-    if (current.transport !== 'stdio' && !current.url.trim()) return 'HTTP/SSE 连接器需要填写 URL。'
+    const duplicate = list?.connectors.find((item) => item.name === current.name.trim())
+    if (duplicate && (isNew || duplicate.name !== current.originalName)) {
+      return `名称「${current.name.trim()}」已被另一个外部工具使用。`
+    }
+    if (current.transport === 'stdio' && !current.command.trim()) return 'stdio 外部工具需要填写启动命令（command）。'
+    if (current.transport !== 'stdio' && !current.url.trim()) return 'HTTP/SSE 外部工具需要填写 URL。'
+    const oauthFields = [current.oauthAuthorizationUrl, current.oauthTokenUrl, current.oauthClientId].map((value) => value.trim())
+    if (current.transport !== 'stdio' && oauthFields.some(Boolean) && !oauthFields.every(Boolean)) {
+      return 'OAuth 需要同时填写授权地址、令牌地址和 Client ID（或全部留空）。'
+    }
     const timeout = current.timeoutMs.trim()
     if (timeout && (!Number.isFinite(Number(timeout)) || Number(timeout) < 250 || Number(timeout) > 120_000)) {
       return '超时时间需在 250–120000 毫秒之间。'
@@ -389,7 +589,16 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     await refresh(scope)
     setDraft(fromView(saved.connector))
     setIsNew(false)
-    setNotice('已保存。外部调用（mcp_call）仍然会逐次请求你的批准。')
+    setNotice('已保存。每次调用外部工具仍会先询问你。')
+    try {
+      setOauthStatus(
+        saved.connector.oauth
+          ? await connectorsApi.oauthStatus(scope, saved.connector.name, scope === 'workspace' ? workspace : null)
+          : null
+      )
+    } catch {
+      setOauthStatus(null)
+    }
     return saved.connector
   }
 
@@ -401,7 +610,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     try {
       await persist(draft)
     } catch (err) {
-      setError(errorText(err, '保存连接器失败。'))
+      setError(errorText(err, '保存外部工具失败。'))
     } finally {
       setBusy(null)
     }
@@ -410,7 +619,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
   const handleTest = async (): Promise<void> => {
     if (!draft) return
     if (workspaceRequired) {
-      setError('工作区级连接器需要先打开一个工作区文件夹。')
+      setError('当前文件夹的外部工具需要先选择一个文件夹。')
       return
     }
     setBusy('test')
@@ -418,7 +627,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     setNotice(null)
     setTestResult(null)
     try {
-      // 已保存过的连接器先保存再测（密钥不回显，必须用服务端已存的值测试）
+      // 已保存过的外部工具先保存再测（密钥不回显，必须用服务端已存的值测试）
       const view = selectedName ? await persist(draft) : null
       if (!view) {
         // 新建：直接测草稿（不写盘）
@@ -465,10 +674,10 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
       setDraft(null)
       setIsNew(false)
       setTestResult(null)
-      setNotice('已删除该连接器，并清理了它保存的密钥。')
+      setNotice('已删除该外部工具，并清理了它保存的密钥。')
       await refresh(scope)
     } catch (err) {
-      setError(errorText(err, '删除连接器失败。'))
+      setError(errorText(err, '删除外部工具失败。'))
     } finally {
       setBusy(null)
     }
@@ -489,15 +698,32 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     try {
       await connectorsApi.trustWorkspace(workspace)
       await refresh('workspace')
-      setNotice('已信任该工作区的 MCP 配置（绑定当前内容哈希；文件被改动后需重新信任）。')
+      setNotice('已信任当前文件夹的外部工具配置。配置被改动后需要重新确认。')
     } catch (err) {
-      setError(errorText(err, '信任工作区配置失败。'))
+      setError(errorText(err, '信任文件夹配置失败。'))
     }
+  }
+
+  const handleCatalogInstalled = async (view: ConnectorView, test?: ConnectorTestResult): Promise<void> => {
+    setCatalogOpen(false)
+    setDraft(fromView(view))
+    setIsNew(false)
+    setOauthStatus(null)
+    setOauthMessage(null)
+    setDeleteArmed(false)
+    setError(null)
+    setTestResult(test ?? null)
+    setNotice(
+      test?.ok
+        ? `已安装「${view.name}」，连接测试已通过。`
+        : `已安装「${view.name}」。可以在这里点「测试连接」验证。`
+    )
+    await refresh(scope)
   }
 
   const workspaceTrust = list?.workspaceTrust
   const connectors = useMemo(() => list?.connectors ?? [], [list])
-  const configPath = list?.configPath ?? paths?.userConfigPath ?? ''
+  const configPath = list?.configPath ?? (scope === 'workspace' ? '' : (paths?.userConfigPath ?? ''))
 
   if (!open) return null
 
@@ -505,16 +731,31 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
     <Modal
       open={open}
       onClose={onClose}
-      title="连接器"
-      description="连接外部工具服务，让 Morrow 能做更多事。每次外部调用都会先征求你的同意；密钥只保存在本机并加密。"
+      title="外部工具（MCP）"
+      description="把 Morrow 接到本机程序或网络服务上，让它能用更多工具。每次外部操作都会先问你；密钥只保存在本机并加密。"
       width={940}
-      ariaLabel="MCP 连接器管理"
+      ariaLabel="外部工具（MCP）"
     >
+      {catalogOpen ? (
+        <ConnectorDirectory
+          scope={scope}
+          workspace={workspace}
+          installed={connectors}
+          onBack={() => setCatalogOpen(false)}
+          onInstalled={(view, test) => {
+            void handleCatalogInstalled(view, test)
+          }}
+          onOpenInstalled={(name) => {
+            setCatalogOpen(false)
+            selectSaved(name)
+          }}
+        />
+      ) : (
       <div className="conn" data-testid="connectors-panel">
         <div className="conn-top">
           <Segmented<ConnectorScope>
             value={scope}
-            ariaLabel="连接器作用域"
+            ariaLabel="作用范围"
             onChange={(next) => {
               setScope(next)
               setDraft(null)
@@ -522,10 +763,13 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
               setTestResult(null)
               setError(null)
               setNotice(null)
+              setOauthStatus(null)
+              setOauthMessage(null)
+              setDeleteArmed(false)
             }}
             options={[
-              { value: 'user', label: '用户级', description: '对所有工作区生效（应用数据目录 mcp.json）' },
-              { value: 'workspace', label: '工作区级', description: '仅当前工作区生效（.morrow/mcp.json，默认不自动信任）' }
+              { value: 'user', label: '所有对话', description: '对所有对话生效，保存在应用数据里' },
+              { value: 'workspace', label: '当前文件夹', description: '只在当前文件夹生效（.morrow/mcp.json）' }
             ]}
           />
           <Button
@@ -537,13 +781,30 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
           >
             刷新
           </Button>
-          <Button size="sm" variant="gold" icon={<Plus size={14} strokeWidth={1.7} />} onClick={() => startNew()}>
-            添加连接器
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<LayoutGrid size={13} strokeWidth={1.6} />}
+            onClick={() => setCatalogOpen(true)}
+          >
+            工具目录
+          </Button>
+          <Button
+            size="sm"
+            variant="gold"
+            icon={<Plus size={14} strokeWidth={1.7} />}
+            disabled={workspaceRequired}
+            onClick={() => startNew()}
+          >
+            添加外部工具
           </Button>
         </div>
 
         <p className="conn-path mono" title={configPath}>
-          {configPath || '（未初始化配置路径）'}
+          保存位置：
+          {configPath
+            ? `…/${configPath.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}`
+            : '尚未创建'}
         </p>
 
         {secretMode === 'plaintext-fallback' ? (
@@ -557,14 +818,14 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
           <div className={['conn-workspace', workspaceTrust?.trusted ? 'is-trusted' : ''].join(' ')}>
             <ShieldCheck size={14} strokeWidth={1.6} aria-hidden />
             {!workspace ? (
-              <span>工作区级连接器需要先打开一个工作区文件夹。</span>
+              <span>当前文件夹的外部工具需要先选择一个文件夹。</span>
             ) : workspaceTrust?.trusted ? (
               <span>
-                当前工作区配置已信任（哈希绑定）。仓库里改动 <span className="mono">.morrow/mcp.json</span> 后会自动失效。
+                当前文件夹的配置已信任。改动 <span className="mono">.morrow/mcp.json</span> 后需要重新确认。
               </span>
             ) : (
               <>
-                <span>工作区配置默认不被信任（防止仓库里的命令被自动执行）。在面板保存后会自动登记；也可以手动信任当前内容。</span>
+                <span>文件夹里的配置默认不会自动运行，防止打开别人的项目时执行未知命令。保存后会自动记住；也可以手动信任当前内容。</span>
                 <Button size="sm" variant="secondary" onClick={() => void handleTrustWorkspace()}>
                   信任当前配置
                 </Button>
@@ -577,13 +838,13 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
         {notice ? <p className="conn-notice">{notice}</p> : null}
 
         <div className="conn-main">
-          <aside className="conn-list" aria-label="连接器列表">
-            {loading && connectors.length === 0 ? <EmptyHint>正在读取连接器…</EmptyHint> : null}
+          <aside className="conn-list" aria-label="外部工具列表">
+            {loading && connectors.length === 0 ? <EmptyHint>正在读取外部工具…</EmptyHint> : null}
             {!loading && connectors.length === 0 ? (
               <EmptyHint>
-                还没有{scope === 'workspace' ? '工作区级' : '用户级'}连接器。
+                还没有添加外部工具。
                 <br />
-                点右上角「添加连接器」，或从下方模板开始。
+                从「工具目录」一键安装，或点「添加外部工具」手动配置。
               </EmptyHint>
             ) : null}
             {connectors.map((view) => {
@@ -613,29 +874,17 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
               )
             })}
 
-            <div className="conn-templates">
-              <p className="conn-label">从模板新建（仅配置示例）</p>
-              <p className="conn-hint">模板只是填写示例，Morrow 不内置这些服务，也不会伪造连接成功。</p>
-              {templates.map((template) => (
-                <button type="button" className="conn-template" key={template.id} onClick={() => startNew(template)}>
-                  <span className="conn-template-name">{template.name}</span>
-                  <Badge tone="neutral" mono>
-                    {TRANSPORT_LABEL[template.transport]}
-                  </Badge>
-                </button>
-              ))}
-            </div>
           </aside>
 
-          <section className="conn-detail" aria-label="连接器编辑">
+          <section className="conn-detail" aria-label="外部工具编辑">
             {!draft ? (
               <div className="conn-placeholder">
-                <EmptyHint>选择左侧连接器查看/编辑，或点「添加连接器」新建一个。</EmptyHint>
+                <EmptyHint>选择左侧外部工具查看/编辑，或点「添加外部工具」新建一个。</EmptyHint>
                 <ul className="conn-notes">
                   <li>本机程序：填写启动命令和参数，密钥会隐藏保存。</li>
                   <li>网络服务：填写地址和密钥；只支持网页地址。</li>
                   <li>本机或内网地址默认不可访问，需要时手动打开。</li>
-                  <li>每次外部调用都会先询问你。</li>
+                  <li>每次调用外部工具都会先询问你。</li>
                 </ul>
               </div>
             ) : (
@@ -649,10 +898,10 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                     onChange={(event) => updateDraft({ name: event.target.value })}
                   />
                   <div className="conn-transport">
-                    <span className="conn-label">传输</span>
+                    <span className="conn-label">连接方式</span>
                     <Segmented<ConnectorTransport>
                       value={draft.transport}
-                      ariaLabel="MCP 传输类型"
+                      ariaLabel="连接方式"
                       onChange={(next) => {
                         if (next === draft.transport) return
                         updateDraft({
@@ -673,7 +922,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                 {draft.transport === 'stdio' ? (
                   <>
                     <TextInput
-                      label="启动命令 command"
+                      label="启动命令"
                       mono
                       value={draft.command}
                       placeholder="node 或 C:\\path\\to\\node.exe"
@@ -681,7 +930,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                       hint="Windows 不支持 .cmd/.bat 启动器；请填 .exe 完整路径或 Node 脚本路径。"
                     />
                     <TextArea
-                      label="参数 args（每行一个）"
+                      label="启动参数（每行一个）"
                       className="conn-mono-area"
                       rows={3}
                       value={draft.argsText}
@@ -689,14 +938,14 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                       onChange={(event) => updateDraft({ argsText: event.target.value })}
                     />
                     <TextInput
-                      label="工作目录 cwd（可选）"
+                      label="工作目录（可选）"
                       mono
                       value={draft.cwd}
                       placeholder="C:\\path\\to\\folder"
                       onChange={(event) => updateDraft({ cwd: event.target.value })}
                     />
                     <SecretRows
-                      label="环境变量 env"
+                      label="环境变量"
                       hint="值会被系统加密保存并掩码显示；已保存的值不会回显，重新输入即可替换。"
                       keyPlaceholder="API_KEY"
                       rows={draft.env}
@@ -706,12 +955,12 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                 ) : (
                   <>
                     <TextInput
-                      label="MCP endpoint URL"
+                      label="服务地址"
                       mono
                       value={draft.url}
                       placeholder={draft.transport === 'http' ? 'https://mcp.example.com/mcp' : 'https://mcp.example.com/sse'}
                       onChange={(event) => updateDraft({ url: event.target.value })}
-                      hint="只允许 http:// 或 https://；file://、javascript:、data: 等一律拒绝。"
+                      hint="只支持 http:// 或 https:// 的地址。"
                     />
                     <SecretRows
                       label="请求头 headers"
@@ -720,6 +969,70 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                       rows={draft.headers}
                       onChange={(rows) => updateDraft({ headers: rows })}
                     />
+                    <div className="conn-oauth">
+                      <p className="conn-oauth-title">OAuth 2.0（可选）</p>
+                      <p className="conn-hint">
+                        有些 MCP 服务需要先授权。填好下面的地址后点「开始授权」，Morrow 会自动带上令牌；不用填 client_secret。地址由服务商提供。
+                      </p>
+                      <TextInput
+                        label="授权地址"
+                        mono
+                        value={draft.oauthAuthorizationUrl}
+                        placeholder="https://auth.example.com/oauth/authorize"
+                        onChange={(event) => updateDraft({ oauthAuthorizationUrl: event.target.value })}
+                      />
+                      <TextInput
+                        label="令牌地址"
+                        mono
+                        value={draft.oauthTokenUrl}
+                        placeholder="https://auth.example.com/oauth/token"
+                        onChange={(event) => updateDraft({ oauthTokenUrl: event.target.value })}
+                      />
+                      <div className="conn-grid">
+                        <TextInput
+                          label="Client ID"
+                          mono
+                          value={draft.oauthClientId}
+                          onChange={(event) => updateDraft({ oauthClientId: event.target.value })}
+                        />
+                        <TextInput
+                          label="Scope（空格分隔）"
+                          mono
+                          value={draft.oauthScopes}
+                          placeholder="mcp.read mcp.write"
+                          onChange={(event) => updateDraft({ oauthScopes: event.target.value })}
+                        />
+                      </div>
+                      <div className="conn-oauth-actions">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!selectedName || oauthBusy}
+                          onClick={() => void authorizeOAuth()}
+                        >
+                          {oauthBusy ? '处理中…' : oauthStatus?.authorized ? '重新授权' : '开始授权'}
+                        </Button>
+                        {oauthStatus?.authorized ? (
+                          <Button size="sm" variant="ghost" disabled={oauthBusy} onClick={() => void revokeOAuth()}>
+                            清除授权
+                          </Button>
+                        ) : null}
+                        <span className="conn-oauth-status">
+                          {!selectedName
+                            ? '先保存外部工具，再开始授权'
+                            : oauthStatus?.authorized
+                              ? oauthStatus.expired
+                                ? oauthStatus.hasRefreshToken
+                                  ? '令牌已过期，正在尝试自动刷新；如持续失败请重新授权'
+                                  : '令牌已过期，请重新授权'
+                                : `已授权${oauthStatus.expiresAt ? ` · 有效期至 ${new Date(oauthStatus.expiresAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}`
+                              : oauthStatus?.configured
+                                ? '未授权'
+                                : '填写端点并保存后可授权'}
+                        </span>
+                      </div>
+                      {oauthMessage ? <p className="conn-hint">{oauthMessage}</p> : null}
+                    </div>
                     <Switch
                       checked={draft.allowPrivateNetwork}
                       onChange={(next) => updateDraft({ allowPrivateNetwork: next })}
@@ -761,12 +1074,15 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                 />
 
                 <ul className="conn-notes">
-                  <li>外部调用（mcp_call）不属于「已保存即自动执行」：每次都会弹出审批。</li>
+                  <li>每次调用外部工具都会先询问你，不会自动执行。</li>
                   <li>本机程序会在电脑上启动；网络服务会连接这个地址。只添加你信任的来源。</li>
-                  <li>工作区级配置默认不被信任，保存时登记当前内容哈希；文件被改动后自动失效。</li>
+                  <li>当前文件夹里的配置默认不会自动运行；保存后会记住当时的内容，文件改动后需要重新确认。</li>
                 </ul>
 
                 {testResult ? <TestResult result={testResult} /> : null}
+                <p className="conn-hint conn-action-hint">
+                  测试或授权前会先保存当前修改；新建的外部工具只测试，不会写入。
+                </p>
 
                 <div className="conn-actions">
                   <Button
@@ -809,7 +1125,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                 </div>
                 {deleteArmed ? (
                   <p className="conn-hint" role="alert">
-                    再次点击「确认删除」会删除该连接器及其保存的密钥，且不可恢复。
+                    再次点击「确认删除」会删除该外部工具及其保存的密钥，且不可恢复。
                   </p>
                 ) : null}
               </>
@@ -817,6 +1133,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
           </section>
         </div>
       </div>
+      )}
     </Modal>
   )
 }

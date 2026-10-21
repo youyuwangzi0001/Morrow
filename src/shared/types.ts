@@ -23,13 +23,152 @@ export type PermissionMode = 'read-only' | 'ask' | 'auto'
  * - work（默认）：按权限档位读写文件、执行命令、推进目标；
  * - chat：只讨论与只读分析，内核强制只暴露只读工具并拦截任何写入/执行/目标操作。
  */
-export type SessionMode = 'work' | 'chat'
+export type SessionMode = 'work' | 'chat' | 'research'
+
+/* ── 深度研究（研究模式：多轮检索 → 带引用报告） ─────────────── */
+
+export type ResearchDepth = 'quick' | 'standard' | 'deep'
+export type ResearchStatus = 'idle' | 'planning' | 'ready' | 'searching' | 'completed' | 'stopped' | 'error'
+
+export interface ResearchState {
+  /** 研究主题（首条用户消息） */
+  topic: string
+  depth: ResearchDepth
+  status: ResearchStatus
+  /** 当前/已完成的检索轮次（从 1 开始） */
+  round: number
+  maxRounds: number
+  minSources: number
+  sourceCount: number
+  startedAt: number
+  updatedAt: number
+  /** 待用户确认/执行的可编辑研究计划（Markdown） */
+  plan?: string
+  /** 检索中用户补充的要求：下一轮检索优先纳入 */
+  steer?: string
+  /** 没完成时说明差在哪（来源不足 / 缺少报告 / 已送上限） */
+  gap?: string
+  /** 最终研究报告（画布成品） */
+  artifactId?: string
+}
+
+/**
+ * 计划模式（P0-2）：
+ * - `planMode=true` 时内核只暴露只读工具与 submit_plan，模型先探索再提交计划；
+ * - 用户批准后自动切到执行（planMode=false），并按计划步骤建立 todo 列表；
+ * - 计划本身独立持久化在会话元数据里，可跨重启恢复。
+ */
+export type PlanStatus = 'pending' | 'executing' | 'completed' | 'rejected'
+
+export interface PlanStep {
+  id: string
+  text: string
+}
+
+export interface SessionPlan {
+  id: string
+  title: string
+  summary: string
+  steps: PlanStep[]
+  /** 风险、假设或需要用户确认的前提（可选） */
+  risks?: string
+  status: PlanStatus
+  /** 用户修改意见（rejected/revise 时保留） */
+  feedback?: string
+  createdAt: number
+  updatedAt: number
+  approvedAt?: number
+  completedAt?: number
+  /** 计划文档产物（画布内 markdown） */
+  artifactId?: string
+}
+
+/* ── 检查点与回退（P0-3） ─────────────────────────────────────── */
+
+export interface CheckpointFile {
+  /** 工作区内绝对路径 */
+  path: string
+  /** 本轮开始前文件是否存在（false = 本轮新建，回退时删除） */
+  existed: boolean
+  beforeHash: string | null
+  /** 本轮最后一次成功写入后的哈希（冲突检测） */
+  afterHash: string | null
+  /** 位于 <userData>/snapshots/<sessionId>/ 的写前快照 */
+  snapshotPath?: string
+}
+
+export interface TurnCheckpoint {
+  id: string
+  sessionId: string
+  /** 对应本轮用户消息 id */
+  messageId: string
+  /** 创建时的消息下标（仅在消息未被压缩时有效） */
+  messageIndex: number
+  /** 用户消息摘录（回退列表展示） */
+  label: string
+  createdAt: number
+  files: CheckpointFile[]
+  /** 本轮开始前的 todo 快照 */
+  todos: TodoItem[]
+  /** 本轮开始前已存在的产物 id */
+  artifactIds: string[]
+  /** 本轮开始前的计划快照（回退对话时一起恢复） */
+  plan: SessionPlan | null
+  /** 本轮开始前的计划模式状态 */
+  planMode?: boolean
+}
+
+export type RewindScope = 'both' | 'code' | 'conversation'
+
+export interface RewindConflict {
+  path: string
+  reason: string
+}
+
+export interface RewindFilePreview {
+  path: string
+  /** true = 恢复为写前快照；false = 删除本轮新建的文件 */
+  existed: boolean
+  conflict: boolean
+}
+
+export interface RewindPreview {
+  checkpoint: TurnCheckpoint
+  /** 本次回退涉及的全部文件（目标轮及之后） */
+  files: RewindFilePreview[]
+  conflicts: RewindConflict[]
+  /** 是否能在当前消息列表里定位到回退点（压缩后可能失效） */
+  messageFound: boolean
+  /** 需要恢复/删除的文件数 */
+  fileCount: number
+  /** 将被移除的消息数（含回退点用户消息本身） */
+  removableMessages: number
+}
+
+export interface RewindResult {
+  checkpointId: string
+  scope: RewindScope
+  restoredFiles: number
+  removedFiles: number
+  removedMessages: number
+}
 
 export type ThemeMode = 'dark' | 'light'
 
 /* ── 模型与提供方 ─────────────────────────────────────────────── */
 
 export type ProviderKind = 'openai-compat' | 'anthropic' | 'demo'
+
+export type ReasoningEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+export interface ModelPricing {
+  /** 每百万输入 token 的美元参考价 */
+  inputPerMTok: number
+  /** 每百万输出 token 的美元参考价 */
+  outputPerMTok: number
+  /** 缓存命中输入 token 的参考价（可选） */
+  cacheReadPerMTok?: number
+}
 
 export interface ModelInfo {
   id: string
@@ -38,6 +177,9 @@ export interface ModelInfo {
   maxOutput?: number
   supportsTools: boolean
   supportsReasoning?: boolean
+  /** 推理强度如何映射到 provider：effort=reasoning_effort，thinking=thinking budget */
+  reasoningStyle?: 'effort' | 'thinking'
+  pricing?: ModelPricing
   note?: string
 }
 
@@ -57,6 +199,8 @@ export interface ProviderConfig {
   /** 额外请求头，例如自定义网关需要的字段 */
   headers?: Record<string, string>
   isBuiltin?: boolean
+  /** 上次从服务商 /models 同步的时间；内置 Provider 升级合并时据此保留服务商返回的元数据 */
+  modelsSyncedAt?: number
 }
 
 export interface ModelRef {
@@ -117,6 +261,22 @@ export interface ToolUseBlock {
   finishedAt?: number
   /** 子代理工具的活动摘要 */
   subagent?: { label: string; stepCount?: number }
+  /** swarm 每个子任务的实时状态与最终摘要 */
+  swarmTasks?: SwarmTaskProgress[]
+}
+
+export type SwarmTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'exhausted'
+
+export interface SwarmTaskProgress {
+  index: number
+  title: string
+  agent: string
+  status: SwarmTaskStatus
+  stepCount?: number
+  /** 最近一步在做什么 */
+  note?: string
+  summary?: string
+  error?: string
 }
 
 export interface ContentBlockError {
@@ -139,9 +299,46 @@ export interface Usage {
 }
 
 /** 图片输入（多模态）：以 base64 + mediaType 发给支持视觉的模型 */
+export interface TokenActivityDay {
+  /** 本地日期 YYYY-MM-DD */
+  date: string
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  /** 服务商未返回 usage 时，本地计数器补的估算值（已包含在 totalTokens） */
+  estimatedTokens: number
+  totalTokens: number
+  requests: number
+}
+
+export interface TokenActivitySummary {
+  /** 最近 365 天（含今天），按日期升序 */
+  days: TokenActivityDay[]
+  today: number
+  week: number
+  yearTotal: number
+  total: number
+  activeDays: number
+  estimatedTokens: number
+  generatedAt: number
+}
+
 export interface ChatImage {
   mediaType: string
   dataBase64: string
+  /** 原附件名，用于对话内的图片说明 */
+  name?: string
+}
+
+/** 用户消息附件的展示元数据；正文只进入模型上下文，不进入用户气泡。 */
+export interface MessageAttachment {
+  name: string
+  path?: string
+  size: number
+  kind: 'text' | 'image' | 'file'
+  mediaType?: string
+  note?: string
+  truncated?: boolean
 }
 
 export interface ChatMessage {
@@ -151,8 +348,14 @@ export interface ChatMessage {
   createdAt: number
   model?: string
   usage?: Usage
+  /** 用户输入的原始文本；缺省时回退到 content（兼容旧会话） */
+  displayText?: string
+  /** 用户消息附件展示元数据（不参与模型请求） */
+  attachments?: MessageAttachment[]
   /** 用户消息携带的图片（多模态输入；历史请求也会带上） */
   images?: ChatImage[]
+  /** 研究模式自动续研的内部消息：不展示为用户气泡 */
+  hidden?: boolean
   /** 用户中途停止 */
   interrupted?: boolean
   /** 消息级错误（不打断会话，展示为内联错误） */
@@ -240,6 +443,26 @@ export interface Artifact {
   updatedAt: number
 }
 
+/* ── 成品版本与导出 ───────────────────────────────────────────── */
+
+export type ArtifactVersionSource = 'baseline' | 'agent' | 'restore' | 'manual'
+
+export interface ArtifactVersionInfo {
+  id: string
+  artifactId: string
+  title: string
+  kind: ArtifactKind
+  language?: string
+  createdAt: number
+  source: ArtifactVersionSource
+  size: number
+  hash: string
+  /** 是否有可读取/恢复的快照内容 */
+  restorable: boolean
+}
+
+export type ArtifactExportFormat = 'original' | 'markdown' | 'html' | 'text' | 'pdf'
+
 export interface SessionMeta {
   id: string
   title: string
@@ -248,12 +471,28 @@ export interface SessionMeta {
   permissionMode: PermissionMode
   /** 显式会话模式；缺省 = work（兼容旧会话文件） */
   mode?: SessionMode
+  /** 当前会话推理强度；缺省用全局设置 */
+  reasoningEffort?: ReasoningEffort
+  /** 计划模式：true 时下一次运行先探索并提交计划（仅工作模式可用） */
+  planMode?: boolean
+  /** 最近一次计划提案（持久化，跨重启可继续批准或修订） */
+  plan?: SessionPlan | null
+  /** 深度研究状态（研究模式） */
+  research?: ResearchState | null
   createdAt: number
   updatedAt: number
   messageCount: number
   /** 最后一条消息的纯文本预览 */
   preview?: string
   todoProgress?: { completed: number; total: number }
+  /** 置顶（侧栏排序优先） */
+  pinned?: boolean
+  /** 归档（默认列表隐藏，可展开查看） */
+  archived?: boolean
+  /** 演示会话：只能使用演示模型，且只能在演示工作区运行 */
+  demo?: boolean
+  /** 临时对话：只存在于内存，不写入会话文件、搜索索引、token 账本与成品版本 */
+  temporary?: boolean
 }
 
 export interface Session extends SessionMeta {
@@ -276,6 +515,29 @@ export interface Project {
 
 export type PermissionDecision = 'once' | 'always' | 'deny'
 
+export type PermissionRuleKind = 'tool' | 'prefix' | 'path'
+export type PermissionRuleDecision = 'allow' | 'deny'
+
+export interface PermissionRule {
+  id: string
+  workspace: string
+  tool: string
+  kind: PermissionRuleKind
+  pattern: string
+  decision: PermissionRuleDecision
+  createdAt: number
+}
+
+export interface PermissionLogEntry {
+  id: string
+  at: number
+  workspace: string | null
+  sessionId: string
+  toolName: string
+  title: string
+  decision: PermissionDecision
+}
+
 export interface PermissionPreview {
   kind: 'command' | 'diff' | 'path' | 'text' | 'json'
   content: string
@@ -292,6 +554,8 @@ export interface PermissionRequest {
   risk: ToolRisk
   input: Record<string, unknown>
   preview?: PermissionPreview
+  /** false = 高风险/外部动作/越界，不提供「始终允许」，每次都会重新询问 */
+  allowAlways?: boolean
   createdAt: number
 }
 
@@ -330,11 +594,151 @@ export interface Attachment {
   /** 图片 MIME 类型（kind=image 时） */
   mediaType?: string
   truncated?: boolean
+  /** 未发送/截断等需要提示用户的原因 */
+  note?: string
+}
+
+/* ── Git 工作台（P1-8） ───────────────────────────────────────── */
+
+export interface GitFileStatus {
+  /** 相对仓库根的路径（posix 分隔符） */
+  path: string
+  /** 重命名/复制前的路径 */
+  origPath?: string
+  /** porcelain v1 的索引状态字母（M/A/D/R/C/U/?） */
+  indexStatus: string
+  /** porcelain v1 的工作区状态字母 */
+  worktreeStatus: string
+  staged: boolean
+  unstaged: boolean
+  untracked: boolean
+  conflicted: boolean
+}
+
+export interface GitStatus {
+  isRepo: boolean
+  root: string | null
+  branch: string | null
+  detached: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  hasCommits: boolean
+  files: GitFileStatus[]
+  stagedCount: number
+  changedCount: number
+}
+
+export interface GitDiff {
+  path: string
+  staged: boolean
+  diff: string
+  truncated: boolean
+  binary: boolean
+}
+
+export interface GitBranch {
+  name: string
+  current: boolean
+  upstream: string | null
+  lastCommitAt: number | null
+  lastCommitSubject: string
+}
+
+export interface GitCommit {
+  hash: string
+  shortHash: string
+  author: string
+  date: number
+  subject: string
+}
+
+export interface GitCommitDetail {
+  commit: GitCommit
+  body: string
+  diff: string
+  truncated: boolean
+}
+
+export interface GitCommitResult {
+  status: GitStatus
+  commitHash: string | null
+  summary: string
+}
+
+/* ── 终端与后台任务（P0-1） ──────────────────────────────────── */
+
+export type TerminalProcessKind = 'shell' | 'task'
+export type TerminalProcessStatus = 'running' | 'exited'
+
+export interface TerminalProcessInfo {
+  id: string
+  title: string
+  cwd: string
+  kind: TerminalProcessKind
+  command?: string
+  shellId?: string
+  shellLabel?: string
+  status: TerminalProcessStatus
+  pid?: number
+  createdAt: number
+  exitCode?: number
+}
+
+export interface TerminalShellProfile {
+  id: string
+  label: string
+  detail: string
+  isDefault?: boolean
+}
+
+export interface TerminalEventPayload {
+  type: 'data' | 'state' | 'removed'
+  id: string
+  info?: TerminalProcessInfo
+  chunk?: string
+  stream?: 'stdout' | 'stderr'
+  /** 真实 PTY 输出：保留 ANSI/回车，直接交给 xterm；后台任务为纯文本 */
+  pty?: boolean
+}
+
+/* ── 联网搜索 ─────────────────────────────────────────────────── */
+
+export type WebSearchProvider = 'tavily' | 'brave' | 'serper' | 'searxng'
+
+export interface WebSearchSettings {
+  enabled: boolean
+  provider: WebSearchProvider
+  /** SearXNG 实例地址；其他提供商使用内置端点 */
+  baseUrl?: string
+  /** 主进程已保存加密 Key（渲染层永远拿不到明文） */
+  apiKeyStored: boolean
+  maxResults: number
+}
+
+export interface WebSearchSource {
+  rank: number
+  title: string
+  url: string
+  snippet: string
+  publishedAt?: string
+  engine?: string
+}
+
+export interface WebSearchResponse {
+  query: string
+  provider: string
+  sources: WebSearchSource[]
+  answer?: string
+  elapsedMs: number
+  cached?: boolean
 }
 
 /* ── 设置 ─────────────────────────────────────────────────────── */
 
 export type SendKey = 'enter' | 'ctrl+enter'
+
+export type AnswerStyleId = 'balanced' | 'concise' | 'explanatory' | 'formal' | 'custom'
 
 export interface Settings {
   version: number
@@ -363,7 +767,51 @@ export interface Settings {
   layoutVersion?: number
   /** 会话自动命名（用首条消息） */
   autoTitle: boolean
+  /** 联网搜索配置 */
+  webSearch: WebSearchSettings
+  /** 关闭窗口时最小化到托盘（任务仍在后台运行） */
+  closeToTray: boolean
+  /** 任务完成/失败时发送系统通知 */
+  notifyOnFinish: boolean
+  /** 桌面灵动岛：置顶的小伙伴，可拖到桌面任意位置 */
+  islandEnabled: boolean
+  /** 灵动岛收起时的左上角位置（DIP）；null = 默认停在主屏右下角 */
+  islandPosition: { x: number; y: number } | null
+  /** 默认推理强度（模型支持时生效） */
+  reasoningEffort: ReasoningEffort
+  /** 全局回答风格：影响所有对话、侧边聊天与定时任务的下一次回答 */
+  answerStyle: AnswerStyleId
+  /** 自定义回答风格说明（answerStyle = custom 时生效） */
+  answerStyleCustom: string
+  /** 用户配置的运行钩子（显式启用后执行） */
+  hooks: HookConfig[]
+  /** 终端默认 Shell（终端列表里的 id；空字符串 = 自动选择） */
+  terminalShell: string
 }
+
+/* ── 自定义命令与钩子（P1-12） ───────────────────────────────── */
+
+export interface CustomCommandInfo {
+  /** 不含斜杠的命令名（小写） */
+  name: string
+  description: string
+  argumentHint?: string
+  scope: 'project' | 'user'
+  path: string
+  /** Markdown 模板，支持 $ARGUMENTS 与 $1..$9 */
+  body: string
+}
+
+export type HookEvent = 'user_prompt_submit' | 'post_tool_use' | 'run_finished'
+
+export interface HookConfig {
+  id: string
+  event: HookEvent
+  command: string
+  enabled: boolean
+}
+
+export type DataDirSource = 'arg' | 'custom' | 'portable' | 'default'
 
 export interface AppInfo {
   version: string
@@ -374,6 +822,10 @@ export interface AppInfo {
   buildTime?: string
   buildSha?: string
   dataDir: string
+  defaultDataDir: string
+  customDataDir: string | null
+  dataDirSource: DataDirSource
+  canChangeDataDir: boolean
 }
 
 export interface Bootstrap {
@@ -410,6 +862,10 @@ export type RuntimeEvent =
       status?: ToolStatus
       title?: string
       note?: string
+      /** 子代理当前步数（用于活动条展示，不参与模型上下文） */
+      stepCount?: number
+      /** swarm 子任务的结构化实时状态（同一个 swarm 工具下按 index 区分） */
+      swarmTask?: SwarmTaskProgress
     })
   | (RuntimeEventBase & {
       type: 'tool_finished'
@@ -424,10 +880,14 @@ export type RuntimeEvent =
   | (RuntimeEventBase & { type: 'question_asked'; request: AskUserRequest })
   | (RuntimeEventBase & { type: 'question_answered'; requestId: string; answer: AskUserAnswer })
   | (RuntimeEventBase & { type: 'todos_updated'; todos: TodoItem[] })
-  | (RuntimeEventBase & { type: 'artifacts_updated'; artifacts: Artifact[] })
+  | (RuntimeEventBase & { type: 'artifacts_updated'; artifacts: Artifact[]; artifactId?: string })
   | (RuntimeEventBase & { type: 'usage_updated'; usage: Usage })
   | (RuntimeEventBase & { type: 'session_updated'; meta: SessionMeta; title?: string })
+  | (RuntimeEventBase & { type: 'research_updated'; research: ResearchState | null })
+  | (RuntimeEventBase & { type: 'messages_replaced'; messages: ChatMessage[] })
   | (RuntimeEventBase & { type: 'goal_updated'; goal: Goal | null })
+  | (RuntimeEventBase & { type: 'plan_updated'; plan: SessionPlan | null; planMode: boolean })
+  | (RuntimeEventBase & { type: 'queue_updated'; queue: QueuedMessage[] })
   | (RuntimeEventBase & { type: 'compaction'; phase: 'started' | 'finished'; savedTokens?: number })
   | (RuntimeEventBase & { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string })
   | (RuntimeEventBase & { type: 'error'; error: ResultError })
@@ -435,6 +895,25 @@ export type RuntimeEvent =
 
 /** 事件在 preload 上的订阅回调 */
 export type RuntimeEventListener = (event: RuntimeEvent) => void
+
+/* ── 桌面灵动岛 ───────────────────────────────────────────────── */
+
+export type IslandStatus = 'idle' | 'running' | 'waiting' | 'done' | 'error'
+
+/** 主进程聚合出的桌面小伙伴状态；与具体窗口无关，重开灵动岛也能恢复。 */
+export interface IslandSnapshot {
+  status: IslandStatus
+  sessionId: string | null
+  sessionTitle: string
+  /** 一行进度描述，例如「正在执行 运行命令」 */
+  detail: string
+  todos: TodoItem[]
+  /** 本轮开始时间（用于显示耗时）；空闲为 null */
+  startedAt: number | null
+  updatedAt: number
+  /** 任务完成后还没回主窗口看过 */
+  unread: boolean
+}
 
 /* ── 会话操作参数 ─────────────────────────────────────────────── */
 
@@ -445,6 +924,10 @@ export interface CreateSessionInput {
   /** 新建会话的显式模式；缺省 = work */
   mode?: SessionMode
   title?: string
+  /** 演示会话（由主进程校验演示模型与演示工作区） */
+  demo?: boolean
+  /** 临时对话：只存在内存中，关闭应用后消失 */
+  temporary?: boolean
 }
 
 export interface SendMessageInput {
@@ -453,12 +936,27 @@ export interface SendMessageInput {
   attachments?: Attachment[]
   model?: ModelRef
   permissionMode?: PermissionMode
+  /** 研究模式：本条消息启动/继续研究时的深度 */
+  researchDepth?: ResearchDepth
+  /** 研究自动续研的内部消息：不显示为用户气泡 */
+  hidden?: boolean
+  /** 无人值守运行（定时任务）：需要审批的操作自动拒绝，提问自动跳过 */
+  unattended?: boolean
 }
 
 export interface SendMessageResult {
   runId: string
   userMessage: ChatMessage
   assistantMessageId: string
+}
+
+/** 运行中排队的下一条消息（P0-5） */
+export interface QueuedMessage {
+  id: string
+  sessionId: string
+  text: string
+  attachments?: Attachment[]
+  createdAt: number
 }
 
 export interface FileSearchResult {

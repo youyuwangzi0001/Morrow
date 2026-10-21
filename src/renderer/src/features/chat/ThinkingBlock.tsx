@@ -41,11 +41,14 @@ export function ThinkingBlock({ text, durationMs, streaming = false }: ThinkingB
 
   if (!text.trim() && !streaming) return null
 
-  const seconds = durationMs && durationMs > 0 ? durationMs / 1_000 : elapsed
+  const hasDuration = typeof durationMs === 'number' && durationMs >= 0
+  const seconds = hasDuration ? durationMs / 1_000 : elapsed
   const label = streaming
     ? `正在思考${seconds >= 1 ? ` · ${Math.floor(seconds)} 秒` : '…'}`
-    : durationMs && durationMs > 0
-      ? `思考了 ${formatSeconds(seconds)}`
+    : hasDuration
+      ? seconds < 1
+        ? '思考了不到 1 秒'
+        : `思考了 ${formatSeconds(seconds)}`
       : '思考过程'
 
   return (

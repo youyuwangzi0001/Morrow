@@ -1,0 +1,442 @@
+/* ── 成品版本历史与导出弹窗 ───────────────────────────────────── */
+
+.artifact-dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.artifact-dialog-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.artifact-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.artifact-restore-ask {
+  max-width: 260px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.artifact-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 2px;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.artifact-text-btn:hover {
+  color: var(--gold-bright);
+}
+
+/* ── 版本历史 ─────────────────────────────────────────────────── */
+
+.artifact-versions-body {
+  min-height: 380px;
+}
+
+.artifact-versions-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 360px;
+  padding: 28px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  text-align: center;
+  font-size: 12.5px;
+}
+
+.artifact-versions-status.is-error {
+  color: var(--rust);
+}
+
+.artifact-versions-status p {
+  margin: 0;
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+.artifact-versions-hint {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.artifact-versions-body > .artifact-versions-status {
+  min-height: 380px;
+}
+
+.artifact-versions-body:has(.artifact-versions-list) {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.artifact-versions-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.artifact-versions-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.artifact-version-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.artifact-version-item:last-child {
+  border-bottom: 0;
+}
+
+.artifact-version-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.artifact-version-item.is-active {
+  background: linear-gradient(90deg, var(--gold-dim), transparent);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+
+.artifact-version-main,
+.artifact-version-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.artifact-version-time {
+  font-size: 11.5px;
+}
+
+.artifact-version-current {
+  padding: 1px 5px;
+  border: 1px solid var(--line-gold);
+  border-radius: 2px;
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.artifact-version-source {
+  font-size: 10px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-version-source.is-restore {
+  color: var(--patina);
+}
+
+.artifact-version-source.is-baseline {
+  color: var(--text-3);
+}
+
+.artifact-version-size {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  color: var(--text-3);
+}
+
+.artifact-version-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.artifact-version-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.artifact-version-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.artifact-version-pre {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.artifact-version-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--rust) 25%, transparent);
+  color: var(--rust);
+  font-size: 11.5px;
+}
+
+/* ── 导出成品 ─────────────────────────────────────────────────── */
+
+.artifact-export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.artifact-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.artifact-format {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.artifact-format:hover {
+  border-color: var(--line-gold);
+  color: var(--text);
+}
+
+.artifact-format.is-active {
+  border-color: var(--line-gold);
+  background: linear-gradient(135deg, var(--gold-dim), var(--gold-ghost));
+  color: var(--text);
+}
+
+.artifact-format:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.artifact-format-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--gold);
+  background: var(--bg-elev);
+}
+
+.artifact-format.is-active .artifact-format-icon {
+  border-color: var(--line-gold);
+}
+
+.artifact-format-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-right: 14px;
+}
+
+.artifact-format-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.artifact-format-hint {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.artifact-format-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--text-invert);
+  background: var(--gold);
+}
+
+.artifact-export-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.artifact-export-copy-hint {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.artifact-export-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--patina) 30%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--patina) 6%, transparent);
+}
+
+.artifact-export-result-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--text-invert);
+  background: var(--patina);
+}
+
+.artifact-export-result-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.artifact-export-result-main code {
+  color: var(--text-3);
+  font-size: 10.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.artifact-export-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--rust) 30%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--rust);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .artifact-versions-body:has(.artifact-versions-list) {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-versions-list {
+    max-height: 190px;
+    overflow: auto;
+  }
+
+  .artifact-version-detail {
+    min-height: 260px;
+  }
+
+  .artifact-dialog-foot {
+    flex-wrap: wrap;
+  }
+
+  .artifact-dialog-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .artifact-restore-ask {
+    max-width: none;
+    margin-right: auto;
+    text-align: left;
+  }
+}
+
+@media (max-width: 520px) {
+  .artifact-format-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -72,6 +72,93 @@
   animation: horizon-sweep 460ms var(--ease-out) both;
 }
 
+/* 后台运行：别的对话在跑，当前输入框只用于准备下一条消息 */
+.composer-background {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 1px 2px 8px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--line));
+  border-radius: var(--r-xs);
+  background: var(--gold-ghost);
+}
+
+.composer-background.is-attention {
+  border-color: color-mix(in srgb, var(--amber) 38%, var(--line));
+  background: var(--amber-dim);
+}
+
+.composer-background-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-dim);
+  animation: composer-background-pulse 1.6s ease-in-out infinite;
+}
+
+.composer-background.is-attention .composer-background-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+
+@keyframes composer-background-pulse {
+  0%,
+  100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.composer-background-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.composer-background-title {
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.composer-background-sub {
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.composer-background-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.composer-background-actions button {
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--gold);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.composer-background-actions button:hover {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.composer-background-actions button.is-danger {
+  border-color: color-mix(in srgb, var(--rust) 38%, var(--line));
+  color: var(--rust);
+}
+
+.composer-background-actions button.is-danger:hover {
+  background: var(--rust-dim);
+}
+
 /* 附件 chips */
 .composer-files {
   display: flex;
@@ -104,6 +191,21 @@
 .composer-file-size {
   color: var(--text-3);
   font-size: 9.5px;
+}
+
+.composer-file.is-warn {
+  border-color: color-mix(in srgb, var(--rust) 40%, var(--line));
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.composer-file.is-warn .composer-file-size {
+  color: color-mix(in srgb, var(--rust) 72%, var(--text-3));
+}
+
+.composer-file-warn {
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .composer-file-remove {
@@ -160,9 +262,11 @@
 /* 底部工具条 */
 .composer-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  row-gap: 6px;
   padding-top: 3px;
 }
 
@@ -174,12 +278,15 @@
   min-width: 0;
 }
 
+/* 左侧图标不参与压缩：空间不足时整体换行，而不是让图标压到右侧控件上 */
 .composer-bar-left {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 
 .composer-bar-right {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  row-gap: 6px;
   justify-content: flex-end;
 }
 
@@ -249,18 +356,6 @@
   border-color: var(--line-gold);
   background: var(--gold-ghost);
   color: var(--text-2);
-}
-
-.composer-hint {
-  min-width: 0;
-  max-width: 220px;
-  overflow: hidden;
-  color: var(--text-3);
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
 }
 
 /* 模型 / 权限：把 ui/Select 收成 composer 里的小 chip（宽度由容器查询控制） */
@@ -333,6 +428,21 @@
 .composer-perm-lock svg {
   color: var(--text-3);
   opacity: 0.85;
+}
+
+.composer-perm-lock.is-research {
+  color: var(--gold-bright);
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.composer-perm-lock.is-research svg {
+  color: var(--gold);
+  opacity: 1;
+}
+
+.composer-picker-research {
+  flex: 0 0 auto;
 }
 
 .composer-picker .select-trigger {
@@ -563,13 +673,22 @@
 
 /* 窄容器（画布打开 / 小窗口）逐级让位，避免工具条溢出 */
 @container (max-width: 760px) {
-  .composer-hint {
+  .composer-ctx {
     display: none;
+  }
+
+  /* 三个模式选项会多占一点宽度：先收起推理强度（仍可在设置里调整），保证底栏一行 */
+  .composer-picker-reasoning {
+    display: none;
+  }
+
+  .composer-picker-mode .segmented-item {
+    padding: 0 6px;
   }
 }
 
 @container (max-width: 640px) {
-  .composer-ctx {
+  .composer-elapsed {
     display: none;
   }
 
@@ -587,6 +706,17 @@
 
   .composer-picker-mode .segmented-item {
     padding: 0 6px;
+  }
+
+  .composer-picker-research {
+    display: none;
+  }
+}
+
+/* 再窄就先收起推理强度选择（仍可在「设置 → 模型」里调整），保证底栏始终一行 */
+@container (max-width: 560px) {
+  .composer-picker-reasoning {
+    display: none;
   }
 }
 
@@ -616,4 +746,38 @@
   .composer-perm-lock {
     padding: 0 6px;
   }
+}
+
+/* 运行中：加入队列（琥珀描边）与打断并发送 */
+.composer-send.is-queue.is-ready {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+  color: var(--amber);
+  box-shadow: none;
+}
+
+.composer-send.is-queue.is-ready:hover {
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  filter: none;
+}
+
+.composer-send.is-interrupt {
+  border-color: var(--amber-dim);
+  background: transparent;
+  color: var(--amber);
+}
+
+.composer-send.is-interrupt:hover:not(:disabled) {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+
+.composer-send.is-interrupt:disabled {
+  border-color: var(--line);
+  background: var(--surface-inset);
+  color: var(--text-3);
+}
+
+[data-theme='light'] .composer-send.is-queue.is-ready {
+  background: color-mix(in srgb, var(--amber) 12%, var(--surface));
 }

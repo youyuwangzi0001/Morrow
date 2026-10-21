@@ -79,6 +79,8 @@ export interface BrowserState {
   canGoForward: boolean
   /** 最近一次致命错误（加载失败/被安全策略拦截）；成功后清空 */
   error: { code: string; message: string } | null
+  /** Agent 正在操作这个页面（用于面板上的「Morrow 操作中」提示） */
+  automationActive: boolean
 }
 
 export interface BrowserDownloadRequest {

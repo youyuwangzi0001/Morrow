@@ -344,6 +344,8 @@ export const runCommandTool: ToolImpl = {
         terminate('abort')
       }
       ctx.signal.addEventListener('abort', onAbort, { once: true })
+      // 监听注册前信号可能已经 abort：补一次检查，避免命令在取消后继续跑
+      if (ctx.signal.aborted) onAbort()
     })
   }
 }

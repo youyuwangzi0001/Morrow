@@ -4,13 +4,14 @@
  * 用法：
  *   <SearchPanel open={open} onClose={() => setOpen(false)} onNavigate={(hit) => { ... }} />
  * - 数据来自 window.morrow.features.invoke('feature:search:query', { q, workspace?, limit? })
- * - onNavigate(hit)：会话 hit 带 sessionId(/messageId)，文件带 absolutePath/path(/line)，
+ * - onNavigate(hit)：对话 hit 带 sessionId(/messageId)，文件带 absolutePath/path(/line)，
  *   artifact 带 artifactId/kind；由 App/命令面板决定跳转与画布打开。
  * - 也可以只把 open 由命令面板控制，Escape 关闭。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { FileText, Loader2, MessageSquare, Palette, Search, X } from 'lucide-react'
+import { hasOpenModal } from '../../ui'
 import './SearchPanel.css'
 
 export type SearchHitKind = 'session' | 'file' | 'artifact'
@@ -58,7 +59,7 @@ export interface SearchPanelProps {
   open: boolean
   onClose: () => void
   onNavigate: (hit: SearchHit) => void
-  /** 当前工作区；不传则由主进程使用最近工作区（文件结果按工作区隔离） */
+  /** 当前文件夹；不传则由主进程使用最近文件夹（文件结果按文件夹隔离） */
   workspace?: string | null
   initialQuery?: string
 }
@@ -70,6 +71,7 @@ const EMPTY_RESULT: SearchResponse = {
   tookMs: 0,
   index: { ready: false, building: false, sessions: 0, files: 0, artifacts: 0, workspaces: [] }
 }
+const SEARCH_LIMIT = 20
 
 function flatten(groups: SearchResponse['groups']): SearchHit[] {
   return [...groups.sessions, ...groups.files, ...groups.artifacts]
@@ -100,8 +102,8 @@ function KindIcon({ kind }: { kind: SearchHitKind }): JSX.Element {
 
 function groupTitle(kind: SearchHitKind): string {
   if (kind === 'file') return '文件'
-  if (kind === 'artifact') return '生成的结果'
-  return '会话'
+  if (kind === 'artifact') return '成品'
+  return '对话'
 }
 
 export default function SearchPanel({
@@ -112,6 +114,7 @@ export default function SearchPanel({
   initialQuery = ''
 }: SearchPanelProps): JSX.Element | null {
   const [query, setQuery] = useState(initialQuery)
+  const [scope, setScope] = useState<'all' | 'workspace'>('all')
   const [result, setResult] = useState<SearchResponse>(EMPTY_RESULT)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,8 +140,8 @@ export default function SearchPanel({
       try {
         const response = await window.morrow.features.invoke<SearchResponse>('feature:search:query', {
           q: trimmed,
-          ...(workspace ? { workspace } : {}),
-          limit: 20
+          ...(scope === 'workspace' && workspace ? { workspace } : {}),
+          limit: SEARCH_LIMIT
         })
         if (seq !== requestSeq.current) return
         if (!response.ok) {
@@ -155,8 +158,12 @@ export default function SearchPanel({
         if (seq === requestSeq.current) setLoading(false)
       }
     },
-    [workspace]
+    [workspace, scope]
   )
+
+  useEffect(() => {
+    if (!workspace && scope === 'workspace') setScope('all')
+  }, [workspace, scope])
 
   // 打开时聚焦；关闭时取消未完成请求
   useEffect(() => {
@@ -185,6 +192,8 @@ export default function SearchPanel({
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent): void => {
+      // 更上层弹窗打开时，键盘归弹窗处理，面板不抢 Esc/方向键
+      if (hasOpenModal()) return
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
@@ -263,7 +272,7 @@ export default function SearchPanel({
             ref={inputRef}
             className="search-input"
             value={query}
-            placeholder="搜索聊天、文件内容和生成的结果…"
+            placeholder="搜索对话、文件和成品…"
             aria-label="全局搜索"
             onChange={(event) => setQuery(event.target.value)}
             spellCheck={false}
@@ -275,11 +284,36 @@ export default function SearchPanel({
           </button>
         </div>
 
+        <div className="search-scope-row" role="group" aria-label="搜索范围">
+          <button
+            type="button"
+            className={['search-scope-btn', scope === 'all' ? 'is-active' : ''].filter(Boolean).join(' ')}
+            aria-pressed={scope === 'all'}
+            onClick={() => setScope('all')}
+          >
+            全部
+          </button>
+          <button
+            type="button"
+            className={['search-scope-btn', scope === 'workspace' ? 'is-active' : ''].filter(Boolean).join(' ')}
+            aria-pressed={scope === 'workspace'}
+            disabled={!workspace}
+            title={workspace ? '只搜索当前对话的文件夹' : '先选择一个文件夹'}
+            onClick={() => setScope('workspace')}
+          >
+            当前文件夹
+          </button>
+        </div>
+
         <div className="search-body" ref={listRef}>
           {!query.trim() ? (
             <div className="search-empty">
-              <p className="search-empty-title">搜索整个 Morrow</p>
-              <p className="search-empty-hint">搜索聊天、文件内容和生成的结果；支持中文。</p>
+              <p className="search-empty-title">{scope === 'workspace' ? '搜索当前文件夹' : '搜索整个 Morrow'}</p>
+              <p className="search-empty-hint">
+                {scope === 'workspace'
+                  ? '输入关键词，搜索这个文件夹里的文件和成品。'
+                  : '输入关键词，搜索所有对话、文件和成品。'}
+              </p>
             </div>
           ) : error ? (
             <div className="search-empty search-error">
@@ -289,7 +323,7 @@ export default function SearchPanel({
           ) : !loading && result.total === 0 ? (
             <div className="search-empty">
               <p className="search-empty-title">没有找到「{query.trim()}」</p>
-              <p className="search-empty-hint">试试更短的关键词，或确认文件在工作区内且不是二进制/超大文件。</p>
+              <p className="search-empty-hint">试试更短的关键词，或换一个说法。</p>
             </div>
           ) : (
             <>
@@ -306,11 +340,11 @@ export default function SearchPanel({
             <kbd>↓</kbd> 选择 <kbd>Enter</kbd> 打开 <kbd>Esc</kbd> 关闭
           </span>
           <span className="search-meta">
-            {result.query
-              ? `${result.total} 条结果 · ${result.tookMs}ms · 索引 ${result.index.sessions} 会话 / ${result.index.files} 文件 / ${result.index.artifacts} 产物${
-                  result.index.building ? ' · 构建中…' : ''
-                }`
-              : '本地索引 · 不联网'}
+            {result.index.building
+              ? '正在更新本地索引…'
+              : result.query
+                ? `显示 ${result.total} 条结果${result.total >= SEARCH_LIMIT ? `（最多 ${SEARCH_LIMIT} 条）` : ''} · 本地搜索`
+                : '本地搜索 · 不联网'}
           </span>
         </div>
       </div>

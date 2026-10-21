@@ -59,6 +59,17 @@
   --user-bubble: #1a212c;
   --code-bg: #0d1117;
 
+  /* 编辑器语法色（CodeMirror） */
+  --syntax-keyword: #c8ae7d;
+  --syntax-string: #a9bfaf;
+  --syntax-number: #c6a764;
+  --syntax-function: #e4ce9e;
+  --syntax-type: #bdb39e;
+  --syntax-variable: #c9c3b6;
+  --syntax-comment: #6b675f;
+  --syntax-operator: #8c867a;
+  --syntax-invalid: #c2795f;
+
   /* 间距 */
   --sp-1: 4px;
   --sp-2: 8px;
@@ -146,4 +157,15 @@
   --grain-opacity: 0.035;
   --user-bubble: #e8e1d2;
   --code-bg: #ece6d8;
+
+  /* 编辑器语法色：浅底上用深墨/暗金，保证可读 */
+  --syntax-keyword: #7a5528;
+  --syntax-string: #446756;
+  --syntax-number: #7a5a1e;
+  --syntax-function: #7a5528;
+  --syntax-type: #565a63;
+  --syntax-variable: #3a3a38;
+  --syntax-comment: #7b7569;
+  --syntax-operator: #5c574d;
+  --syntax-invalid: #a2543f;
 }

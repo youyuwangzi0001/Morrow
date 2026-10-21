@@ -3,7 +3,19 @@
  * store 的 openSettings() 不带参数（Lead 拥有），这里用一个 feature 内部的小通道：
  * 任意组件 requestSettingsTab('context') 后再 openSettings()，设置弹窗打开时取走请求。
  */
-export type SettingsTabId = 'models' | 'context' | 'permission' | 'appearance' | 'about'
+export type SettingsTabId =
+  | 'models'
+  | 'search'
+  | 'context'
+  | 'style'
+  | 'usage'
+  | 'archive'
+  | 'permission'
+  | 'automation'
+  | 'tools'
+  | 'terminal'
+  | 'appearance'
+  | 'about'
 
 let pendingTab: SettingsTabId | null = null
 const listeners = new Set<(tab: SettingsTabId) => void>()

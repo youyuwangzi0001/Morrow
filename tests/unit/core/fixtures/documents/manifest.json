@@ -37,6 +37,10 @@
     "input.xlsx": {
       "sha256": "f6de8078aa435a5bc466890f5b5d08eae8af74e0944272117498e5006319345d",
       "bytes": 5541
+    },
+    "scanned-zh.pdf": {
+      "sha256": "890fb950071625de6c1513fb3f904695ab974263422c326d570c38c287aab237",
+      "bytes": 61064
     }
   },
   "scenarios": {

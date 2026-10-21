@@ -16,8 +16,8 @@
  * Agent 侧仍应以系统提示中的不可信规则处理（见 docs/R10-MEMORY-PROJECTS.md）。
  */
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { estimateTokens } from '@core/context'
 
 /* ── 公开类型（与渲染层 features/memory/memory-api.ts 保持一致） ── */
@@ -165,6 +165,29 @@ export function normalizeMemoryWorkspace(workspace: string): string {
   return real
 }
 
+/**
+ * 解析工作区内的 .morrow 目录：
+ * - 不存在时返回待创建路径；
+ * - 已存在时必须 realpath 后仍在工作区内，防止仓库里的 junction/symlink 把记忆写/读到工作区外。
+ */
+function safeMorrowDir(workspaceReal: string): string {
+  const candidate = join(workspaceReal, '.morrow')
+  if (!existsSync(candidate)) return candidate
+  let real: string
+  try {
+    real = realpathSync(candidate)
+  } catch {
+    throw new Error('工作区的 .morrow 目录不可访问')
+  }
+  const fold = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
+  const root = fold(workspaceReal)
+  const target = fold(real)
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new Error('工作区的 .morrow 目录指向工作区外，已拒绝访问记忆')
+  }
+  return real
+}
+
 /** 记忆正文清理：去控制符、压缩空行、限长 */
 export function sanitizeMemoryText(input: string): string {
   if (typeof input !== 'string') throw new Error('记忆内容必须是文本')
@@ -195,6 +218,50 @@ export function normalizeMemoryTags(tags: unknown): string[] {
   return result
 }
 
+/** Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY。 */
+function renameWithRetry(from: string, to: string): void {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      renameSync(from, to)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw err
+      if (attempt === 3) throw err
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (attempt + 1))
+    }
+  }
+}
+
+/**
+ * 记忆文件必须落在工作区的 .morrow 目录内（realpath 后判断），
+ * 防止仓库里的 memories.json / MEMORY.md 软链接把记忆读写引到别处。
+ */
+function safeMorrowFile(dirReal: string, name: string): string {
+  const candidate = join(dirReal, name)
+  if (!existsSync(candidate)) return candidate
+  let real: string
+  try {
+    real = realpathSync(candidate)
+  } catch {
+    throw new Error(`工作区的 ${name} 不可访问`)
+  }
+  const fold = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
+  const root = fold(dirReal)
+  const target = fold(real)
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new Error(`工作区的 ${name} 指向工作区外，已拒绝访问记忆`)
+  }
+  let stat
+  try {
+    stat = statSync(real)
+  } catch {
+    throw new Error(`工作区的 ${name} 不可访问`)
+  }
+  if (!stat.isFile()) throw new Error(`工作区的 ${name} 不是文件`)
+  return real
+}
+
 function atomicWriteJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
   const content = JSON.stringify(data, null, 2)
@@ -202,8 +269,17 @@ function atomicWriteJson(path: string, data: unknown): void {
     throw new Error('记忆数据超过大小上限，请先清理一些旧条目')
   }
   const tmp = `${path}.${process.pid}.tmp`
-  writeFileSync(tmp, content, 'utf8')
-  renameSync(tmp, path)
+  try {
+    writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 })
+    renameWithRetry(tmp, path)
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      // 清理失败不影响原始错误
+    }
+    throw err
+  }
 }
 
 function readJsonSafe(path: string): unknown | null {
@@ -213,7 +289,7 @@ function readJsonSafe(path: string): unknown | null {
   } catch {
     // 损坏文件不静默删除：备份后从空数据开始，用户仍可手工找回
     try {
-      renameSync(path, `${path}.corrupt-${Date.now()}.bak`)
+      renameWithRetry(path, `${path}.corrupt-${Date.now()}.bak`)
     } catch {
       // 备份失败也不阻塞主流程
     }
@@ -326,19 +402,19 @@ export class MemoryService {
 
   projectStorePath(workspace: string): string {
     const real = normalizeMemoryWorkspace(workspace)
-    return join(real, '.morrow', MEMORY_STORE_FILE)
+    return safeMorrowFile(safeMorrowDir(real), MEMORY_STORE_FILE)
   }
 
   projectLegacyPath(workspace: string): string {
     const real = normalizeMemoryWorkspace(workspace)
-    return join(real, '.morrow', MEMORY_LEGACY_FILE)
+    return safeMorrowFile(safeMorrowDir(real), MEMORY_LEGACY_FILE)
   }
 
   private resolveTarget(scope: MemoryScope, workspace?: string | null): { storePath: string; workspace: string | null } {
     if (scope === 'global') return { storePath: this.globalStorePath(), workspace: null }
     if (!workspace) throw new Error('项目记忆需要指定工作区')
     const real = normalizeMemoryWorkspace(workspace)
-    return { storePath: join(real, '.morrow', MEMORY_STORE_FILE), workspace: real }
+    return { storePath: safeMorrowFile(safeMorrowDir(real), MEMORY_STORE_FILE), workspace: real }
   }
 
   private load(scope: MemoryScope, workspace?: string | null): LoadedStore {
@@ -361,7 +437,7 @@ export class MemoryService {
   /** 把 MEMORY.md 中尚未导入的行迁移为结构化条目；幂等（legacySeen 去重）。 */
   private migrateLegacy(loaded: LoadedStore): number {
     if (loaded.scope !== 'project' || !loaded.workspace) return 0
-    const legacyPath = join(loaded.workspace, '.morrow', MEMORY_LEGACY_FILE)
+    const legacyPath = safeMorrowFile(safeMorrowDir(loaded.workspace), MEMORY_LEGACY_FILE)
     if (!existsSync(legacyPath)) return 0
     let markdown: string
     let mtime = this.now()
@@ -441,7 +517,7 @@ export class MemoryService {
       legacyFileDetected:
         scope === 'project' &&
         !!loaded.workspace &&
-        existsSync(join(loaded.workspace, '.morrow', MEMORY_LEGACY_FILE)),
+        existsSync(safeMorrowFile(safeMorrowDir(loaded.workspace), MEMORY_LEGACY_FILE)),
       migratedTotal: loaded.data.entries.filter((entry) => entry.source === 'migration').length
     }
   }
@@ -508,7 +584,7 @@ export class MemoryService {
   clear(scope: MemoryScope, workspace?: string | null): MemoryClearResult {
     const loaded = this.load(scope, workspace)
     if (scope === 'project' && loaded.workspace) {
-      const legacyPath = join(loaded.workspace, '.morrow', MEMORY_LEGACY_FILE)
+      const legacyPath = safeMorrowFile(safeMorrowDir(loaded.workspace), MEMORY_LEGACY_FILE)
       if (existsSync(legacyPath)) {
         try {
           const items = parseLegacyMemory(readFileSync(legacyPath, 'utf8'))
@@ -671,8 +747,12 @@ export class MemoryService {
     const omitted = totalEnabled - included
     if (omitted > 0) {
       const omittedNote = `\n（另有 ${omitted} 条已启用记忆因篇幅预算未注入）`
-      lines.push(omittedNote)
-      usedTokens += estimateTokens(omittedNote)
+      const noteTokens = estimateTokens(omittedNote)
+      // 预算已经排满时不追加提示，保证 usedTokens 不超过用户设定的上限
+      if (usedTokens + noteTokens <= limitTokens) {
+        lines.push(omittedNote)
+        usedTokens += noteTokens
+      }
     }
     return {
       text: included > 0 ? lines.join('\n') : '',

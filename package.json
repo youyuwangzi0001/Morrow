@@ -1,7 +1,7 @@
 {
   "name": "morrow",
   "productName": "Morrow",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Morrow — 住在你电脑里的 AI 工作伙伴",
   "author": "Morrow Studio",
   "license": "MIT",
@@ -16,7 +16,8 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "probe:live": "node scripts/probe-live.mjs",
-    "dist": "npm run build && node scripts/dist-portable.mjs",
+    "dist": "npm run build && node scripts/dist-portable.mjs --portable",
+    "dist:all": "npm run build && node scripts/dist-portable.mjs",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "verify": "npm run typecheck && npm run test:unit && npm run test:e2e",
@@ -80,8 +81,16 @@
       "package.json"
     ],
     "asar": true,
+    "npmRebuild": false,
     "asarUnpack": [
-      "node_modules/pdf-parse/**"
+      "node_modules/pdf-parse/**",
+      "node_modules/node-pty/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/pdf-ocr.ps1",
+        "to": "pdf-ocr.ps1"
+      }
     ],
     "compression": "maximum",
     "win": {
@@ -102,7 +111,12 @@
     }
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "jszip": "^3.10.1",
-    "pdf-parse": "^1.1.1"
+    "mammoth": "^1.13.0",
+    "node-pty": "^1.1.0",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^6.4.299"
   }
 }

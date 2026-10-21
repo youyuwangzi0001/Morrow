@@ -10,7 +10,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { createUnifiedDiff, type DiffResult } from '@core/tools/diff'
 
 export const MAX_VERSIONS_PER_FILE = 30
@@ -64,8 +64,6 @@ interface FileIndex {
   versions: HistoryVersion[]
 }
 
-const HASHED_PATH_SEPARATOR = /\\/g
-
 /** 规范化路径：绝对路径 + Windows 大小写不敏感（hash 用） */
 export function canonicalPath(filePath: string): string {
   const resolved = resolve(filePath)
@@ -91,12 +89,27 @@ function safeReadJson(file: string): FileIndex | null {
   }
 }
 
+/** Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY。 */
+function renameWithRetry(from: string, to: string): void {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      renameSync(from, to)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw err
+      if (attempt === 3) throw err
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (attempt + 1))
+    }
+  }
+}
+
 function safeWriteFile(file: string, content: string): void {
   const dir = dirname(file)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   writeFileSync(tmp, content, 'utf8')
-  renameSync(tmp, file)
+  renameWithRetry(tmp, file)
 }
 
 export interface EditorHistoryOptions {
@@ -257,7 +270,7 @@ export class EditorHistoryStore {
     if (!existsSync(fileDir)) mkdirSync(fileDir, { recursive: true })
     const tmp = join(fileDir, `.${basename(target)}.morrow-restore-${process.pid}.tmp`)
     writeFileSync(tmp, content, 'utf8')
-    renameSync(tmp, target)
+    renameWithRetry(tmp, target)
     const nextStat = statSync(target)
     const recorded = this.record({
       path: target,
@@ -329,14 +342,12 @@ export class EditorHistoryStore {
       const index = safeReadJson(entry.file)
       if (!index || index.versions.length <= 1) continue
       const dropIds = new Set<string>()
-      let fileBytes = index.versions.reduce((sum, item) => sum + item.size, 0)
       const sorted = [...index.versions].sort((a, b) => a.createdAt - b.createdAt)
       for (const candidate of sorted) {
         if (total <= this.maxTotalBytes) break
         if (index.versions.length - dropIds.size <= 1) break
         dropIds.add(candidate.id)
         total -= candidate.size
-        fileBytes -= candidate.size
         try {
           unlinkSync(join(entry.dir, `${candidate.id}.txt`))
         } catch {
@@ -345,14 +356,10 @@ export class EditorHistoryStore {
       }
       index.versions = index.versions.filter((item) => !dropIds.has(item.id))
       safeWriteFile(entry.file, JSON.stringify(index, null, 2))
-      void fileBytes
     }
   }
 
-  /** pruneTotal 里用于反查索引路径（保留字段以便未来扩展） */
   private indexForDir(dir: string): string {
     return join(dir, 'versions.json')
   }
 }
-
-export const __testing = { canonicalPath, pathKey, sha256, HASHED_PATH_SEPARATOR, sep }

@@ -51,7 +51,8 @@ class FakeBridge implements BrowserBridge {
     loading: false,
     canGoBack: true,
     canGoForward: false,
-    error: null
+    error: null,
+    automationActive: false
   }
   failWith: Error | null = null
 
@@ -111,7 +112,7 @@ function permissionTarget(name: string): PermissionTarget {
 }
 
 function policy(mode: PermissionPolicyContext['mode']): PermissionPolicyContext {
-  return { mode, workspace: null, isSubagent: false, isDemo: false, sessionGrants: new Set<string>() }
+  return { mode, workspace: null, isDemo: false, sessionGrants: new Set<string>() }
 }
 
 /* ── URL 安全矩阵 ─────────────────────────────────────────────── */

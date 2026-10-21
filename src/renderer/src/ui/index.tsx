@@ -461,6 +461,16 @@ export function Dropdown({
 
 const ModalStackContext = createContext<{ depth: number }>({ depth: 0 })
 
+/**
+ * 全局弹窗栈：只有最上层响应 Esc / Tab，避免设置 + 命令面板同时打开时一起关闭或抢焦点。
+ * App 的「Esc 停止运行」也用它判断当前是否有弹窗。
+ */
+const openModals: symbol[] = []
+
+export function hasOpenModal(): boolean {
+  return openModals.length > 0
+}
+
 export function Modal({
   open,
   onClose,
@@ -487,14 +497,27 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null)
   const stack = useContext(ModalStackContext)
   const titleId = useId()
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const closeOnBackdropRef = useRef(closeOnBackdrop)
+  closeOnBackdropRef.current = closeOnBackdrop
+  const modalIdRef = useRef<symbol | null>(null)
+  if (!modalIdRef.current) modalIdRef.current = Symbol('modal')
 
   useEffect(() => {
     if (!open) return
+    const modalId = modalIdRef.current as symbol
+    openModals.push(modalId)
+    const isTopModal = (): boolean => openModals[openModals.length - 1] === modalId
     const previous = document.activeElement as HTMLElement | null
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && closeOnBackdrop) {
+      if (!isTopModal()) return
+      if (event.key === 'Escape') {
+        if (event.isComposing) return
+        event.preventDefault()
         event.stopPropagation()
-        onClose()
+        if (closeOnBackdropRef.current) onCloseRef.current()
+        return
       }
       if (event.key === 'Tab' && panelRef.current) {
         const focusables = panelRef.current.querySelectorAll<HTMLElement>(
@@ -503,7 +526,10 @@ export function Modal({
         if (focusables.length === 0) return
         const first = focusables[0]
         const last = focusables[focusables.length - 1]
-        if (!event.shiftKey && document.activeElement === last) {
+        if (!panelRef.current.contains(document.activeElement)) {
+          event.preventDefault()
+          first.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
           event.preventDefault()
           first.focus()
         } else if (event.shiftKey && document.activeElement === first) {
@@ -514,15 +540,29 @@ export function Modal({
     }
     document.addEventListener('keydown', onKey)
     const timer = window.setTimeout(() => {
-      const target = panelRef.current?.querySelector<HTMLElement>('[data-autofocus], input, textarea, button')
-      target?.focus()
+      const panel = panelRef.current
+      if (!panel) return
+      const visible = (element: HTMLElement): boolean => element.getClientRects().length > 0
+      const preferred = panel.querySelector<HTMLElement>('[data-autofocus]')
+      // 只自动聚焦文本输入：range/checkbox 等被聚焦后方向键会误改值，
+      // 且主题或布局变化时浏览器会把焦点控件滚回视野，导致设置面板跳动。
+      const fields = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]), textarea:not([disabled]), select:not([disabled])'
+        )
+      ).find(visible)
+      // 没有明确的首焦点时把焦点放在对话框本身，避免默认落到「关闭」按钮上
+      const target = preferred && visible(preferred) ? preferred : (fields ?? panel)
+      target.focus()
     }, 40)
     return () => {
       document.removeEventListener('keydown', onKey)
+      const index = openModals.lastIndexOf(modalId)
+      if (index >= 0) openModals.splice(index, 1)
       window.clearTimeout(timer)
       previous?.focus?.()
     }
-  }, [open, onClose, closeOnBackdrop])
+  }, [open])
 
   if (!open) return null
 
@@ -542,6 +582,7 @@ export function Modal({
           aria-modal="true"
           aria-label={ariaLabel}
           aria-labelledby={title ? titleId : undefined}
+          tabIndex={-1}
           ref={panelRef}
         >
           {title ? (

@@ -191,6 +191,13 @@ describe('R2-H 单用户长工具链：真实触发压缩并继续', () => {
       const userMessages = provider.calls[provider.calls.length - 1].messages.filter((message) => message.role === 'user')
       expect(userMessages.length).toBeLessThanOrEqual(2) // 原始用户消息（+可能的当前用户请求）
       expect(userMessages.some((message) => textOf(message).includes('逐段只读'))).toBe(true)
+
+      // 7) 压缩后的完整历史必须一起返回，主进程才能把它写回会话（否则重启后旧历史复活）
+      expect(result.compactedMessages?.[0].role).toBe('system')
+      expect(result.compactedMessages?.some((message) => textOf(message).includes('逐段只读'))).toBe(true)
+      // 摘要请求的 320/90 token 也计入总用量
+      expect(result.usage.inputTokens).toBeGreaterThanOrEqual(320)
+      expect(result.usage.outputTokens).toBeGreaterThanOrEqual(90)
     } finally {
       ws.cleanup()
     }

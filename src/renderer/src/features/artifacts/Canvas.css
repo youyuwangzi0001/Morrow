@@ -344,6 +344,43 @@
   background: var(--bg);
 }
 
+.canvas-truncated-note {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.canvas-preview-failure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 28px 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.canvas-preview-failure-title {
+  color: var(--rust);
+  font-size: 13px;
+}
+
+.canvas-preview-failure-detail {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
 /* Markdown 预览：衬纸色卡片 */
 .canvas-paper {
   flex: 1 1 auto;

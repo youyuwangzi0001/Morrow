@@ -57,11 +57,13 @@ function makeHarness() {
   const sessions = new Map<string, Session>()
   const workspaces: string[] = []
   let now = 10_000
+  let revision = 0
   const service = new SearchService(
     {
       listSessions: () => [...sessions.values()].map(metaOf),
       getSession: (id) => sessions.get(id) ?? null,
       listWorkspaces: () => workspaces,
+      getSessionRevision: () => revision,
       now: () => now
     },
     { autoRefreshMs: 1500 }
@@ -72,6 +74,9 @@ function makeHarness() {
     service,
     advance: (ms: number) => {
       now += ms
+    },
+    touch: () => {
+      revision += 1
     }
   }
 }
@@ -135,6 +140,31 @@ describe('全局搜索：索引与查询', () => {
     }
   })
 
+  it('同分会话按最近更新优先', async () => {
+    const harness = makeHarness()
+    harness.advance(10 * 86_400_000)
+    const now = 10_000 + 10 * 86_400_000
+    const newer = makeSession({
+      id: 's_new',
+      title: '预算 新会话',
+      workspace: null,
+      messages: [textMessage('m_new', 'user', '预算 新内容')]
+    })
+    const older = makeSession({
+      id: 's_old',
+      title: '预算 旧会话',
+      workspace: null,
+      messages: [textMessage('m_old', 'user', '预算 旧内容')]
+    })
+    newer.updatedAt = now
+    older.updatedAt = now - 6 * 86_400_000
+    harness.sessions.set(newer.id, newer)
+    harness.sessions.set(older.id, older)
+    await harness.service.start()
+    const result = await harness.service.search({ q: '预算', limit: 10 })
+    expect(result.groups.sessions.map((hit) => hit.id)).toEqual(['s_new', 's_old'])
+  })
+
   it('忽略 node_modules/.git/Morrow Data/二进制/超大文件', async () => {
     const root = makeTempDir('search-ignore-')
     try {
@@ -185,9 +215,11 @@ describe('全局搜索：索引与查询', () => {
       expect(resultA.groups.sessions.every((hit) => hit.sessionId === 'sa')).toBe(true)
       expect(resultA.groups.artifacts.every((hit) => hit.sessionId === 'sa')).toBe(true)
 
-      // 不带工作区：只返回会话/artifact，不返回任何文件内容
+      // 不带工作区：全局搜索，文件/会话/artifact 覆盖两个工作区
       const global = await harness.service.search({ q: '预算', limit: 20 })
-      expect(global.groups.files).toHaveLength(0)
+      expect(global.groups.files.length).toBeGreaterThanOrEqual(2)
+      expect(global.groups.files.some((hit) => hit.absolutePath?.startsWith(rootA))).toBe(true)
+      expect(global.groups.files.some((hit) => hit.absolutePath?.startsWith(rootB))).toBe(true)
       expect(global.groups.sessions.length).toBe(2)
     } finally {
       rmSync(rootA, { recursive: true, force: true })
@@ -253,6 +285,107 @@ describe('全局搜索：索引与查询', () => {
       harness.advance(2000)
       const result = await harness.service.search({ q: '自动可见', workspace: root })
       expect(result.groups.files).toHaveLength(1)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('会话版本变化时绕过刷新节流，新建会话可立即搜到', async () => {
+    const harness = makeHarness()
+    const root = makeTempDir('search-revision-')
+    try {
+      harness.workspaces.push(root)
+      await harness.service.start()
+      const session = makeSession({
+        id: 'srev',
+        title: '版本感知会话',
+        workspace: root,
+        messages: [textMessage('m1', 'user', '版本感知标记词')]
+      })
+      harness.sessions.set(session.id, session)
+      harness.touch()
+      const result = await harness.service.search({ q: '版本感知标记词', workspace: root })
+      expect(result.groups.sessions).toHaveLength(1)
+      expect(result.groups.sessions[0].sessionId).toBe('srev')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('片段高亮在空白归一化后仍精确覆盖命中词', async () => {
+    const root = makeTempDir('search-highlight-')
+    try {
+      write(root, 'spacing.md', '前文    预算\n\n  后面还有内容')
+      const harness = makeHarness()
+      harness.workspaces.push(root)
+      await harness.service.start()
+      const result = await harness.service.search({ q: '预算', workspace: root })
+      const hit = result.groups.files.find((item) => item.path === 'spacing.md')
+      expect(hit).toBeTruthy()
+      const range = hit!.highlights[0]
+      expect(hit!.snippet.slice(range.start, range.end)).toBe('预算')
+      expect(hit!.snippet).toContain('预算')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('会话删除后 refreshSession 立即移除搜索索引', async () => {
+    const harness = makeHarness()
+    const root = makeTempDir('search-delete-')
+    try {
+      const session = makeSession({
+        id: 'sdel',
+        title: '待删除会话',
+        workspace: root,
+        messages: [textMessage('m1', 'user', '唯一删除标记词')]
+      })
+      harness.sessions.set(session.id, session)
+      harness.workspaces.push(root)
+      await harness.service.start()
+      expect((await harness.service.search({ q: '唯一删除标记词', workspace: root })).groups.sessions).toHaveLength(1)
+
+      harness.sessions.delete(session.id)
+      await harness.service.refreshSession(session.id)
+      const after = await harness.service.search({ q: '唯一删除标记词', workspace: root })
+      expect(after.groups.sessions).toHaveLength(0)
+      expect(after.groups.artifacts).toHaveLength(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('不再被引用的工作区会从文件索引中清理', async () => {
+    const root = makeTempDir('search-prune-')
+    try {
+      write(root, 'stale.md', '过期工作区内容 海上明月')
+      const harness = makeHarness()
+      harness.workspaces.push(root)
+      await harness.service.start()
+      expect(harness.service.status().files).toBeGreaterThan(0)
+
+      harness.workspaces.length = 0
+      harness.advance(2_000)
+      // 不带 workspace 查询不会重新请求该目录，刷新时应清理不再被引用的索引
+      await harness.service.search({ q: '海上明月' })
+      expect(harness.service.status().files).toBe(0)
+      expect(harness.service.status().workspaces).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('启动后新增工作区：全局搜索无需先传 workspace 即可搜到文件', async () => {
+    const root = makeTempDir('search-late-ws-')
+    try {
+      write(root, 'late.md', '启动后新增的工作区内容 晚到标记')
+      const harness = makeHarness()
+      await harness.service.start()
+      // 模拟应用启动后新建会话/选择新文件夹
+      harness.workspaces.push(root)
+      harness.sessions.set('s_late', makeSession({ id: 's_late', title: '晚到会话', workspace: root }))
+      const result = await harness.service.search({ q: '晚到标记', limit: 20 })
+      expect(result.groups.files.some((hit) => hit.absolutePath === join(root, 'late.md'))).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

@@ -61,16 +61,6 @@ export interface FileInspectResult extends FileEntry {
   workspace?: string
 }
 
-export interface AttachmentPayload {
-  id: string
-  name: string
-  path: string
-  size: number
-  kind: 'text' | 'image' | 'file'
-  content: string | null
-  truncated?: boolean
-}
-
 export class FileApiError extends Error {
   code: string
 
@@ -160,10 +150,6 @@ export const filesApi = {
     return invoke('feature:files:reveal', withWorkspace({ path }, workspace))
   },
 
-  attachPath(path: string, workspace?: string | null): Promise<AttachmentPayload> {
-    return invoke<AttachmentPayload>('feature:files:attachPath', withWorkspace({ path }, workspace))
-  },
-
   /** 原生拖拽：让文件树里的文件能拖进 Composer / 资源管理器 */
   startDrag(path: string, workspace?: string | null): Promise<{ ok: true }> {
     return invoke('feature:files:startDrag', withWorkspace({ path }, workspace))
@@ -184,4 +170,30 @@ export interface OpenFileDetail {
 /** 点击文件时通知编辑器（surfaces）打开 */
 export function dispatchOpenFile(detail: OpenFileDetail): void {
   window.dispatchEvent(new CustomEvent<OpenFileDetail>('morrow:open-file', { detail }))
+}
+
+export interface FileRenamedDetail {
+  from: string
+  to: string
+  isDir: boolean
+}
+
+export interface FileDeletedDetail {
+  path: string
+  isDir: boolean
+}
+
+/** 文件/目录改名后通知编辑器同步已打开标签 */
+export function dispatchFileRenamed(detail: FileRenamedDetail): void {
+  window.dispatchEvent(new CustomEvent<FileRenamedDetail>('morrow:file-renamed', { detail }))
+}
+
+/** 文件/目录删除后通知编辑器关闭/标记已打开标签 */
+export function dispatchFileDeleted(detail: FileDeletedDetail): void {
+  window.dispatchEvent(new CustomEvent<FileDeletedDetail>('morrow:file-deleted', { detail }))
+}
+
+/** 编辑器保存/另存为后通知文件树刷新 */
+export function dispatchFilesChanged(): void {
+  window.dispatchEvent(new CustomEvent('morrow:files-changed'))
 }

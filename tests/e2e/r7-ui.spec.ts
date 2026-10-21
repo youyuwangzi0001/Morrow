@@ -77,20 +77,20 @@ test.describe('R7 默认布局与品牌区', () => {
     await page.screenshot({ path: screenshotPath('r7-final-brand-light.png') })
   })
 
-  test('目标入口与 GoalDialog（新的智能轮次说明）视觉', async () => {
-    morrow = await launchMorrow({ name: 'r7-goal-dialog', waitForSelector: '.sidebar' })
+  test('目标入口：目标按钮把输入框切到 /goal 前缀，不再弹出独立对话框', async () => {
+    morrow = await launchMorrow({ name: 'r7-goal-entry', waitForSelector: '.sidebar' })
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
-    await page.locator('[aria-label="建立目标（多轮自动推进）"]').click()
+    await page.locator('[aria-label="把输入框内容设为目标（多轮自动推进）"]').click()
+    await expect(page.locator('.composer-input')).toHaveValue('/goal ')
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0)
     await page.waitForTimeout(450)
-    const dialog = page.locator('[role="dialog"]').first()
-    await expect(dialog).toBeVisible()
-    await page.screenshot({ path: screenshotPath('r7-final-goal-dialog-dark.png') })
+    await page.screenshot({ path: screenshotPath('r7-final-goal-entry-dark.png') })
     await page.evaluate(() => (window as unknown as {
       __morrowStore: { getState: () => { setTheme: (t: 'dark' | 'light') => Promise<void> } }
     }).__morrowStore.getState().setTheme('light'))
     await page.waitForTimeout(450)
-    await page.screenshot({ path: screenshotPath('r7-final-goal-dialog-light.png') })
+    await page.screenshot({ path: screenshotPath('r7-final-goal-entry-light.png') })
   })
 })

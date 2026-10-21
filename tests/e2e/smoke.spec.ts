@@ -9,6 +9,7 @@
  */
 import { expect, test } from '@playwright/test'
 import { launchMorrow, screenshotPath, root, windowStates } from './launch'
+import { dismissOnboarding, waitForStoreReady } from './store'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -105,6 +106,48 @@ test.describe('Morrow 桌面冒烟', () => {
       await page.waitForTimeout(200)
       const back = await readTheme()
       expect(back.bodyBg.replace(/\s/g, '')).toBe('rgb(11,13,16)')
+    } finally {
+      await morrow.close()
+    }
+  })
+
+  test('外观设置：主题、字号与减少动效即时生效', async () => {
+    const morrow = await launchMorrow({ name: 'appearance', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await page.keyboard.press('Control+,')
+      const settings = page.getByRole('dialog', { name: '设置' })
+      await settings.waitFor({ state: 'visible' })
+      await settings.getByRole('tab', { name: '外观' }).click()
+      await expect(page.locator('.st-appearance')).toBeVisible()
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: screenshotPath('settings-appearance-dark.png') })
+
+      await page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: '浅色' }).click()
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+      await expect(
+        page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: '浅色' })
+      ).toHaveAttribute('aria-checked', 'true')
+
+      await page.getByRole('radiogroup', { name: '字号' }).getByRole('radio', { name: '15' }).click()
+      await expect(
+        page.getByRole('radiogroup', { name: '字号' }).getByRole('radio', { name: '15' })
+      ).toHaveAttribute('aria-checked', 'true')
+      await expect
+        .poll(() =>
+          page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fs-body').trim())
+        )
+        .toBe('15px')
+
+      const motion = page.getByRole('switch', { name: '减少动效' })
+      await motion.click()
+      await expect(motion).toHaveAttribute('aria-checked', 'true')
+      await expect(page.locator('html')).toHaveAttribute('data-reduce-motion', 'true')
+
+      await page.waitForTimeout(260)
+      await page.screenshot({ path: screenshotPath('settings-appearance-light.png') })
     } finally {
       await morrow.close()
     }

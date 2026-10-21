@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, type CSSProperties } from 'react'
+import brandMarkUrl from './assets/brand-mark.svg'
 import './App.css'
 import { useAppStore } from './state/store'
 import { TitleBar } from './features/shell/TitleBar'
@@ -6,17 +7,23 @@ import { Sidebar } from './features/shell/Sidebar'
 import { Welcome } from './features/shell/Welcome'
 import { Toasts } from './features/shell/Toasts'
 import { Composer } from './features/composer/Composer'
+import { QueueTray } from './features/composer/QueueTray'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { Onboarding } from './features/onboarding/Onboarding'
 import { CommandPalette } from './features/palette/CommandPalette'
 import { Transcript } from './features/chat/Transcript'
 import { PlanTray } from './features/activity/PlanTray'
+import { PlanCard } from './features/activity/PlanCard'
+import { SourcesTray } from './features/activity/SourcesTray'
+import { RunCenter } from './features/activity/RunCenter'
 import { GoalBar } from './features/goal/GoalBar'
+import { ResearchBar } from './features/research/ResearchBar'
 import { Canvas } from './features/artifacts/Canvas'
 import { DemoOverlay } from './features/demo/DemoOverlay'
 import { WorkbenchHost } from './features/workbench/WorkbenchHost'
-import { openWorkbench } from './features/workbench/events'
-import { Button, HorizonLoader, ResizeHandle } from './ui'
+import { SideChat } from './features/sidechat/SideChat'
+import { RewindConfirm } from './features/checkpoints/RewindConfirm'
+import { Button, HorizonLoader, ResizeHandle, hasOpenModal } from './ui'
 
 /**
  * 应用组装层（Lead 拥有）：
@@ -33,6 +40,7 @@ export default function App(): React.JSX.Element {
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
   const canvasOpen = useAppStore((s) => s.canvas.open)
+  const sideChatOpen = useAppStore((s) => s.sideChatOpen)
   const run = useAppStore((s) => s.run)
 
   useEffect(() => {
@@ -41,14 +49,20 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      // 首次引导是模态层：不让全局快捷键与 Esc 穿透到下面的应用
+      if (useAppStore.getState().onboardingOpen) return
       const target = event.target as HTMLElement | null
       const typing =
         !!target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      // 终端内的按键归终端：Ctrl+K/B/N 等不能抢 shell 的快捷键
+      if (target?.closest('.terminal-dock')) return
       const mod = event.ctrlKey || event.metaKey
       if (mod && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        useAppStore.getState().openPalette()
+        const state = useAppStore.getState()
+        if (state.paletteOpen) state.closePalette()
+        else state.openPalette()
       } else if (mod && event.key.toLowerCase() === 'b') {
         event.preventDefault()
         useAppStore.getState().toggleSidebar()
@@ -58,18 +72,47 @@ export default function App(): React.JSX.Element {
       } else if (mod && event.key === ',') {
         event.preventDefault()
         useAppStore.getState().openSettings()
-      } else if (mod && event.shiftKey && event.key.toLowerCase() === 'w') {
-        event.preventDefault()
-        openWorkbench()
       } else if (event.key === 'Escape' && !typing) {
+        // 局部先消费（弹窗/搜索/画布全屏等）时不抢键；全局 Esc 只用于停止当前运行
+        if (event.defaultPrevented || hasOpenModal()) return
         const state = useAppStore.getState()
         // 审批/提问卡片自己消费 Esc（拒绝/取消），全局不再抢键
         if (state.pendingPermission || state.pendingQuestion) return
-        if (state.run) void state.stopRun()
+        // 只在当前对话运行中时响应 Esc；不要在 B 里误停后台 A。
+        if (state.run && state.run.sessionId === state.session?.id) void state.stopRun()
       }
     }
-    window.addEventListener('keydown', onKeyDown, { capture: true })
-    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+    // 用冒泡阶段：让输入框/弹窗/面板先处理 Esc 并 preventDefault，再决定是否停止运行
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    const offQuickSend = window.morrow.island.onQuickSend(({ text, sessionId }) => {
+      void (async () => {
+        const state = useAppStore.getState()
+        if (sessionId) {
+          if (state.session?.id !== sessionId) await state.selectSession(sessionId)
+          const loaded = useAppStore.getState().session
+          if (loaded?.id !== sessionId) {
+            useAppStore.getState().notify('error', '原来的对话不存在了，这条消息没有发送。')
+            return
+          }
+        }
+        await useAppStore.getState().sendMessage(text)
+      })()
+    })
+    const offOpen = window.morrow.island.onOpen(({ sessionId, newSession }) => {
+      void (async () => {
+        const state = useAppStore.getState()
+        if (newSession) await state.newSession()
+        else if (sessionId && state.session?.id !== sessionId) await state.selectSession(sessionId)
+      })()
+    })
+    return () => {
+      offQuickSend()
+      offOpen()
+    }
   }, [])
 
   if (!ready) {
@@ -77,7 +120,7 @@ export default function App(): React.JSX.Element {
       <div className="app-boot">
         <div className="app-glow" />
         <div className="grain-overlay" />
-        <div className="app-boot-mark serif">M</div>
+        <img className="app-boot-mark" src={brandMarkUrl} alt="" width={96} height={96} draggable={false} />
         <div className="app-boot-horizon" />
         <p className="app-boot-text mono">MORROW · 正在打开工坊</p>
         <div className="app-boot-loader">
@@ -110,10 +153,12 @@ export default function App(): React.JSX.Element {
 
   return (
     <div
+      style={{ '--app-sidebar-width': sidebarCollapsed ? '0px' : `${sidebarWidth + 3}px` } as CSSProperties}
       className={[
         'app',
         sidebarCollapsed ? 'is-sidebar-collapsed' : '',
         canvasOpen ? 'is-canvas-open' : '',
+        sideChatOpen ? 'is-sidechat-open' : '',
         run ? 'is-running' : ''
       ]
         .filter(Boolean)
@@ -155,18 +200,29 @@ export default function App(): React.JSX.Element {
               )}
             </div>
             <div className="app-dock">
+              <ResearchBar />
               <GoalBar />
-              <PlanTray />
+              <RunCenter />
+              <QueueTray />
+              {!loadingSession ? (
+                <>
+                  <PlanCard key={`${session?.id ?? 'none'}:${session?.plan?.id ?? 'none'}`} />
+                  <PlanTray />
+                  <SourcesTray key={session?.id ?? 'none'} />
+                </>
+              ) : null}
               <Composer />
             </div>
           </section>
           <Canvas />
+          <SideChat />
         </main>
       </div>
       <SettingsModal />
       <WorkbenchHost />
       <Onboarding />
       <CommandPalette />
+      <RewindConfirm />
       <DemoOverlay />
       <Toasts />
     </div>

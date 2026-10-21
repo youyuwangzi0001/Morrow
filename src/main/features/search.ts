@@ -18,6 +18,8 @@ import { dataPath, ensureDataDirs } from '../services/paths'
 import { SearchService, type SearchQueryInput } from '../services/search-service'
 import { getSessionStore } from '../services/session-store'
 import { getSettingsStore } from '../services/settings-store'
+import { setSearchClearHandler, setSearchInvalidationHandler } from '../services/search-invalidation'
+import { resolveWorkspaceDir } from './workspace-roots'
 
 interface QueryPayload {
   q?: unknown
@@ -32,18 +34,8 @@ interface RefreshPayload {
 }
 
 const MAX_QUERY_CHARS = 200
-
-function currentWorkspace(): string | null {
-  try {
-    const settings = getSettingsStore().get()
-    const last = settings.lastWorkspace
-    if (typeof last === 'string' && last && existsSync(last)) return last
-    const recent = settings.recentWorkspaces.find((workspace) => typeof workspace === 'string' && existsSync(workspace))
-    return recent ?? null
-  } catch {
-    return null
-  }
-}
+/** 全局搜索不再受侧栏 300 条上限影响；仍设一个上限避免启动索引无限膨胀 */
+const MAX_SEARCH_SESSIONS = 1000
 
 function knownWorkspaces(meta: SessionMeta[]): string[] {
   const workspaces = new Set<string>()
@@ -62,18 +54,21 @@ function knownWorkspaces(meta: SessionMeta[]): string[] {
   return [...workspaces]
 }
 
+function searchSessionMetas(store: ReturnType<typeof getSessionStore>): SessionMeta[] {
+  try {
+    const all = store.listAll()
+    return all.length > MAX_SEARCH_SESSIONS ? all.slice(0, MAX_SEARCH_SESSIONS) : all
+  } catch (err) {
+    log.warn('search: listSessions failed', String(err))
+    return []
+  }
+}
+
 function createService(): SearchService {
   ensureDataDirs()
   const sessionStore = getSessionStore()
   return new SearchService({
-    listSessions: () => {
-      try {
-        return sessionStore.list()
-      } catch (err) {
-        log.warn('search: listSessions failed', String(err))
-        return []
-      }
-    },
+    listSessions: () => searchSessionMetas(sessionStore),
     getSession: (id): Session | null => {
       try {
         return sessionStore.get(id)
@@ -81,18 +76,11 @@ function createService(): SearchService {
         return null
       }
     },
-    listWorkspaces: () => knownWorkspaces(safeListSessions(sessionStore)),
+    getSessionRevision: () => sessionStore.getRevision(),
+    listWorkspaces: () => knownWorkspaces(searchSessionMetas(sessionStore)),
     dataDir: dataPath(),
     now: Date.now
   })
-}
-
-function safeListSessions(store: ReturnType<typeof getSessionStore>): SessionMeta[] {
-  try {
-    return store.list()
-  } catch {
-    return []
-  }
 }
 
 let service: SearchService | null = null
@@ -118,9 +106,32 @@ export function warmSearchIndex(): void {
   void ensureStarted()
 }
 
+
+
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
+
+/**
+ * 搜索请求里的 workspace 必须是已登记工作区；否则索引器会扫描任意目录。
+ * 返回原始路径（索引键与会话 workspace 保持同一形式，链接别名交给 realpath 校验）。
+ */
+function validateSearchWorkspace(raw: string): string {
+  resolveWorkspaceDir(raw, '搜索只能访问已登记的工作区。')
+  return raw
+}
+
+setSearchInvalidationHandler(async (sessionId) => {
+  // 搜索从未打开过（service 未创建）时没有需要清理的索引
+  if (!service) return
+  await ensureStarted()
+  await service.refreshSession(sessionId)
+})
+
+setSearchClearHandler(async () => {
+  if (!service) return
+  await service.rebuild()
+})
 
 registerFeatureHandler('feature:search:query', async (payload) => {
   const input = (payload ?? {}) as QueryPayload
@@ -128,7 +139,9 @@ registerFeatureHandler('feature:search:query', async (payload) => {
   if (q.length > MAX_QUERY_CHARS) {
     throw new Error(`搜索词过长（最多 ${MAX_QUERY_CHARS} 字符）。`)
   }
-  const workspace = asString(input.workspace) ?? currentWorkspace()
+  // 不传 workspace = 全局搜索；显式传字符串才限定文件夹
+  const rawWorkspace = asString(input.workspace)
+  const workspace = rawWorkspace ? validateSearchWorkspace(rawWorkspace) : null
   const limit = typeof input.limit === 'number' && Number.isFinite(input.limit) ? Math.trunc(input.limit) : 20
   await ensureStarted()
   const query: SearchQueryInput = { q, workspace, limit }
@@ -142,7 +155,8 @@ registerFeatureHandler('feature:search:status', async () => {
 
 registerFeatureHandler('feature:search:refresh', async (payload) => {
   const input = (payload ?? {}) as RefreshPayload
-  const workspace = asString(input.workspace)
+  const rawWorkspace = asString(input.workspace)
+  const workspace = rawWorkspace ? validateSearchWorkspace(rawWorkspace) : null
   const sessionId = asString(input.sessionId)
   await ensureStarted()
   if (input.full === true) {
@@ -167,8 +181,9 @@ registerFeatureHandler('feature:search:session-updated', async (payload) => {
 
 registerFeatureHandler('feature:search:workspace-updated', async (payload) => {
   const input = (payload ?? {}) as RefreshPayload
-  const workspace = asString(input.workspace)
-  if (!workspace) throw new Error('缺少 workspace 路径。')
+  const rawWorkspace = asString(input.workspace)
+  if (!rawWorkspace) throw new Error('缺少 workspace 路径。')
+  const workspace = validateSearchWorkspace(rawWorkspace)
   await ensureStarted()
   await getService().refreshWorkspace(workspace)
   return getService().status()

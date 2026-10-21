@@ -2,7 +2,7 @@
  * 技能类工具：list_skills / read_skill。
  *
  * 技能发现由 skills.ts 负责（`.morrow/skills/<name>/SKILL.md` 等约定，见该文件注释）。
- * 两个工具都是只读（category: read），因此聊天模式/只读子代理也能使用。
+ * 两个工具都是只读（category: read），因此聊天模式/只读上下文也能使用。
  */
 import { basename, dirname } from 'node:path'
 import { readFileSync } from 'node:fs'
@@ -109,10 +109,18 @@ export const readSkillTool: ToolImpl = {
         skill = found
       } else {
         // 允许按路径读取「同名技能被优先级去重掉」的那份，或用户直接指出 SKILL.md 的情况
-        if (basename(resolved.real) !== 'SKILL.md') {
+        if (basename(resolved.real).toLowerCase() !== 'skill.md') {
           throw new ToolInputError(
             `「${explicitPath}」不是 SKILL.md 文件。`,
             'path 需要指向某个技能目录下的 SKILL.md，例如 ".morrow/skills/release/SKILL.md"。'
+          )
+        }
+        // 只允许 convention 内的技能目录，不能借 path 读取工作区任意 SKILL.md
+        const inputPath = explicitPath.replace(/\\/g, '/').replace(/^\.\//, '')
+        if (!/^(?:\.morrow\/skills|skills|\.skills|[^/]+\/skills)\/[^/]+\/SKILL\.md$/i.test(inputPath)) {
+          throw new ToolInputError(
+            `「${explicitPath}」不在技能目录约定内。`,
+            '只支持 .morrow/skills、skills、.skills 或一级子目录/skills 下的 <技能>/SKILL.md。'
           )
         }
         const dir = dirname(resolved.real)
@@ -124,6 +132,12 @@ export const readSkillTool: ToolImpl = {
           dir,
           displayDir: displayPath(dir, ctx.workspace),
           description: meta.description
+        }
+        if (!isSkillEnabled(skill)) {
+          return errResult(
+            `技能「${skill.name}」存在，但已被禁用，当前不可用。`,
+            '请让用户在「技能库」面板里启用它，然后重试；不要凭记忆猜测技能内容。'
+          )
         }
       }
     } else {

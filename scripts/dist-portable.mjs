@@ -1,12 +1,12 @@
-// Morrow 打包脚本（electron-builder 封装）—— 三种交付形态 + 证据摘要
+// Morrow 打包脚本（electron-builder 封装）—— 三种交付形态 + 签名 + 干净交付 + 证据摘要
 //
 // 用法：
 //   node scripts/dist-portable.mjs             # 默认 = --all：文件夹版 + zip + 单文件 exe（最终交付用）
 //   node scripts/dist-portable.mjs --folder    # 只做「便携文件夹」+ zip（推荐交付形态，无自解压）
 //   node scripts/dist-portable.mjs --portable  # 只做单文件 portable exe（依赖 %TEMP%，受限宿主可能失败）
-//   node scripts/dist-portable.mjs --dir       # 只做 release/win-unpacked（最快，自检/调试用）
+//   node scripts/dist-portable.mjs --dir       # 只做 tmp/electron-builder-output/win-unpacked（最快，自检/调试用）
 //
-// 产物：
+// 产物（release/ 为构建中间目录；默认 npm run dist 仅交付单文件 exe + 使用说明 + SHA256SUMS + LICENSE；--folder/--all 为内部构建检查）：
 //   release/Morrow-<ver>-portable/Morrow.exe   便携文件夹（推荐：双击即用、不解压、不依赖 %TEMP%）
 //   release/Morrow-<ver>-portable-win64.zip    上方文件夹的 zip（分发用）
 //   release/Morrow-<ver>-portable.exe          单文件便携 exe（自研启动器：内嵌 zip，首次解压到 exe 同级缓存，不依赖 %TEMP%）
@@ -17,12 +17,23 @@
 //   「Error writing temporary file. Make sure your temp folder is valid.」**。
 //   文件夹版直接运行 Morrow.exe，没有自解压步骤，不依赖 %TEMP%，是更稳的交付形态。
 //
+// 代码签名（可选，未配置时产物标记 signed:false，不阻断打包）：
+//   MORROW_SIGN_PFX + MORROW_SIGN_PFX_PASSWORD    # .pfx 文件 + 密码
+//   MORROW_SIGN_THUMBPRINT                        # CurrentUser\My 中证书指纹
+//   MORROW_SIGN_SUBJECT                           # CurrentUser\My 中证书主题
+//   MORROW_SIGN_AUTO=1                            # 仅当恰好一张可信、未过期、带私钥的代码签名证书时自动使用
+//   MORROW_SIGN_TIMESTAMP_URL                     # 默认 http://timestamp.digicert.com
+//   签名顺序：Morrow-app.exe → 文件夹版 Morrow.exe → 单文件 exe；signtool SHA-256 + RFC3161 时间戳，
+//   签名后同时用 signtool verify 与 PowerShell Get-AuthenticodeSignature 校验，任一失败即打包失败。
+//   注意：签名只能解决“发布者未知/信誉不足”的一部分问题；SmartScreen 仍需证书受信任并积累信誉。
+//
 // 环境：自动设置 npmmirror 镜像、把 Electron 下载缓存指到项目 tmp/、清 ELECTRON_RUN_AS_NODE
 //      （DSH 受限会话的既有做法）；输出全程写 docs/verification/logs/，摘要写 packaging.json。
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   appendFileSync,
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -48,17 +59,35 @@ const mode = args.includes('--folder')
       ? 'dir'
       : 'all'
 
-const releaseDir = join(root, 'release')
+const releaseDir = process.env.MORROW_RELEASE_DIR
+  ? resolve(root, process.env.MORROW_RELEASE_DIR)
+  : join(root, 'release')
+const deliverDir = process.env.MORROW_DELIVER_DIR
+  ? resolve(root, process.env.MORROW_DELIVER_DIR)
+  : join(root, 'deliver')
 const folderName = `Morrow-${version}-portable`
 const folderDir = join(releaseDir, folderName)
 const zipPath = join(releaseDir, `${folderName}-win64.zip`)
 const portableExe = join(releaseDir, `${folderName}.exe`)
-const winUnpacked = join(releaseDir, 'win-unpacked')
+const usageFileName = '使用说明.txt'
+const sha256SumsFileName = 'SHA256SUMS.txt'
+// 中间解包目录放到 tmp：避免 release/win-unpacked 被索引/杀毒占用后卡死下一次打包
+const builderOutputDir = process.env.MORROW_BUILDER_OUTPUT
+  ? resolve(root, process.env.MORROW_BUILDER_OUTPUT)
+  : join(root, 'tmp', 'electron-builder-output')
+const electronDistArgs = process.env.MORROW_ELECTRON_DIST
+  ? [`-c.electronDist=${process.env.MORROW_ELECTRON_DIST}`]
+  : []
+const winUnpacked = join(builderOutputDir, 'win-unpacked')
+const legacyWinUnpacked = join(releaseDir, 'win-unpacked')
 const logsDir = join(root, 'docs', 'verification', 'logs')
 mkdirSync(logsDir, { recursive: true })
 mkdirSync(releaseDir, { recursive: true })
 
 const sevenZip = join(root, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe')
+
+/** 签名配置；在主流程 try 内通过 resolveSigningConfig() 赋值。 */
+let signing = { enabled: false, method: 'none', reason: '签名配置尚未解析', timestampUrl: '', signtool: null }
 
 function log(message) {
   const line = `[dist] ${message}`
@@ -70,6 +99,261 @@ function fail(message) {
   process.exitCode = 1
   throw new Error(message)
 }
+
+// ── 代码签名 ─────────────────────────────────────────────────────────
+/** 查找 signtool.exe：显式 MORROW_SIGNTOOL → Windows Kits 最新版本 → PATH。 */
+function findSigntool() {
+  const explicit = process.env.MORROW_SIGNTOOL
+  if (explicit) {
+    if (!existsSync(explicit)) fail(`MORROW_SIGNTOOL 指向的文件不存在：${explicit}`)
+    return explicit
+  }
+  const kitsBin = join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Windows Kits', '10', 'bin')
+  if (existsSync(kitsBin)) {
+    const versions = readdirSync(kitsBin, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((a, b) => {
+        const pa = a.split('.').map((part) => Number(part) || 0)
+        const pb = b.split('.').map((part) => Number(part) || 0)
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const diff = (pb[i] || 0) - (pa[i] || 0)
+          if (diff !== 0) return diff
+        }
+        return 0
+      })
+    for (const version of versions) {
+      const candidate = join(kitsBin, version, 'x64', 'signtool.exe')
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  const where = spawnSync('where.exe', ['signtool.exe'], { encoding: 'utf8' })
+  if (where.status === 0) {
+    const first = where.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && existsSync(line))
+    if (first) return first
+  }
+  return null
+}
+
+/** 读取 Authenticode 状态（PowerShell，路径通过环境变量传入，避免中文/引号转义问题）。 */
+function readAuthenticode(file) {
+  const script = [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "$ErrorActionPreference = 'Stop'",
+    '$s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PATH',
+    '$cert = $s.SignerCertificate',
+    '$ts = $s.TimeStamperCertificate',
+    '$subject = $null; if ($cert) { $subject = $cert.Subject }',
+    '$thumbprint = $null; if ($cert) { $thumbprint = $cert.Thumbprint }',
+    '$notAfter = $null; if ($cert) { $notAfter = $cert.NotAfter.ToString("o") }',
+    '$tsSubject = $null; if ($ts) { $tsSubject = $ts.Subject }',
+    '$tsTime = $null; if ($ts) { $tsTime = $ts.NotBefore.ToString("o") }',
+    '[pscustomobject]@{',
+    '  status = [string]$s.Status',
+    '  statusMessage = [string]$s.StatusMessage',
+    '  subject = $subject',
+    '  thumbprint = $thumbprint',
+    '  notAfter = $notAfter',
+    '  timestampSubject = $tsSubject',
+    '  timestampTime = $tsTime',
+    '} | ConvertTo-Json -Compress'
+  ].join('\n')
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    env: { ...process.env, MORROW_SIGN_CHECK_PATH: file },
+    timeout: 60_000
+  })
+  const text = `${result.stdout || ''}`.replace(/^\uFEFF/, '').trim()
+  if (result.status !== 0 || !text) {
+    return {
+      status: 'Unknown',
+      statusMessage: `${result.stderr || result.stdout || 'PowerShell 读取签名失败'}`.trim().slice(0, 500)
+    }
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { status: 'Unknown', statusMessage: `无法解析签名状态：${text.slice(0, 300)}` }
+  }
+}
+
+/** 自动检测“安全”的代码签名证书：CurrentUser\My、有私钥、未过期、链可信，且必须恰好一张。 */
+function autoDetectSigningCerts() {
+  const script = [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    '$certs = @(Get-ChildItem Cert:\\CurrentUser\\My -CodeSigningCert | Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) })',
+    '$trusted = @()',
+    'foreach ($c in $certs) {',
+    '  $chain = New-Object System.Security.Cryptography.X509Certificates.X509Chain',
+    '  $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck',
+    '  if ($chain.Build($c)) { $trusted += $c }',
+    '}',
+    '$trusted | ForEach-Object { [pscustomobject]@{ thumbprint = $_.Thumbprint; subject = $_.Subject; notAfter = $_.NotAfter.ToString("o") } } | ConvertTo-Json -Compress'
+  ].join('\n')
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    timeout: 60_000
+  })
+  if (result.status !== 0) return []
+  const text = `${result.stdout || ''}`.replace(/^\uFEFF/, '').trim()
+  if (!text) return []
+  try {
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed : [parsed]
+  } catch {
+    return []
+  }
+}
+
+/** 解析签名配置；未配置证书时返回 enabled:false（打包继续，产物记录 signed:false）。 */
+function resolveSigningConfig() {
+  const timestampUrl = process.env.MORROW_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com'
+  const signtool = findSigntool()
+  const base = { signtool, timestampUrl }
+  const pfx = process.env.MORROW_SIGN_PFX
+  const thumbprint = process.env.MORROW_SIGN_THUMBPRINT
+  const subject = process.env.MORROW_SIGN_SUBJECT
+  if (pfx) {
+    const pfxPath = resolve(root, pfx)
+    if (!existsSync(pfxPath)) fail(`MORROW_SIGN_PFX 指向的文件不存在：${pfxPath}`)
+    if (!signtool) fail('已配置 MORROW_SIGN_PFX，但找不到 signtool.exe。请安装 Windows SDK 或设置 MORROW_SIGNTOOL。')
+    return {
+      ...base,
+      enabled: true,
+      method: 'pfx',
+      pfxPath,
+      pfxPassword: process.env.MORROW_SIGN_PFX_PASSWORD || '',
+      description: 'MORROW_SIGN_PFX'
+    }
+  }
+  if (thumbprint) {
+    if (!signtool) fail('已配置 MORROW_SIGN_THUMBPRINT，但找不到 signtool.exe。请安装 Windows SDK 或设置 MORROW_SIGNTOOL。')
+    return {
+      ...base,
+      enabled: true,
+      method: 'thumbprint',
+      thumbprint: thumbprint.replace(/\s+/g, ''),
+      store: 'My',
+      description: 'MORROW_SIGN_THUMBPRINT'
+    }
+  }
+  if (subject) {
+    if (!signtool) fail('已配置 MORROW_SIGN_SUBJECT，但找不到 signtool.exe。请安装 Windows SDK 或设置 MORROW_SIGNTOOL。')
+    return {
+      ...base,
+      enabled: true,
+      method: 'subject',
+      subject,
+      store: 'My',
+      description: 'MORROW_SIGN_SUBJECT'
+    }
+  }
+  if (process.env.MORROW_SIGN_AUTO === '1') {
+    const certs = autoDetectSigningCerts()
+    if (certs.length === 1) {
+      if (!signtool) fail('MORROW_SIGN_AUTO=1 检测到证书，但找不到 signtool.exe。请安装 Windows SDK 或设置 MORROW_SIGNTOOL。')
+      return {
+        ...base,
+        enabled: true,
+        method: 'auto',
+        thumbprint: certs[0].thumbprint,
+        store: 'My',
+        description: 'MORROW_SIGN_AUTO=1'
+      }
+    }
+    return {
+      ...base,
+      enabled: false,
+      method: 'auto',
+      reason:
+        certs.length === 0
+          ? 'MORROW_SIGN_AUTO=1，但 CurrentUser\\My 中没有带私钥、未过期且链可信的代码签名证书'
+          : `MORROW_SIGN_AUTO=1，但检测到 ${certs.length} 张可信代码签名证书；为避免签错证书，请显式设置 MORROW_SIGN_THUMBPRINT`
+    }
+  }
+  return {
+    ...base,
+    enabled: false,
+    method: 'none',
+    reason:
+      '未配置代码签名证书（MORROW_SIGN_PFX / MORROW_SIGN_THUMBPRINT / MORROW_SIGN_SUBJECT，或 MORROW_SIGN_AUTO=1）；产物保持未签名'
+  }
+}
+
+/**
+ * 对一个 exe 签名并校验。未配置证书时只读取现状（NotSigned），不失败。
+ * @returns {{signed:boolean, status:string, statusMessage?:string, subject?:string|null, ...}}
+ */
+function signFile(file, label) {
+  if (!existsSync(file)) fail(`待签名文件不存在：${file}`)
+  if (!signing.enabled) {
+    const current = readAuthenticode(file)
+    logLine(`[sign] ${label}：未配置证书 → ${current.status}（signed:false）`)
+    return { signed: false, reason: signing.reason, ...current }
+  }
+  const certArgs = []
+  if (signing.method === 'pfx') {
+    certArgs.push('/f', signing.pfxPath)
+    if (signing.pfxPassword) certArgs.push('/p', signing.pfxPassword)
+  } else if (signing.method === 'thumbprint' || signing.method === 'auto') {
+    certArgs.push('/sha1', signing.thumbprint, '/s', signing.store || 'My')
+  } else if (signing.method === 'subject') {
+    certArgs.push('/n', signing.subject, '/s', signing.store || 'My')
+  }
+  const args = ['sign', '/fd', 'sha256', '/tr', signing.timestampUrl, '/td', 'sha256', ...certArgs, file]
+  const displayArgs = args.map((arg) => (signing.pfxPassword && arg === signing.pfxPassword ? '***' : arg))
+  logLine(`[sign] ${label} ← "${signing.signtool}" ${displayArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(' ')}`)
+  const signed = spawnSync(signing.signtool, args, {
+    encoding: 'utf8',
+    timeout: 5 * 60_000,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  if (signed.status !== 0) {
+    fail(`signtool sign 失败（${label}，exit ${signed.status}）：${`${signed.stdout || ''}${signed.stderr || ''}`.slice(-2000)}`)
+  }
+  const verified = spawnSync(signing.signtool, ['verify', '/pa', '/v', file], {
+    encoding: 'utf8',
+    timeout: 2 * 60_000,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const verifyOutput = `${verified.stdout || ''}${verified.stderr || ''}`
+  if (verified.status !== 0) {
+    fail(`signtool verify 失败（${label}，exit ${verified.status}）：${verifyOutput.slice(-2000)}`)
+  }
+  const info = readAuthenticode(file)
+  if (info.status !== 'Valid') {
+    fail(`PowerShell 签名校验未通过（${label}）：${info.status} ${info.statusMessage || ''}`.trim())
+  }
+  logLine(
+    `[sign] ${label} ✓ Valid · ${info.subject || 'unknown signer'}${info.timestampTime ? ` · 时间戳 ${info.timestampTime}` : ' · 无时间戳'}`
+  )
+  if (!signing.certificate) {
+    signing.certificate = {
+      subject: info.subject,
+      thumbprint: info.thumbprint,
+      notAfter: info.notAfter
+    }
+  }
+  return { signed: true, ...info }
+}
+
+function signatureSummary(sig) {
+  return {
+    signed: Boolean(sig?.signed && sig?.status === 'Valid'),
+    status: sig?.status ?? 'Unknown',
+    statusMessage: sig?.statusMessage ?? undefined,
+    signerSubject: sig?.subject ?? null,
+    signerThumbprint: sig?.thumbprint ?? null,
+    signerNotAfter: sig?.notAfter ?? null,
+    timestampSubject: sig?.timestampSubject ?? null,
+    timestampTime: sig?.timestampTime ?? null
+  }
+}
+
 
 // ── 前置检查 ─────────────────────────────────────────────────────────
 const mainOut = join(root, 'out', 'main', 'index.js')
@@ -99,13 +383,29 @@ function cleanPackagingOutputs() {
   const targets = [
     folderDir,
     zipPath,
-    portableExe,
-    winUnpacked,
+    // 只打文件夹版时保留现有单文件版（可能正在运行，Windows 不允许删除/覆盖）
+    ...(mode === 'folder' ? [] : [portableExe]),
+    builderOutputDir,
+    // 兼容清理旧版脚本留在 release/ 的中间目录（被占用时下面会跳过）
+    legacyWinUnpacked,
     join(root, 'tmp', 'launcher-app.zip'),
     join(releaseDir, 'builder-debug.yml')
   ]
-  for (const target of targets) rmSync(target, { recursive: true, force: true })
-  if (env.ELECTRON_BUILDER_CACHE) rmSync(env.ELECTRON_BUILDER_CACHE, { recursive: true, force: true })
+  for (const target of targets) {
+    try {
+      rmSync(target, { recursive: true, force: true })
+    } catch (err) {
+      // 杀毒/索引/上一轮进程可能短暂占用；不要因此丢掉已经打好的文件夹版
+      logLine(`[dist] 暂时无法清理 ${target}（稍后可手动删除）：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  if (env.ELECTRON_BUILDER_CACHE && process.env.MORROW_KEEP_BUILDER_CACHE !== '1') {
+    try {
+      rmSync(env.ELECTRON_BUILDER_CACHE, { recursive: true, force: true })
+    } catch (err) {
+      logLine(`[dist] 暂时无法清理 builder cache：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
   logLine('[dist] 已清理历史打包产物与缓存（release 旧版本目录/zip/exe、win-unpacked、launcher zip、electron-builder cache）')
 }
 
@@ -158,6 +458,14 @@ function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
+function relPath(path) {
+  return path.replace(root + '\\', '').replace(root + '/', '').replace(/\\/g, '/')
+}
+
+function deliverRelPath(path) {
+  return path.slice(deliverDir.length + 1).replace(/\\/g, '/')
+}
+
 function dirSize(dir) {
   let sizeBytes = 0
   let fileCount = 0
@@ -177,16 +485,20 @@ function dirSize(dir) {
   return { sizeBytes, fileCount }
 }
 
-/** 把 release/win-unpacked 整理成 release/Morrow-<ver>-portable/。 */
+/** 把构建目录里的 win-unpacked 整理成 release/Morrow-<ver>-portable/。 */
 function organizeFolder() {
-  if (!existsSync(winUnpacked)) fail('electron-builder --dir 未产出 release/win-unpacked')
+  if (!existsSync(winUnpacked)) fail('electron-builder --dir 未产出 win-unpacked（tmp/electron-builder-output）')
   rmSync(folderDir, { recursive: true, force: true })
   try {
     renameSync(winUnpacked, folderDir)
   } catch {
-    // 极端情况（跨设备/被占用）退化为复制
+    // 极端情况（跨设备/被占用）退化为复制；中间目录被索引器占用时留给下次清理
     cpSync(winUnpacked, folderDir, { recursive: true })
-    rmSync(winUnpacked, { recursive: true, force: true })
+    try {
+      rmSync(winUnpacked, { recursive: true, force: true })
+    } catch (err) {
+      logLine(`[dist] 中间目录暂时无法删除（可稍后手动清理）：${err instanceof Error ? err.message : String(err)}`)
+    }
   }
   const exe = join(folderDir, 'Morrow.exe')
   if (!existsSync(exe)) fail(`文件夹版缺少 Morrow.exe：${folderDir}`)
@@ -194,68 +506,152 @@ function organizeFolder() {
   return exe
 }
 
+/** 可选启动/快捷方式脚本：用系统自带的 PowerShell 作为宿主，避免资源管理器对未签名 exe 的重复 SmartScreen 检查。
+ *  这不是代码签名，也不能保证绕过安全软件；主路径仍是直接双击 Morrow.exe。 */
+function writeLaunchScripts(dir, exeName) {
+  // 脚本文件名保持 ASCII：PowerShell 5.1 会按 ANSI 读取无 BOM 的中文脚本，路径字面量可能损坏。
+  const ps1 = `param([switch]$CreateShortcut)
+$ErrorActionPreference = 'SilentlyContinue'
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$self = $MyInvocation.MyCommand.Path
+Get-ChildItem -LiteralPath $root -File | Unblock-File
+$exe = Join-Path $root '${exeName}'
+$lnkPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Morrow.lnk'
+try {
+  $ps = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+  $ws = New-Object -ComObject WScript.Shell
+  $lnk = $ws.CreateShortcut($lnkPath)
+  $lnk.TargetPath = $ps
+  $lnk.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $self + '"'
+  $lnk.WorkingDirectory = $root
+  $lnk.IconLocation = $exe + ',0'
+  $lnk.Description = 'Morrow'
+  $lnk.WindowStyle = 7
+  $lnk.Save()
+} catch { }
+if ($CreateShortcut) { if (Test-Path -LiteralPath $lnkPath) { exit 0 } else { exit 1 } }
+if (-not (Test-Path -LiteralPath $exe)) { exit 1 }
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $exe
+$psi.WorkingDirectory = $root
+$psi.UseShellExecute = $false
+[void][System.Diagnostics.Process]::Start($psi)
+`
+  writeFileSync(join(dir, 'morrow-launch.ps1'), ps1, 'utf8')
+  const launchCmd = [
+    '@echo off',
+    'chcp 65001 >nul',
+    'cd /d "%~dp0"',
+    'powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0morrow-launch.ps1"',
+    ''
+  ].join('\r\n')
+  writeFileSync(join(dir, '启动 Morrow.cmd'), launchCmd, 'utf8')
+  const shortcutCmd = [
+    '@echo off',
+    'chcp 65001 >nul',
+    'setlocal',
+    'cd /d "%~dp0"',
+    'powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0morrow-launch.ps1" -CreateShortcut',
+    'if errorlevel 1 (echo 创建失败，请检查桌面权限) else (echo 完成：桌面已创建 Morrow 图标。这只是启动方式，不是代码签名；安全软件仍可能拦截。)',
+    'pause',
+    ''
+  ].join('\r\n')
+  writeFileSync(join(dir, '创建桌面快捷方式.cmd'), shortcutCmd, 'utf8')
+}
+
+/** 交付/文件夹内的短说明（UTF-8 BOM + CRLF，Windows 记事本/写字板可直接打开）。 */
+function buildUsageText(singleOnly = false) {
+  if (singleOnly) {
+    return [
+      `Morrow ${version} · Windows 10/11 x64 单文件便携版`,
+      '================================================',
+      '',
+      `1. 如果 ${folderName}.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
+      `2. 首次会在 exe 同级解压 .morrow-runtime-${version}（约 5–10 秒，带进度小窗），之后启动更快。`,
+      '3. 如果 Windows 弹出“Windows 已保护你的电脑”：点“更多信息” → “仍要运行”。',
+      '   这是因为 0.1.0 还没有代码签名（signed:false），不是病毒提示。',
+      '   解除锁定后通常不会再出现 SmartScreen；若仍出现，按上面的方式处理。',
+      '4. 数据默认保存在 exe 同级的 “Morrow Data” 文件夹；可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
+      '   交付包不包含任何用户数据、缓存或密钥。',
+      `5. 运行后不要删除 .morrow-runtime-${version}；删除后下次会重新解压。`,
+      '',
+      '完整性校验',
+      `- SHA-256 见同目录 ${sha256SumsFileName}。`,
+      '- Windows 校验：certutil -hashfile <文件名> SHA256；或 PowerShell Get-FileHash <文件名> -Algorithm SHA256。',
+      '- 当前版本未签名；如果以后提供受信任的代码签名证书，重新打包即可签名（SmartScreen 仍需一定下载信誉）。'
+    ].join('\r\n') + '\r\n'
+  }
+  return [
+    `Morrow ${version} · Windows 10/11 x64 便携版`,
+    '========================================',
+    '',
+    '推荐：文件夹便携版',
+    `1. 如果 ${folderName}-win64.zip 是从浏览器或聊天工具下载的，先右键 zip → 属性 → 勾选“解除锁定” → 确定，再解压。`,
+    '2. 双击文件夹里的 Morrow.exe（Morrow-app.exe 是应用本体，不要直接双击）。',
+    '3. 如果 Windows 弹出“Windows 已保护你的电脑”：点“更多信息” → “仍要运行”。',
+    '   这是因为 0.1.0 还没有代码签名（signed:false），不是病毒提示。',
+    '4. 数据保存在 exe 同级的 “Morrow Data” 文件夹；把整个文件夹拷走即可换机继续。',
+    '   可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
+    '   交付包不包含任何用户数据、缓存或密钥。',
+    '',
+    '单文件版',
+    `- 如果 ${folderName}.exe 是从浏览器或聊天工具单独下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
+    `- 首次会在 exe 同级解压 .morrow-runtime-${version}（约 5–10 秒，带进度小窗）。`,
+    '- 解除锁定后通常不会再出现 SmartScreen；若仍出现，按上面的“更多信息 → 仍要运行”处理。',
+    `- 运行后不要删除 .morrow-runtime-${version}；删除后下次会重新解压。`,
+    '',
+    '桌面图标',
+    '- 右键 Morrow.exe → 发送到 → 桌面快捷方式。',
+    '- 也可以运行文件夹里的 “创建桌面快捷方式.cmd”。它通过系统 PowerShell 启动，能减少资源管理器的重复拦截；',
+    '  这只是启动方式，不是代码签名，安全软件仍可能拦截。',
+    '',
+    '完整性校验',
+    `- SHA-256 见同目录 ${sha256SumsFileName}。`,
+    '- Windows 校验：certutil -hashfile <文件名> SHA256；或 PowerShell Get-FileHash <文件名> -Algorithm SHA256。',
+    '- 当前版本未签名；如果以后提供受信任的代码签名证书，重新打包即可签名（SmartScreen 仍需一定下载信誉）。'
+  ].join('\r\n') + '\r\n'
+}
+
+function writeUsageFile(path, singleOnly = false) {
+  writeFileSync(path, '\uFEFF' + buildUsageText(singleOnly), 'utf8')
+}
+
+/** 交付文件夹里不能有运行时缓存/用户数据；它们是测试或本机使用留下的污染。 */
+function cleanFolderRuntimeDirs(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.name === 'Morrow Data') {
+      fail(`交付文件夹包含用户数据目录：${full}。请先移走用户数据再打包，绝不能把 Morrow Data 发给别人。`)
+    }
+    if (entry.name.startsWith('.morrow-runtime-') || entry.name === '.morrow-temp') {
+      try {
+        rmSync(full, { recursive: true, force: true })
+        logLine(`[dist] 已清理交付文件夹内的运行时目录：${entry.name}`)
+      } catch (err) {
+        fail(`无法清理交付文件夹内的运行时目录 ${full}：${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+  }
+}
+
 /** 文件夹版附加文件：
  *  - portable.marker：主进程 resolveDataDir() 见到它就数据目录落到 exe 同级 `Morrow Data/`（真正便携）
- *  - 启动 Morrow（兼容模式）.cmd：受限宿主（如 DSH 卡片「打开」）双击 Morrow.exe 无反应时的兜底入口
+ *  - 使用说明.txt：首次运行/安全提示/数据位置
+ *  - 启动 Morrow.cmd / 创建桌面快捷方式.cmd：可选入口（PowerShell 宿主，减少资源管理器重复拦截）
  */
 function addPortableExtras(folderDir) {
+  cleanFolderRuntimeDirs(folderDir)
   writeFileSync(join(folderDir, 'portable.marker'), '', 'utf8')
-  const compatScript = [
-    '@echo off',
-    'cd /d "%~dp0"',
-    'start "" "%~dp0Morrow.exe" --no-sandbox',
-    ''
-  ].join('\r\n')
-  writeFileSync(join(folderDir, '启动 Morrow（兼容模式）.cmd'), compatScript, 'utf8')
-  // 桌面快捷方式：Windows 任务栏/窗口使用 exe 内嵌图标；桌面图标由一键脚本创建（不静默写入用户桌面）
-  const shortcutScript = [
-    '@echo off',
-    'chcp 65001 >nul',
-    'setlocal',
-    'cd /d "%~dp0"',
-    'powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = (Get-Location).Path; $exe = Join-Path $root \'Morrow.exe\'; $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath(\'Desktop\')) \'Morrow.lnk\')); $lnk.TargetPath = $exe; $lnk.WorkingDirectory = $root; $lnk.IconLocation = ($exe + \',0\'); $lnk.Description = \'Morrow - AI 工作伙伴\'; $lnk.Save(); Write-Host (\'已创建桌面快捷方式：\' + $exe)"',
-    'if errorlevel 1 (echo 创建失败，请检查权限) else (echo 完成：桌面上的 Morrow 图标使用本应用图标)',
-    'pause',
-    ''
-  ].join('\r\n')
-  writeFileSync(join(folderDir, '创建桌面快捷方式.cmd'), shortcutScript, 'utf8')
-
-  // 推荐入口：先清除下载文件的安全标记（MOTW），再创建桌面快捷方式并启动。
-  // Windows 对带 MOTW 的未签名 exe 会弹 SmartScreen；通过 cmd 清除标记后启动不会再弹。
-  const launchScript = [
-    '@echo off',
-    'chcp 65001 >nul',
-    'setlocal',
-    'cd /d "%~dp0"',
-    'powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath (Get-Location).Path -Recurse -File -Include *.exe,*.dll -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $root = (Get-Location).Path; $exe = Join-Path $root \'Morrow.exe\'; $lnkPath = Join-Path ([Environment]::GetFolderPath(\'Desktop\')) \'Morrow.lnk\'; if (-not (Test-Path $lnkPath)) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut($lnkPath); $lnk.TargetPath = $exe; $lnk.WorkingDirectory = $root; $lnk.IconLocation = ($exe + \',0\'); $lnk.Description = \'Morrow - AI 工作伙伴\'; $lnk.Save() }"',
-    'start "" "Morrow.exe"',
-    ''
-  ].join('\r\n')
-  writeFileSync(join(folderDir, '启动 Morrow.cmd'), launchScript, 'utf8')
-
-  // Windows Explorer 会缓存 exe 图标：重打包后任务栏正确、文件管理器仍旧时，用本脚本重建缓存与快捷方式。
-  const iconFixScript = [
-    '@echo off',
-    'chcp 65001 >nul',
-    'setlocal',
-    'cd /d "%~dp0"',
-    'echo 正在重建桌面快捷方式并刷新 Windows 图标缓存…',
-    'powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = (Get-Location).Path; $exe = Join-Path $root \'Morrow.exe\'; $ws = New-Object -ComObject WScript.Shell; $lnkPath = Join-Path ([Environment]::GetFolderPath(\'Desktop\')) \'Morrow.lnk\'; $lnk = $ws.CreateShortcut($lnkPath); $lnk.TargetPath = $exe; $lnk.WorkingDirectory = $root; $lnk.IconLocation = ($exe + \',0\'); $lnk.Description = \'Morrow - AI 工作伙伴\'; $lnk.Save()"',
-    'taskkill /f /im explorer.exe >nul 2>&1',
-    'del /f /q "%LocalAppData%\\IconCache.db" >nul 2>&1',
-    'del /f /q "%LocalAppData%\\Microsoft\\Windows\\Explorer\\iconcache_*.db" >nul 2>&1',
-    'start "" explorer.exe',
-    'ie4uinit.exe -show >nul 2>&1',
-    'echo 完成：桌面快捷方式已指向新图标，文件管理器图标缓存已重建。',
-    'pause',
-    ''
-  ].join('\r\n')
-  writeFileSync(join(folderDir, '修复图标显示.cmd'), iconFixScript, 'utf8')
+  writeUsageFile(join(folderDir, usageFileName))
+  writeLaunchScripts(folderDir, 'Morrow.exe')
+  const licenseSrc = join(root, 'LICENSE')
+  if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(folderDir, 'LICENSE'))
 }
 
 /** 用 7za 把文件夹压成 zip（zip 内保留文件夹根目录，解压即得同构目录）。 */
 const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
 const launcherSrc = join(root, 'build', 'launcher', 'MorrowLauncher.cs')
+const launcherManifest = join(root, 'build', 'launcher', 'MorrowLauncher.manifest')
 
 /**
  * 编译 C# 启动器。
@@ -265,11 +661,13 @@ const launcherSrc = join(root, 'build', 'launcher', 'MorrowLauncher.cs')
 function compileLauncher(outPath, options = {}) {
   if (!existsSync(cscPath)) fail('缺少 C# 编译器 csc.exe（Windows .NET Framework 4.x）')
   if (!existsSync(launcherSrc)) fail('缺少启动器源码 build/launcher/MorrowLauncher.cs')
+  if (!existsSync(launcherManifest)) fail('缺少启动器清单 build/launcher/MorrowLauncher.manifest')
   const args = [
     '-nologo',
     '-target:winexe',
     `-out:${outPath}`,
     `-win32icon:${iconIco}`,
+    `-win32manifest:${launcherManifest}`,
     ...(options.defineFolder ? ['-define:FOLDER_MODE'] : []),
     ...(options.resourceZip ? [`-resource:${options.resourceZip},MorrowApp.zip`] : []),
     '-r:System.IO.Compression.dll',
@@ -304,7 +702,7 @@ function prepareUnpackedWithLauncher() {
 function zipFolder() {
   rmSync(zipPath, { force: true })
   const zipStarted = Date.now()
-  // -mcu=on：zip 内文件名强制 UTF-8（含「启动 Morrow（兼容模式）.cmd」这类中文名）
+  // -mcu=on：zip 内文件名强制 UTF-8（含中文启动脚本名）
   const result = spawnSync(sevenZip, ['a', '-tzip', '-mx=5', '-mcu=on', '-bso0', '-bsp0', zipPath, folderName], {
     cwd: releaseDir,
     env
@@ -316,6 +714,112 @@ function zipFolder() {
     fail(`zip 压缩失败（7za code=${result.status}）`)
   }
   return { durationMs }
+}
+
+/**
+ * 把 release/ 里的产物整理到 deliver/：只保留本次三份产物 + 使用说明 + SHA256SUMS + LICENSE。
+ * 先清空 deliver/（旧的 runtime 缓存、Morrow Data、日志、旧包一律不进入交付）。
+ */
+function stageDelivery() {
+  const singleOnly = mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
+  mkdirSync(deliverDir, { recursive: true })
+  for (const entry of readdirSync(deliverDir, { withFileTypes: true })) {
+    try {
+      rmSync(join(deliverDir, entry.name), { recursive: true, force: true })
+    } catch (err) {
+      fail(
+        `无法清理旧交付物 deliver/${entry.name}：${err instanceof Error ? err.message : String(err)}\n` +
+          '请先完全退出正在运行的 Morrow（包括托盘图标），并关闭正在索引/扫描 deliver 的编辑器、杀毒软件或索引服务，再重新打包。'
+      )
+    }
+  }
+
+  const staged = {
+    dir: 'deliver',
+    cleaned: true,
+    createdAt: new Date().toISOString(),
+    folder: null,
+    artifacts: [],
+    usage: `deliver/${usageFileName}`,
+    sha256Sums: `deliver/${sha256SumsFileName}`
+  }
+
+  if (!singleOnly && existsSync(folderDir)) {
+    cleanFolderRuntimeDirs(folderDir)
+    const dest = join(deliverDir, folderName)
+    cpSync(folderDir, dest, { recursive: true })
+    const stat = dirSize(dest)
+    const folderExe = join(dest, 'Morrow.exe')
+    const appExe = join(dest, 'Morrow-app.exe')
+    const appAsar = join(dest, 'resources', 'app.asar')
+    staged.folder = {
+      path: `deliver/${folderName}`,
+      exePath: `deliver/${folderName}/Morrow.exe`,
+      appExePath: `deliver/${folderName}/Morrow-app.exe`,
+      sizeBytes: stat.sizeBytes,
+      sizeMB: Number((stat.sizeBytes / 1024 / 1024).toFixed(2)),
+      fileCount: stat.fileCount,
+      exeSizeBytes: statSync(folderExe).size,
+      exeSha256: sha256(folderExe),
+      appExeSizeBytes: statSync(appExe).size,
+      appExeSha256: sha256(appExe),
+      appAsarSha256: existsSync(appAsar) ? sha256(appAsar) : null
+    }
+    staged.artifacts.push({
+      name: 'portable-folder',
+      path: staged.folder.path,
+      sizeBytes: staged.folder.sizeBytes,
+      sizeMB: staged.folder.sizeMB,
+      fileCount: staged.folder.fileCount
+    })
+  }
+
+  for (const [name, src] of [
+    ['portable-zip', zipPath],
+    ['portable-exe', portableExe]
+  ]) {
+    if (singleOnly && name === 'portable-zip') continue
+    if (!existsSync(src)) continue
+    const dest = join(deliverDir, src.slice(releaseDir.length + 1))
+    cpSync(src, dest)
+    staged.artifacts.push({
+      name,
+      path: relPath(dest),
+      sizeBytes: statSync(dest).size,
+      sizeMB: Number((statSync(dest).size / 1024 / 1024).toFixed(2)),
+      sha256: sha256(dest)
+    })
+  }
+
+  writeUsageFile(join(deliverDir, usageFileName), singleOnly)
+  const licenseSrc = join(root, 'LICENSE')
+  if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
+
+  const checksumTargets = [
+    join(deliverDir, `${folderName}-win64.zip`),
+    join(deliverDir, `${folderName}.exe`),
+    join(deliverDir, folderName, 'Morrow.exe'),
+    join(deliverDir, folderName, 'Morrow-app.exe'),
+    join(deliverDir, folderName, 'resources', 'app.asar'),
+    join(deliverDir, folderName, 'portable.marker'),
+    join(deliverDir, folderName, usageFileName),
+    join(deliverDir, folderName, 'LICENSE'),
+    join(deliverDir, usageFileName),
+    join(deliverDir, 'LICENSE')
+  ].filter((path) => existsSync(path))
+  const checksumLines = checksumTargets.map((path) => `${sha256(path)}  ${deliverRelPath(path)}`)
+  writeFileSync(join(deliverDir, sha256SumsFileName), checksumLines.join('\n') + '\n', 'utf8')
+  staged.checksums = checksumTargets.map((path) => ({
+    path: deliverRelPath(path),
+    sizeBytes: statSync(path).size,
+    sha256: sha256(path)
+  }))
+
+  const total = dirSize(deliverDir)
+  staged.totalSizeBytes = total.sizeBytes
+  staged.totalSizeMB = Number((total.sizeBytes / 1024 / 1024).toFixed(2))
+  staged.totalFileCount = total.fileCount
+  return staged
 }
 
 // ── 主流程 ───────────────────────────────────────────────────────────
@@ -337,105 +841,185 @@ const summary = {
   logs: { combined: logPath.replace(root + '\\', '').replace(/\\/g, '/') }
 }
 
-logLine(`[dist] Morrow ${version} · mode=${mode} · 输出 release/`)
+logLine(`[dist] Morrow ${version} · mode=${mode} · 构建 release/ → 交付 deliver/`)
 logLine(`[dist] 镜像：ELECTRON_MIRROR=${env.ELECTRON_MIRROR} · ELECTRON_CACHE=${env.ELECTRON_CACHE}`)
 
 try {
+  signing = resolveSigningConfig()
+  summary.signing = {
+    enabled: signing.enabled,
+    method: signing.method,
+    description: signing.description || null,
+    reason: signing.enabled ? null : signing.reason,
+    timestampUrl: signing.timestampUrl,
+    signtool: signing.signtool || null,
+    certificate: null,
+    artifacts: {}
+  }
+  if (signing.enabled) {
+    logLine(`[dist] 代码签名：已启用（${signing.method}）· 时间戳 ${signing.timestampUrl}`)
+  } else {
+    logLine(`[dist] 代码签名：未启用 → 产物标记 signed:false。原因：${signing.reason}`)
+  }
+
   if (mode === 'dir') {
-    steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never'], 'dir')) })
+    steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never', `-c.directories.output=${builderOutputDir}`, ...electronDistArgs], 'dir')) })
   } else if (mode === 'folder' || mode === 'all') {
-    steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never'], 'dir')) })
+    steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never', `-c.directories.output=${builderOutputDir}`, ...electronDistArgs], 'dir')) })
     const dirStep = steps[steps.length - 1]
     if (dirStep.exitCode !== 0) fail(`electron-builder --dir 失败（exit ${dirStep.exitCode}）`)
     prepareUnpackedWithLauncher()
 
+    // 先签名应用本体和文件夹启动器，再压缩 zip：这样 zip 里携带的也是已签名 exe。
+    const folderAppSig = signFile(join(winUnpacked, 'Morrow-app.exe'), 'Morrow-app.exe')
+    const folderLauncherSig = signFile(join(winUnpacked, 'Morrow.exe'), 'Morrow.exe（文件夹版）')
+
     const folderExe = organizeFolder()
     const folderStat = dirSize(folderDir)
+    const folderAppExe = join(folderDir, 'Morrow-app.exe')
     artifacts.portableFolder = {
       kind: 'folder',
-      path: folderDir.replace(root + '\\', '').replace(/\\/g, '/'),
-      exePath: folderExe.replace(root + '\\', '').replace(/\\/g, '/'),
+      path: relPath(folderDir),
+      exePath: relPath(folderExe),
       exeSizeBytes: statSync(folderExe).size,
+      exeSha256: sha256(folderExe),
+      appExePath: relPath(folderAppExe),
+      appExeSizeBytes: statSync(folderAppExe).size,
+      appExeSha256: sha256(folderAppExe),
+      appAsarSha256: sha256(join(folderDir, 'resources', 'app.asar')),
       sizeBytes: folderStat.sizeBytes,
       sizeMB: Number((folderStat.sizeBytes / 1024 / 1024).toFixed(2)),
       fileCount: folderStat.fileCount,
-      extras: ['portable.marker', '启动 Morrow.cmd', '启动 Morrow（兼容模式）.cmd', '创建桌面快捷方式.cmd', '修复图标显示.cmd'],
-      note: '推荐交付形态：Morrow.exe 为轻量启动器（自动 --no-sandbox 后启动 Morrow-app.exe），无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）与兼容模式启动脚本'
+      extras: ['portable.marker', usageFileName, 'LICENSE', '启动 Morrow.cmd', '创建桌面快捷方式.cmd', 'morrow-launch.ps1'],
+      signed: signatureSummary(folderAppSig).signed && signatureSummary(folderLauncherSig).signed,
+      signatures: {
+        launcher: signatureSummary(folderLauncherSig),
+        app: signatureSummary(folderAppSig)
+      },
+      note:
+        '推荐交付形态：Morrow.exe 为轻量启动器（带完整 Win32 manifest，自动 --no-sandbox 后启动 Morrow-app.exe），' +
+        '无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）；' +
+        '未签名时首次运行仍可能被 SmartScreen 拦截，需「更多信息 → 仍要运行」；配置受信任证书后打包会自动签名。'
     }
     logLine(`[dist] 文件夹版：${artifacts.portableFolder.path} · ${artifacts.portableFolder.sizeMB} MB · ${folderStat.fileCount} files`)
+    logLine(`[dist] 文件夹版签名：launcher=${signatureSummary(folderLauncherSig).status} · app=${signatureSummary(folderAppSig).status}`)
 
     logLine('[dist] 压缩 zip…')
     const zipResult = zipFolder()
     steps.push({ name: 'zip', exitCode: 0, durationMs: zipResult.durationMs })
     artifacts.portableZip = {
       kind: 'zip',
-      path: zipPath.replace(root + '\\', '').replace(/\\/g, '/'),
+      path: relPath(zipPath),
       sizeBytes: statSync(zipPath).size,
       sizeMB: Number((statSync(zipPath).size / 1024 / 1024).toFixed(2)),
-      sha256: sha256(zipPath)
+      sha256: sha256(zipPath),
+      signed: false,
+      signature: null,
+      note: 'zip 本身不参与 Authenticode 签名；zip 内 Morrow.exe / Morrow-app.exe 的签名状态见 portableFolder.signatures'
     }
     logLine(`[dist] zip：${artifacts.portableZip.path} · ${artifacts.portableZip.sizeMB} MB · sha256=${artifacts.portableZip.sha256.slice(0, 16)}…`)
   }
 
   if (mode === 'portable' || mode === 'all') {
     // 单文件便携版：使用仓库内的自研启动器（build/launcher/MorrowLauncher.cs）
-    // 把 win-unpacked 打成 zip 内嵌进 exe；首次运行解压到 exe 同级隐藏缓存目录
+    // 把应用打成 zip 内嵌进 exe；首次运行解压到 exe 同级隐藏缓存目录
     // （.morrow-runtime-<ver>），不依赖 %TEMP%；之后直接复用；目录只读时回退 LOCALAPPDATA。
     // 之所以不用 electron-builder 的 NSIS portable：NSIS 自解压把内容写到 %TEMP%，
     // 受限启动环境（%TEMP% 不可写）会直接报 “Error writing temporary file”。
     const appZip = join(root, 'tmp', 'launcher-app.zip')
-    if (!existsSync(join(winUnpacked, 'Morrow-app.exe')) && !existsSync(join(winUnpacked, 'Morrow.exe'))) {
-      steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never'], 'dir')) })
+    const unpackedReady =
+      existsSync(join(winUnpacked, 'Morrow-app.exe')) && existsSync(join(winUnpacked, 'resources', 'app.asar'))
+    // win-unpacked 被系统索引/杀毒占用且已整理成 folder 时，直接从 folder 打单文件，避免重复解压
+    const sourceDir = unpackedReady ? winUnpacked : folderDir
+    if (!unpackedReady && !existsSync(join(folderDir, 'Morrow-app.exe'))) {
+      steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never', `-c.directories.output=${builderOutputDir}`, ...electronDistArgs], 'dir')) })
       if (steps[steps.length - 1].exitCode !== 0) fail('electron-builder dir 失败（单文件启动器需要 win-unpacked）')
+      prepareUnpackedWithLauncher()
     }
-    prepareUnpackedWithLauncher()
+    if (sourceDir === winUnpacked) {
+      prepareUnpackedWithLauncher()
+      // 单文件形态没有单独的文件夹交付物，但内嵌 zip 里的 Morrow-app.exe / Morrow.exe 仍然签名，
+      // 避免解压后留下未签名 exe 被安全软件反复扫描。
+      signFile(join(winUnpacked, 'Morrow-app.exe'), 'Morrow-app.exe（单文件内嵌）')
+      signFile(join(winUnpacked, 'Morrow.exe'), 'Morrow.exe（单文件内嵌，文件夹启动器）')
+    }
 
     const packStarted = Date.now()
     rmSync(appZip, { force: true })
-    logLine('[dist] [portable] 打包 win-unpacked 为内嵌 zip…')
-    const zipResult = spawnSync(sevenZip, ['a', '-tzip', '-mx=5', appZip, '*'], { cwd: winUnpacked, encoding: 'utf8' })
+    logLine(`[dist] [portable] 打包 ${sourceDir === folderDir ? '便携文件夹' : 'win-unpacked'} 为内嵌 zip…`)
+    const zipArgs = ['a', '-tzip', '-mx=5', appZip, '*']
+    // folder 里的 portable.marker 只适用于文件夹版；带进单文件运行时会改变数据目录位置
+    if (sourceDir === folderDir) zipArgs.push('-x!portable.marker')
+    const zipResult = spawnSync(sevenZip, zipArgs, { cwd: sourceDir, encoding: 'utf8' })
     if (zipResult.status !== 0) fail(`内嵌 zip 打包失败：${(zipResult.stderr || '').slice(0, 400)}`)
     logLine(`[dist] [portable] 内嵌 zip ${(statSync(appZip).size / 1024 / 1024).toFixed(2)} MB，编译启动器…`)
     compileLauncher(portableExe, { resourceZip: appZip })
     rmSync(appZip, { force: true })
     if (!existsSync(portableExe)) fail(`未找到单文件产物：${portableExe}`)
+    const portableSig = signFile(portableExe, 'Morrow 单文件 exe')
     steps.push({ name: 'portable', exitCode: 0, durationMs: Date.now() - packStarted, command: `launcher(${portableExe})` })
     artifacts.portableExe = {
       kind: 'portable-exe',
-      path: portableExe.replace(root + '\\', '').replace(/\\/g, '/'),
+      path: relPath(portableExe),
       sizeBytes: statSync(portableExe).size,
       sizeMB: Number((statSync(portableExe).size / 1024 / 1024).toFixed(2)),
       sha256: sha256(portableExe),
-      note: '自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 .morrow-runtime-<ver> 缓存（不依赖 %TEMP%），之后秒开；自动加 --no-sandbox 以兼容本机受限环境；无代码签名，SmartScreen 可能提示未知发布者'
+      signed: signatureSummary(portableSig).signed,
+      signature: signatureSummary(portableSig),
+      note:
+        '自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 .morrow-runtime-<ver> 缓存（不依赖 %TEMP%），之后秒开；' +
+        '自动加 --no-sandbox 以兼容本机受限环境；未签名时首次运行仍可能被 SmartScreen 拦截。'
     }
-    logLine(`[dist] 单文件 exe：${artifacts.portableExe.path} · ${artifacts.portableExe.sizeMB} MB · sha256=${artifacts.portableExe.sha256.slice(0, 16)}…`)
+    logLine(`[dist] 单文件 exe：${artifacts.portableExe.path} · ${artifacts.portableExe.sizeMB} MB · sha256=${artifacts.portableExe.sha256.slice(0, 16)}… · signed=${artifacts.portableExe.signed}`)
     if (mode === 'all' && existsSync(winUnpacked)) {
-      rmSync(winUnpacked, { recursive: true, force: true })
-      logLine('[dist] 已清理中间目录 release/win-unpacked（文件夹版已包含同构内容）')
-    }
-    // 单文件 exe 首次直接双击仍可能触发 SmartScreen（无签名）；提供“先清除安全标记再启动”的伴随脚本
-    if (existsSync(portableExe)) {
-      const singleLaunch = [
-        '@echo off',
-        'chcp 65001 >nul',
-        'setlocal',
-        'cd /d "%~dp0"',
-        `powershell -NoProfile -ExecutionPolicy Bypass -Command "Unblock-File -LiteralPath '.\\${folderName}.exe' -ErrorAction SilentlyContinue"`,
-        `start "" "${folderName}.exe"`,
-        ''
-      ].join('\r\n')
-      writeFileSync(join(releaseDir, '启动单文件版（清除安全标记）.cmd'), singleLaunch, 'utf8')
+      try {
+        rmSync(winUnpacked, { recursive: true, force: true })
+        logLine('[dist] 已清理中间目录 tmp/electron-builder-output/win-unpacked（文件夹版已包含同构内容）')
+      } catch (err) {
+        logLine(`[dist] 中间目录被占用，暂未清理 tmp/electron-builder-output（不影响产物）：${err instanceof Error ? err.message : String(err)}`)
+      }
     }
   }
 
-  // 清理 Mark-of-the-Web（若存在），减少 SmartScreen 打扰（无代码签名仍可能提示）
-  try {
-    const unblockTargets = [portableExe, zipPath, join(folderDir, 'Morrow.exe'), join(folderDir, 'Morrow-app.exe'), join(releaseDir, '启动 Morrow.cmd'), join(releaseDir, 'Morrow-1.0.0-portable', '启动 Morrow.cmd')].filter((p) => existsSync(p))
-    if (unblockTargets.length > 0) {
-      spawnSync('powershell.exe', ['-NoProfile', '-Command', unblockTargets.map((p) => `Unblock-File -LiteralPath '${p.replace(/'/g, "''")}'`).join('; ')], { stdio: 'ignore' })
+  // 只把本次产物整理进 deliver/：旧包、缓存、Morrow Data、日志一律清掉。
+  if (Object.keys(artifacts).length > 0) {
+    const delivery = stageDelivery()
+    summary.delivery = delivery
+    if (artifacts.portableFolder && delivery.folder) {
+      artifacts.portableFolder.path = delivery.folder.path
+      artifacts.portableFolder.exePath = delivery.folder.exePath
+      artifacts.portableFolder.appExePath = delivery.folder.appExePath
     }
-  } catch {
-    // 忽略：无签名仍可能触发 SmartScreen，这不是致命问题
+    for (const artifact of Object.values(artifacts)) {
+      const match = delivery.artifacts.find((entry) => artifact.path.endsWith(entry.path.split('/').pop()))
+      if (match) artifact.path = match.path
+    }
+    // 交付目录里的文件才是最终产物：重新读一次签名，避免 JSON 里出现 release/tmp 的旧路径。
+    if (artifacts.portableFolder && delivery.folder) {
+      const launcherSig = signatureSummary(readAuthenticode(join(deliverDir, folderName, 'Morrow.exe')))
+      const appSig = signatureSummary(readAuthenticode(join(deliverDir, folderName, 'Morrow-app.exe')))
+      artifacts.portableFolder.signatures = { launcher: launcherSig, app: appSig }
+      artifacts.portableFolder.signed = launcherSig.signed && appSig.signed
+    }
+    if (artifacts.portableExe) {
+      const exeSig = signatureSummary(readAuthenticode(join(deliverDir, `${folderName}.exe`)))
+      artifacts.portableExe.signature = exeSig
+      artifacts.portableExe.signed = exeSig.signed
+    }
+    if (artifacts.portableZip) {
+      artifacts.portableZip.signed = false
+      artifacts.portableZip.signature = {
+        signed: false,
+        status: 'NotApplicable',
+        note: 'zip 不参与 Authenticode 签名；zip 内 exe 的签名状态见 portableFolder.signatures'
+      }
+    }
+    const singleDelivery = !delivery.folder && !delivery.artifacts.some((item) => item.name === 'portable-zip')
+    logLine(
+      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} files（${
+        singleDelivery ? '单文件 exe + 使用说明 + SHA256SUMS + LICENSE' : '三份产物 + 使用说明 + SHA256SUMS + LICENSE'
+      }）`
+    )
   }
 
   // 主推产物：文件夹版 > zip > 单文件
@@ -446,17 +1030,38 @@ try {
       : artifacts.portableExe
         ? 'portableExe'
         : null
-  summary.ok = steps.every((step) => step.exitCode === 0) && Object.keys(artifacts).length > 0
+  summary.ok = steps.every((step) => step.exitCode === 0) && Object.keys(artifacts).length > 0 && Boolean(summary.delivery)
   summary.primaryArtifact = primaryKey
   summary.artifacts = artifacts
+  summary.signing.certificate = signing.certificate || null
+  summary.signing.artifacts = Object.fromEntries(
+    Object.entries(artifacts).map(([key, artifact]) => {
+      if (key === 'portableFolder' && artifact.signatures) return [key, artifact.signatures]
+      if (artifact.signature) return [key, artifact.signature]
+      return [key, { signed: Boolean(artifact.signed), status: artifact.signed ? 'Valid' : 'NotSigned' }]
+    })
+  )
+  const singleDelivery =
+    Boolean(summary.delivery) &&
+    !summary.delivery.folder &&
+    !summary.delivery.artifacts.some((item) => item.name === 'portable-zip')
+  summary.notes =
+    `Morrow ${version} 打包完成：启动器嵌入完整 Win32 manifest；` +
+    (signing.enabled ? `已使用 ${signing.method} 证书签名并校验。` : '未配置代码签名证书，产物 signed:false。') +
+    (singleDelivery
+      ? ' deliver/ 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。'
+      : ' deliver/ 只保留三份产物、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。')
   summary.finishedAt = new Date().toISOString()
   summary.durationMs = Date.now() - startedAt
   writeFileSync(join(root, 'docs', 'verification', 'packaging.json'), JSON.stringify(summary, null, 2))
   logLine(`[dist] 完成 · ${(summary.durationMs / 1000).toFixed(1)}s · 摘要 docs/verification/packaging.json`)
   if (summary.ok) {
     for (const [key, artifact] of Object.entries(artifacts)) {
-      logLine(`[dist]   ${key}: ${artifact.path} · ${artifact.sizeMB} MB${artifact.sha256 ? ` · sha256=${artifact.sha256}` : ''}`)
+      logLine(`[dist]   ${key}: ${artifact.path} · ${artifact.sizeMB} MB · signed=${Boolean(artifact.signed)}${artifact.sha256 ? ` · sha256=${artifact.sha256}` : ''}`)
     }
+    logLine(
+      `[dist] 签名状态：${signing.enabled ? `已配置证书（${signing.method}）` : '未配置证书，产物未签名（signed:false）'}`
+    )
   }
   process.exitCode = summary.ok ? 0 : 1
 } catch (err) {

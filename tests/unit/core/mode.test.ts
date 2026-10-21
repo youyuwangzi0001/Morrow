@@ -55,7 +55,7 @@ function policy(
   mode: PermissionPolicyContext['mode'],
   sessionMode: PermissionPolicyContext['sessionMode']
 ): PermissionPolicyContext {
-  return { mode, workspace, isSubagent: false, isDemo: false, sessionGrants: new Set(), sessionMode }
+  return { mode, workspace, isDemo: false, sessionGrants: new Set(), sessionMode }
 }
 
 interface ScriptRun {
@@ -280,23 +280,19 @@ describe('聊天模式权限层硬拦截（即使 permission=auto）', () => {
     }
   })
 
-  it('聊天模式优先级最高：演示模式/子代理叠加时也不放行写入', () => {
+  it('聊天模式优先级最高：演示模式叠加时也不放行写入', () => {
     const ws = makeTempWorkspace()
     try {
-      for (const extra of [{ isDemo: true }, { isSubagent: true }] as const) {
-        const ctx: PermissionPolicyContext = {
-          mode: 'auto',
-          workspace: ws.root,
-          isSubagent: false,
-          isDemo: false,
-          sessionGrants: new Set(),
-          sessionMode: 'chat',
-          ...extra
-        }
-        const gate = evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), ctx)
-        expect(gate.action).toBe('deny')
-        expect(evaluatePermission(target('read_file', 'read', { path: 'a.txt' }), ctx).action).toBe('allow')
+      const ctx: PermissionPolicyContext = {
+        mode: 'auto',
+        workspace: ws.root,
+        isDemo: true,
+        sessionGrants: new Set(),
+        sessionMode: 'chat'
       }
+      const gate = evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), ctx)
+      expect(gate.action).toBe('deny')
+      expect(evaluatePermission(target('read_file', 'read', { path: 'a.txt' }), ctx).action).toBe('allow')
     } finally {
       ws.cleanup()
     }

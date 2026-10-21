@@ -1,0 +1,391 @@
+/* 深度研究进度条：紧凑、金色只点亮进度与报告入口 */
+
+.research-bar {
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background:
+    radial-gradient(420px 100px at 82% -30%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 72%),
+    var(--surface);
+  overflow: hidden;
+}
+
+.research-bar.is-completed {
+  border-color: color-mix(in srgb, var(--patina) 32%, transparent);
+}
+
+.research-bar.is-ready {
+  border-color: color-mix(in srgb, var(--gold-bright) 42%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 8%, transparent);
+}
+
+.research-bar.is-error {
+  border-color: color-mix(in srgb, var(--rust) 32%, transparent);
+}
+
+.research-bar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.research-bar-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-gold);
+  background: var(--gold-ghost);
+  color: var(--gold-bright);
+}
+
+.research-bar.is-completed .research-bar-icon {
+  border-color: color-mix(in srgb, var(--patina) 38%, transparent);
+  background: var(--patina-dim);
+  color: var(--patina);
+}
+
+.research-bar.is-error .research-bar-icon {
+  border-color: color-mix(in srgb, var(--rust) 38%, transparent);
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.research-bar.is-ready .research-bar-icon {
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+  color: var(--gold-bright);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+.research-bar-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.research-bar-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.research-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.research-bar-sub {
+  font-size: 9px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.research-progress {
+  flex: 0 0 96px;
+  display: flex;
+  align-items: center;
+}
+
+.research-meter {
+  width: 100%;
+  height: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  overflow: hidden;
+}
+
+.research-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 55%, transparent), var(--gold-bright));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--gold-bright) 40%, transparent);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.research-bar.is-completed .research-meter-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--patina) 55%, transparent), var(--patina));
+  box-shadow: none;
+}
+
+.research-status {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 9.5px;
+  color: var(--text-3);
+}
+
+.research-status.is-searching {
+  color: var(--gold-bright);
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.research-status.is-planning,
+.research-status.is-ready {
+  color: var(--gold-bright);
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.research-status.is-completed {
+  color: var(--patina);
+  border-color: color-mix(in srgb, var(--patina) 28%, transparent);
+  background: var(--patina-dim);
+}
+
+.research-status.is-error {
+  color: var(--rust);
+  border-color: color-mix(in srgb, var(--rust) 28%, transparent);
+  background: var(--rust-dim);
+}
+
+.research-chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.research-bar.is-expanded .research-chevron {
+  transform: rotate(180deg);
+}
+
+.research-spin {
+  animation: research-spin 1s linear infinite;
+  color: var(--gold);
+}
+
+@keyframes research-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.research-bar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px 44px;
+}
+
+.research-depth-desc,
+.research-gap,
+.research-hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+
+.research-gap {
+  color: var(--amber);
+}
+
+.research-gap.is-error {
+  color: var(--rust);
+}
+
+.research-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.research-facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.research-facts i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.research-facts i.is-ok {
+  background: var(--patina);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--patina) 60%, transparent);
+}
+
+.research-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+/* ── 计划审阅（ChatGPT Deep Research 式先计划后执行） ───────── */
+
+.research-planning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.research-planning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.research-plan-review {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 1px;
+}
+
+.research-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 10.5px;
+}
+
+.research-plan-head svg {
+  color: var(--gold);
+}
+
+.research-plan-head .mono {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.research-plan-editor {
+  width: 100%;
+  min-height: 218px;
+  max-height: 42vh;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.7;
+  outline: 0;
+  transition: border-color var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
+}
+
+.research-plan-editor:focus {
+  border-color: var(--line-gold);
+  box-shadow: 0 0 0 3px var(--gold-ghost);
+}
+
+.research-plan-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.research-plan-details {
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+}
+
+.research-plan-details summary {
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 10px;
+  user-select: none;
+}
+
+.research-plan-details summary:hover {
+  color: var(--gold);
+}
+
+.research-plan-details pre {
+  margin: 6px 0 0;
+  max-height: 190px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.research-steer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.research-steer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  outline: 0;
+  transition: border-color var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
+}
+
+.research-steer-input::placeholder {
+  color: var(--text-3);
+}
+
+.research-steer-input:focus {
+  border-color: var(--line-gold);
+  box-shadow: 0 0 0 3px var(--gold-ghost);
+}
+
+.research-steer-pending {
+  margin: 0;
+  color: var(--gold);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .research-progress {
+    display: none;
+  }
+}

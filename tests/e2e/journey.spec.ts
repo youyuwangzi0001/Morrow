@@ -16,7 +16,7 @@
  * - 截图统一归档 docs/verification/screens/。
  */
 import { expect, test } from '@playwright/test'
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchMorrow, root, screenshotPath } from './launch'
 import { startMockLLM } from '../fixtures/mock-llm.mjs'
@@ -157,6 +157,10 @@ test.describe('Morrow 完整旅程', () => {
       const card = page.locator('.permission-card')
       await expect(card).toBeVisible({ timeout: 15_000 })
       await expect(card).toContainText('允许一次')
+      await expect(card).toContainText('新文件')
+      await expect(card).not.toContainText('/dev/null')
+      await expect(card.locator('.permission-summary')).toHaveCount(0)
+      await page.waitForTimeout(350) // 等入场动画结束，避免截到 opacity 0 的帧
       await page.screenshot({ path: screenshotPath('permission-card.png') })
 
       // 2) 真实点击「拒绝」
@@ -213,7 +217,7 @@ test.describe('Morrow 完整旅程', () => {
       await waitForPermission(page, 60_000)
       const card = page.locator('.permission-card')
       await expect(card).toBeVisible({ timeout: 15_000 })
-      await page.screenshot({ path: screenshotPath('permission-card-allow.png') })
+      await page.waitForTimeout(350) // 等入场动画结束，避免截到 opacity 0 的帧
       await clickPermissionCard(page, 'once')
       await waitForEvent(page, 'permission_resolved', (event) => event.decision === 'once', 30_000)
 
@@ -233,6 +237,156 @@ test.describe('Morrow 完整旅程', () => {
       expect(mock.calls).toBeGreaterThanOrEqual(2)
       expect((await readStore(page)).run).toBeNull()
       await page.screenshot({ path: screenshotPath('permission-allowed.png') })
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('撤销文件修改：真实写盘 → 点击撤销 → 内容恢复、按钮显示已恢复', async () => {
+    test.setTimeout(180_000)
+    const workspace = join(root, 'tmp', `e2e-undo-ws-${Date.now()}`)
+    mkdirSync(workspace, { recursive: true })
+    const target = join(workspace, 'undo-me.txt')
+    writeFileSync(target, '修改前的内容\n', 'utf8')
+    const mock = await startMockLLM({
+      scripts: [
+        {
+          text: '我先改一下这个文件。',
+          toolCalls: [{ name: 'write_file', arguments: { path: 'undo-me.txt', content: '修改后的内容\n' } }]
+        },
+        { text: '已经改好了。' }
+      ]
+    })
+    const morrow = await launchMorrow({ name: 'permission-undo', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await installEventCollector(page)
+      const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+      await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '撤销测试' })
+      await sendMessageViaStore(page, '把 undo-me.txt 的内容改一下。')
+      await waitForRunStarted(page, 30_000)
+      const finished = await waitForRunFinished(page, 60_000)
+      expect(finished.reason).toBe('complete')
+      expect(readFileSync(target, 'utf8')).toBe('修改后的内容\n')
+
+      await page.locator('.spine-item').filter({ hasText: 'undo-me.txt' }).first().click()
+      const undo = page.getByRole('button', { name: /撤销这次修改/ })
+      await expect(undo).toBeVisible({ timeout: 15_000 })
+      await undo.click()
+      await expect(page.getByText('已恢复', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect.poll(() => readFileSync(target, 'utf8'), { timeout: 10_000 }).toBe('修改前的内容\n')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('撤销 Excel 生成：覆盖已有工作簿后可恢复原文件', async () => {
+    test.setTimeout(180_000)
+    const workspace = join(root, 'tmp', `e2e-undo-xlsx-ws-${Date.now()}`)
+    mkdirSync(join(workspace, 'out'), { recursive: true })
+    const target = join(workspace, 'out', 'data.xlsx')
+    copyFileSync(join(root, 'tests', 'unit', 'core', 'fixtures', 'documents', 'input.xlsx'), target)
+    const before = readFileSync(target)
+    const mock = await startMockLLM({
+      scripts: [
+        {
+          text: '我更新一下这份表格。',
+          toolCalls: [
+            {
+              name: 'write_xlsx',
+              arguments: { path: 'out/data.xlsx', sheets: [{ name: '变更', rows: [['新内容', 2]] }] }
+            }
+          ]
+        },
+        { text: '表格已更新。' }
+      ]
+    })
+    const morrow = await launchMorrow({ name: 'permission-undo-xlsx', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await installEventCollector(page)
+      const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+      await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: 'Excel 撤销测试' })
+      await sendMessageViaStore(page, '把 out/data.xlsx 更新一下。')
+      await waitForRunStarted(page, 30_000)
+      const finished = await waitForRunFinished(page, 60_000)
+      expect(finished.reason).toBe('complete')
+      expect(Buffer.compare(readFileSync(target), before)).not.toBe(0)
+
+      await page.locator('.spine-item').filter({ hasText: 'data.xlsx' }).first().click()
+      const undo = page.getByRole('button', { name: /撤销这次修改/ })
+      await expect(undo).toBeVisible({ timeout: 15_000 })
+      await undo.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(450)
+      await page.screenshot({ path: screenshotPath('document-undo-xlsx-dark.png') })
+      await undo.click()
+      await expect(page.getByText('已恢复', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect.poll(() => Buffer.compare(readFileSync(target), before), { timeout: 10_000 }).toBe(0)
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('高风险命令：auto 模式仍逐次审批，卡片不提供「始终允许」', async () => {
+    test.setTimeout(180_000)
+    const workspace = join(root, 'tmp', `e2e-perm-danger-ws-${Date.now()}`)
+    mkdirSync(workspace, { recursive: true })
+    const mock = await startMockLLM({
+      scripts: [
+        {
+          text: '我先清理一下目录。',
+          toolCalls: [{ name: 'run_command', arguments: { command: 'Remove-Item out -Recurse -Force' } }]
+        },
+        { text: '好，那我不执行删除。' }
+      ]
+    })
+    const morrow = await launchMorrow({ name: 'permission-danger', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await installEventCollector(page)
+      const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+      await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '权限测试 · 高风险' })
+      await sendMessageViaStore(page, '请删除 out 目录。')
+      await waitForRunStarted(page, 30_000)
+
+      const request = await waitForPermission(page, 60_000)
+      expect(request.toolName).toBe('run_command')
+      expect(request.risk).toBe('high')
+      expect(request.allowAlways).toBe(false)
+
+      const card = page.locator('.permission-card')
+      await expect(card).toBeVisible({ timeout: 15_000 })
+      await expect(card).toContainText('高风险命令')
+      await expect(card.getByRole('button', { name: /始终允许/ })).toHaveCount(0)
+      await expect(card.locator('.permission-once-note')).toContainText('需逐次确认')
+
+      await setThemeViaStore(page, 'light')
+      await page.waitForTimeout(500)
+      await expect(card).toBeVisible()
+      await card.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: screenshotPath('permission-high-risk-light.png') })
+      await setThemeViaStore(page, 'dark')
+      await page.waitForTimeout(500)
+      await expect(card).toBeVisible()
+      await card.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: screenshotPath('permission-high-risk-dark.png') })
+
+      await clickPermissionCard(page, 'deny')
+      const finished = await waitForRunFinished(page, 60_000)
+      expect(finished.reason).toBe('complete')
+      const events = await getEvents(page)
+      expect(events.some((event) => event.type === 'tool_finished' && event.denied === true)).toBe(true)
     } finally {
       await morrow.close()
       await mock.close()

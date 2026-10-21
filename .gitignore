@@ -1,9 +1,11 @@
 node_modules/
 out/
 release/
+deliver/
 dist/
 test-results/
 playwright-report/
+docs/verification/screens/
 docs/verification/screens/**/*.tmp
 *.log
 .DS_Store

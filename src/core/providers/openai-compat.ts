@@ -127,7 +127,9 @@ export function toOpenAIMessages(messages: ChatMessage[], system: string): OpenA
     })
     for (const block of toolUses) out.push({ role: 'tool', tool_call_id: block.id, content: toolResultText(block) })
   }
-  return [{ role: 'system', content: systemParts.join('\n\n') }, ...out]
+  // 空的 system 消息会被部分网关判为非法 content，没有系统提示时直接省略
+  const systemText = systemParts.join('\n\n')
+  return systemText ? [{ role: 'system', content: systemText }, ...out] : out
 }
 
 export function buildOpenAIRequestBody(
@@ -146,6 +148,7 @@ export function buildOpenAIRequestBody(
   }
   if (typeof req.maxTokens === 'number' && req.maxTokens > 0) body.max_tokens = req.maxTokens
   if (typeof req.temperature === 'number') body.temperature = req.temperature
+  if (req.reasoning?.style === 'effort') body.reasoning_effort = req.reasoning.effort
   return body
 }
 
@@ -205,7 +208,7 @@ export class OpenAICompatProvider implements Provider {
   }
 
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
-    const policy: RetryPolicy = { maxRetries: 3, delays: this.retryDelays }
+    const policy: RetryPolicy = { maxRetries: DEFAULT_RETRY.maxRetries, delays: this.retryDelays }
     return streamWithRetry(() => this.attempt(req), {
       policy,
       signal: req.signal,
@@ -235,32 +238,50 @@ export class OpenAICompatProvider implements Provider {
 
     const toolAcc = new Map<number, ToolAccumulator>()
     let finishReason: string | null = null
+    let completed = false
+    let hasOutput = false
+    let finalizedToolCalls = 0
+    let hadParseError = false
+    // 少数网关不返回 tool_call.index：沿用最近一次的索引，避免每个分片都变成幽灵调用
+    let currentIndex = 0
 
-    for await (const payload of iterateSSEData(response.body)) {
+    for await (const payload of iterateSSEData(response.body, () => {
+      completed = true
+    })) {
       const chunk = payload as OpenAIStreamChunk
       // 个别网关会在 200 响应里塞 error 帧
       if (chunk.error) {
+        const errorType = typeof chunk.error === 'string' ? '' : (chunk.error.type ?? '')
         const message = typeof chunk.error === 'string' ? chunk.error : chunk.error.message
+        const retryable = /rate.?limit|overload|server_error|timeout|unavailable|temporar/i.test(
+          `${errorType} ${message ?? ''}`
+        )
         throw new ProviderError(`模型服务返回错误：${message ?? '未知错误'}`, {
-          code: 'provider_error',
-          retryable: false,
+          code: errorType || 'provider_error',
+          retryable,
           providerId: this.id
         })
       }
       if (chunk.usage) yield { type: 'usage', usage: mapUsage(chunk.usage) }
       const choice = chunk.choices?.[0]
-      if (choice?.finish_reason) finishReason = choice.finish_reason
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason
+        completed = true
+      }
       const delta = choice?.delta
       if (!delta) continue
       const reasoning = delta.reasoning_content ?? delta.reasoning
       if (typeof reasoning === 'string' && reasoning.length > 0) {
+        hasOutput = true
         yield { type: 'thinking_delta', text: reasoning }
       }
       if (typeof delta.content === 'string' && delta.content.length > 0) {
+        hasOutput = true
         yield { type: 'text_delta', text: delta.content }
       }
       for (const call of delta.tool_calls ?? []) {
-        const index = typeof call.index === 'number' ? call.index : toolAcc.size
+        const index = typeof call.index === 'number' ? call.index : currentIndex
+        currentIndex = index
         let acc = toolAcc.get(index)
         if (!acc) {
           acc = { index, id: '', name: '', args: '', started: false }
@@ -273,9 +294,11 @@ export class OpenAICompatProvider implements Provider {
         if (!acc.started && acc.name) {
           acc.started = true
           acc.id = acc.id || newId('call')
+          hasOutput = true
           yield { type: 'tool_call_start', index, id: acc.id, name: acc.name }
           if (acc.args) yield { type: 'tool_call_delta', index, argsDelta: acc.args }
         } else if (acc.started && argsDelta) {
+          hasOutput = true
           yield { type: 'tool_call_delta', index, argsDelta }
         }
       }
@@ -284,9 +307,11 @@ export class OpenAICompatProvider implements Provider {
     // 流结束：补发 tool_call_end（含容错解析的参数）
     for (const acc of [...toolAcc.values()].sort((a, b) => a.index - b.index)) {
       if (!acc.name) continue
+      finalizedToolCalls += 1
       if (!acc.started) {
         acc.started = true
         acc.id = acc.id || newId('call')
+        hasOutput = true
         yield { type: 'tool_call_start', index: acc.index, id: acc.id, name: acc.name }
         if (acc.args) yield { type: 'tool_call_delta', index: acc.index, argsDelta: acc.args }
       }
@@ -294,6 +319,7 @@ export class OpenAICompatProvider implements Provider {
       if (!input) {
         // 参数 JSON 不完整通常是输出触达 max_tokens 被截断：不要杀死整轮，
         // 交给 Agent 生成「可自修复」的工具错误，模型随后可以拆小内容重试。
+        hadParseError = true
         const parseError =
           finishReason === 'length'
             ? '模型输出达到长度上限（finish_reason=length），工具参数被截断，不是完整 JSON'
@@ -303,6 +329,42 @@ export class OpenAICompatProvider implements Provider {
         continue
       }
       yield { type: 'tool_call_end', index: acc.index, id: acc.id, name: acc.name, input }
+    }
+
+    // 文本被输出上限截断/被安全策略拦截时，至少给用户一个可见提示（工具参数截断已有专门提示）
+    if (finishReason === 'length' && !hadParseError) {
+      yield {
+        type: 'notice',
+        level: 'warn',
+        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。'
+      }
+    } else if (finishReason === 'content_filter') {
+      yield {
+        type: 'notice',
+        level: 'warn',
+        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。'
+      }
+    }
+
+    // 没有任何内容且没有收尾标记：空流。抛可重试错误，让 streamWithRetry 重连，
+    // 而不是在 UI 里显示成「模型没有返回内容」的正常回复。
+    if (!completed) {
+      if (!hasOutput && finalizedToolCalls === 0) {
+        throw new ProviderError('模型服务返回了空响应。', {
+          code: 'empty_response',
+          retryable: true,
+          providerId: this.id
+        })
+      }
+      // 已经有文本但既没有 finish_reason 也没有 [DONE]：连接在中途断开。
+      // 有工具调用时保留已解析的调用交给 Agent 自修复；纯文本则明确报错，避免把半截回答当完整答案。
+      if (finalizedToolCalls === 0) {
+        throw new ProviderError('模型服务在回复完成前断开了连接，输出可能不完整。', {
+          code: 'incomplete_stream',
+          retryable: false,
+          providerId: this.id
+        })
+      }
     }
   }
 }

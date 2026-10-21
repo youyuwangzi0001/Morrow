@@ -114,15 +114,15 @@ export async function loadLanguageExtension(language: EditorLanguage): Promise<L
 
 /** 与 shiki 主题同源的 CM 语法配色（颜色经由 tokens.css 的 CSS 变量） */
 const highlightColors = {
-  keyword: '#c8ae7d',
-  string: '#a9bfaf',
-  number: '#c6a764',
-  function: '#e4ce9e',
-  type: '#bdb39e',
-  variable: '#c9c3b6',
-  comment: '#6b675f',
-  operator: '#8c867a',
-  invalid: '#c2795f'
+  keyword: 'var(--syntax-keyword)',
+  string: 'var(--syntax-string)',
+  number: 'var(--syntax-number)',
+  function: 'var(--syntax-function)',
+  type: 'var(--syntax-type)',
+  variable: 'var(--syntax-variable)',
+  comment: 'var(--syntax-comment)',
+  operator: 'var(--syntax-operator)',
+  invalid: 'var(--syntax-invalid)'
 }
 
 const morrowHighlightStyle = HighlightStyle.define([

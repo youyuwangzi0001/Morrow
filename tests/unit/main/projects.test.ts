@@ -12,6 +12,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync
@@ -154,6 +155,14 @@ describe('项目 CRUD / 持久化 / 切换', () => {
   })
 })
 
+describe('项目存储文件权限', () => {
+  it.skipIf(process.platform === 'win32')('projects.json 仅当前用户可读写', () => {
+    const { dataDir, wsA } = makeRoot()
+    service(dataDir).create({ workspace: wsA, name: '权限测试' })
+    expect(statSync(join(dataDir, 'projects', 'projects.json')).mode & 0o777).toBe(0o600)
+  })
+})
+
 describe('工作区边界与知识文件校验', () => {
   it('接受相对路径与工作区内绝对路径，统一存储为相对 POSIX 路径', () => {
     const { dataDir, wsA } = makeRoot()
@@ -277,7 +286,7 @@ describe('项目上下文生成与隔离', () => {
     expect(preview!.text).toContain('启用后才注入')
   })
 
-  it('知识文件被删除后：上下文跳过并列入 staleKnowledge，不泄漏旧内容', () => {
+  it('知识文件被删除后：上下文跳过并列入 staleKnowledge，不泄漏旧内容，也不谎报“已截断”', () => {
     const { dataDir, wsA } = makeRoot()
     seedWorkspace(wsA, { 'gone.md': 'STALE_CANARY_CONTENT' })
     const svc = service(dataDir)
@@ -286,8 +295,48 @@ describe('项目上下文生成与隔离', () => {
     const context = svc.context(wsA)!
     expect(context.staleKnowledge.map((item) => item.path)).toContain('gone.md')
     expect(context.text).not.toContain('STALE_CANARY_CONTENT')
-    expect(context.truncated).toBe(true)
+    expect(context.truncated).toBe(false)
     expect(context.project.id).toBe(project.id)
+  })
+
+  it('知识文件失效后仍能保存项目修改，并可移除失效资料；新增无效路径仍被拒绝', () => {
+    const { dataDir, wsA } = makeRoot()
+    seedWorkspace(wsA, { 'keep.md': 'keep', 'gone.md': 'gone' })
+    const svc = service(dataDir)
+    const project = svc.create({ workspace: wsA, knowledgePaths: ['keep.md', 'gone.md'] })
+    unlinkSync(join(wsA, 'gone.md'))
+
+    // 保留失效资料时，修改说明可以正常保存
+    const updated = svc.update(project.id, {
+      instructions: '失效资料不影响保存',
+      knowledgePaths: ['keep.md', 'gone.md']
+    })
+    expect(updated.instructions).toContain('失效资料不影响保存')
+    expect(updated.knowledgePaths).toEqual(['keep.md', 'gone.md'])
+
+    // 可以移除失效资料
+    const cleaned = svc.update(project.id, { knowledgePaths: ['keep.md'] })
+    expect(cleaned.knowledgePaths).toEqual(['keep.md'])
+
+    // 新增一个不存在的路径仍然报错，避免把错误路径写进项目
+    expect(() => svc.update(project.id, { knowledgePaths: ['keep.md', 'missing.md'] })).toThrow(/不存在/)
+  })
+
+  it('工作区被移走后仍可编辑项目并移除资料，但不能新增资料', () => {
+    const { dataDir, wsB } = makeRoot()
+    seedWorkspace(wsB, { 'brief.md': 'brief' })
+    const svc = service(dataDir)
+    const project = svc.create({ workspace: wsB, knowledgePaths: ['brief.md'] })
+    rmSync(wsB, { recursive: true, force: true })
+
+    const renamed = svc.update(project.id, { name: '移动后的项目', knowledgePaths: ['brief.md'] })
+    expect(renamed.name).toBe('移动后的项目')
+    expect(renamed.knowledgePaths).toEqual(['brief.md'])
+
+    const cleaned = svc.update(project.id, { knowledgePaths: [] })
+    expect(cleaned.knowledgePaths).toEqual([])
+
+    expect(() => svc.update(project.id, { knowledgePaths: ['brief.md'] })).toThrow(/工作区不存在/)
   })
 
   it('token 预算截断：超长指令/知识会被截断并如实标记', () => {
@@ -308,6 +357,27 @@ describe('项目上下文生成与隔离', () => {
     expect(context.text.length).toBeLessThan(project.instructions.length)
     // 至少保留了指令或某一份知识之一
     expect(context.text).toContain('项目上下文')
+  })
+
+  it('超长描述也不会突破 token 预算；最小预算下仍保留标题', () => {
+    const { dataDir, wsA } = makeRoot()
+    seedWorkspace(wsA, { 'huge.md': '知识。'.repeat(4000) })
+    const svc = service(dataDir)
+    svc.create({
+      workspace: wsA,
+      name: '预算'.repeat(30),
+      description: '描述。'.repeat(300),
+      instructions: '指令。'.repeat(2000),
+      knowledgePaths: ['huge.md']
+    })
+    for (const maxTokens of [128, 300, 8000]) {
+      const context = svc.context(wsA, { maxTokens })!
+      expect(context.usedTokens).toBeLessThanOrEqual(context.limitTokens)
+      expect(context.text).toContain('项目上下文')
+    }
+    const tiny = svc.context(wsA, { maxTokens: 128 })!
+    expect(tiny.truncated).toBe(true)
+    expect(tiny.knowledge.length).toBe(0)
   })
 
   it('工作区被删除后：列表标记 workspaceExists=false，上下文返回 null', () => {

@@ -43,11 +43,13 @@ import {
   deleteConnector,
   getConnector,
   getConnectorPaths,
-  getConnectorTemplates,
   installMcpRuntimeEnv,
   listConnectors,
   saveConnector,
   setConnectorEnabled,
+  startConnectorOAuth,
+  connectorOAuthStatus,
+  revokeConnectorOAuth,
   setSecretCodecForTest,
   testConnector,
   trustWorkspaceConfig,
@@ -55,6 +57,8 @@ import {
 } from '../../../src/main/services/mcp-service'
 import { invokeFeatureForTest } from '../../../src/main/feature-ipc'
 import { CONNECTOR_CHANNELS } from '../../../src/main/features/connectors'
+import { CONNECTOR_CATALOG } from '../../../src/shared/connector-catalog'
+import { buildLocalNpxInvocation } from '../../../src/shared/connector-install'
 
 /* ── 测试环境 ─────────────────────────────────────────────────── */
 
@@ -140,7 +144,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 const INITIALIZE_RESULT = {
   protocolVersion: '2024-11-05',
-  capabilities: { tools: {} },
+  capabilities: { tools: {}, resources: {}, prompts: {} },
   serverInfo: { name: 'morrow-mock-http', version: '1.0.0' }
 }
 
@@ -200,6 +204,29 @@ async function startHttpMcp(options: { sseResponses?: boolean; unauthorized?: bo
       }
       if (method === 'tools/list') {
         reply(TOOLS_RESULT)
+        return
+      }
+      if (method === 'resources/list') {
+        reply({ resources: [{ uri: 'memo://notes/1', name: 'Notes', mimeType: 'text/plain' }] })
+        return
+      }
+      if (method === 'resources/templates/list') {
+        reply({ resourceTemplates: [{ uriTemplate: 'memo://notes/{id}', name: 'Note' }] })
+        return
+      }
+      if (method === 'resources/read') {
+        const params = (message.params ?? {}) as Record<string, unknown>
+        reply({ contents: [{ uri: params.uri, mimeType: 'text/plain', text: '# Note' }] })
+        return
+      }
+      if (method === 'prompts/list') {
+        reply({ prompts: [{ name: 'summarize', description: '总结主题', arguments: [{ name: 'topic', required: true }] }] })
+        return
+      }
+      if (method === 'prompts/get') {
+        const params = (message.params ?? {}) as Record<string, unknown>
+        const args = (params.arguments ?? {}) as Record<string, string>
+        reply({ description: '总结模板', messages: [{ role: 'user', content: { type: 'text', text: '请总结：' + (args.topic ?? '') } }] })
         return
       }
       if (method === 'tools/call') {
@@ -409,6 +436,24 @@ describe('Streamable HTTP 传输', () => {
     expect(sessionRequest?.headers['mcp-session-id']).toBe('sess-test')
   })
 
+  it('resources / prompts：列表、模板、读取与带参数获取', async () => {
+    const mock = await startHttpMcp()
+    const config = httpConfig(`${mock.url}/mcp`)
+    await runWithConnection(config, async (client) => {
+      const resources = await client.listResources()
+      expect(resources.supported).toBe(true)
+      expect(resources.resources[0]).toMatchObject({ uri: 'memo://notes/1', name: 'Notes' })
+      expect(resources.templates[0]?.uriTemplate).toBe('memo://notes/{id}')
+      const contents = await client.readResource('memo://notes/1')
+      expect(contents[0]?.text).toBe('# Note')
+      const prompts = await client.listPrompts()
+      expect(prompts.supported).toBe(true)
+      expect(prompts.prompts[0]).toMatchObject({ name: 'summarize' })
+      const prompt = await client.getPrompt('summarize', { topic: 'MCP' })
+      expect(prompt.messages[0]?.text).toBe('请总结：MCP')
+    })
+  })
+
   it('服务端用 SSE 返回 JSON-RPC 响应（Content-Type: text/event-stream）', async () => {
     const mock = await startHttpMcp({ sseResponses: true })
     const config = httpConfig(`${mock.url}/mcp`)
@@ -507,7 +552,7 @@ const MOCK_STDIO_SOURCE = [
   'function send(message) { process.stdout.write(JSON.stringify(message) + "\\n") }',
   "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
   '  let message; try { message = JSON.parse(line) } catch { return }',
-  '  if (message.method === "initialize") { send({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "mock-stdio", version: "1" } } }); return }',
+  '  if (message.method === "initialize") { send({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: "mock-stdio", version: "1" } } }); return }',
   '  if (message.method === "notifications/initialized") return',
   '  if (message.method === "tools/list") { send({ jsonrpc: "2.0", id: message.id, result: { tools } }); return }',
   '  if (message.method === "tools/call") { send({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: JSON.stringify(message.params.arguments || {}) }] } }); return }',
@@ -650,6 +695,132 @@ describe('连接器管理服务（用户级）', () => {
   })
 })
 
+describe('连接器保存边界（重名 / 密钥持久性 / 失败原子性）', () => {
+  it('拒绝重名新建与改名覆盖，原连接器配置和密钥保持不变', () => {
+    saveConnector({
+      scope: 'user',
+      name: 'alpha',
+      transport: 'http',
+      url: 'https://alpha.example.com/mcp',
+      headers: [{ key: 'X-Alpha', value: 'alpha-secret' }]
+    })
+    saveConnector({
+      scope: 'user',
+      name: 'beta',
+      transport: 'http',
+      url: 'https://beta.example.com/mcp',
+      headers: [{ key: 'X-Beta', value: 'beta-secret' }]
+    })
+    const alphaBefore = getConnector('user', 'alpha')
+
+    expect(() =>
+      saveConnector({ scope: 'user', name: 'alpha', transport: 'http', url: 'https://evil.example.com/mcp' })
+    ).toThrow(/已存在/)
+    expect(() =>
+      saveConnector({
+        scope: 'user',
+        originalName: 'beta',
+        name: 'alpha',
+        transport: 'http',
+        url: 'https://evil.example.com/mcp',
+        headers: [{ key: 'X-Beta' }]
+      })
+    ).toThrow(/已存在/)
+    expect(() =>
+      saveConnector({
+        scope: 'user',
+        originalName: 'ghost',
+        name: 'ghost-2',
+        transport: 'http',
+        url: 'https://ghost.example.com/mcp'
+      })
+    ).toThrow(/不存在/)
+
+    expect(getConnector('user', 'alpha')).toEqual(alphaBefore)
+    expect(getConnector('user', 'beta')?.url).toBe('https://beta.example.com/mcp')
+    const secrets = JSON.parse(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).entries
+    expect(Object.keys(secrets).sort()).toEqual(['user/alpha/headers/X-Alpha', 'user/beta/headers/X-Beta'])
+  })
+
+  it('局部保存省略 env/headers 时保留已有密钥与启停状态；显式数组才增删/清空', () => {
+    saveConnector({
+      scope: 'user',
+      name: 'partial',
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp',
+      enabled: false,
+      headers: [
+        { key: 'A', value: 'a-secret' },
+        { key: 'B', value: 'b-secret' }
+      ]
+    })
+
+    const partial = saveConnector({
+      scope: 'user',
+      originalName: 'partial',
+      name: 'partial',
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp'
+    })
+    expect(partial.connector.headers.map((field) => field.key)).toEqual(['A', 'B'])
+    expect(partial.connector.headers.every((field) => field.hasSecret)).toBe(true)
+    expect(partial.connector.enabled).toBe(false)
+    let keys = Object.keys(JSON.parse(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).entries)
+    expect(keys.sort()).toEqual(['user/partial/headers/A', 'user/partial/headers/B'])
+
+    const one = saveConnector({
+      scope: 'user',
+      originalName: 'partial',
+      name: 'partial',
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp',
+      headers: [{ key: 'A' }]
+    })
+    expect(one.connector.headers.map((field) => field.key)).toEqual(['A'])
+    keys = Object.keys(JSON.parse(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).entries)
+    expect(keys).toEqual(['user/partial/headers/A'])
+
+    const cleared = saveConnector({
+      scope: 'user',
+      originalName: 'partial',
+      name: 'partial',
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp',
+      headers: []
+    })
+    expect(cleared.connector.headers).toEqual([])
+    keys = Object.keys(JSON.parse(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).entries)
+    expect(keys).toEqual([])
+  })
+
+  it('配置校验失败时不写密钥或配置（含改名失败不迁移密钥）', () => {
+    saveConnector({
+      scope: 'user',
+      name: 'atomic',
+      transport: 'stdio',
+      command: 'node',
+      env: [{ key: 'TOKEN', value: 'atomic-secret' }]
+    })
+    const configBefore = readFileSync(join(dataDir, 'mcp.json'), 'utf8')
+    const secretsBefore = readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')
+
+    expect(() =>
+      saveConnector({ scope: 'user', originalName: 'atomic', name: 'atomic', transport: 'stdio', env: [] })
+    ).toThrow(/command/)
+    expect(readFileSync(join(dataDir, 'mcp.json'), 'utf8')).toBe(configBefore)
+    expect(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).toBe(secretsBefore)
+    expect(getConnector('user', 'atomic')?.env[0]).toMatchObject({ key: 'TOKEN', hasSecret: true })
+
+    expect(() =>
+      saveConnector({ scope: 'user', originalName: 'atomic', name: 'renamed-atomic', transport: 'stdio', env: [] })
+    ).toThrow(/command/)
+    expect(getConnector('user', 'atomic')).not.toBeNull()
+    expect(getConnector('user', 'renamed-atomic')).toBeNull()
+    const keys = Object.keys(JSON.parse(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).entries)
+    expect(keys).toEqual(['user/atomic/env/TOKEN'])
+  })
+})
+
 /* ── 工作区级配置 + 哈希信任 ─────────────────────────────────── */
 
 describe('工作区级连接器与信任登记', () => {
@@ -670,6 +841,7 @@ describe('工作区级连接器与信任登记', () => {
     // core 侧 loadMcpConfig 依据哈希信任工作区配置
     const loaded = await loadMcpConfig({ workspace, dataDir })
     expect(loaded.source).toBe('workspace')
+    expect(loaded.servers[0]).toMatchObject({ source: 'workspace', workspace })
     expect(loaded.trusted).toBe(true)
     expect(loaded.servers.map((server) => server.name)).toEqual(['ws-http'])
 
@@ -682,6 +854,25 @@ describe('工作区级连接器与信任登记', () => {
     // 用户在面板点「信任」后恢复
     trustWorkspaceConfig(workspace)
     expect(workspaceTrustStatus(workspace).trusted).toBe(true)
+  })
+
+  it('配置文件或密钥文件损坏时拒绝静默覆盖', () => {
+    writeFileSync(join(dataDir, 'mcp.json'), '{ broken', 'utf8')
+    expect(() => listConnectors('user')).toThrow(/不是合法 JSON/)
+    expect(() => saveConnector({ scope: 'user', name: 'x', command: 'node' })).toThrow(/不是合法 JSON/)
+    expect(readFileSync(join(dataDir, 'mcp.json'), 'utf8')).toBe('{ broken')
+
+    writeFileSync(join(dataDir, 'mcp.json'), JSON.stringify({ mcpServers: {} }), 'utf8')
+    writeFileSync(join(dataDir, 'mcp-secrets.json'), '{ broken', 'utf8')
+    expect(() =>
+      saveConnector({
+        scope: 'user',
+        name: 'x',
+        command: 'node',
+        env: [{ key: 'TOKEN', value: 'new-secret' }]
+      })
+    ).toThrow(/密钥文件已损坏/)
+    expect(readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')).toBe('{ broken')
   })
 
   it('工作区级操作缺少 workspace 时明确报错', () => {
@@ -734,16 +925,70 @@ describe('feature:connectors:* IPC', () => {
     const missingWorkspace = await invokeFeatureForTest(CONNECTOR_CHANNELS.list, { scope: 'workspace' })
     expect(missingWorkspace.ok).toBe(false)
 
+    const unregistered = await invokeFeatureForTest(CONNECTOR_CHANNELS.list, {
+      scope: 'workspace',
+      workspace: makeTempDir('morrow-unregistered-')
+    })
+    expect(unregistered.ok).toBe(false)
+    expect((unregistered as { error: { message: string } }).error.message).toContain('已登记')
+
     const notObject = await invokeFeatureForTest(CONNECTOR_CHANNELS.list, 'not-an-object')
     expect(notObject.ok).toBe(false)
   })
 
-  it('模板全部标记 exampleOnly（不伪造内置服务）；paths/secretStatus 可用', async () => {
-    const templates = await invokeFeatureForTest(CONNECTOR_CHANNELS.templates, {})
-    expect(templates.ok).toBe(true)
-    const list = (templates as { data: Array<{ exampleOnly: boolean; transport: string }> }).data
-    expect(list.length).toBeGreaterThanOrEqual(4)
-    expect(list.every((item) => item.exampleOnly === true)).toBe(true)
+  it('连接器目录可读取且条目完整；paths/secretStatus 可用', async () => {
+    const catalog = await invokeFeatureForTest(CONNECTOR_CHANNELS.catalog, {})
+    expect(catalog.ok).toBe(true)
+    const entries = (catalog as { data: { entries: Array<{ id: string; name: string; transport: string; requiresNpx: boolean; docsUrl: string }> } }).data.entries
+    expect(entries.length).toBeGreaterThanOrEqual(8)
+    expect(entries.every((entry) => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(entry.name))).toBe(true)
+    expect(entries.every((entry) => entry.docsUrl.startsWith('https://'))).toBe(true)
+    expect(entries.filter((entry) => entry.transport === 'stdio').every((entry) => entry.requiresNpx)).toBe(true)
+
+    // 目录常量本身必须自洽：名称唯一、远程有 https 地址、本机有包名、密钥字段有落点
+    expect(new Set(CONNECTOR_CATALOG.map((entry) => entry.id)).size).toBe(CONNECTOR_CATALOG.length)
+    expect(new Set(CONNECTOR_CATALOG.map((entry) => entry.name)).size).toBe(CONNECTOR_CATALOG.length)
+    for (const entry of CONNECTOR_CATALOG) {
+      expect(entry.timeoutMs).toBeGreaterThanOrEqual(1_000)
+      expect(entry.docsUrl.startsWith('https://')).toBe(true)
+      if (entry.requiresToken) {
+        expect(Boolean(entry.headerKey || entry.envKey)).toBe(true)
+        expect(entry.requiresNpx).toBe(Boolean(entry.envKey))
+      }
+      if (entry.category === 'remote') {
+        expect(entry.transport).toBe('http')
+        expect(entry.url).toMatch(/^https:\/\//)
+        expect(entry.requiresNpx).toBe(false)
+        expect(entry.packageArgs).toBeUndefined()
+      } else {
+        expect(entry.transport).toBe('stdio')
+        expect(entry.requiresNpx).toBe(true)
+        expect(entry.packageArgs?.length).toBeGreaterThan(0)
+      }
+      if (entry.requiresFolder) {
+        expect(entry.name).toBe('filesystem')
+        expect(entry.requiresToken).toBe(false)
+      }
+    }
+
+    // Windows 的 npx 必须经 cmd.exe，并给含空格的文件夹加引号
+    const winInvocation = buildLocalNpxInvocation(
+      ['@modelcontextprotocol/server-filesystem'],
+      'C:\\My Files\\项目',
+      'win32',
+      'C:\\Windows\\System32\\cmd.exe'
+    )
+    expect(winInvocation.command).toContain('cmd.exe')
+    expect(winInvocation.args.slice(0, 3)).toEqual(['/d', '/s', '/c'])
+    expect(winInvocation.args[3]).toContain('"C:\\My Files\\项目"')
+    const posixInvocation = buildLocalNpxInvocation(['@modelcontextprotocol/server-filesystem'], '/tmp/My Files', 'linux')
+    expect(posixInvocation).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/My Files']
+    })
+
+    const badForce = await invokeFeatureForTest(CONNECTOR_CHANNELS.runtime, { force: 'yes' })
+    expect(badForce.ok).toBe(false)
 
     const paths = getConnectorPaths('/tmp/some-workspace')
     expect(paths.userConfigPath).toContain('mcp.json')
@@ -776,5 +1021,120 @@ describe('密钥存储模式', () => {
     expect(saved.connector.secretStorage).toBe('plaintext-fallback')
     const secretsText = readFileSync(join(dataDir, 'mcp-secrets.json'), 'utf8')
     expect(secretsText).not.toContain('fallback-secret')
+  })
+})
+
+describe('MCP OAuth 2.0（PKCE）', () => {
+  it('授权码 + PKCE 换取令牌、注入 Authorization、加密落盘并可撤销', async () => {
+    const mockMcp = await startHttpMcp()
+    let tokenBody = ''
+    const mockAuth = await startNodeServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/token') {
+        res.writeHead(404).end('not found')
+        return
+      }
+      let body = ''
+      req.on('data', (chunk) => (body += chunk))
+      req.on('end', () => {
+        tokenBody = body
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ access_token: 'oauth-access', refresh_token: 'oauth-refresh', expires_in: 3600, token_type: 'Bearer', scope: 'read' }))
+      })
+    })
+
+    saveConnector({
+      scope: 'user',
+      name: 'oauth-mcp',
+      transport: 'http',
+      url: `${mockMcp.url}/mcp`,
+      allowPrivateNetwork: true,
+      oauth: {
+        authorizationUrl: `${mockAuth.url}/authorize`,
+        tokenUrl: `${mockAuth.url}/token`,
+        clientId: 'client-1',
+        scopes: ['read']
+      }
+    })
+
+    const started = await startConnectorOAuth({ scope: 'user', name: 'oauth-mcp' })
+    const authUrl = new URL(started.authorizationUrl)
+    expect(authUrl.searchParams.get('response_type')).toBe('code')
+    expect(authUrl.searchParams.get('client_id')).toBe('client-1')
+    expect(authUrl.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(authUrl.searchParams.get('code_challenge')?.length).toBeGreaterThan(20)
+    expect(authUrl.searchParams.get('scope')).toBe('read')
+    const state = authUrl.searchParams.get('state')
+    expect(state).toBeTruthy()
+
+    const callback = await fetch(`${started.redirectUri}?code=test-code&state=${encodeURIComponent(state!)}`)
+    expect(callback.status).toBe(200)
+    expect(await callback.text()).toContain('授权完成')
+
+    let status = connectorOAuthStatus('user', 'oauth-mcp')
+    for (let i = 0; i < 30 && !status.authorized; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      status = connectorOAuthStatus('user', 'oauth-mcp')
+    }
+    expect(status).toMatchObject({ configured: true, authorized: true, hasRefreshToken: true, expired: false })
+    expect(tokenBody).toContain('grant_type=authorization_code')
+    expect(tokenBody).toContain('code_verifier=')
+    expect(tokenBody).toContain('redirect_uri=')
+
+    const oauthFile = readFileSync(join(dataDir, 'mcp-oauth.json'), 'utf8')
+    expect(oauthFile).not.toContain('oauth-access')
+    expect(oauthFile).not.toContain('oauth-refresh')
+
+    // 后续 MCP 请求自动携带 Bearer 令牌
+    const test = await testConnector({ scope: 'user', name: 'oauth-mcp' })
+    expect(test.ok).toBe(true)
+    const init = mockMcp.requests.find((request) => request.method === 'initialize')
+    expect(init?.headers.authorization).toBe('Bearer oauth-access')
+
+    // 同名工作区连接器使用不同 OAuth 端点：不得复用用户级令牌
+    const workspace = makeTempDir('morrow-oauth-ws-')
+    saveConnector({
+      scope: 'workspace',
+      workspace,
+      name: 'oauth-mcp',
+      transport: 'http',
+      url: `${mockMcp.url}/mcp`,
+      allowPrivateNetwork: true,
+      oauth: {
+        authorizationUrl: `${mockAuth.url}/authorize`,
+        tokenUrl: `${mockAuth.url}/token2`,
+        clientId: 'client-2'
+      }
+    })
+    expect(connectorOAuthStatus('workspace', 'oauth-mcp', workspace)).toMatchObject({
+      configured: true,
+      authorized: false,
+      expired: false
+    })
+    expect(revokeConnectorOAuth('workspace', 'oauth-mcp', workspace)).toBe(false)
+    expect(connectorOAuthStatus('user', 'oauth-mcp').authorized).toBe(true)
+
+    expect(revokeConnectorOAuth('user', 'oauth-mcp')).toBe(true)
+    expect(connectorOAuthStatus('user', 'oauth-mcp')).toMatchObject({ authorized: false, expired: false })
+
+    // 再次授权后删除连接器：OAuth 令牌一并清理
+    const again = await startConnectorOAuth({ scope: 'user', name: 'oauth-mcp' })
+    const againState = new URL(again.authorizationUrl).searchParams.get('state')
+    const againCallback = await fetch(`${again.redirectUri}?code=test-code-2&state=${encodeURIComponent(againState!)}`)
+    expect(await againCallback.text()).toContain('授权完成')
+    let reauthorized = connectorOAuthStatus('user', 'oauth-mcp')
+    for (let i = 0; i < 30 && !reauthorized.authorized; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      reauthorized = connectorOAuthStatus('user', 'oauth-mcp')
+    }
+    expect(reauthorized.authorized).toBe(true)
+    const scopedTokens = JSON.parse(readFileSync(join(dataDir, 'mcp-oauth.json'), 'utf8')) as { tokens: Record<string, unknown> }
+    expect(Object.keys(scopedTokens.tokens).some((key) => key.startsWith('user|'))).toBe(true)
+    expect(Object.keys(scopedTokens.tokens).some((key) => key.startsWith('workspace:'))).toBe(false)
+
+    const deleted = deleteConnector('user', 'oauth-mcp')
+    expect(deleted.removedOAuth).toBe(true)
+    const afterDelete = JSON.parse(readFileSync(join(dataDir, 'mcp-oauth.json'), 'utf8')) as { tokens: Record<string, unknown> }
+    expect(Object.keys(afterDelete.tokens).some((key) => key.startsWith('user|'))).toBe(false)
+    expect(connectorOAuthStatus('user', 'oauth-mcp')).toMatchObject({ configured: false, authorized: false })
   })
 })

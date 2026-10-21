@@ -114,14 +114,75 @@ function statSafe(path: string): Stats | null {
   }
 }
 
+/** 附件路径比较：绝对路径与 realpath 任一匹配即视为同一文件（Windows 忽略大小写）。 */
+export function isExplicitlyAttachedPath(
+  resolved: Pick<ResolvedPath, 'absolute' | 'real'>,
+  allowedFiles: readonly string[] | undefined
+): boolean {
+  if (!allowedFiles || allowedFiles.length === 0) return false
+  const canonical = (value: string): string => {
+    const absolute = resolve(value)
+    try {
+      return realpathSync.native(absolute)
+    } catch {
+      return absolute
+    }
+  }
+  const fold = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
+  const candidates = new Set([fold(canonical(resolved.absolute)), fold(canonical(resolved.real))])
+  return allowedFiles.some((file) => candidates.has(fold(canonical(file))))
+}
+
+/** 无工作区时解析消息里显式附加的文件：只允许完整路径，且必须命中附件白名单。 */
+function inspectAttachedFilePath(inputPath: string, allowedFiles: readonly string[] | undefined): ResolvedPath {
+  const raw = typeof inputPath === 'string' ? inputPath.trim() : ''
+  if (!raw) throw new ToolInputError('路径不能为空。', '请使用附件信息里的完整路径。')
+  if (raw.includes('\0')) throw new ToolInputError('路径包含非法字符。', '请检查路径后重试。')
+  if (!isAbsolute(raw)) {
+    throw new ToolInputError('当前对话没有工作文件夹，只能读取消息里显式附加的文件。', '请使用附件信息里的完整路径。')
+  }
+  const absolute = resolve(raw)
+  const stat = statSafe(absolute)
+  const real = realpathOrNull(absolute) ?? absolute
+  const resolved: ResolvedPath = {
+    absolute,
+    real,
+    inside: false,
+    exists: stat !== null,
+    isDirectory: stat?.isDirectory() ?? false
+  }
+  if (!isExplicitlyAttachedPath(resolved, allowedFiles)) {
+    throw new ToolInputError('这个文件不在本条消息的附件里，不能读取。', '请先在输入框附加该文件，再让我读取。')
+  }
+  return resolved
+}
+
 /** 工具内部使用：越界且未获审批 → 抛 WorkspaceEscapeError（由 registry/agent 转成错误结果） */
 export function resolveWorkspacePath(
   inputPath: string,
   workspace: string | null,
-  opts: { escapeApproved?: boolean; requireExist?: boolean; requireDirectory?: boolean } = {}
+  opts: {
+    escapeApproved?: boolean
+    requireExist?: boolean
+    requireDirectory?: boolean
+    /** 用户在本会话用户消息里显式附加的文件；只给只读工具使用 */
+    allowedExternalFiles?: readonly string[]
+  } = {}
 ): ResolvedPath {
-  const resolved = inspectWorkspacePath(inputPath, workspace)
-  if (!resolved.inside && !opts.escapeApproved) {
+  const resolved = workspace
+    ? inspectWorkspacePath(inputPath, workspace)
+    : inspectAttachedFilePath(inputPath, opts.allowedExternalFiles)
+  if (!workspace) {
+    if (opts.requireExist && !resolved.exists) {
+      throw new ToolInputError(`附件不存在或已被移动：${resolved.absolute}`, '请重新附加这个文件后再试。')
+    }
+    if (opts.requireDirectory && (!resolved.exists || !resolved.isDirectory)) {
+      throw new ToolInputError(`目录不存在：${resolved.absolute}`, '只能读取消息里显式附加的文件。')
+    }
+    return resolved
+  }
+  const attached = !resolved.inside && isExplicitlyAttachedPath(resolved, opts.allowedExternalFiles)
+  if (!resolved.inside && !opts.escapeApproved && !attached) {
     throw new WorkspaceEscapeError(resolved.absolute, normalizeWorkspace(workspace as string))
   }
   if (opts.requireExist && !resolved.exists) {

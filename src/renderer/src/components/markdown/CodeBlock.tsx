@@ -15,6 +15,8 @@ export interface CodeBlockProps {
   title?: string
   /** 紧凑模式：不显示头部工具栏（嵌在别处时用） */
   bare?: boolean
+  /** 流式生成中：跳过语法高亮，避免每个分片重复高亮并造成纯文本/高亮闪烁 */
+  streaming?: boolean
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
@@ -65,7 +67,8 @@ export function CodeBlock({
   lineNumbers,
   foldAfter = 24,
   title,
-  bare = false
+  bare = false,
+  streaming = false
 }: CodeBlockProps): React.JSX.Element {
   const copyText = useAppStore((s) => s.copyText)
   const [html, setHtml] = useState<string | null>(null)
@@ -84,7 +87,8 @@ export function CodeBlock({
   useEffect(() => {
     let cancelled = false
     setHtml(null)
-    if (!language || trimmed.length === 0) return undefined
+    // 流式期间代码还会变化：先渲染纯文本，结束后再一次性高亮
+    if (streaming || !language || trimmed.length === 0) return undefined
     // 进入视口后再高亮，减少长对话里的无效计算
     const run = (): void => {
       void highlightToHtml(trimmed, language).then((result) => {
@@ -111,7 +115,7 @@ export function CodeBlock({
     return () => {
       cancelled = true
     }
-  }, [trimmed, language])
+  }, [trimmed, language, streaming])
 
   useEffect(() => () => {
     if (copiedTimer.current) window.clearTimeout(copiedTimer.current)
@@ -149,7 +153,7 @@ export function CodeBlock({
           </button>
         </div>
       )}
-      <div className="code-scroll">
+      <div className="code-scroll" id={id}>
         {html ? (
           <div
             className={['code-highlight', showLineNumbers ? 'with-lines' : ''].join(' ')}

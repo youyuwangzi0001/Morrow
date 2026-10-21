@@ -1,27 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FileAudio,
   FileCode2,
   FilePen,
+  FileQuestion,
   FileText,
+  FileVideo,
+  FolderDown,
   FolderOpen,
+  History,
   Image as ImageIcon,
   Maximize2,
   Minimize2,
-  Save,
+  Share2,
   X
 } from 'lucide-react'
 import type { Artifact, ArtifactKind } from '@shared/types'
 import { useAppStore } from '../../state/store'
 import { Button, ErrorNote, IconButton, Modal, ResizeHandle } from '../../ui'
 import { languageLabel } from '../../components/editor/languages'
+import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
+import { relativeToWorkspace } from './editor/editor-api'
 import { EditorPane } from './editor/EditorPane'
 import { HistoryDrawer } from './editor/HistoryDrawer'
-import { useEditorDocs } from './editor/useEditorDocs'
+import { useEditorDocs, type EditorDocument } from './editor/useEditorDocs'
+import { FilePreviewPane } from './preview/FilePreviewPane'
 import { Markdown } from '../../components/markdown/Markdown'
 import { CodeBlock } from '../../components/markdown/CodeBlock'
+import { ArtifactVersionsDialog } from './ArtifactVersionsDialog'
+import { ArtifactExportDialog } from './ArtifactExportDialog'
 import './Canvas.css'
 
 const EMPTY_ARTIFACTS: Artifact[] = []
@@ -89,10 +99,60 @@ function resolveKind(artifact: Artifact): ArtifactKind {
   return (ext && EXT_KIND[ext]) || 'text'
 }
 
+/**
+ * 二进制截图/PDF/Office/音视频成品应走只读文件预览，而不是按 UTF-8 文本读进画布。
+ * HTML/Markdown/SVG/代码成品的声明类型优先。
+ */
+function previewableArtifactKind(artifact: Artifact): Exclude<FilePreviewKind, 'text'> | null {
+  if (!artifact.path) return null
+  if (artifact.kind === 'html' || artifact.kind === 'markdown' || artifact.kind === 'svg' || artifact.kind === 'code') {
+    return null
+  }
+  const kind = previewKindForFileName(artifact.path)
+  return kind === 'text' ? null : kind
+}
+
 function FileGlyph({ kind, size = 13 }: { kind: ArtifactKind; size?: number }): React.JSX.Element {
   if (kind === 'svg') return <ImageIcon size={size} strokeWidth={1.5} aria-hidden />
   if (kind === 'markdown' || kind === 'text') return <FileText size={size} strokeWidth={1.5} aria-hidden />
   return <FileCode2 size={size} strokeWidth={1.5} aria-hidden />
+}
+
+const PREVIEW_KIND_LABEL: Record<Exclude<EditorDocument['previewKind'], 'text'>, string> = {
+  image: '图片',
+  pdf: 'PDF',
+  docx: 'Word 文档',
+  xlsx: 'Excel 表格',
+  pptx: 'PowerPoint',
+  document: '文档',
+  archive: '压缩包',
+  audio: '音频',
+  video: '视频',
+  unsupported: '文件'
+}
+
+function previewGlyph(doc: EditorDocument, size = 13): React.JSX.Element {
+  switch (doc.previewKind) {
+    case 'image':
+      return <ImageIcon size={size} strokeWidth={1.5} aria-hidden />
+    case 'audio':
+      return <FileAudio size={size} strokeWidth={1.5} aria-hidden />
+    case 'video':
+      return <FileVideo size={size} strokeWidth={1.5} aria-hidden />
+    case 'unsupported':
+      return <FileQuestion size={size} strokeWidth={1.5} aria-hidden />
+    default:
+      return <FileText size={size} strokeWidth={1.5} aria-hidden />
+  }
+}
+
+function documentKicker(doc: EditorDocument): string {
+  const kind = doc.previewKind === 'text' ? languageLabel(doc.language) : PREVIEW_KIND_LABEL[doc.previewKind]
+  const parts = [kind]
+  if (doc.relPath) parts.push(doc.relPath)
+  if (doc.previewKind !== 'text') parts.push('只读预览')
+  if (doc.conflict) parts.push('外部修改冲突')
+  return parts.join(' · ')
 }
 
 function formatClock(timestamp: number): string {
@@ -124,16 +184,17 @@ function toSvgDataUrl(svg: string): string {
 }
 
 /**
- * 画布：右侧抽屉，预览 HTML / Markdown / 代码 / SVG / 文本产物。
+ * 画布：右侧抽屉，预览 HTML / Markdown / 代码 / SVG / 文本成品。
  * HTML 一律走 `sandbox="allow-scripts allow-forms"` 的无同源 iframe，报告可交互但拿不到宿主数据。
  */
 export function Canvas(): React.JSX.Element | null {
   const canvas = useAppStore((s) => s.canvas)
+  const session = useAppStore((s) => s.session)
   const artifacts = useAppStore((s) => s.session?.artifacts ?? EMPTY_ARTIFACTS)
   const closeCanvas = useAppStore((s) => s.closeCanvas)
   const openCanvas = useAppStore((s) => s.openCanvas)
   const revealArtifact = useAppStore((s) => s.revealArtifact)
-  const saveArtifactAs = useAppStore((s) => s.saveArtifactAs)
+  const saveArtifactToWorkspace = useAppStore((s) => s.saveArtifactToWorkspace)
   const openArtifactExternal = useAppStore((s) => s.openArtifactExternal)
   const copyText = useAppStore((s) => s.copyText)
   const canvasWidth = useAppStore((s) => s.canvasWidth)
@@ -144,10 +205,13 @@ export function Canvas(): React.JSX.Element | null {
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   /**
-   * iframe 挂载时机：Chromium 在抽屉 transform 动画期间、或产物切换的同一帧里创建的沙箱 iframe
+   * iframe 挂载时机：Chromium 在抽屉 transform 动画期间、或成品切换的同一帧里创建的沙箱 iframe
    * 可能不绘制首帧。统一延迟 360ms（动画 320ms 后）再挂载，宁可见一瞬占位也不见空白。
    */
   const [drawerSettled, setDrawerSettled] = useState(false)
@@ -165,31 +229,58 @@ export function Canvas(): React.JSX.Element | null {
   }, [canvas.open])
 
   /**
-   * 选中规则：canvas.artifactId 为 null 表示「画布打开但没有选中产物」→ 展示空态与最近产物列表；
-   * 仅当 id 指向已被移除的产物时才回退到最后一个产物，避免空白。
+   * 选中规则：canvas.artifactId 为 null 表示「画布打开但没有选中成品」→ 展示空态与最近成品列表；
+   * 仅当 id 指向已被移除的成品时才回退到最后一个成品，避免空白。
    */
   const active = canvas.artifactId
     ? artifacts.find((artifact) => artifact.id === canvas.artifactId) ?? artifacts[artifacts.length - 1] ?? null
     : null
   const activeId = active?.id ?? null
+
+  /* 切换成品或关闭画布时收起弹窗，避免下次打开画布时残留上一个成品的弹窗 */
+  useEffect(() => {
+    setVersionsOpen(false)
+    setExportOpen(false)
+  }, [canvas.open, activeId])
+  const versionable = Boolean(active && active.kind !== 'file' && !session?.temporary)
   const activePath = active?.path ?? null
   const inlineContent = active?.content ?? null
   const activeUpdatedAt = active?.updatedAt ?? 0
+  const previewKind = active ? previewableArtifactKind(active) : null
+
+  const openPreviewableArtifact = useCallback(
+    (artifact: Artifact): void => {
+      if (!previewableArtifactKind(artifact)) return
+      const path = artifact.path
+      if (!path) return
+      const rel = editor.workspace ? relativeToWorkspace(editor.workspace, path) : null
+      if (rel === null) return
+      void editor.openPath(rel, path)
+    },
+    [editor.openPath, editor.workspace]
+  )
 
   useEffect(() => {
     setHtmlReady(false)
     if (!canvas.open || !activeId) return undefined
-    // 抽屉刚滑入时等动画结束（360ms）；同一次打开内切换产物只需一帧左右的缓冲
+    // 抽屉刚滑入时等动画结束（360ms）；同一次打开内切换成品只需一帧左右的缓冲
     const delay = drawerSettled ? 90 : 360
     const timer = window.setTimeout(() => setHtmlReady(true), delay)
     return () => window.clearTimeout(timer)
   }, [canvas.open, activeId, activeUpdatedAt, drawerSettled])
 
-  /* 读取内容：内联直接可用；文件型走 IPC，产物更新时重新读取 */
+  /* 读取内容：内联直接可用；文件型走 IPC，成品更新时重新读取 */
   useEffect(() => {
     let cancelled = false
     setError(null)
+    setTruncated(false)
     if (!active) {
+      setContent(null)
+      setLoading(false)
+      return
+    }
+    // 图片/PDF/Office/音视频走只读文件预览，不能按文本读取
+    if (previewableArtifactKind(active)) {
       setContent(null)
       setLoading(false)
       return
@@ -208,6 +299,7 @@ export function Canvas(): React.JSX.Element | null {
           if (cancelled) return
           if (result.ok) {
             setContent(result.data.content)
+            setTruncated(result.data.truncated === true)
             setError(null)
           } else {
             setError(result.error.message)
@@ -216,7 +308,7 @@ export function Canvas(): React.JSX.Element | null {
         })
         .catch((reason: unknown) => {
           if (cancelled) return
-          setError(reason instanceof Error ? reason.message : '读取产物失败')
+          setError(reason instanceof Error ? reason.message : '读取成品失败')
           setLoading(false)
         })
       return () => {
@@ -232,12 +324,19 @@ export function Canvas(): React.JSX.Element | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, activePath, inlineContent, activeUpdatedAt, reloadKey])
 
+  /* 选中二进制成品时自动打开只读预览（图片截图/PDF/Office/音视频） */
+  useEffect(() => {
+    if (!active) return
+    openPreviewableArtifact(active)
+  }, [activeId, activePath, activeUpdatedAt, openPreviewableArtifact])
+
   /* 全屏时 Esc 退出 */
   useEffect(() => {
     if (!fullscreen) return undefined
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       if (!rootRef.current?.contains(document.activeElement)) return
+      event.preventDefault()
       setFullscreen(false)
     }
     document.addEventListener('keydown', onKeyDown)
@@ -270,8 +369,8 @@ export function Canvas(): React.JSX.Element | null {
   const reveal = (): void => {
     if (active?.path) void revealArtifact(active.path)
   }
-  const saveAs = (): void => {
-    if (active?.path) void saveArtifactAs(active.path)
+  const saveToWorkspace = (): void => {
+    if (active && session?.id) void saveArtifactToWorkspace(session.id, active.id)
   }
   const copyContent = (): void => {
     if (content) void copyText(content)
@@ -361,22 +460,14 @@ export function Canvas(): React.JSX.Element | null {
           {activeDoc ? (
             <div className="canvas-head-main">
               <span className="canvas-head-icon" aria-hidden>
-                {activeDoc.language === 'markdown' ? (
-                  <FileText size={15} strokeWidth={1.5} />
-                ) : (
-                  <FileCode2 size={15} strokeWidth={1.5} />
-                )}
+                {previewGlyph(activeDoc, 15)}
               </span>
               <div className="canvas-head-copy">
                 <span className="canvas-head-title" title={activeDoc.relPath || activeDoc.title}>
                   {activeDoc.title}
                   {activeDoc.dirty ? <span className="canvas-head-dirty" aria-label="有未保存的修改" /> : null}
                 </span>
-                <span className="canvas-head-kicker mono">
-                  {languageLabel(activeDoc.language)}
-                  {activeDoc.relPath ? ` · ${activeDoc.relPath}` : ''}
-                  {activeDoc.conflict ? ' · 外部修改冲突' : ''}
-                </span>
+                <span className="canvas-head-kicker mono">{documentKicker(activeDoc)}</span>
               </div>
             </div>
           ) : active ? (
@@ -398,14 +489,35 @@ export function Canvas(): React.JSX.Element | null {
 
           <div className="canvas-actions" aria-label="画布操作">
             {activeDoc ? (
-              <IconButton
-                label={fullscreen ? '退出全屏' : '全屏查看'}
-                size={26}
-                onClick={() => setFullscreen((value) => !value)}
-                active={fullscreen}
-              >
-                {fullscreen ? <Minimize2 size={13} strokeWidth={1.5} /> : <Maximize2 size={13} strokeWidth={1.5} />}
-              </IconButton>
+              <>
+                {activeDoc.previewKind !== 'text' ? (
+                  <>
+                    <IconButton
+                      label="用系统应用打开"
+                      size={26}
+                      onClick={() => void openArtifactExternal(activeDoc.absPath)}
+                    >
+                      <ExternalLink size={13} strokeWidth={1.5} />
+                    </IconButton>
+                    <IconButton
+                      label="在文件夹中显示"
+                      size={26}
+                      onClick={() => void revealArtifact(activeDoc.absPath)}
+                    >
+                      <FolderOpen size={13} strokeWidth={1.5} />
+                    </IconButton>
+                    <span className="canvas-actions-divider" aria-hidden />
+                  </>
+                ) : null}
+                <IconButton
+                  label={fullscreen ? '退出全屏' : '全屏查看'}
+                  size={26}
+                  onClick={() => setFullscreen((value) => !value)}
+                  active={fullscreen}
+                >
+                  {fullscreen ? <Minimize2 size={13} strokeWidth={1.5} /> : <Maximize2 size={13} strokeWidth={1.5} />}
+                </IconButton>
+              </>
             ) : active ? (
               <>
                 {canEditArtifact ? (
@@ -425,16 +537,26 @@ export function Canvas(): React.JSX.Element | null {
                 <IconButton label="复制内容" size={26} onClick={copyContent} disabled={!content}>
                   <Copy size={13} strokeWidth={1.5} />
                 </IconButton>
+                {versionable ? (
+                  <IconButton label="版本历史" size={26} onClick={() => setVersionsOpen(true)}>
+                    <History size={13} strokeWidth={1.5} />
+                  </IconButton>
+                ) : null}
                 <span className="canvas-actions-divider" aria-hidden />
+                <IconButton label="导出成品" size={26} onClick={() => setExportOpen(true)}>
+                  <Share2 size={13} strokeWidth={1.5} />
+                </IconButton>
                 <IconButton label="在浏览器中打开" size={26} onClick={openExternal} disabled={!canUsePath}>
                   <ExternalLink size={13} strokeWidth={1.5} />
                 </IconButton>
                 <IconButton label="在文件夹中显示" size={26} onClick={reveal} disabled={!canUsePath}>
                   <FolderOpen size={13} strokeWidth={1.5} />
                 </IconButton>
-                <IconButton label="另存为…" size={26} onClick={saveAs} disabled={!canUsePath}>
-                  <Save size={13} strokeWidth={1.5} />
-                </IconButton>
+                {!active.path && content && session?.workspace ? (
+                  <IconButton label="保存到文件夹" size={26} onClick={saveToWorkspace}>
+                    <FolderDown size={13} strokeWidth={1.5} />
+                  </IconButton>
+                ) : null}
                 <span className="canvas-actions-divider" aria-hidden />
                 <IconButton
                   label={fullscreen ? '退出全屏' : '全屏查看'}
@@ -454,9 +576,10 @@ export function Canvas(): React.JSX.Element | null {
         </header>
 
         {tabsVisible ? (
-          <div className="canvas-tabs" role="tablist" aria-label="打开的产物与文件">
+          <div className="canvas-tabs" role="tablist" aria-label="打开的成品与文件">
             {artifacts.map((artifact) => {
               const tabKind = resolveKind(artifact)
+              const preview = previewableArtifactKind(artifact)
               const selected = !activeDoc && artifact.id === active?.id
               return (
                 <button
@@ -468,8 +591,9 @@ export function Canvas(): React.JSX.Element | null {
                   onClick={() => {
                     editor.selectDoc(null)
                     openCanvas(artifact.id)
+                    openPreviewableArtifact(artifact)
                   }}
-                  title={`${KIND_LABEL[tabKind]} · ${artifact.title}`}
+                  title={`${preview ? PREVIEW_KIND_LABEL[preview] : KIND_LABEL[tabKind]} · ${artifact.title}`}
                 >
                   <FileGlyph kind={tabKind} />
                   <span className="canvas-tab-title mono">{artifact.title}</span>
@@ -486,7 +610,7 @@ export function Canvas(): React.JSX.Element | null {
                   onClick={() => editor.selectDoc(doc.id)}
                   title={doc.relPath || doc.title}
                 >
-                  {doc.language === 'markdown' ? <FileText size={13} strokeWidth={1.5} aria-hidden /> : <FileCode2 size={13} strokeWidth={1.5} aria-hidden />}
+                  {previewGlyph(doc)}
                   <span className="canvas-tab-title mono">{doc.title}</span>
                   {doc.dirty ? <span className="canvas-tab-dirty" aria-hidden /> : null}
                   {doc.readOnly ? <span className="canvas-tab-readonly mono">只读</span> : null}
@@ -507,19 +631,32 @@ export function Canvas(): React.JSX.Element | null {
 
         <div className="canvas-body">
           {activeDoc ? (
-            <EditorPane
-              doc={activeDoc}
-              theme={editor.theme}
-              onContentChange={(value) => editor.updateContent(activeDoc.id, value)}
-              onSave={() => void editor.saveDoc(activeDoc.id)}
-              onForceSave={() => void editor.forceSave(activeDoc.id)}
-              onReload={() => void editor.reloadDoc(activeDoc.id)}
-              onTogglePreview={() => editor.togglePreview(activeDoc.id)}
-              onShowHistory={() => editor.openHistory(activeDoc.id)}
-              onRequestSaveAs={() => editor.requestSaveAs(activeDoc.id)}
-              onRequestClose={() => editor.requestCloseDoc(activeDoc.id)}
-              onCopyPath={() => void copyText(activeDoc.relPath || activeDoc.title)}
-            />
+            activeDoc.previewKind === 'text' ? (
+              <EditorPane
+                key={activeDoc.id}
+                doc={activeDoc}
+                theme={editor.theme}
+                readOnlyMode={editor.readOnlyMode}
+                onContentChange={(value) => editor.updateContent(activeDoc.id, value)}
+                onSave={() => void editor.saveDoc(activeDoc.id)}
+                onForceSave={() => void editor.forceSave(activeDoc.id)}
+                onReload={() => void editor.reloadDoc(activeDoc.id)}
+                onTogglePreview={() => editor.togglePreview(activeDoc.id)}
+                onShowHistory={() => editor.openHistory(activeDoc.id)}
+                onRequestSaveAs={() => editor.requestSaveAs(activeDoc.id)}
+                onRequestClose={() => editor.requestCloseDoc(activeDoc.id)}
+                onCopyPath={() => void copyText(activeDoc.relPath || activeDoc.title)}
+              />
+            ) : (
+              <FilePreviewPane
+                key={activeDoc.id}
+                doc={activeDoc}
+                theme={editor.theme}
+                onOpenExternal={() => void openArtifactExternal(activeDoc.absPath)}
+                onReveal={() => void revealArtifact(activeDoc.absPath)}
+                onRetry={() => void editor.reloadDoc(activeDoc.id)}
+              />
+            )
           ) : !active ? (
             <CanvasEmpty artifacts={artifacts} onOpen={(id) => openCanvas(id)} />
           ) : loading ? (
@@ -528,12 +665,12 @@ export function Canvas(): React.JSX.Element | null {
                 <FileGlyph kind={displayKind} size={18} />
               </span>
               <span className="canvas-status-line" aria-hidden />
-              <span className="mono">正在读取 {active?.title ?? '产物'}…</span>
+              <span className="mono">正在读取 {active?.title ?? '成品'}…</span>
             </div>
           ) : error ? (
             <div className="canvas-status canvas-status-error">
               <ErrorNote
-                title="这个产物打不开了"
+                title="这个成品打不开了"
                 detail={`${error}。文件可能被移动或删除，可以让 Morrow 重新生成一份。`}
                 action={
                   <button type="button" className="canvas-retry" onClick={() => setReloadKey((key) => key + 1)}>
@@ -542,21 +679,39 @@ export function Canvas(): React.JSX.Element | null {
                 }
               />
             </div>
+          ) : previewKind ? (
+            <div className="canvas-status">
+              <span className="canvas-status-icon" aria-hidden>
+                <FileQuestion size={18} strokeWidth={1.5} />
+              </span>
+              <span className="mono">这个文件可以只读预览。</span>
+              <button type="button" className="canvas-retry" onClick={() => openPreviewableArtifact(active)}>
+                打开预览
+              </button>
+            </div>
           ) : (
-            <CanvasContent
-              key={`${active.id}-${activeUpdatedAt}`}
-              artifact={active}
-              kind={displayKind}
-              language={language}
-              content={content ?? ''}
-              ext={ext}
-              ready={htmlReady}
-            />
+            <>
+              {truncated ? (
+                <div className="canvas-truncated-note" role="status">
+                  文件较大，画布只显示了前 {displayKind === 'html' ? '8' : '2'}MB；完整内容可在系统中打开。
+                </div>
+              ) : null}
+              <CanvasContent
+                key={`${active.id}-${activeUpdatedAt}`}
+                artifact={active}
+                kind={displayKind}
+                language={language}
+                content={content ?? ''}
+                ext={ext}
+                ready={htmlReady}
+              />
+            </>
           )}
 
           {editor.historyDoc ? (
             <HistoryDrawer
               doc={editor.historyDoc}
+              readOnly={editor.readOnlyMode}
               onClose={editor.closeHistory}
               loadVersions={editor.loadHistoryVersions}
               loadDiff={editor.loadHistoryDiff}
@@ -565,6 +720,24 @@ export function Canvas(): React.JSX.Element | null {
           ) : null}
         </div>
       </aside>
+
+      {active && session?.id ? (
+        <>
+          <ArtifactVersionsDialog
+            open={versionsOpen && versionable}
+            onClose={() => setVersionsOpen(false)}
+            sessionId={session.id}
+            artifactId={active.id}
+            artifactTitle={active.title}
+          />
+          <ArtifactExportDialog
+            open={exportOpen}
+            onClose={() => setExportOpen(false)}
+            sessionId={session.id}
+            artifact={active}
+          />
+        </>
+      ) : null}
 
       <Modal
         open={editor.dialog !== null}
@@ -584,7 +757,7 @@ export function Canvas(): React.JSX.Element | null {
           </p>
         ) : editor.dialog?.kind === 'save-as' ? (
           <div>
-            <p className="editor-dialog-text">把当前内容另存为工作区内的新文件，原文件不会被修改。</p>
+            <p className="editor-dialog-text">把当前内容另存为文件夹内的新文件，原文件不会被修改。</p>
             <input
               className="editor-dialog-input"
               value={editor.saveAsDraft}
@@ -595,7 +768,7 @@ export function Canvas(): React.JSX.Element | null {
                 if (event.key === 'Enter') void editor.submitSaveAs()
               }}
             />
-            <p className="editor-dialog-hint">相对工作区的路径，用 / 分隔目录；已存在的文件不能被覆盖。</p>
+            <p className="editor-dialog-hint">相对文件夹的路径，用 / 分隔目录；已存在的文件不能被覆盖。</p>
           </div>
         ) : null}
       </Modal>
@@ -625,6 +798,124 @@ function withMorrowScrollbar(html: string): string {
   return `${MORROW_SCROLLBAR_CSS}${html}`
 }
 
+/** 成品 iframe 里的外链交给宿主用系统浏览器打开（沙箱内无法直接打开外部窗口） */
+const MORROW_LINK_BRIDGE = `<script data-morrow-link-bridge>(function () {
+  function post(url) {
+    try { parent.postMessage({ type: 'morrow:open-external', url: url }, '*') } catch (error) {}
+  }
+  function nearestAnchor(node) {
+    while (node && node !== document) {
+      if (node.tagName === 'A' && node.href) return node
+      node = node.parentNode
+    }
+    return null
+  }
+  function onClick(event) {
+    var anchor = nearestAnchor(event.target)
+    if (!anchor || !/^https?:\\/\\//i.test(anchor.href)) return
+    event.preventDefault()
+    post(anchor.href)
+  }
+  document.addEventListener('click', onClick, true)
+  document.addEventListener('auxclick', onClick, true)
+  var nativeOpen = window.open
+  window.open = function (url) {
+    if (typeof url === 'string' && /^https?:\\/\\//i.test(url)) {
+      post(url)
+      return null
+    }
+    return nativeOpen ? nativeOpen.apply(window, arguments) : null
+  }
+})();</script>`
+
+function prepareArtifactHtml(html: string): string {
+  const next = withMorrowScrollbar(html)
+  if (next.includes('data-morrow-link-bridge')) return next
+  if (/<\/body>/i.test(next)) return next.replace(/<\/body>/i, `${MORROW_LINK_BRIDGE}</body>`)
+  return `${next}${MORROW_LINK_BRIDGE}`
+}
+
+/**
+ * HTML 成品：通过 morrow-artifact:// 提供带独立 CSP 的沙箱文档。
+ * 不能再用 srcDoc：srcdoc 继承主窗口 CSP，生产包里会拦掉报告的内联脚本。
+ */
+function HtmlArtifact({
+  artifact,
+  content,
+  ready
+}: {
+  artifact: Artifact
+  content: string
+  ready: boolean
+}): React.JSX.Element {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const lastExternalAt = useRef(0)
+
+  useEffect(() => {
+    setUrl(null)
+    setError(null)
+    if (!ready) return undefined
+    let cancelled = false
+    window.morrow.artifacts
+      .previewHtml(prepareArtifactHtml(content))
+      .then((result) => {
+        if (cancelled) return
+        if (result.ok) setUrl(result.data.url)
+        else setError(result.error.message)
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : '网页预览准备失败')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [content, ready])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent): void => {
+      const frame = frameRef.current
+      if (!frame || event.source !== frame.contentWindow) return
+      const data = event.data as { type?: unknown; url?: unknown } | null
+      if (!data || data.type !== 'morrow:open-external' || typeof data.url !== 'string') return
+      if (!/^https?:\/\//i.test(data.url)) return
+      const now = Date.now()
+      if (now - lastExternalAt.current < 800) return
+      lastExternalAt.current = now
+      void useAppStore.getState().openExternal(data.url)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  if (!ready || (!url && !error)) {
+    return (
+      <div className="canvas-frame-placeholder" aria-hidden>
+        <span className="canvas-status-line" />
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="canvas-preview-failure" role="alert">
+        <p className="canvas-preview-failure-title">网页预览没能打开</p>
+        <p className="canvas-preview-failure-detail mono">{error}</p>
+      </div>
+    )
+  }
+  return (
+    <iframe
+      ref={frameRef}
+      className="canvas-frame"
+      title={artifact.title}
+      sandbox="allow-scripts allow-forms"
+      src={url ?? undefined}
+      referrerPolicy="no-referrer"
+    />
+  )
+}
+
 function CanvasContent({
   artifact,
   kind,
@@ -641,22 +932,7 @@ function CanvasContent({
   ready: boolean
 }): React.JSX.Element {
   if (kind === 'html') {
-    if (!ready) {
-      return (
-        <div className="canvas-frame-placeholder" aria-hidden>
-          <span className="canvas-status-line" />
-        </div>
-      )
-    }
-    return (
-      <iframe
-        className="canvas-frame"
-        title={artifact.title}
-        sandbox="allow-scripts allow-forms"
-        srcDoc={withMorrowScrollbar(content)}
-        referrerPolicy="no-referrer"
-      />
-    )
+    return <HtmlArtifact artifact={artifact} content={content} ready={ready} />
   }
   if (kind === 'markdown') {
     return (
@@ -683,8 +959,8 @@ function CanvasContent({
 }
 
 /**
- * 画布空态：没有产物时不是一块空白面板。
- * 有关闭按钮（在头部）、一句引导、最近 3 个产物入口或三步上手提示。
+ * 画布空态：没有成品时不是一块空白面板。
+ * 有关闭按钮（在头部）、一句引导、最近 3 个成品入口或三步上手提示。
  */
 function CanvasEmpty({ artifacts, onOpen }: { artifacts: Artifact[]; onOpen: (id: string) => void }): React.JSX.Element {
   const recent = artifacts.slice(-3).reverse()
@@ -701,7 +977,7 @@ function CanvasEmpty({ artifacts, onOpen }: { artifacts: Artifact[]; onOpen: (id
 
       {recent.length > 0 ? (
         <div className="canvas-recent">
-          <p className="canvas-recent-label mono">最近的产物</p>
+          <p className="canvas-recent-label mono">最近的成品</p>
           <ul className="canvas-recent-list">
             {recent.map((artifact) => {
               const kind = resolveKind(artifact)
@@ -733,7 +1009,7 @@ function CanvasEmpty({ artifacts, onOpen }: { artifacts: Artifact[]; onOpen: (id
           </p>
           <p>
             <span className="canvas-empty-step mono">02</span>
-            <span>Morrow 会自己读文件、跑命令，过程写在行动轨迹里</span>
+            <span>Morrow 会自己读文件、跑命令，过程写在执行过程里</span>
           </p>
           <p>
             <span className="canvas-empty-step mono">03</span>

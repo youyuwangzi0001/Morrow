@@ -81,7 +81,7 @@ function toolError(err: unknown, hint?: string): ToolResult {
 }
 
 function requireWritableContext(ctx: ToolContext): ToolResult | null {
-  if (ctx.readOnly) return errResult('子代理是只读模式，不能控制浏览器。', '浏览器自动化只能在主 Agent 的工作模式中使用。')
+  if (ctx.readOnly) return errResult('当前是只读上下文，不能控制浏览器。', '浏览器自动化只能在有权限的工作模式中使用。')
   return null
 }
 

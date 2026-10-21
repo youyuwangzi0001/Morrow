@@ -18,18 +18,27 @@ const STATUS_TEXT: Record<TodoItem['status'], string> = {
  */
 export function PlanTray(): React.JSX.Element | null {
   const todos = useAppStore((s) => s.session?.todos ?? EMPTY_TODOS)
+  const plan = useAppStore((s) => s.session?.plan ?? null)
   const expanded = useAppStore((s) => s.planExpanded)
   const setExpanded = useAppStore((s) => s.setPlanExpanded)
-  const running = useAppStore((s) => s.run !== null)
+  const running = useAppStore((s) => !!s.run && s.run.sessionId === s.session?.id)
 
-  if (todos.length === 0) return null
+  // 计划模式下由 PlanCard 展示同一组步骤与状态，避免出现两套计划列表
+  if (plan || todos.length === 0) return null
 
   const completed = todos.filter((todo) => todo.status === 'completed').length
   const allDone = completed === todos.length
   const active = todos.find((todo) => todo.status === 'in_progress') ?? null
+  // 运行结束后仍有 in_progress：保留真实状态，但不要再像「正在推进」那样闪动
+  const idle = !running && !allDone && active !== null
 
   return (
-    <section className={['plan-tray', expanded ? 'is-expanded' : '', allDone ? 'is-complete' : ''].filter(Boolean).join(' ')} aria-label="计划">
+    <section
+      className={['plan-tray', expanded ? 'is-expanded' : '', allDone ? 'is-complete' : '', idle ? 'is-idle' : '']
+        .filter(Boolean)
+        .join(' ')}
+      aria-label="计划"
+    >
       <button
         type="button"
         className="plan-head"
@@ -54,7 +63,10 @@ export function PlanTray(): React.JSX.Element | null {
               <li key={todo.id} className={`plan-item is-${todo.status}`}>
                 <span className="plan-dot" aria-hidden />
                 <span className="plan-text">{todo.text}</span>
-                <span className="sr-only">{STATUS_TEXT[todo.status]}</span>
+                {todo.status === 'in_progress' && idle ? <span className="plan-item-state mono">未完成</span> : null}
+                <span className="sr-only">
+                  {todo.status === 'in_progress' && idle ? '未完成，当前任务已停止' : STATUS_TEXT[todo.status]}
+                </span>
               </li>
             ))}
           </ul>

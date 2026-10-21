@@ -3,18 +3,20 @@
 // Playwright 的 _electron.launch 只能直接启动 Electron，所以这里用「spawn + CDP」。
 import { spawn, execFileSync } from 'node:child_process'
 import { createServer } from 'node:net'
-import { existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 import { electronEnv } from './env.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+const releaseFolder = join(root, 'release', `Morrow-${pkg.version}-portable`)
 const stamp = Date.now()
 const dataDir = join(root, 'tmp', 'pkgdemo-' + stamp)
 mkdirSync(dataDir, { recursive: true })
 const screens = join(root, 'docs', 'verification', 'screens')
-const exe = join(root, 'release', 'Morrow-1.0.0-portable', 'Morrow.exe')
+const exe = join(releaseFolder, 'Morrow.exe')
 const port = await new Promise((resolve) => {
   const srv = createServer()
   srv.listen(0, '127.0.0.1', () => {
@@ -30,7 +32,7 @@ const child = spawn(exe, [
   '--skip-onboarding',
   '--remote-debugging-port=' + port
 ], {
-  cwd: join(root, 'release', 'Morrow-1.0.0-portable'),
+  cwd: releaseFolder,
   env: electronEnv({ MORROW_TEST: '1', MORROW_DEMO_SPEED: '0.15' }),
   stdio: 'ignore'
 })

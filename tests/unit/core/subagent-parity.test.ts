@@ -20,7 +20,14 @@ import { runAgent, type RunAgentOptions } from '../../../src/core/agent'
 import type { Provider, ProviderStreamEvent, ProviderStreamRequest } from '../../../src/core/types'
 import { makeTempWorkspace, type TempWorkspace } from './helpers/workspace'
 
-const MODEL: ModelInfo = { id: 'mock-model', label: 'Mock', contextWindow: 128_000, supportsTools: true }
+const MODEL: ModelInfo = {
+  id: 'mock-model',
+  label: 'Mock',
+  contextWindow: 128_000,
+  supportsTools: true,
+  supportsReasoning: true,
+  reasoningStyle: 'effort'
+}
 
 interface ToolCallSpec {
   name: string
@@ -38,6 +45,7 @@ interface RoutedCall {
   label?: string
   messagesLength: number
   toolNames: string[]
+  reasoning?: ProviderStreamRequest['reasoning']
 }
 
 /** 按「最后一个 user 消息内容 + 是否第二轮」路由的可控 provider（支持并发调用） */
@@ -58,7 +66,8 @@ class RoutedProvider implements Provider {
       kind: childMatch ? 'child' : 'main',
       ...(childMatch ? { label: childMatch[1] } : {}),
       messagesLength: request.messages.length,
-      toolNames: request.tools.map((tool) => tool.name)
+      toolNames: request.tools.map((tool) => tool.name),
+      ...(request.reasoning ? { reasoning: request.reasoning } : {})
     })
     yield* yieldRoute(this.router(request))
   }
@@ -72,6 +81,7 @@ async function* yieldRoute(route: Route): AsyncGenerator<ProviderStreamEvent> {
     yield { type: 'tool_call_delta', index, argsDelta: JSON.stringify(call.input) }
     yield { type: 'tool_call_end', index, id: call.id, name: call.name, input: call.input }
   }
+  yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
 }
 
 function userMessage(text: string): ChatMessage {
@@ -145,7 +155,34 @@ function singleTaskRouter(childRoute: (secondRound: boolean) => Route, taskId = 
 }
 
 describe('R9.1 子代理工具/权限与主代理一致', () => {
-  it('子代理工具集 = 主代理工具集 - task - update_goal（含 write_file/run_command/mcp_call）', async () => {
+  it('子代理的 token 用量计入父运行总用量', async () => {
+    const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
+    try {
+      const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
+      const harness = await runParity(ws, provider)
+      expect(harness.result.reason).toBe('complete')
+      // 每次 provider.stream（父/子）都回报 10/5；父结果必须包含子代理消耗
+      expect(harness.result.usage.inputTokens).toBe(provider.calls.length * 10)
+      expect(harness.result.usage.outputTokens).toBe(provider.calls.length * 5)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('子代理继承会话的推理强度', async () => {
+    const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
+    try {
+      const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
+      const harness = await runParity(ws, provider, { reasoningEffort: 'high' })
+      expect(harness.result.reason).toBe('complete')
+      const childCall = provider.calls.find((call) => call.kind === 'child')
+      expect(childCall?.reasoning).toEqual({ effort: 'high', style: 'effort' })
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('子代理工具集 = 主代理工具集 - task/swarm - update_goal（含 write_file/run_command/mcp_call）', async () => {
     const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
     try {
       const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
@@ -159,7 +196,9 @@ describe('R9.1 子代理工具/权限与主代理一致', () => {
       expect(childTools.has('run_command')).toBe(true)
       expect(childTools.has('mcp_call')).toBe(true)
       expect(childTools.has('task')).toBe(false)
+      expect(childTools.has('swarm')).toBe(false)
       expect(childTools.has('update_goal')).toBe(false)
+      expect(childTools.has('todo_write')).toBe(false)
     } finally {
       ws.cleanup()
     }

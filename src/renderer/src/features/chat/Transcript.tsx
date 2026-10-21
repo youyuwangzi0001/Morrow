@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
+import { userMessageDisplayText } from '@shared/message'
 import { useAppStore } from '../../state/store'
 import { Kbd, HorizonLoader } from '../../ui'
 import { MessageItem } from './MessageItem'
+import { parseGoalContinuation } from './GoalContinuation'
 import { PermissionCard } from '../activity/PermissionCard'
 import { QuestionCard } from '../activity/QuestionCard'
 import './Transcript.css'
@@ -25,17 +27,23 @@ export function Transcript(): React.JSX.Element {
   const pendingPermission = useAppStore((s) => s.pendingPermission)
   const pendingQuestion = useAppStore((s) => s.pendingQuestion)
   const streaming = useAppStore((s) => s.streaming)
+  const focusMessageId = useAppStore((s) => s.focusMessageId)
+  const clearFocusMessage = useAppStore((s) => s.clearFocusMessage)
   const loadingSession = useAppStore((s) => s.loadingSession)
-  const compacting = useAppStore((s) => s.compacting)
+  const compacting = useAppStore(
+    (s) => s.compacting && (!s.compactingSessionId || s.compactingSessionId === s.session?.id)
+  )
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const jumpingRef = useRef(false)
+  const lastMessageIdRef = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
   const [hasNew, setHasNew] = useState(false)
 
   const messages = session?.messages ?? EMPTY_MESSAGES
+  const visibleMessages = messages.filter((message) => !message.hidden)
   const lastMessage = messages[messages.length - 1]
   const lastContentSize = lastMessage
     ? lastMessage.content.reduce((size, block) => {
@@ -46,7 +54,7 @@ export function Transcript(): React.JSX.Element {
   const streamingSize = (streaming?.text.length ?? 0) + (streaming?.thinking.length ?? 0)
   const sessionId = session?.id ?? null
 
-  /* 切换会话：直接定位到最新 */
+  /* 切换对话：直接定位到最新 */
   useLayoutEffect(() => {
     followRef.current = true
     jumpingRef.current = false
@@ -54,6 +62,41 @@ export function Transcript(): React.JSX.Element {
     setShowJump(false)
     setHasNew(false)
   }, [sessionId])
+
+  /* 全局搜索命中：等消息渲染后滚到原消息并短暂金色高亮 */
+  useEffect(() => {
+    if (!focusMessageId || !session) return undefined
+    let cancelled = false
+    let attempts = 0
+    let frame = 0
+    const tryScroll = (): void => {
+      if (cancelled) return
+      const container = contentRef.current
+      const target = container?.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`)
+      if (target && scrollRef.current) {
+        followRef.current = false
+        jumpingRef.current = true
+        setShowJump(true)
+        setHasNew(false)
+        target.scrollIntoView({ block: 'center', behavior: 'auto' })
+        target.classList.add('is-search-hit')
+        window.setTimeout(() => target.classList.remove('is-search-hit'), 2_800)
+        window.setTimeout(() => {
+          jumpingRef.current = false
+        }, 700)
+        clearFocusMessage()
+        return
+      }
+      attempts += 1
+      if (attempts < 24) frame = requestAnimationFrame(tryScroll)
+      else clearFocusMessage()
+    }
+    frame = requestAnimationFrame(tryScroll)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
+  }, [focusMessageId, session?.id, messages.length, clearFocusMessage, session])
 
   /* 内容增长：跟随中则贴底，否则记录未读 */
   useLayoutEffect(() => {
@@ -65,6 +108,20 @@ export function Transcript(): React.JSX.Element {
       setHasNew(true)
     }
   }, [session, messages.length, lastContentSize, streamingSize])
+
+  /* 用户刚发出新消息：即使正在回看历史，也跟到最新（目标续跑不打断阅读） */
+  useLayoutEffect(() => {
+    if (!lastMessage || lastMessage.id === lastMessageIdRef.current) return
+    lastMessageIdRef.current = lastMessage.id
+    if (lastMessage.role !== 'user') return
+    if (parseGoalContinuation(userMessageDisplayText(lastMessage))) return
+    followRef.current = true
+    jumpingRef.current = false
+    setShowJump(false)
+    setHasNew(false)
+    const element = scrollRef.current
+    if (element) element.scrollTop = element.scrollHeight
+  }, [lastMessage?.id, lastMessage?.role])
 
   /* 权限卡/提问卡出现时必须被看到 */
   useLayoutEffect(() => {
@@ -135,7 +192,7 @@ export function Transcript(): React.JSX.Element {
   }
 
   const streamingMessageId = streaming?.messageId ?? null
-  const isEmpty = messages.length === 0 && !streaming
+  const isEmpty = visibleMessages.length === 0 && !streaming
 
   return (
     <div className="transcript-root">
@@ -152,14 +209,14 @@ export function Transcript(): React.JSX.Element {
           {compacting ? (
             <div className="transcript-compacting" role="status" aria-live="polite">
               <span className="transcript-compacting-line" aria-hidden />
-              <span className="mono">上下文有点长了，正在压缩，稍等片刻</span>
+              <span className="mono">正在整理较早的对话，稍等片刻</span>
             </div>
           ) : null}
           {isEmpty ? (
             <div className="transcript-empty">
               <p className="transcript-empty-title">说清想要的结果，过程我来想办法。</p>
               <p className="transcript-empty-desc">
-                比如「把工作区里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。
+                比如「把文件夹里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。
               </p>
               <p className="transcript-empty-hint">
                 按 <Kbd>Ctrl</Kbd>
@@ -168,12 +225,12 @@ export function Transcript(): React.JSX.Element {
               </p>
             </div>
           ) : (
-            messages.map((message, index) => (
+            visibleMessages.map((message, index) => (
               <MessageItem
                 key={message.id}
                 message={message}
                 streaming={streamingMessageId === message.id}
-                isLast={index === messages.length - 1}
+                isLastAssistant={message.role === 'assistant' && index === visibleMessages.length - 1}
               />
             ))
           )}

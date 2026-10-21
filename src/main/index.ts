@@ -1,86 +1,156 @@
-import { app, BrowserWindow, Menu, screen, session, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, protocol, screen, session, shell } from 'electron'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
-import { registerIpcHandlers } from './ipc'
+import { disposeAgentRuntime, registerIpcHandlers } from './ipc'
 import { installFeatureIpc } from './feature-ipc'
 import { registerFeatureModules } from './features'
+import { handlePreviewProtocol } from './services/file-preview'
+import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './services/artifact-preview'
 import { ensureDataDirs, resolveDataDir } from './services/paths'
 import { installMcpRuntimeEnv } from './services/mcp-service'
 import { configureMemoryRuntime } from './services/memory-service'
 import { configureProjectsRuntime } from './services/project-service'
+import { getSettingsStore } from './services/settings-store'
+import { getTerminalManager } from './services/terminal-manager'
+import { configurePermissionRulesRuntime } from './services/permission-rules'
+import { initializeTokenActivity } from './services/token-activity-runtime'
+import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
+import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
 import { log } from './services/logger'
 
-/** 单实例：便携版双击两次不应开两个窗口 */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'morrow-file',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
+  },
+  {
+    scheme: ARTIFACT_PREVIEW_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, stream: true }
+  }
+])
+
+// 数据目录必须在单实例锁之前确定：Electron 的单实例锁按 userData 区分；
+// 若先抢默认的 %APPDATA%\Morrow，多个便携副本会互相顶掉。
+const dataDir = resolveDataDir()
+app.setPath('userData', dataDir)
+
+/** 单实例：同一份数据目录双击两次不应开两个窗口 */
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  bootstrap()
+  bootstrap(dataDir)
 }
 
-function bootstrap(): void {
+function bootstrap(dataDir: string): void {
   // 便携版：数据目录跟随 exe，做到「拷走就能用」
-  const dataDir = resolveDataDir()
-  app.setPath('userData', dataDir)
   app.setAppUserModelId('studio.morrow.agent')
   ensureDataDirs()
   configureMemoryRuntime(dataDir)
   configureProjectsRuntime(dataDir)
+  configurePermissionRulesRuntime(dataDir)
   installMcpRuntimeEnv(process.env, dataDir)
 
-  app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    }
-  })
+  app.on('second-instance', () => showMainWindow())
 
   app.whenReady().then(() => {
     log.info('app ready', { dataDir, version: app.getVersion(), packaged: app.isPackaged })
     installSecurityPolicy()
+    protocol.handle('morrow-file', handlePreviewProtocol)
+    protocol.handle(ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview)
     Menu.setApplicationMenu(null)
     registerIpcHandlers()
     registerFeatureModules()
     installFeatureIpc()
+    initializeTokenActivity()
     createWindow()
+    configureIsland({ openMain: showMainWindow })
+    createIsland()
+    createTray()
+    initializeScheduleRuntime()
+    registerIslandShortcut()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (!mainWindow || mainWindow.isDestroyed()) createWindow()
     })
   })
 
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
+  app.on('will-quit', () => {
+    disposeScheduleRuntime()
+    disposeAgentRuntime()
+    globalShortcut.unregisterAll()
+    try {
+      getTerminalManager().dispose()
+    } catch {
+      // ignore
+    }
+    hideIsland(true)
+    if (tray && !tray.isDestroyed()) tray.destroy()
+    tray = null
+  })
+
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit()
+    if (isQuitting) return
+    let closeToTray = true
+    try {
+      closeToTray = getSettingsStore().get().closeToTray
+    } catch {
+      // 设置尚未就绪时按默认留在托盘
+    }
+    if (process.platform !== 'darwin' && !closeToTray) app.quit()
   })
 
   app.on('web-contents-created', (_event, contents) => {
     // 功能测试模式下绝不能弹出外部浏览器/Edge 窗口：测试站点导航只允许留在应用内部。
     const testMode = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
+    const devUrl = process.env.ELECTRON_RENDERER_URL
+    const rendererFileUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
+    const isAppUrl = (url: string): boolean => {
+      if (devUrl) {
+        try {
+          return new URL(url).origin === new URL(devUrl).origin
+        } catch {
+          return false
+        }
+      }
+      // 生产包只允许应用自己的 index.html（含锚点），不再放行任意 file:// 本地页面
+      return url === rendererFileUrl || url.startsWith(`${rendererFileUrl}#`)
+    }
     contents.setWindowOpenHandler(({ url }) => {
       if (!testMode && /^https?:/i.test(url)) void shell.openExternal(url)
       return { action: 'deny' }
     })
     contents.on('will-navigate', (event, url) => {
-      const devUrl = process.env.ELECTRON_RENDERER_URL
-      const allowed = (devUrl && url.startsWith(devUrl)) || url.startsWith('file://')
-      if (!allowed) {
+      if (!isAppUrl(url)) {
         event.preventDefault()
         if (!testMode && /^https?:/i.test(url)) void shell.openExternal(url)
       }
     })
+    contents.on('will-attach-webview', (event) => event.preventDefault())
   })
 }
 
 function installSecurityPolicy(): void {
-  // 生产环境收紧 CSP；开发环境由 Vite 注入 HMR，不启用严格 CSP
-  if (!app.isPackaged) return
+  // 生产环境收紧 CSP；开发环境由 Vite 注入 HMR，不启用严格 CSP。
+  // MORROW_TEST_CSP=1 让 E2E 在未打包形态下也能验证生产 CSP（仅测试环境使用）。
+  const forceCsp = process.env.MORROW_TEST_CSP === '1'
+  if (!app.isPackaged && !forceCsp) return
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    // HTML 产物由独立协议返回，自带更宽松但无同源的沙箱 CSP；父窗口 CSP 不能再覆盖它
+    if (details.url.startsWith(`${ARTIFACT_PREVIEW_SCHEME}:`)) {
+      callback({ responseHeaders: details.responseHeaders })
+      return
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; frame-src 'self' data: blob:;"
+          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: morrow-file:; media-src 'self' blob: morrow-file:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* morrow-file:; frame-src 'self' data: blob: morrow-artifact:; worker-src 'self' blob:; object-src 'none'; base-uri 'none';"
         ]
       }
     })
@@ -88,6 +158,66 @@ function installSecurityPolicy(): void {
 }
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
+function appIconPath(): string | null {
+  return [
+    join(__dirname, '../../build/icon.png'),
+    join(app.getAppPath(), 'build/icon.png'),
+    join(process.resourcesPath, 'icon.png'),
+    join(process.resourcesPath, 'build', 'icon.png')
+  ].find((candidate) => existsSync(candidate)) ?? null
+}
+
+export function showMainWindow(): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) {
+    createWindow()
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  win.flashFrame(false)
+}
+
+function createTray(): void {
+  if (tray && !tray.isDestroyed()) return
+  const iconPath = appIconPath()
+  let image = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+  if (!image.isEmpty()) image = image.resize({ width: 16, height: 16 })
+  tray = new Tray(image)
+  tray.setToolTip('Morrow')
+  const menu = Menu.buildFromTemplate([
+    { label: '打开 Morrow', click: () => showMainWindow() },
+    { label: '显示 / 隐藏桌面小伙伴', click: () => toggleIsland() },
+    { label: '快捷键：Ctrl+Shift+M', enabled: false },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+  tray.setContextMenu(menu)
+  tray.on('click', () => showMainWindow())
+  tray.on('double-click', () => showMainWindow())
+}
+
+/** 桌面快速唤起：无论主窗口在托盘还是别的应用前面，都能把小伙伴叫出来。 */
+function registerIslandShortcut(): void {
+  const isTest = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
+  if (isTest) return
+  try {
+    const ok = globalShortcut.register('CommandOrControl+Shift+M', () => toggleIsland())
+    if (!ok) log.warn('global shortcut Ctrl+Shift+M is already taken')
+  } catch (err) {
+    log.warn('global shortcut registration failed', String(err))
+  }
+}
 
 export function createWindow(): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
@@ -130,7 +260,7 @@ export function createWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       spellcheck: true,
       webviewTag: false
     }
@@ -152,6 +282,32 @@ export function createWindow(): BrowserWindow {
   mainWindow.on('unmaximize', () => emitWindowState(false))
   mainWindow.on('enter-full-screen', () => emitWindowState(true))
   mainWindow.on('leave-full-screen', () => emitWindowState(false))
+  mainWindow.on('focus', () => {
+    try {
+      mainWindow?.flashFrame(false)
+    } catch {
+      // ignore
+    }
+    markIslandRead()
+  })
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    const win = mainWindow
+    if (!win || win.isDestroyed()) return
+    let closeToTray = true
+    try {
+      closeToTray = getSettingsStore().get().closeToTray
+    } catch {
+      // 设置未就绪时按默认
+    }
+    if (!closeToTray) {
+      isQuitting = true
+      app.quit()
+      return
+    }
+    event.preventDefault()
+    win.hide()
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })

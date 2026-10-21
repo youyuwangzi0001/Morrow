@@ -32,12 +32,14 @@ export interface StoreSnapshot {
   bootError: string | null
   activeSessionId: string | null
   run: { runId: string; sessionId: string } | null
+  runs: Array<{ runId: string; sessionId: string }>
   pendingPermission: {
     id: string
     toolName: string
     title: string
     risk: string
     summary: string
+    allowAlways?: boolean
   } | null
   pendingQuestion: { id: string; question: string } | null
   session: StoreSessionSnapshot | null
@@ -94,13 +96,15 @@ export async function readStore(page: Page): Promise<StoreSnapshot> {
       bootError: s.bootError ?? null,
       activeSessionId: s.activeSessionId ?? null,
       run: s.run ? { runId: s.run.runId, sessionId: s.run.sessionId } : null,
+      runs: Object.values(s.runs ?? {}).map((run: any) => ({ runId: String(run.runId), sessionId: String(run.sessionId) })),
       pendingPermission: s.pendingPermission
         ? {
             id: s.pendingPermission.id,
             toolName: s.pendingPermission.toolName,
             title: s.pendingPermission.title,
             risk: s.pendingPermission.risk,
-            summary: s.pendingPermission.summary
+            summary: s.pendingPermission.summary,
+            allowAlways: s.pendingPermission.allowAlways
           }
         : null,
       pendingQuestion: s.pendingQuestion ? { id: s.pendingQuestion.id, question: s.pendingQuestion.question } : null,
@@ -129,7 +133,12 @@ export async function readStore(page: Page): Promise<StoreSnapshot> {
             }))
           }
         : null,
-      sessions: (s.sessions ?? []).map((meta: Record<string, any>) => ({ id: meta.id, title: meta.title })),
+      sessions: (s.sessions ?? []).map((meta: Record<string, any>) => ({
+        id: meta.id,
+        title: meta.title,
+        pinned: Boolean(meta.pinned),
+        archived: Boolean(meta.archived)
+      })),
       canvas: { open: Boolean(s.canvas?.open), artifactId: s.canvas?.artifactId ?? null },
       theme: s.theme,
       demoStep: s.demoStep ? { index: s.demoStep.index, total: s.demoStep.total, caption: s.demoStep.caption } : null,
@@ -327,17 +336,28 @@ export async function waitForRunStarted(page: Page, timeoutMs = 60_000): Promise
 export async function configureMockProvider(
   page: Page,
   baseUrl: string,
-  providerId = 'mock-e2e'
+  providerId = 'mock-e2e',
+  contextWindow = 32_000
 ): Promise<{ providerId: string; modelId: string }> {
   return page.evaluate(
-    async (arg: { providerId: string; baseUrl: string }) => {
+    async (arg: { providerId: string; baseUrl: string; contextWindow: number }) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       const config = {
         id: arg.providerId,
         kind: 'openai-compat',
         name: '本地 Mock',
         baseUrl: arg.baseUrl,
-        models: [{ id: 'mock-model', label: 'Mock Model', contextWindow: 32_000, supportsTools: true }],
+        models: [
+          {
+            id: 'mock-model',
+            label: 'Mock Model',
+            contextWindow: arg.contextWindow,
+            supportsTools: true,
+            supportsReasoning: true,
+            reasoningStyle: 'effort',
+            pricing: { inputPerMTok: 1, outputPerMTok: 2 }
+          }
+        ],
         apiKeyStored: false,
         enabled: true
       }
@@ -347,8 +367,37 @@ export async function configureMockProvider(
       if (!saved) throw new Error('mock provider 保存失败')
       return { providerId: arg.providerId, modelId: 'mock-model' }
     },
-    { providerId, baseUrl }
+    { providerId, baseUrl, contextWindow }
   )
+}
+
+/**
+ * 新建 UI 测试会话：使用设置里的默认真实模型（不需要 API Key，也不触发演示隔离限制）。
+ * 只用于验证界面/文件/IPC，不发送消息时无需连接服务商。
+ */
+export async function createUiSession(
+  page: Page,
+  opts: {
+    workspace: string
+    permissionMode?: 'auto' | 'ask' | 'read-only'
+    title?: string
+  }
+): Promise<string> {
+  return page.evaluate(async (arg: typeof opts) => {
+    const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any>; setState: (patch: Record<string, unknown>) => void } }).__morrowStore
+    const state = store.getState()
+    const created = await window.morrow.session.create({
+      workspace: arg.workspace,
+      model: state.settings.defaultModel,
+      permissionMode: arg.permissionMode ?? 'auto',
+      title: arg.title ?? 'E2E 会话'
+    })
+    if (!created.ok) throw new Error(`session.create 失败：${created.error.message}`)
+    await store.getState().selectSession(created.data.id)
+    const list = await window.morrow.session.list()
+    if (list.ok) store.setState({ sessions: list.data })
+    return created.data.id
+  }, opts)
 }
 
 /** 新建会话并选为当前会话（不自动发消息）。 */
@@ -373,8 +422,35 @@ export async function createSession(
       })
       if (!created.ok) throw new Error(`session.create 失败：${created.error.message}`)
       await store.getState().selectSession(created.data.id)
+      const list = await window.morrow.session.list()
+      if (list.ok) store.setState({ sessions: list.data })
       return created.data.id
     },
     opts
   )
+}
+
+/**
+ * 从「设置 → 功能与工具」打开一个真实功能面板。
+ * 兼容旧测试里的工作台面板名，避免每处都记新文案。
+ */
+export async function openToolPanel(page: Page, label: string): Promise<void> {
+  const titles: Record<string, string> = {
+    技能库: '技能',
+    记忆中心: '记忆',
+    项目: '项目',
+    连接器: '外部工具（MCP）',
+    全局搜索: '全局搜索',
+    内置浏览器: '浏览器',
+    浏览器: '浏览器',
+    Git: '版本历史（Git）',
+    'Git 工作台': '版本历史（Git）'
+  }
+  const title = titles[label] ?? label
+  await page.keyboard.press('Control+,')
+  const settings = page.getByRole('dialog', { name: '设置' })
+  await settings.waitFor({ state: 'visible' })
+  await settings.getByRole('tab', { name: '功能与工具' }).click()
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  await settings.getByRole('button', { name: new RegExp(`^${escaped}`) }).click()
 }

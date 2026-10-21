@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronLeft, Eye, EyeOff, Folder, FolderOpen, KeyRound, Sparkles } from 'lucide-react'
 import type { CompleteOnboardingInput } from '@shared/ipc'
 import type { ProviderTestResult, WorkspaceInfo } from '@shared/types'
 import { useAppStore } from '../../state/store'
+import brandMarkUrl from '../../assets/brand-mark.svg'
 import { Button, IconButton, Select } from '../../ui'
 import './Onboarding.css'
 
@@ -11,7 +12,7 @@ type StepId = 1 | 2 | 3
 const STEPS: { id: StepId; label: string; caption: string }[] = [
   { id: 1, label: '认识 Morrow', caption: '它是什么，能做什么' },
   { id: 2, label: '连接模型', caption: '用你自己的 API Key' },
-  { id: 3, label: '选择工作区', caption: '它可以在哪里动手' }
+  { id: 3, label: '选择文件夹', caption: '它可以在哪里动手' }
 ]
 
 function errorText(err: unknown, fallback: string): string {
@@ -26,8 +27,9 @@ export function Onboarding(): React.JSX.Element | null {
   const startDemo = useAppStore((s) => s.startDemo)
   const testProvider = useAppStore((s) => s.testProvider)
   const pickWorkspaceInfo = useAppStore((s) => s.pickWorkspaceInfo)
+  const validateWorkspace = useAppStore((s) => s.validateWorkspace)
 
-  // 首启只露出常用提供方，全部 12 家可在「设置 → 模型连接」里选择
+  // 首启只露出常用提供方；全部服务可在「设置 → 模型」里选择
   const providers = useMemo(
     () =>
       settings.providers.filter(
@@ -49,6 +51,9 @@ export function Onboarding(): React.JSX.Element | null {
   const [picking, setPicking] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const testSeq = useRef(0)
+  const submittingRef = useRef(false)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   const provider = providers.find((p) => p.id === providerId) ?? providers[0] ?? null
   const recentWorkspaces = settings.recentWorkspaces.slice(0, 4)
@@ -58,10 +63,14 @@ export function Onboarding(): React.JSX.Element | null {
     setStep(1)
     setProviderId(providers.find((p) => p.id === settings.defaultModel.providerId)?.id ?? providers[0]?.id ?? '')
     setApiKey('')
+    setShowKey(false)
     setTestResult(null)
+    setTesting(false)
     setWorkspace(null)
     setWorkspaceInfo(null)
     setError(null)
+    testSeq.current += 1
+    submittingRef.current = false
     // 每次打开引导时重置
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -69,14 +78,59 @@ export function Onboarding(): React.JSX.Element | null {
   useEffect(() => {
     if (!provider) return
     setModelId(provider.models[0]?.id ?? '')
+    // 切换提供方时不能把上一家的 Key 带到下一家
+    setApiKey('')
+    setShowKey(false)
     setTestResult(null)
+    setTesting(false)
+    setError(null)
+    testSeq.current += 1
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider?.id])
+
+  /* 引导是模态层：焦点陷阱 + 关闭后还原焦点 */
+  useEffect(() => {
+    if (!open) return undefined
+    const root = rootRef.current
+    const previous = document.activeElement as HTMLElement | null
+    const timer = window.setTimeout(() => root?.focus(), 60)
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Tab' || !root) return
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.getClientRects().length > 0)
+      if (focusables.length === 0) {
+        event.preventDefault()
+        return
+      }
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (!root.contains(document.activeElement)) {
+        event.preventDefault()
+        first.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('keydown', onKey)
+      previous?.focus?.()
+    }
+  }, [open])
 
   if (!open) return null
 
   const handleTest = async (): Promise<void> => {
     if (!provider) return
+    const seq = ++testSeq.current
     setTesting(true)
     setTestResult(null)
     setError(null)
@@ -87,11 +141,13 @@ export function Onboarding(): React.JSX.Element | null {
         apiKey: apiKey.trim() || undefined,
         modelId: modelId || provider.models[0]?.id
       })
-      setTestResult(result)
+      if (seq === testSeq.current) setTestResult(result)
     } catch (err) {
-      setTestResult({ ok: false, latencyMs: 0, message: errorText(err, '连接测试失败。') })
+      if (seq === testSeq.current) {
+        setTestResult({ ok: false, latencyMs: 0, message: errorText(err, '连接测试失败。') })
+      }
     } finally {
-      setTesting(false)
+      if (seq === testSeq.current) setTesting(false)
     }
   }
 
@@ -111,11 +167,39 @@ export function Onboarding(): React.JSX.Element | null {
     }
   }
 
+  const chooseRecentWorkspace = async (path: string): Promise<void> => {
+    if (picking) return
+    setPicking(true)
+    setError(null)
+    try {
+      const info = await validateWorkspace(path)
+      if (!info) {
+        setError('这个文件夹已经不可用了，请重新选择。')
+        return
+      }
+      setWorkspace(info.path)
+      setWorkspaceInfo(info)
+    } finally {
+      setPicking(false)
+    }
+  }
+
   const finish = async (options?: { demo?: boolean }): Promise<void> => {
-    if (submitting) return
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     setError(null)
     try {
+      if (!options?.demo && workspace) {
+        const info = await validateWorkspace(workspace)
+        if (!info) {
+          setWorkspace(null)
+          setWorkspaceInfo(null)
+          setStep(3)
+          setError('这个文件夹已经不可用了，请重新选择，或先不选。')
+          return
+        }
+      }
       const input: CompleteOnboardingInput = {}
       if (options?.demo) {
         input.demo = true
@@ -137,6 +221,7 @@ export function Onboarding(): React.JSX.Element | null {
     } catch (err) {
       setError(errorText(err, '初始化失败，请重试。'))
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -147,14 +232,21 @@ export function Onboarding(): React.JSX.Element | null {
 
 
   return (
-    <div className="onb" role="dialog" aria-modal="true" aria-label="Morrow 首次引导">
+    <div
+      className="onb"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Morrow 首次引导"
+      tabIndex={-1}
+      ref={rootRef}
+    >
       <div className="onb-glow" aria-hidden />
       <div className="grain-overlay" aria-hidden />
 
       <header className="onb-top">
         <div className="onb-brand">
-          <span className="onb-brand-mark serif" aria-hidden>
-            M
+          <span className="onb-brand-mark" aria-hidden>
+            <img className="onb-brand-icon" src={brandMarkUrl} alt="" width={30} height={30} draggable={false} />
             <span className="onb-brand-horizon" aria-hidden />
           </span>
           <span className="onb-brand-word serif">Morrow</span>
@@ -185,8 +277,7 @@ export function Onboarding(): React.JSX.Element | null {
 
         <section className="onb-body">
           {step === 1 ? (
-            <div className="onb-content">
-              <p className="onb-eyebrow mono">第 1 步 / 3 · 认识</p>
+            <div className="onb-content">
               <h1 className="onb-title serif">你好，我是 Morrow。</h1>
               <p className="onb-lead">
                 住在你电脑里的 AI 工作伙伴。你说清想要的结果，它自己读文件、写代码、跑命令，
@@ -204,7 +295,7 @@ export function Onboarding(): React.JSX.Element | null {
                   <span className="onb-feature-node" aria-hidden />
                   <span>
                     <span className="onb-feature-title">每一步都看得见</span>
-                    <span className="onb-feature-desc">做了什么、改了哪里、为什么这么做，都在一条行动轨迹里。</span>
+                    <span className="onb-feature-desc">做了什么、改了哪里、为什么这么做，都在一条执行过程里。</span>
                   </span>
                 </li>
                 <li className="onb-feature">
@@ -234,8 +325,7 @@ export function Onboarding(): React.JSX.Element | null {
           ) : null}
 
           {step === 2 ? (
-            <div className="onb-content">
-              <p className="onb-eyebrow mono">第 2 步 / 3 · 连接</p>
+            <div className="onb-content">
               <h1 className="onb-title serif">把你的模型接进来。</h1>
               <p className="onb-lead">
                 用你自己的 API Key 调用模型。Key 只保存在这台电脑上，由系统加密，界面里再也看不到明文。
@@ -328,15 +418,14 @@ export function Onboarding(): React.JSX.Element | null {
                 </button>
               </div>
               <p className="onb-fine">
-                还没有 API Key？{provider?.name ?? '提供方'} 官网可以创建，也可以先看演示。全部提供方都能在「设置 → 模型连接」里切换。
+                还没有 Key？可以在 {provider?.name ?? '提供方'} 官网创建，或先看演示；之后能在「设置 → 模型」里切换。
               </p>
             </div>
           ) : null}
 
           {step === 3 ? (
-            <div className="onb-content">
-              <p className="onb-eyebrow mono">第 3 步 / 3 · 工作区</p>
-              <h1 className="onb-title serif">选一个文件夹当工作区。</h1>
+            <div className="onb-content">
+              <h1 className="onb-title serif">选一个文件夹当文件夹。</h1>
               <p className="onb-lead">
                 Morrow 只会在这个文件夹里读写文件、运行命令。重要操作仍会先问你，随时可以换一个文件夹。
               </p>
@@ -363,7 +452,7 @@ export function Onboarding(): React.JSX.Element | null {
                     <FolderOpen size={17} strokeWidth={1.5} />
                   </span>
                   <span className="onb-workspace-copy">
-                    <span className="onb-workspace-name">{picking ? '正在打开文件夹…' : '选择工作文件夹'}</span>
+                    <span className="onb-workspace-name">{picking ? '正在打开文件夹…' : '选择文件夹'}</span>
                     <span className="onb-workspace-path mono">例如「桌面 / 工作」或某个项目文件夹</span>
                   </span>
                 </button>
@@ -378,10 +467,8 @@ export function Onboarding(): React.JSX.Element | null {
                         key={path}
                         type="button"
                         className={['onb-recent-item', workspace === path ? 'is-active' : ''].filter(Boolean).join(' ')}
-                        onClick={() => {
-                          setWorkspace(path)
-                          setWorkspaceInfo(null)
-                        }}
+                        disabled={picking}
+                        onClick={() => void chooseRecentWorkspace(path)}
                         title={path}
                       >
                         <Folder size={12} strokeWidth={1.5} aria-hidden />
@@ -412,7 +499,7 @@ export function Onboarding(): React.JSX.Element | null {
                 ) : null}
               </div>
               <p className="onb-fine">
-                工作区之外的任何写入都会单独问你，不会悄悄改到别的地方。
+                文件夹之外的任何写入都会单独问你，不会悄悄改到别的地方。
               </p>
             </div>
           ) : null}

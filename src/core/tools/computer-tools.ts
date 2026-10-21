@@ -16,7 +16,7 @@ import { existsSync, readFileSync, statSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { ToolResult } from '../../shared/types'
 import type { ToolContext } from '../types'
-import { EXTERNAL_ACTION_TOOLS } from '../permissions'
+import { COMPUTER_TOOL_NAMES, type ComputerToolName } from '../permissions'
 import { getNumber, getString } from './args'
 import { killProcessTree, sanitizeEnv } from './command-tool'
 import { snapshotFile } from './fs-tools'
@@ -26,14 +26,8 @@ import { truncateText } from '../util'
 
 /* ── 常量与校验 ───────────────────────────────────────────────── */
 
-export const COMPUTER_TOOL_NAMES = [
-  'computer_screenshot',
-  'computer_click',
-  'computer_type',
-  'computer_key'
-] as const
-
-export type ComputerToolName = (typeof COMPUTER_TOOL_NAMES)[number]
+export { COMPUTER_TOOL_NAMES }
+export type { ComputerToolName }
 
 export const COMPUTER_LIMITS = {
   maxTextLength: 2000,
@@ -103,21 +97,26 @@ export function validateClickInput(input: Record<string, unknown>): ClickInput |
   return { x, y }
 }
 
-export function validateTypeInput(input: Record<string, unknown>): string {
+export type TypeValidation = { ok: true; text: string } | { ok: false; reason: string }
+
+export function validateTypeInput(input: Record<string, unknown>): TypeValidation {
   let text: string
   try {
     text = getString(input, 'text', { required: true, trim: false })
   } catch (err) {
-    return err instanceof Error ? err.message : '要输入的文字不能为空。'
+    return { ok: false, reason: err instanceof Error ? err.message : '要输入的文字不能为空。' }
   }
-  if (!text) return '要输入的文字不能为空。'
+  if (!text) return { ok: false, reason: '要输入的文字不能为空。' }
   if (text.length > COMPUTER_LIMITS.maxTextLength) {
-    return `输入文字过长（${text.length} 字符，上限 ${COMPUTER_LIMITS.maxTextLength}）。请分段输入。`
+    return { ok: false, reason: `输入文字过长（${text.length} 字符，上限 ${COMPUTER_LIMITS.maxTextLength}）。请分段输入。` }
   }
   if (/[\r\n]/.test(text)) {
-    return '输入文字不能包含换行（可能意外提交表单）；需要换行请用 computer_key(keys="ENTER")。'
+    return {
+      ok: false,
+      reason: '输入文字不能包含换行（可能意外提交表单）；需要换行请用 computer_key(keys="ENTER")。'
+    }
   }
-  return text
+  return { ok: true, text }
 }
 
 /** 解析按键组合，返回 VK 序列（含按下顺序）；只允许白名单键与 CTRL+字母。 */
@@ -152,8 +151,11 @@ export function parseKeySequence(keys: string): number[] | string {
     return `不允许的按键「${part}」。只支持 Enter/Esc/Tab/Space/Backspace/Delete/方向键/Home/End/PageUp/PageDown/字母 与 Ctrl/Shift/Alt 组合。`
   }
   if (keyCount !== 1) return '需要包含一个普通键（例如 CTRL+A）。'
-  // 危险系统组合：Ctrl+Esc 打开开始菜单、Ctrl/Shift+Delete 绕过回收站等，一律拒绝
-  if (modifiers.includes('CTRL') && (keyPart === 'ESC' || keyPart === 'ESCAPE' || keyPart === 'DELETE')) {
+  // 危险系统组合：Ctrl+Esc 开始菜单、Ctrl+Shift+Esc 任务管理器、Ctrl/Shift+Delete 绕过回收站等
+  if (
+    ((modifiers.includes('CTRL') || modifiers.includes('SHIFT')) && (keyPart === 'ESC' || keyPart === 'ESCAPE')) ||
+    ((modifiers.includes('CTRL') || modifiers.includes('SHIFT')) && keyPart === 'DELETE')
+  ) {
     return `不允许的按键组合「${raw}」（可能触发系统级操作）。`
   }
   return sequence
@@ -241,6 +243,12 @@ public class MorrowWin {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  public static bool EnableDpiAwareness() {
+    try { return SetProcessDpiAwarenessContext(new IntPtr(-4)); }
+    catch { try { return SetProcessDPIAware(); } catch { return false; } }
+  }
   public static string Title(IntPtr h) { var sb = new StringBuilder(512); GetWindowText(h, sb, 512); return sb.ToString(); }
 }
 '@
@@ -273,6 +281,7 @@ if ($current.ToInt64() -ne $expectedHwnd) { throw '前台窗口在操作前发�
 
 function screenshotScript(path: string, expectedHwnd: number): string {
   return `${WIN32_INFO_TYPE}
+[void][MorrowWin]::EnableDpiAwareness()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $expectedHwnd = ${Math.trunc(expectedHwnd)}
@@ -296,7 +305,8 @@ try {
 }
 
 function clickScript(x: number, y: number, expectedHwnd: number): string {
-  return `${WIN32_INFO_TYPE}${assertForegroundSnippet(expectedHwnd)}
+  return `${WIN32_INFO_TYPE}[void][MorrowWin]::EnableDpiAwareness()
+${assertForegroundSnippet(expectedHwnd)}
 $rect = New-Object MorrowWin+RECT
 if (-not [MorrowWin]::GetWindowRect([IntPtr]$expectedHwnd, [ref]$rect)) { throw '无法读取前台窗口尺寸。' }
 $width = $rect.Right - $rect.Left
@@ -589,10 +599,11 @@ export function createComputerTools(runtime: ComputerRuntime = {}): ToolImpl[] {
       if (platformGuard) return platformGuard
       const rateMessage = rateLimit('computer_type')
       if (rateMessage) return errResult(rateMessage, '请稍等片刻再重试。')
-      const text = validateTypeInput(input)
-      if (text.startsWith('输入文字过长') || text.startsWith('要输入的文字') || text.startsWith('输入文字不能')) {
-        return errResult(text, '请缩短文本（≤2000 字符）并去掉换行后再试。')
+      const validated = validateTypeInput(input)
+      if (!validated.ok) {
+        return errResult(validated.reason, '请缩短文本（≤2000 字符）并去掉换行后再试。')
       }
+      const text = validated.text
       const foreground = await readForeground(ctx)
       if ('ok' in foreground) return foreground as ToolResult
       try {
@@ -662,12 +673,6 @@ export function createComputerTools(runtime: ComputerRuntime = {}): ToolImpl[] {
 /** 默认实例：Lead 在 registry 注册这些工具（不要改 registry 由 Lead 集成） */
 export const computerTools: ToolImpl[] = createComputerTools()
 
-/** 便于 Lead/权限层登记：这些工具属于「每次动作必问」的外部动作 */
+/** 这些工具属于「每次动作必问」的外部动作，已在 permissions.ts 的 EXTERNAL_ACTION_TOOLS 中登记 */
 export const COMPUTER_TOOL_DEFINITIONS = computerTools.map((tool) => tool.definition)
-
-// R10-K3 安全关键：把 computer-use 登记为外部动作（read-only 拒绝，ask/auto 均逐次询问）。
-// 同一 Set 在 permissions.ts 中定义；此处只声明本模块工具的身份，不改 central 文件。
-for (const name of COMPUTER_TOOL_NAMES) {
-  ;(EXTERNAL_ACTION_TOOLS as unknown as Set<string>).add(name)
-}
 

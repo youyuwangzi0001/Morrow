@@ -27,8 +27,12 @@ export function estimateTokens(text: string): number {
   return cjk + Math.ceil(other / 4)
 }
 
+/** 视觉接口按尺寸计费，单图大致 85–1600 tokens；历史估算取保守中位值。 */
+const IMAGE_SIZE_ESTIMATE_TOKENS = 1100
+
 export function estimateMessageTokens(message: ChatMessage): number {
   let total = 4 // role/message 结构开销
+  total += (message.images?.length ?? 0) * IMAGE_SIZE_ESTIMATE_TOKENS
   for (const block of message.content) {
     if (block.type === 'text' || block.type === 'thinking') total += estimateTokens(block.text)
     else if (block.type === 'tool_use') {
@@ -182,6 +186,10 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
   for (const message of messages) {
     const roleLabel = message.role === 'user' ? '用户' : message.role === 'assistant' ? '助手' : '系统'
     const chunks: string[] = []
+    if (message.images?.length) {
+      const names = message.images.map((image) => image.name).filter(Boolean).slice(0, 8).join('、')
+      chunks.push(`（附带 ${message.images.length} 张图片${names ? `：${names}` : ''}）`)
+    }
     for (const block of message.content) {
       if (block.type === 'text' && block.text.trim()) chunks.push(block.text.trim())
       else if (block.type === 'thinking' && block.text.trim()) chunks.push(`（思考）${truncateText(block.text.trim(), 300)}`)
@@ -191,7 +199,14 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
             ? truncateText(block.result.output, 400)
             : `失败：${block.result.error ?? '未知错误'}`
           : '（无结果）'
-        chunks.push(`（调用工具 ${block.name}，结果：${resultText}）`)
+        // 参数里通常有文件路径/命令，摘要必须保留这些可核对信息
+        let inputText = ''
+        try {
+          inputText = block.input ? truncateText(JSON.stringify(block.input), 320) : ''
+        } catch {
+          inputText = ''
+        }
+        chunks.push(`（调用工具 ${block.name}${inputText ? `，参数：${inputText}` : ''}，结果：${resultText}）`)
       }
     }
     if (chunks.length === 0) continue
@@ -208,7 +223,15 @@ export function localExtractSummary(messages: ChatMessage[]): string {
     const texts: string[] = []
     for (const block of message.content) {
       if (block.type === 'text') texts.push(block.text)
-      else if (block.type === 'tool_use') texts.push(`[${block.name}${block.result?.ok ? '' : ' 失败'}]`)
+      else if (block.type === 'tool_use') {
+        let input = ''
+        try {
+          input = block.input ? truncateText(JSON.stringify(block.input), 100) : ''
+        } catch {
+          input = ''
+        }
+        texts.push(`[${block.name}${input ? ` ${input}` : ''}${block.result?.ok ? '' : ' 失败'}]`)
+      }
     }
     const joined = texts.join(' ').replace(/\s+/g, ' ').trim()
     if (!joined) continue

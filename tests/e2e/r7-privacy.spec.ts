@@ -53,7 +53,7 @@ test('M32：隐私脱敏（safe.log + 可见回复/持久会话均无原值）',
     await page.waitForFunction(() => {
       const s = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore.getState()
       return !s.run && (s.session?.usage?.inputTokens ?? 0) > 0
-    }, { timeout: 120_000 })
+    }, undefined, { timeout: 120_000 })
     const visibleText = await page.evaluate(() => {
       const s = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore.getState()
       return (s.session.messages as Array<{ role: string; content: Array<{ type: string; text?: string }> }>)

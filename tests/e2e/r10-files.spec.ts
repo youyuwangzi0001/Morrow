@@ -185,6 +185,73 @@ test.describe('R10-A 文件树与文件操作', () => {
     })
   })
 
+  test('文件夹重命名/删除后保持展开状态，旧路径不产生多余错误', async () => {
+    const tree = page.locator('.file-tree')
+    await page.getByRole('button', { name: '新建文件夹', exact: true }).click()
+    await page.getByLabel('名字', { exact: true }).fill('pack')
+    await page.getByRole('button', { name: '创建' }).click()
+    const pack = tree.locator('.ft-row', { hasText: 'pack' })
+    await expect(pack).toBeVisible()
+
+    await pack.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: '新建文件', exact: true }).click()
+    await page.getByLabel('名字', { exact: true }).fill('inner.md')
+    await page.getByRole('button', { name: '创建' }).click()
+    await expect(tree.locator('.ft-row[title="pack/inner.md"]')).toBeVisible()
+
+    await pack.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: '重命名' }).click()
+    await page.getByLabel('新名字', { exact: true }).fill('pack2')
+    await page.locator('.modal-foot').getByRole('button', { name: '重命名' }).click()
+    const renamed = tree.locator('.ft-row', { hasText: 'pack2' })
+    await expect(renamed).toBeVisible()
+    await expect(renamed).toHaveAttribute('aria-expanded', 'true')
+    await expect(tree.locator('.ft-row[title="pack2/inner.md"]')).toBeVisible()
+    await expect(page.locator('.toast-item.toast-error')).toHaveCount(0)
+
+    await renamed.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.locator('.modal-foot').getByRole('button', { name: '删除' }).click()
+    await expect(renamed).toHaveCount(0)
+    await expect(tree.locator('.ft-row[title="pack2/inner.md"]')).toHaveCount(0)
+    await page.waitForTimeout(400)
+    await expect(page.locator('.toast-item.toast-error')).toHaveCount(0)
+  })
+
+  test('键盘：无行焦点时不误删首行，方向键从首行开始且操作只作用于焦点行', async () => {
+    const tree = page.locator('.file-tree')
+    const body = tree.locator('.ft-body')
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await body.focus()
+    await page.keyboard.press('Delete')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.keyboard.press('F2')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    await page.keyboard.press('ArrowDown')
+    await expect(tree.locator('.ft-row').first()).toBeFocused()
+    await page.keyboard.press('Delete')
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
+  test('外部打开文件时自动展开祖先目录并高亮', async () => {
+    const tree = page.locator('.file-tree')
+    const docs = tree.locator('.ft-row', { hasText: 'docs' })
+    if ((await docs.getAttribute('aria-expanded')) === 'true') await docs.click()
+    await expect(tree.locator('.ft-row', { hasText: 'a.txt' })).toHaveCount(0)
+
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('morrow:open-file', { detail: { path: 'docs/a.txt', absolutePath: '' } })
+      )
+    })
+    await expect(tree.locator('.ft-row', { hasText: 'a.txt' })).toBeVisible()
+    await expect(tree.locator('.ft-row.is-active', { hasText: 'a.txt' })).toBeVisible()
+    await expect(docs).toHaveAttribute('aria-expanded', 'true')
+  })
+
   test('边界 / 二进制 / mtime 冲突返回可读错误', async () => {
     const outside = await invoke('feature:files:read', { workspace, path: '../outside-secret.txt' })
     expect(outside.ok).toBe(false)
@@ -218,6 +285,8 @@ test.describe('R10-A 文件树与文件操作', () => {
   })
 
   test('明暗主题截图（文件树）', async () => {
+    // 等前面操作的成功提示自动消失，截图只保留应用界面
+    await expect(page.locator('.toast-item')).toHaveCount(0, { timeout: 7_000 })
     await page.evaluate(async () => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       store.getState().setTheme('light')

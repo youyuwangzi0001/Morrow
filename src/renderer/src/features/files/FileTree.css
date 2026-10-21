@@ -251,6 +251,17 @@
   opacity: 0.65;
 }
 
+.ft-limit-badge {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--r-full);
+  color: var(--amber);
+  font-size: 8px;
+  line-height: 13px;
+  opacity: 0.9;
+}
+
 /* 空态 / 错误 / 加载 */
 .ft-empty {
   display: flex;

@@ -18,6 +18,7 @@ import type {
 import { WorkspaceEscapeError, ToolInputError } from './errors'
 import type { GoalPatch } from '../types'
 import type { ToolContext } from '../types'
+import { resolveAgentRole } from '../agent-roles'
 import { newId, truncateText } from '../util'
 import { getString } from './args'
 import { decodeTextBuffer } from './fs-tools'
@@ -220,8 +221,9 @@ export const taskTool: ToolImpl = {
   definition: {
     name: 'task',
     description:
-      '把一个独立的小任务交给子代理去完成。子代理拥有与主代理相同的工具与权限（可读写文件、运行命令、调用 MCP，' +
-      '按主代理当前权限模式审批）；同一轮多条 task 调用会真正并行。子代理不能再创建子代理，也不能更新父目标。' +
+      '把一个独立的小任务交给子代理去完成。可用 agent 指定角色（explore/plan/review/test/docs/general，' +
+      '见系统提示中的「可用子代理角色」）；角色只限制工具与提示词，权限与主代理一致（写文件/命令/MCP 仍逐次审批）。' +
+      '同一轮多条 task 调用会真正并行（最多 8 个同时推进）。子代理不能再创建子代理，也不能更新父目标或修改主任务计划。' +
       '子代理看不到当前对话，必须在 prompt 里写清背景、目标、输入/输出路径和期望输出。返回子代理的结论摘要与真实产物路径。' +
       '子代理失败、被取消或耗尽步数时本工具会返回错误（ok=false），不会把中间文字伪装成完成。',
     parameters: {
@@ -229,29 +231,48 @@ export const taskTool: ToolImpl = {
       properties: {
         description: { type: 'string', description: '一句话说明这个子任务（展示用）' },
         prompt: { type: 'string', description: '完整任务说明：背景、要做什么、看哪些文件、输出什么' },
-        context: { type: 'string', description: '可选的上下文摘要（当前任务进展等）' }
+        context: { type: 'string', description: '可选的上下文摘要（当前任务进展等）' },
+        agent: { type: 'string', description: '子代理角色名（缺省 general）：explore/plan/review/test/docs 或自定义角色' }
       },
       required: ['description', 'prompt']
     },
     category: 'meta',
     risk: 'low',
-    titleFor: (input) => `子代理：${oneLineInput(input, 'description', 48)}`
+    titleFor: (input) => {
+      const title = oneLineInput(input, 'description', 48) || '子代理'
+      const role = oneLineInput(input, 'agent', 24)
+      return role ? `${title} · ${role}` : title
+    }
   },
   async execute(input, ctx): Promise<ToolResult> {
-    if (ctx.readOnly || ctx.depth > 0) {
-      return errResult('子代理不能再启动子代理。', '请直接使用只读工具完成这个任务，或把任务交回主代理。')
+    if (ctx.depth > 0) {
+      return errResult('子代理不能再启动子代理。', '请直接使用现有工具完成这个任务，或把任务交回主代理。')
+    }
+    if (ctx.readOnly) {
+      return errResult('当前是只读上下文，不能启动子代理。', '请把任务交回主代理，或切换到有权限的工作模式。')
     }
     const description = getString(input, 'description', { required: true, maxLength: 200 })
     const prompt = getString(input, 'prompt', { required: true, maxLength: 20_000 })
-    const context = typeof input.context === 'string' ? input.context : undefined
-    ctx.progress(`子代理开始：${description}`)
-    const result = await ctx.runSubagent({ description, prompt, context })
+    const context = typeof input.context === 'string' ? input.context.slice(0, 4000) : undefined
+    const agentName =
+      typeof input.agent === 'string' && input.agent.trim()
+        ? input.agent.trim().toLowerCase().slice(0, 80)
+        : undefined
+    const role = resolveAgentRole(ctx.agents ?? [], agentName)
+    if (!role) {
+      const available = (ctx.agents ?? []).map((item) => item.name).join('、') || '（无）'
+      return errResult(`没有名为「${agentName}」的子代理角色。可用角色：${available}。`, '使用系统提示中列出的角色名，或省略 agent 使用 general。')
+    }
+    ctx.progress(`开始：${description}（${role.title}）`)
+    const result = await ctx.runSubagent({ description, prompt, context, role })
     const meta = {
       status: result.status,
+      role: role.name,
       steps: result.steps,
       usage: result.usage,
       error: result.error ?? null,
-      failedTools: result.failedTools ?? []
+      failedTools: result.failedTools ?? [],
+      changedFiles: result.changedFiles ?? []
     }
     // R2-B/C：失败/取消/步数耗尽绝不能返回 ok=true（旧实现在 summary 有占位文字时恒成功）
     if (result.status !== 'completed') {
@@ -272,6 +293,210 @@ export const taskTool: ToolImpl = {
       lines.push(`⚠ 子代理执行期间有工具失败（结论可能不完整，请自行核实）：${result.failedTools.join('；')}`)
     }
     return okResult(lines.join('\n'), meta)
+  }
+}
+
+/* ── swarm（多角色并行） ──────────────────────────────────────── */
+
+const MAX_SWARM_TASKS = 8
+const MAX_SWARM_PARALLEL = 8
+
+export const swarmTool: ToolImpl = {
+  definition: {
+    name: 'swarm',
+    description:
+      '把一个大任务拆成 2–8 个相互独立的子任务，并行交给不同角色的子代理（explore/plan/review/test/docs/general 或自定义角色）。' +
+      '每个子任务独立运行、互不共享上下文；同一批最多 8 个同时推进。适合「分别核查多个模块/资料再汇总」这类可以并行的任务；' +
+      '有先后依赖的任务请用 task 或自己按顺序完成。写文件/命令/MCP 仍按权限逐次审批。返回每个子任务的摘要与失败信息；有任一子任务未完成时本工具返回错误，不能当作全部完成。',
+    parameters: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: '这次拆分要达成的总目标（一句话）' },
+        tasks: {
+          type: 'array',
+          minItems: 2,
+          maxItems: MAX_SWARM_TASKS,
+          description: '相互独立的子任务（2–8 个）',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: '子任务标题（展示用）' },
+              prompt: { type: 'string', description: '子任务完整说明：背景、要做什么、看哪些文件、输出什么' },
+              agent: { type: 'string', description: '子代理角色名（缺省 general）' },
+              context: { type: 'string', description: '可选上下文摘要' }
+            },
+            required: ['title', 'prompt']
+          }
+        }
+      },
+      required: ['goal', 'tasks'],
+      additionalProperties: false
+    },
+    category: 'meta',
+    risk: 'low',
+    titleFor: (input) => {
+      const count = Array.isArray(input.tasks) ? input.tasks.length : 0
+      return `集群${count > 0 ? ` × ${count}` : ''}`
+    }
+  },
+  async execute(input, ctx): Promise<ToolResult> {
+    if (ctx.depth > 0) {
+      return errResult('子代理不能再启动集群。', '请直接完成你负责的子任务，把结论返回给主代理。')
+    }
+    if (ctx.readOnly) {
+      return errResult('当前是只读上下文，不能启动集群。', '请把任务交回主代理，或切换到工作模式。')
+    }
+    const goal = getString(input, 'goal', { required: true, maxLength: 2000 })
+    if (!Array.isArray(input.tasks)) return errResult('参数「tasks」必须是数组。', '提供 2–8 个互相独立的子任务。')
+    if (input.tasks.length < 2 || input.tasks.length > MAX_SWARM_TASKS) {
+      return errResult(`集群需要 2–${MAX_SWARM_TASKS} 个子任务。`, '单个子任务请直接用 task；有依赖关系的任务请按顺序执行。')
+    }
+    const prepared: Array<{
+      index: number
+      title: string
+      prompt: string
+      context?: string
+      role: NonNullable<ReturnType<typeof resolveAgentRole>>
+    }> = []
+    for (let index = 0; index < input.tasks.length; index += 1) {
+      const raw = input.tasks[index]
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return errResult('每个子任务必须是一个对象。', '字段：title、prompt、可选 agent/context。')
+      }
+      const item = raw as Record<string, unknown>
+      let title: string
+      let prompt: string
+      try {
+        title = getString(item, 'title', { required: true, maxLength: 120 })
+        prompt = getString(item, 'prompt', { required: true, maxLength: 12_000 })
+      } catch (err) {
+        if (err instanceof ToolInputError) return errResult(err.message, err.hint)
+        throw err
+      }
+      const agentName =
+        typeof item.agent === 'string' && item.agent.trim()
+          ? item.agent.trim().toLowerCase().slice(0, 80)
+          : undefined
+      const role = resolveAgentRole(ctx.agents ?? [], agentName)
+      if (!role) {
+        const available = (ctx.agents ?? []).map((entry) => entry.name).join('、') || '（无）'
+        return errResult(`子任务「${title}」使用了未知角色「${agentName}」。可用角色：${available}。`, '使用系统提示中的角色名，或省略 agent。')
+      }
+      prepared.push({
+        index,
+        title,
+        prompt,
+        role,
+        ...(typeof item.context === 'string' && item.context.trim() ? { context: item.context.slice(0, 4000) } : {})
+      })
+    }
+
+    // 先把整批任务以「等待」状态送到界面，用户能立刻看到编排结果，而不是只看到转圈。
+    for (const item of prepared) {
+      ctx.progress(`等待：${item.title}`, {
+        swarmTask: {
+          index: item.index,
+          title: item.title,
+          agent: item.role.name,
+          status: 'queued'
+        }
+      })
+    }
+    ctx.progress(`开始：${prepared.length} 个并行子任务`)
+    const results: Array<{
+      index: number
+      title: string
+      agent: string
+      role: string
+      status: string
+      summary: string
+      steps: number
+      error?: string
+    }> = []
+    const changedFiles = new Map<string, Record<string, unknown>>()
+    for (let offset = 0; offset < prepared.length; offset += MAX_SWARM_PARALLEL) {
+      const chunk = prepared.slice(offset, offset + MAX_SWARM_PARALLEL)
+      const chunkResults = await Promise.all(
+        chunk.map(async (item) => {
+          ctx.progress(`进行中：${item.title}`, {
+            swarmTask: {
+              index: item.index,
+              title: item.title,
+              agent: item.role.name,
+              status: 'running'
+            }
+          })
+          const result = await ctx.runSubagent({
+            description: item.title,
+            prompt: `【总目标】${goal}\n\n${item.prompt}`,
+            ...(item.context ? { context: item.context } : {}),
+            role: item.role,
+            swarmTask: { index: item.index, title: item.title, agent: item.role.name }
+          })
+          ctx.progress(`${result.status === 'completed' ? '完成' : '未完成'}：${item.title}`, {
+            swarmTask: {
+              index: item.index,
+              title: item.title,
+              agent: item.role.name,
+              status: result.status,
+              stepCount: result.steps,
+              summary: result.summary,
+              ...(result.error ? { error: result.error } : {})
+            }
+          })
+          return result
+        })
+      )
+      chunk.forEach((item, index) => {
+        const result = chunkResults[index]
+        results.push({
+          index: item.index,
+          title: item.title,
+          agent: item.role.name,
+          role: item.role.title,
+          status: result.status,
+          summary: result.summary,
+          steps: result.steps,
+          ...(result.error ? { error: result.error } : {})
+        })
+        // 失败的子任务也可能已经改过文件；检查点必须登记，回退才不会漏文件
+        for (const file of result.changedFiles ?? []) {
+          const path = typeof file.absolutePath === 'string' ? file.absolutePath : ''
+          if (!path || typeof file.afterHash !== 'string') continue
+          const existing = changedFiles.get(path)
+          if (existing) existing.afterHash = file.afterHash
+          else changedFiles.set(path, { ...file })
+        }
+      })
+    }
+
+    const completed = results.filter((item) => item.status === 'completed')
+    const failed = results.filter((item) => item.status !== 'completed')
+    const lines = [
+      `【集群结果】${completed.length}/${results.length} 个完成${failed.length > 0 ? `，${failed.length} 个未完成` : ''}`,
+      ...results.map(
+        (item) =>
+          `\n## ${item.title}（${item.role}·${item.status}·${item.steps} 步）\n${truncateText(item.summary || '（无结论）', 1200)}${item.error ? `\n错误：${item.error}` : ''}`
+      )
+    ]
+    if (failed.length > 0) {
+      lines.push('\n未完成的子任务不能算作完成；请根据上面的信息重试、缩小范围，或由你自己补齐后再验证。')
+    }
+    const meta = {
+      tasks: results,
+      completed: completed.length,
+      failed: failed.length,
+      ...(changedFiles.size > 0 ? { changedFiles: [...changedFiles.values()].slice(0, 100) } : {})
+    }
+    return failed.length > 0
+      ? {
+          ok: false,
+          output: lines.join('\n'),
+          error: `集群有 ${failed.length}/${results.length} 个子任务未完成。`,
+          hint: '不要把未完成的子任务当作已完成；根据输出重试或补齐。',
+          meta
+        }
+      : okResult(lines.join('\n'), meta)
   }
 }
 
@@ -378,20 +603,30 @@ export const openArtifactTool: ToolImpl = {
     }
 
     const now = Date.now()
+    const foldPath = (value: string): string => {
+      const normalized = value.replace(/\\/g, '/')
+      return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+    }
+    // 同一路径/同一内联标题只保留一张成品卡片；重新打开视为更新，避免画布堆满重复副本
+    const existing = ctx.getArtifacts().find((item) => {
+      if (absolutePath) return Boolean(item.path && foldPath(item.path) === foldPath(absolutePath))
+      return content !== undefined && !item.path && item.kind === kind && item.title === title
+    })
     const artifact: Artifact = {
-      id: newId('artifact'),
+      id: existing?.id ?? newId('artifact'),
       title,
       kind,
       ...(absolutePath ? { path: absolutePath } : {}),
       ...(content !== undefined ? { content } : {}),
       ...(language ? { language } : inferLanguage(rawPath, kind) ? { language: inferLanguage(rawPath, kind) } : {}),
-      createdAt: now,
+      createdAt: existing?.createdAt ?? now,
       updatedAt: now
     }
     ctx.addArtifact(artifact)
     const sizeText = content !== undefined ? `，${content.length.toLocaleString('zh-CN')} 字符` : ''
-    return okResult(`已在画布中打开《${title}》（${kind}${sizeText}）。`, {
+    return okResult(`${existing ? '已更新画布中的' : '已在画布中打开'}《${title}》（${kind}${sizeText}）。`, {
       artifactId: artifact.id,
+      updated: Boolean(existing),
       kind,
       path: absolutePath ? displayPath(absolutePath, ctx.workspace) : null,
       absolutePath: absolutePath ?? null
@@ -584,4 +819,4 @@ export const updateGoalTool: ToolImpl = {
   }
 }
 
-export const metaTools: ToolImpl[] = [todoWriteTool, askUserTool, rememberTool, taskTool, openArtifactTool]
+export const metaTools: ToolImpl[] = [todoWriteTool, askUserTool, rememberTool, taskTool, swarmTool, openArtifactTool]

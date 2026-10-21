@@ -361,14 +361,6 @@
   width: 100%;
 }
 
-.mc-foot-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-3);
-  font-size: 10px;
-}
-
 .mc-foot > .btn:last-child {
   margin-left: auto;
 }

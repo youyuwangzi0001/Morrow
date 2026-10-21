@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
-  Brain,
   FileText,
-  FolderKanban,
-  Globe2,
-  LayoutGrid,
+  Ghost,
   MessageSquare,
   Moon,
   PanelLeft,
-  Plug,
   PlusCircle,
   Search,
   Settings as SettingsIcon,
@@ -17,7 +13,8 @@ import {
 } from 'lucide-react'
 import type { FileSearchResult, SessionMeta } from '@shared/types'
 import { useAppStore } from '../../state/store'
-import { openWorkbench, type WorkbenchPanel } from '../workbench/events'
+import { dispatchOpenFile } from '../files/files-client'
+import { relativeToWorkspace } from '../artifacts/editor/editor-api'
 import { Kbd, Modal } from '../../ui'
 import './CommandPalette.css'
 
@@ -35,7 +32,7 @@ interface PaletteItem {
 
 const GROUP_LABEL: Record<ItemGroup, string> = {
   action: '操作',
-  session: '会话',
+  session: '对话',
   file: '文件'
 }
 
@@ -48,11 +45,13 @@ export function CommandPalette(): React.JSX.Element | null {
   const newSession = useAppStore((s) => s.newSession)
   const selectSession = useAppStore((s) => s.selectSession)
   const openSettings = useAppStore((s) => s.openSettings)
+  const openSideChat = useAppStore((s) => s.openSideChat)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const startDemo = useAppStore((s) => s.startDemo)
   const setTheme = useAppStore((s) => s.setTheme)
   const searchFiles = useAppStore((s) => s.searchFiles)
-  const workspace = useAppStore((s) => s.settings.lastWorkspace ?? s.session?.workspace ?? null)
+  // 与 store.searchFiles / 编辑器保持一致：优先当前对话的文件夹
+  const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -71,7 +70,7 @@ export function CommandPalette(): React.JSX.Element | null {
     return () => window.clearTimeout(timer)
   }, [paletteOpen])
 
-  /* 工作区文件搜索（防抖） */
+  /* 文件夹文件搜索（防抖） */
   useEffect(() => {
     if (!paletteOpen || !query.trim()) {
       setFileResults([])
@@ -104,35 +103,35 @@ export function CommandPalette(): React.JSX.Element | null {
         run: () => void newSession()
       },
       {
+        id: 'action:temp',
+        group: 'action',
+        label: '新建临时对话',
+        description: '不保存、不进入历史与搜索，关闭应用后消失',
+        icon: <Ghost size={15} strokeWidth={1.5} />,
+        run: () => void newSession({ temporary: true })
+      },
+      {
         id: 'action:settings',
         group: 'action',
         label: '打开设置',
-        description: '模型连接、权限、外观与关于',
+        description: '模型、外观、权限、功能与工具',
         icon: <SettingsIcon size={15} strokeWidth={1.5} />,
         shortcut: 'Ctrl ,',
         run: openSettings
       },
-      ...([
-        ['overview', '工作台', '文件、编辑器、记忆、项目与连接器', LayoutGrid],
-        ['memory', '记忆中心', '查看、编辑和清理 Morrow 记住的事', Brain],
-        ['projects', '项目', '项目指令、知识文件与长期背景', FolderKanban],
-        ['connectors', '连接器', '管理 MCP 服务与外部工具', Plug],
-        ['skills', '技能库', '发现、启用或安装工作流技能', Sparkles],
-        ['search', '全局搜索', '搜索对话、文件与产物内容', Search],
-        ['browser', '内置浏览器', '在同一工作台里打开网页', Globe2]
-      ] as [WorkbenchPanel | 'overview', string, string, React.ComponentType<{ size?: number; strokeWidth?: number }>][]).map(([id, label, description, Icon]) => ({
-        id: `action:workbench:${id}`,
-        group: 'action' as const,
-        label,
-        description,
-        icon: <Icon size={15} strokeWidth={1.5} />,
-        run: () => (id === 'overview' ? openWorkbench() : openWorkbench(id))
-      })),
+      {
+        id: 'action:sidechat',
+        group: 'action',
+        label: '侧边聊天',
+        description: '在右侧栏问一句，不影响主对话',
+        icon: <MessageSquare size={15} strokeWidth={1.5} />,
+        run: () => openSideChat()
+      },
       {
         id: 'action:theme',
         group: 'action',
-        label: theme === 'dark' ? '切换到素纸主题' : '切换到墨夜主题',
-        description: theme === 'dark' ? '白天的纸色工作台' : '深夜书房的安静底色',
+        label: theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
+        description: theme === 'dark' ? '白天的米色界面' : '深夜的石墨黑界面',
         icon: theme === 'dark' ? <Sun size={15} strokeWidth={1.5} /> : <Moon size={15} strokeWidth={1.5} />,
         run: () => setTheme(theme === 'dark' ? 'light' : 'dark')
       },
@@ -154,18 +153,21 @@ export function CommandPalette(): React.JSX.Element | null {
       }
     ]
     const keyword = query.trim().toLowerCase()
-    return keyword ? list.filter((item) => item.label.toLowerCase().includes(keyword)) : list
-  }, [newSession, openSettings, setTheme, theme, toggleSidebar, startDemo, query])
+    return keyword
+      ? list.filter((item) => `${item.label} ${item.description ?? ''}`.toLowerCase().includes(keyword))
+      : list
+  }, [newSession, openSettings, openSideChat, setTheme, theme, toggleSidebar, startDemo, query])
 
   const sessionItems = useMemo<PaletteItem[]>(() => {
     const keyword = query.trim().toLowerCase()
+    const saved = sessions.filter((session) => !session.temporary)
     const matched: SessionMeta[] = keyword
-      ? sessions.filter(
+      ? saved.filter(
           (session) =>
             session.title.toLowerCase().includes(keyword) ||
             (session.preview ?? '').toLowerCase().includes(keyword)
         )
-      : sessions
+      : saved
     return matched.slice(0, 8).map((session) => ({
       id: `session:${session.id}`,
       group: 'session' as const,
@@ -184,14 +186,21 @@ export function CommandPalette(): React.JSX.Element | null {
       id: `file:${file.path}`,
       group: 'file' as const,
       label: file.name,
-      description: file.dir ? `工作区 / ${file.dir}` : '工作区根目录',
+      description: file.dir ? `文件夹 / ${file.dir} · 打开编辑` : '文件夹根目录 · 打开编辑',
       icon: <FileText size={15} strokeWidth={1.5} />,
       run: () => {
-        void navigator.clipboard.writeText(file.path).catch(() => undefined)
-        useAppStore.getState().notify('info', `已复制路径：${file.path}`)
+        if (!workspace) {
+          useAppStore.getState().notify('warning', '还没有选择文件夹，无法打开文件。')
+          return
+        }
+        // files.search 返回绝对路径；编辑器需要「文件夹相对路径 + 绝对路径」
+        dispatchOpenFile({
+          path: relativeToWorkspace(workspace, file.path) ?? file.path,
+          absolutePath: file.path
+        })
       }
     }))
-  }, [fileResults, query])
+  }, [fileResults, query, workspace])
 
   const groups = useMemo(() => {
     const result: { group: ItemGroup; items: PaletteItem[] }[] = []
@@ -202,16 +211,18 @@ export function CommandPalette(): React.JSX.Element | null {
   }, [actions, sessionItems, fileItems])
 
   const flat = useMemo(() => groups.flatMap((group) => group.items), [groups])
-  const activeItem = flat[Math.min(activeIndex, Math.max(0, flat.length - 1))] ?? null
+  // 异步文件结果可能让列表变短：索引始终夹在有效范围内，避免「高亮消失但 Enter 仍有动作」
+  const currentIndex = flat.length === 0 ? 0 : Math.min(activeIndex, flat.length - 1)
+  const activeItem = flat[currentIndex] ?? null
 
   useEffect(() => {
     setActiveIndex(0)
   }, [query])
 
   useEffect(() => {
-    const node = listRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`)
+    const node = listRef.current?.querySelector<HTMLElement>(`[data-index="${currentIndex}"]`)
     node?.scrollIntoView({ block: 'nearest' })
-  }, [activeIndex])
+  }, [currentIndex])
 
   const runItem = (item: PaletteItem | null): void => {
     if (!item) return
@@ -241,8 +252,9 @@ export function CommandPalette(): React.JSX.Element | null {
             role="combobox"
             aria-expanded
             aria-controls="palette-list"
+            aria-autocomplete="list"
             aria-activedescendant={activeItem ? `palette-item-${activeItem.id.replace(/[^a-zA-Z0-9_-]/g, '-')}` : undefined}
-            aria-label="搜索命令、会话或文件"
+            aria-label="搜索命令、对话或文件"
             placeholder="输入命令，或搜索对话与文件…"
             autoComplete="off"
             spellCheck={false}
@@ -250,10 +262,10 @@ export function CommandPalette(): React.JSX.Element | null {
             onKeyDown={(event) => {
               if (event.key === 'ArrowDown') {
                 event.preventDefault()
-                setActiveIndex((index) => (flat.length === 0 ? 0 : (index + 1) % flat.length))
+                setActiveIndex(flat.length === 0 ? 0 : (currentIndex + 1) % flat.length)
               } else if (event.key === 'ArrowUp') {
                 event.preventDefault()
-                setActiveIndex((index) => (flat.length === 0 ? 0 : (index - 1 + flat.length) % flat.length))
+                setActiveIndex(flat.length === 0 ? 0 : (currentIndex - 1 + flat.length) % flat.length)
               } else if (event.key === 'Enter') {
                 event.preventDefault()
                 runItem(activeItem)
@@ -282,13 +294,14 @@ export function CommandPalette(): React.JSX.Element | null {
               <p className="palette-group-label mono">{GROUP_LABEL[group.group]}</p>
               {group.items.map((item) => {
                 const index = flat.indexOf(item)
-                const active = index === activeIndex
+                const active = index === currentIndex
                 return (
                   <button
                     key={item.id}
                     id={`palette-item-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={active}
                     data-index={index}
                     className={['palette-item', active ? 'is-active' : ''].filter(Boolean).join(' ')}
@@ -323,7 +336,7 @@ export function CommandPalette(): React.JSX.Element | null {
         <div className="palette-foot">
           <span className="palette-foot-keys mono">↑↓ 选择 · Enter 打开 · Esc 关闭</span>
           <span className="palette-foot-workspace mono truncate">
-            {workspace ? (workspace.split(/[\\/]/).filter(Boolean).pop() ?? workspace) : '未选择工作区'}
+            {workspace ? (workspace.split(/[\\/]/).filter(Boolean).pop() ?? workspace) : '未选择文件夹'}
           </span>
         </div>
       </div>

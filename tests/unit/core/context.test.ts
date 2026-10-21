@@ -47,6 +47,15 @@ describe('estimateTokens', () => {
     expect(estimateMessageTokens(withTool)).toBeGreaterThan(20)
     expect(estimateMessagesTokens([withTool], '系统提示')).toBeGreaterThan(estimateMessageTokens(withTool))
   })
+
+  it('历史图片计入上下文估算，避免带图会话迟迟不压缩', () => {
+    const withImage: ChatMessage = {
+      ...message('user', '看这张图'),
+      images: [{ mediaType: 'image/png', dataBase64: 'A'.repeat(100), name: 'shot.png' }]
+    }
+    expect(estimateMessageTokens(withImage)).toBeGreaterThanOrEqual(1100)
+    expect(estimateMessageTokens(withImage)).toBeGreaterThan(estimateMessageTokens(message('user', '看这张图')))
+  })
 })
 
 describe('planCompaction', () => {
@@ -137,7 +146,7 @@ describe('压缩与序列化', () => {
             name: 'read_file',
             title: '读取',
             category: 'read',
-            input: {},
+            input: { path: '资料/报价单.xlsx' },
             status: 'success',
             result: { ok: true, output: '文件内容' }
           }
@@ -147,8 +156,20 @@ describe('压缩与序列化', () => {
     const text = serializeMessagesForSummary(messages)
     expect(text).toContain('用户')
     expect(text).toContain('read_file')
+    expect(text).toContain('资料/报价单.xlsx')
     const truncated = serializeMessagesForSummary(messages, 10)
     expect(truncated.length).toBeLessThanOrEqual(80)
+  })
+
+  it('摘要输入保留图片存在感，而不是当作没有附件', () => {
+    const withImage: ChatMessage = {
+      ...message('user', '看设计稿'),
+      images: [{ mediaType: 'image/png', dataBase64: 'AAAA', name: '首页设计.png' }]
+    }
+    const text = serializeMessagesForSummary([withImage])
+    expect(text).toContain('1 张图片')
+    expect(text).toContain('首页设计.png')
+    expect(text).not.toContain('AAAA')
   })
 
   it('localExtractSummary 产出可读兜底摘要', () => {

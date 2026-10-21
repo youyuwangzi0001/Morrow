@@ -1,0 +1,342 @@
+/* 侧边聊天：停靠在右侧栏，和画布共用宽度、头部高度与拖拽习惯。 */
+.sidechat-resizer {
+  z-index: 7;
+}
+
+.sidechat-resizer::before {
+  left: 1px;
+}
+
+.sidechat-rail {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  width: 420px;
+  min-width: 320px;
+  max-width: min(960px, 68vw);
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg-elev);
+  container-type: inline-size;
+  animation: sidechat-in 180ms var(--ease-out);
+}
+
+.sidechat-rail.is-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-overlay);
+  width: min(420px, 100vw);
+  min-width: 0;
+  max-width: none;
+  box-shadow: var(--shadow-float);
+}
+
+@keyframes sidechat-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.sidechat-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 26%, transparent), transparent);
+}
+
+.sidechat-head-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--gold);
+}
+
+.sidechat-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidechat-title {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+}
+
+.sidechat-sub {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidechat-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.sidechat-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+}
+
+.sidechat-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+
+.sidechat-context:hover {
+  border-color: var(--line);
+  background: var(--surface-hover);
+  color: var(--text-2);
+}
+
+.sidechat-context:has(input:checked) {
+  color: var(--text-2);
+}
+
+.sidechat-context input {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--gold);
+}
+
+.sidechat-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 18px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sidechat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  margin: auto;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.sidechat-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 2px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--gold-ghost);
+  color: var(--gold);
+}
+
+.sidechat-empty-title {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.sidechat-hint {
+  max-width: 300px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.sidechat-hint-tip {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+.sidechat-hint code {
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: 10px;
+}
+
+.sidechat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.sidechat-msg.is-user {
+  align-items: flex-end;
+}
+
+.sidechat-role {
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.sidechat-text {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
+.sidechat-text .markdown {
+  font-size: 12.5px;
+}
+
+.sidechat-msg.is-user .sidechat-text {
+  max-width: 88%;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--user-bubble);
+}
+
+.sidechat-typing {
+  color: var(--text-3);
+  font-size: 11px;
+  animation: sidechat-pulse 1.4s ease-in-out infinite;
+}
+
+.sidechat-stopped {
+  display: block;
+  margin-top: 4px;
+  color: var(--amber);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+.sidechat-notice {
+  padding: 7px 9px;
+  border-left: 2px solid var(--amber);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--amber-dim);
+  color: var(--amber);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+@keyframes sidechat-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.sidechat-compose {
+  flex: 0 0 auto;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--surface) 30%, transparent));
+}
+
+.sidechat-composer {
+  padding: 8px 10px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition:
+    border-color var(--dur-base) ease,
+    box-shadow var(--dur-base) ease;
+}
+
+.sidechat-composer:focus-within {
+  border-color: var(--line-gold);
+  box-shadow: var(--shadow-soft);
+}
+
+.sidechat-input {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  max-height: 160px;
+  margin: 0;
+  padding: 2px 2px 4px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: 1.62;
+  outline: none;
+}
+
+.sidechat-input::placeholder {
+  color: var(--text-3);
+}
+
+.sidechat-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.sidechat-note {
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+@container (max-width: 380px) {
+  .sidechat-sub {
+    display: none;
+  }
+
+  .sidechat-context span {
+    display: none;
+  }
+
+  .sidechat-note {
+    display: none;
+  }
+}

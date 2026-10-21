@@ -1,7 +1,10 @@
 import { create } from 'zustand'
+import { applyThemePreferences } from '../theme'
 import type {
   AppInfo,
   Artifact,
+  ArtifactExportFormat,
+  ArtifactVersionInfo,
   AskUserAnswer,
   AskUserRequest,
   Attachment,
@@ -11,6 +14,7 @@ import type {
   PermissionMode,
   PermissionRequest,
   Project,
+  QueuedMessage,
   Result,
   RuntimeEvent,
   SendMessageResult,
@@ -23,6 +27,7 @@ import type {
   WindowState
 } from '@shared/types'
 import { DEFAULT_MODEL, DEMO_MODEL, defaultSettings } from '@shared/models'
+import { mergeSwarmTask, swarmTasksFromMeta } from '@shared/swarm'
 
 /* ── IPC 结果解包 ─────────────────────────────────────────────── */
 
@@ -91,20 +96,41 @@ export interface AppStore {
 
   /* 运行态 */
   run: RunState | null
+  /** 所有会话的活动运行（多会话后台运行） */
+  runs: Record<string, RunState>
+  /** 打断当前运行并发送新消息的过程态 */
+  interrupting: boolean
   streaming: StreamingState | null
+  /** 当前会话的审批/提问（UI 直接渲染） */
   pendingPermission: PermissionRequest | null
   pendingQuestion: AskUserRequest | null
+  /** 按会话保留的挂起请求：切走再回来时恢复，后台运行也能收到提醒 */
+  pendingPermissions: Record<string, PermissionRequest>
+  pendingQuestions: Record<string, AskUserRequest>
+  /** 按会话保存的运行中排队消息 */
+  queues: Record<string, QueuedMessage[]>
   compacting: boolean
+  /** 正在压缩的会话 id：切到别的会话时不应把它的输入框也锁住 */
+  compactingSessionId: string | null
   demoStep: DemoStepState | null
 
   /* UI */
   windowState: WindowState
   sidebarCollapsed: boolean
   canvas: { open: boolean; artifactId: string | null }
+  /** 底部集成终端是否展开 */
+  terminalOpen: boolean
+  /** 侧边聊天占用右侧栏；与画布共用栏宽，同一时间只显示一个 */
+  sideChatOpen: boolean
+  /** 从 /btw 打开时带入的第一个问题 */
+  sideChatSeed: { question: string; nonce: number } | null
   paletteOpen: boolean
   settingsOpen: boolean
   onboardingOpen: boolean
   planExpanded: boolean
+  /** 检查点回退面板 */
+  rewindOpen: boolean
+  rewindTargetMessageId: string | null
   theme: ThemeMode
   sidebarWidth: number
   canvasWidth: number
@@ -112,31 +138,71 @@ export interface AppStore {
   compactThreshold: number
   toast: Toast | null
   searchQuery: string
+  /** 全局搜索命中后待定位的消息；Transcript 滚动并高亮后清空 */
+  focusMessageId: string | null
 
   /* actions */
   init: () => Promise<void>
   applyEvent: (event: RuntimeEvent) => void
-  newSession: (opts?: { workspace?: string | null }) => Promise<Session | null>
+  newSession: (opts?: { workspace?: string | null; temporary?: boolean }) => Promise<Session | null>
+  /** 清除全部对话及其派生数据；返回删除的对话数，失败返回 null */
+  clearAllSessions: () => Promise<number | null>
   selectSession: (id: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
-  sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>
+  setSessionPinned: (id: string, pinned: boolean) => Promise<void>
+  setSessionArchived: (id: string, archived: boolean) => Promise<void>
+  branchFromMessage: (messageId: string) => Promise<void>
+  regenerateLast: () => Promise<void>
+  editMessageAndResend: (messageId: string, text: string) => Promise<void>
+  deleteMessagesAfter: (messageId: string) => Promise<void>
+  exportCurrentSession: (format: 'markdown' | 'json') => Promise<void>
+  sendMessage: (
+    text: string,
+    attachments?: Attachment[],
+    options?: { researchDepth?: import('@shared/types').ResearchDepth }
+  ) => Promise<boolean>
+  /** 用户确认研究计划后开始检索 */
+  startResearch: (
+    sessionId: string,
+    input: { plan: string; depth?: import('@shared/types').ResearchDepth }
+  ) => Promise<boolean>
+  /** 检索中追加研究要求 */
+  steerResearch: (sessionId: string, text: string) => Promise<boolean>
+  queueMessage: (text: string, attachments?: Attachment[]) => Promise<boolean>
+  updateQueuedMessage: (id: string, text: string) => Promise<void>
+  removeQueuedMessage: (id: string) => Promise<void>
+  /** 停止当前运行并立即发送这条排队消息 */
+  interruptAndSendQueued: (id: string) => Promise<void>
+  /** 停止当前运行并立即发送输入内容 */
+  interruptAndSend: (text: string, attachments?: Attachment[], targetSessionId?: string) => Promise<boolean>
   stopRun: () => Promise<void>
+  /** 按 runId 停止后台会话任务 */
+  stopRunById: (runId: string) => Promise<void>
   respondPermission: (decision: PermissionDecision) => Promise<void>
   respondQuestion: (answer: AskUserAnswer) => Promise<void>
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   saveProvider: (input: Parameters<typeof window.morrow.settings.saveProvider>[0]) => Promise<void>
   completeOnboarding: (input: Parameters<typeof window.morrow.settings.completeOnboarding>[0]) => Promise<void>
   testProvider: (input: Parameters<typeof window.morrow.settings.testProvider>[0]) => Promise<import('@shared/types').ProviderTestResult>
+  saveWebSearch: (input: Parameters<typeof window.morrow.settings.saveWebSearch>[0]) => Promise<boolean>
+  testWebSearch: () => Promise<import('@shared/ipc').WebSearchTestResult>
   removeProvider: (providerId: string) => Promise<void>
   pickWorkspaceInfo: () => Promise<import('@shared/types').WorkspaceInfo | null>
+  /** 校验一个路径当前是否仍是可用文件夹；不可用返回 null */
+  validateWorkspace: (path: string) => Promise<import('@shared/types').WorkspaceInfo | null>
   openDataDir: () => Promise<void>
   openLogs: () => Promise<void>
+  changeDataDir: () => Promise<void>
+  resetDataDir: () => Promise<void>
   setTheme: (theme: ThemeMode) => void
   toggleSidebar: () => void
   setSidebarWidth: (width: number, persist?: boolean) => void
   setCanvasWidth: (width: number, persist?: boolean) => void
   toggleCanvas: () => void
+  toggleTerminal: () => void
+  openTerminal: () => void
+  closeTerminal: () => void
   startGoal: (objective: string, maxRounds?: number) => Promise<void>
   pauseGoal: () => Promise<void>
   resumeGoal: () => Promise<void>
@@ -149,21 +215,57 @@ export interface AppStore {
   closePalette: () => void
   openCanvas: (artifactId?: string) => void
   closeCanvas: () => void
+  openSideChat: (question?: string) => void
+  closeSideChat: () => void
+  toggleSideChat: () => void
+  clearSideChatSeed: () => void
   setPlanExpanded: (value: boolean) => void
+  /** 打开回退面板（可指定某条用户消息对应的检查点） */
+  openRewind: (messageId?: string) => void
+  closeRewind: () => void
+  /** 执行回退：恢复文件与/或截断对话 */
+  rewindTo: (
+    checkpointId: string,
+    scope: import('@shared/types').RewindScope
+  ) => Promise<{ ok: boolean; error?: string }>
   pickWorkspace: () => Promise<void>
   attachFiles: () => Promise<Attachment[]>
   searchFiles: (query: string) => Promise<FileSearchResult[]>
   startDemo: () => Promise<void>
   setSearchQuery: (query: string) => void
+  focusMessage: (messageId: string) => void
+  clearFocusMessage: () => void
   notify: (kind: Toast['kind'], message: string, action?: { label: string; run: () => void }) => void
   dismissToast: () => void
   copyText: (text: string) => Promise<void>
   setModel: (modelId: string, providerId: string) => Promise<void>
   setPermissionMode: (mode: PermissionMode) => Promise<void>
+  setReasoningEffort: (effort: import('@shared/types').ReasoningEffort) => Promise<void>
   /** 切换显式「聊天 / 工作」模式（主进程持久化；运行中会先提示停止） */
   setSessionMode: (mode: SessionMode) => Promise<void>
+  /** 开启/关闭计划模式（仅工作模式；运行中拒绝） */
+  setPlanMode: (enabled: boolean) => Promise<void>
+  /** 批准计划并自动开始执行 */
+  approvePlan: () => Promise<void>
+  /** 带修改意见重新规划 */
+  revisePlan: (feedback: string) => Promise<void>
+  /** 拒绝计划（保留计划文本与反馈） */
+  rejectPlan: (feedback?: string) => Promise<void>
   revealArtifact: (path: string) => Promise<void>
-  saveArtifactAs: (path: string) => Promise<void>
+  saveArtifactToWorkspace: (sessionId: string, artifactId: string) => Promise<void>
+  loadArtifactVersions: (sessionId: string, artifactId: string) => Promise<ArtifactVersionInfo[]>
+  readArtifactVersion: (
+    sessionId: string,
+    artifactId: string,
+    versionId: string
+  ) => Promise<{ version: ArtifactVersionInfo; content: string }>
+  restoreArtifactVersion: (sessionId: string, artifactId: string, versionId: string) => Promise<void>
+  exportArtifact: (sessionId: string, artifactId: string, format: ArtifactExportFormat) => Promise<string | null>
+  copyArtifactExport: (
+    sessionId: string,
+    artifactId: string,
+    format: Exclude<ArtifactExportFormat, 'pdf' | 'original'>
+  ) => Promise<void>
   openExternal: (url: string) => Promise<void>
   openArtifactExternal: (path: string) => Promise<void>
   compactSession: () => Promise<void>
@@ -176,9 +278,8 @@ const now = (): number => Date.now()
 const uid = (prefix: string): string => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
 
 function applyTheme(settings: Settings): void {
+  applyThemePreferences(settings)
   const root = document.documentElement
-  root.dataset.theme = settings.theme
-  root.dataset.reduceMotion = settings.reduceMotion ? 'true' : 'false'
   root.style.setProperty('--fs-body', `${settings.fontSize}px`)
   root.style.setProperty('--fs-ui', `${Math.max(11, settings.fontSize - 1)}px`)
   root.style.setProperty('--sidebar-w', `${clampSidebarWidth(settings.sidebarWidth)}px`)
@@ -278,6 +379,14 @@ function deriveMeta(session: Session): SessionMeta {
     model: session.model,
     permissionMode: session.permissionMode,
     ...(session.mode ? { mode: session.mode } : {}),
+    ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
+    ...(session.planMode ? { planMode: true } : {}),
+    ...(session.pinned ? { pinned: true } : {}),
+    ...(session.archived ? { archived: true } : {}),
+    ...(session.plan ? { plan: session.plan } : {}),
+    ...(session.research ? { research: session.research } : {}),
+    ...(session.demo ? { demo: true } : {}),
+    ...(session.temporary ? { temporary: true } : {}),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     messageCount: session.messages.length,
@@ -305,6 +414,7 @@ function mergeUsage(prev: Usage, next: Usage): Usage {
 /* ── store ────────────────────────────────────────────────────── */
 
 let subscribed = false
+let sessionSelectRequest = 0
 
 export const useAppStore = create<AppStore>()((set, get) => ({
   ready: false,
@@ -323,19 +433,30 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   loadingSession: false,
 
   run: null,
+  runs: {},
+  interrupting: false,
   streaming: null,
   pendingPermission: null,
   pendingQuestion: null,
+  pendingPermissions: {},
+  pendingQuestions: {},
+  queues: {},
   compacting: false,
+  compactingSessionId: null,
   demoStep: null,
 
   windowState: { maximized: false, focused: true, fullscreen: false },
   sidebarCollapsed: false,
   canvas: { open: false, artifactId: null },
+  terminalOpen: false,
+  sideChatOpen: false,
+  sideChatSeed: null,
   paletteOpen: false,
   settingsOpen: false,
   onboardingOpen: false,
   planExpanded: true,
+  rewindOpen: false,
+  rewindTargetMessageId: null,
   theme: 'dark',
   sidebarWidth: 240,
   canvasWidth: 420,
@@ -343,6 +464,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   compactThreshold: 0.8,
   toast: null,
   searchQuery: '',
+  focusMessageId: null,
 
   async init() {
     if (get().initPromise) {
@@ -355,6 +477,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           subscribed = true
           window.morrow.onEvent((event) => get().applyEvent(event))
           window.morrow.window.onStateChange((state) => set({ windowState: state }))
+          window.morrow.app.onFocusSession((sessionId) => {
+            void get().selectSession(sessionId)
+          })
         }
         const state = await call(window.morrow.window.getState())
         const bootstrap = await call(window.morrow.bootstrap())
@@ -383,6 +508,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           try {
             const session = await call(window.morrow.session.load(firstSession.id))
             set({ session })
+            const queue = await window.morrow.queue.list(firstSession.id)
+            if (queue.ok) {
+              set((state) => ({ queues: { ...state.queues, [firstSession.id]: queue.data } }))
+            }
           } catch {
             set({ session: null })
           }
@@ -401,20 +530,34 @@ export const useAppStore = create<AppStore>()((set, get) => ({
 
   applyEvent(event: RuntimeEvent) {
     const state = get()
+    const currentSession = state.session
+    const isCurrentRun = !!currentSession && currentSession.id === event.sessionId
+
     if (event.type === 'run_started') {
-      const session = state.session && state.session.id === event.sessionId ? state.session : state.session
+      const pendingPermissions = { ...state.pendingPermissions }
+      const pendingQuestions = { ...state.pendingQuestions }
+      delete pendingPermissions[event.sessionId]
+      delete pendingQuestions[event.sessionId]
+      const runState: RunState = {
+        runId: event.runId,
+        sessionId: event.sessionId,
+        startedAt: event.at,
+        assistantMessageId: event.assistantMessageId
+      }
       set({
-        run: { runId: event.runId, sessionId: event.sessionId, startedAt: event.at, assistantMessageId: event.assistantMessageId },
-        pendingPermission: null,
-        pendingQuestion: null,
-        planExpanded: true,
-        ...(session && session.id === event.sessionId
+        runs: { ...state.runs, [event.sessionId]: runState },
+        ...(isCurrentRun ? { run: runState } : {}),
+        pendingPermissions,
+        pendingQuestions,
+        ...(isCurrentRun ? { pendingPermission: null, pendingQuestion: null } : {}),
+        planExpanded: isCurrentRun ? true : state.planExpanded,
+        ...(currentSession && isCurrentRun
           ? {
               session: {
-                ...session,
-                messages: session.messages.some((m) => m.id === event.userMessage.id)
-                  ? session.messages
-                  : [...session.messages, event.userMessage],
+                ...currentSession,
+                messages: currentSession.messages.some((m) => m.id === event.userMessage.id)
+                  ? currentSession.messages
+                  : [...currentSession.messages, event.userMessage],
                 updatedAt: event.at
               }
             }
@@ -424,26 +567,38 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
 
     if (event.type === 'run_finished') {
-      const session = state.session && state.session.id === event.sessionId ? state.session : null
+      const existingRun = state.runs[event.sessionId]
+      // 迟到的旧 run 结束事件不能清掉同会话的新运行
+      if (existingRun && existingRun.runId !== event.runId) return
+      const pendingPermissions = { ...state.pendingPermissions }
+      const pendingQuestions = { ...state.pendingQuestions }
+      delete pendingPermissions[event.sessionId]
+      delete pendingQuestions[event.sessionId]
+      const runs = { ...state.runs }
+      delete runs[event.sessionId]
+      const currentRun =
+        state.run?.runId === event.runId ? (currentSession ? runs[currentSession.id] ?? null : null) : state.run
       set({
-        run: null,
-        streaming: null,
-        pendingPermission: null,
-        pendingQuestion: null,
-        compacting: false,
-        demoStep: null,
-        ...(session
+        run: currentRun,
+        runs,
+        streaming: isCurrentRun ? null : state.streaming,
+        pendingPermissions,
+        pendingQuestions,
+        ...(isCurrentRun ? { pendingPermission: null, pendingQuestion: null } : {}),
+        ...(state.compactingSessionId === event.sessionId ? { compacting: false, compactingSessionId: null } : {}),
+        demoStep: isCurrentRun ? null : state.demoStep,
+        ...(currentSession && isCurrentRun
           ? {
               session: {
-                ...session,
-                usage: mergeUsage(session.usage, event.usage),
+                ...currentSession,
+                usage: mergeUsage(currentSession.usage, event.usage),
                 updatedAt: now()
               }
             }
           : {})
       })
       if (event.reason === 'error') {
-        set({ toast: toast('error', '这次任务没有完成。可以重试，或把需求说得更具体一点。') })
+        set({ toast: toast('error', isCurrentRun ? '这次任务没有完成。可以重试，或把需求说得更具体一点。' : '另一个对话的任务没有完成。') })
       }
       if (event.reason === 'complete') {
         set({ demoStep: null })
@@ -451,9 +606,135 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       return
     }
 
+    if (event.type === 'permission_requested') {
+      const pendingPermissions = { ...state.pendingPermissions, [event.sessionId]: event.request }
+      if (currentSession && isCurrentRun) {
+        const session = updateSessionMessage(
+          currentSession,
+          currentSession.messages.find((m) => m.content.some((b) => b.type === 'tool_use' && b.id === event.request.toolUseId))?.id ?? '',
+          (message) => ({
+            ...message,
+            content: message.content.map((block) =>
+              block.type === 'tool_use' && block.id === event.request.toolUseId ? { ...block, status: 'waiting' } : block
+            )
+          })
+        )
+        set({ session, pendingPermissions, pendingPermission: event.request })
+      } else {
+        set({ pendingPermissions })
+        const title = state.sessions.find((item) => item.id === event.sessionId)?.title ?? '另一个对话'
+        get().notify('warning', `「${title}」需要你的确认`, {
+          label: '去处理',
+          run: () => {
+            void get().selectSession(event.sessionId)
+          }
+        })
+      }
+      return
+    }
+
+    if (event.type === 'permission_resolved') {
+      const pending = state.pendingPermissions[event.sessionId] ?? (isCurrentRun ? state.pendingPermission : null)
+      const pendingPermissions = { ...state.pendingPermissions }
+      delete pendingPermissions[event.sessionId]
+      set({
+        pendingPermissions,
+        ...(isCurrentRun && currentSession
+          ? {
+              pendingPermission: state.pendingPermission?.id === event.requestId ? null : state.pendingPermission,
+              ...(pending
+                ? {
+                    session: updateSessionMessage(
+                      currentSession,
+                      currentSession.messages.find((m) => m.content.some((b) => b.type === 'tool_use' && b.id === pending.toolUseId))?.id ?? '',
+                      (message) => ({
+                        ...message,
+                        content: message.content.map((block) =>
+                          block.type === 'tool_use' && block.id === pending.toolUseId
+                            ? { ...block, status: event.decision === 'deny' ? 'denied' : 'running' }
+                            : block
+                        )
+                      })
+                    )
+                  }
+                : {})
+            }
+          : {})
+      })
+      return
+    }
+
+    if (event.type === 'question_asked') {
+      const pendingQuestions = { ...state.pendingQuestions, [event.sessionId]: event.request }
+      if (currentSession && isCurrentRun) {
+        set({ pendingQuestions, pendingQuestion: event.request })
+      } else {
+        set({ pendingQuestions })
+        const title = state.sessions.find((item) => item.id === event.sessionId)?.title ?? '另一个对话'
+        get().notify('info', `「${title}」有一个问题需要你回答`, {
+          label: '去回答',
+          run: () => {
+            void get().selectSession(event.sessionId)
+          }
+        })
+      }
+      return
+    }
+
+    if (event.type === 'question_answered') {
+      const pendingQuestions = { ...state.pendingQuestions }
+      delete pendingQuestions[event.sessionId]
+      set({
+        pendingQuestions,
+        ...(isCurrentRun
+          ? { pendingQuestion: state.pendingQuestion?.id === event.requestId ? null : state.pendingQuestion }
+          : {})
+      })
+      return
+    }
+
+    if (event.type === 'research_updated') {
+      set((state) => ({
+        session:
+          state.session?.id === event.sessionId
+            ? { ...state.session, research: event.research }
+            : state.session,
+        sessions: state.sessions.map((item) =>
+          item.id === event.sessionId ? { ...item, research: event.research ?? undefined } : item
+        )
+      }))
+      return
+    }
+
+    if (event.type === 'session_updated') {
+      // 侧栏元信息对所有会话都要刷新（包括后台运行结束的会话）
+      set({
+        sessions: upsertSessionMeta(state.sessions, event.meta),
+        ...(currentSession && currentSession.id === event.meta.id
+          ? {
+              session: {
+                ...currentSession,
+                ...event.meta,
+                // 元数据里 planMode 只在 true 时携带；这里显式归一化，
+                // 避免批准执行后残留上一次的 true，导致输入框仍锁在计划模式。
+                planMode: event.meta.planMode === true,
+                plan: event.meta.plan ?? currentSession.plan ?? null
+              }
+            }
+          : {})
+      })
+      return
+    }
+
+    // 队列是跨会话的全局视图（运行中心/侧栏），后台会话的队列变化也要同步
+    if (event.type === 'queue_updated') {
+      set((state) => ({ queues: { ...state.queues, [event.sessionId]: event.queue } }))
+      return
+    }
+
     const current = state.session
     if (!current || current.id !== event.sessionId) {
-      // 非当前会话的事件只更新元信息（后台运行场景暂不支持，忽略）
+      // 非当前会话的内容事件不写入当前视图；切换会话时会从磁盘加载最新内容
       if (event.type === 'notice') set({ toast: toast('info', event.message) })
       return
     }
@@ -511,7 +792,13 @@ export const useAppStore = create<AppStore>()((set, get) => ({
               ...block,
               status: event.status ?? block.status,
               title: event.title ?? block.title,
-              subagent: event.note ? { label: event.note, stepCount: block.subagent?.stepCount } : block.subagent
+              ...(event.swarmTask
+                ? { swarmTasks: mergeSwarmTask(block.swarmTasks, event.swarmTask) }
+                : {
+                    subagent: event.note
+                      ? { label: event.note, stepCount: event.stepCount ?? block.subagent?.stepCount }
+                      : block.subagent
+                  })
             }
           })
         }))
@@ -523,63 +810,48 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           ...message,
           content: message.content.map((block) => {
             if (block.type !== 'tool_use' || block.id !== event.toolUseId) return block
+            const swarmTasks = swarmTasksFromMeta(event.result.meta)
             return {
               ...block,
               status: event.denied ? 'denied' : event.interrupted ? 'interrupted' : event.result.ok ? 'success' : 'error',
               result: event.result,
-              finishedAt: event.at
+              finishedAt: event.at,
+              ...(swarmTasks.length > 0 ? { swarmTasks } : {})
             }
           })
         }))
         set({ session })
         return
       }
-      case 'permission_requested': {
-        const session = updateSessionMessage(current, current.messages.find((m) => m.content.some((b) => b.type === 'tool_use' && b.id === event.request.toolUseId))?.id ?? '', (message) => ({
-          ...message,
-          content: message.content.map((block) =>
-            block.type === 'tool_use' && block.id === event.request.toolUseId ? { ...block, status: 'waiting' } : block
-          )
-        }))
-        set({ session, pendingPermission: event.request })
-        return
-      }
-      case 'permission_resolved': {
+      case 'todos_updated': {
+        const completed = event.todos.filter((todo) => todo.status === 'completed').length
+        const meta = state.sessions.find((item) => item.id === current.id)
         set({
-          pendingPermission: state.pendingPermission?.id === event.requestId ? null : state.pendingPermission,
-          ...(state.pendingPermission?.id === event.requestId && state.pendingPermission
+          session: { ...current, todos: event.todos },
+          ...(meta
             ? {
-                session: updateSessionMessage(current, current.messages.find((m) => m.content.some((b) => b.type === 'tool_use' && b.id === state.pendingPermission!.toolUseId))?.id ?? '', (message) => ({
-                  ...message,
-                  content: message.content.map((block) =>
-                    block.type === 'tool_use' && block.id === state.pendingPermission!.toolUseId
-                      ? { ...block, status: event.decision === 'deny' ? 'denied' : 'running' }
-                      : block
-                  )
-                }))
+                sessions: upsertSessionMeta(state.sessions, {
+                  ...meta,
+                  updatedAt: Date.now(),
+                  ...(event.todos.length
+                    ? { todoProgress: { completed, total: event.todos.length } }
+                    : { todoProgress: undefined })
+                })
               }
             : {})
         })
         return
       }
-      case 'question_asked': {
-        set({ pendingQuestion: event.request })
-        return
-      }
-      case 'question_answered': {
-        set({ pendingQuestion: state.pendingQuestion?.id === event.requestId ? null : state.pendingQuestion })
-        return
-      }
-      case 'todos_updated': {
-        set({ session: { ...current, todos: event.todos } })
-        return
-      }
       case 'artifacts_updated': {
-        const shouldOpen = event.artifacts.length > current.artifacts.length
-        const latest = event.artifacts[event.artifacts.length - 1]
+        const isNew = event.artifacts.length > current.artifacts.length
+        const target = event.artifactId
+          ? event.artifacts.find((artifact) => artifact.id === event.artifactId)
+          : isNew
+            ? event.artifacts[event.artifacts.length - 1]
+            : null
         set({
           session: { ...current, artifacts: event.artifacts },
-          ...(shouldOpen && latest ? { canvas: { open: true, artifactId: latest.id } } : {})
+          ...(target ? { canvas: { open: true, artifactId: target.id } } : {})
         })
         return
       }
@@ -588,7 +860,17 @@ export const useAppStore = create<AppStore>()((set, get) => ({
         return
       }
       case 'compaction': {
-        set({ compacting: event.phase === 'started' })
+        // 只维护当前会话的压缩状态，后台会话的压缩不能覆盖当前会话
+        if (event.phase === 'started') {
+          if (isCurrentRun) set({ compacting: true, compactingSessionId: event.sessionId })
+        } else if (state.compactingSessionId === event.sessionId) {
+          set({ compacting: false, compactingSessionId: null })
+        }
+        return
+      }
+      case 'messages_replaced': {
+        if (!current || event.sessionId !== current.id) return
+        set({ session: { ...current, messages: event.messages }, streaming: null })
         return
       }
       case 'notice': {
@@ -604,12 +886,16 @@ export const useAppStore = create<AppStore>()((set, get) => ({
         set({ demoStep: { index: event.index, total: event.total, caption: event.caption } })
         return
       }
-      case 'session_updated': {
-        set({ sessions: upsertSessionMeta(state.sessions, event.meta) })
-        return
-      }
       case 'goal_updated': {
         set((state) => ({ session: state.session ? { ...state.session, goal: event.goal } : state.session }))
+        return
+      }
+      case 'plan_updated': {
+        set((state) => ({
+          session: state.session
+            ? { ...state.session, plan: event.plan, planMode: event.planMode }
+            : state.session
+        }))
         return
       }
       default:
@@ -620,17 +906,24 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async newSession(opts) {
     try {
       const workspace = opts?.workspace !== undefined ? opts.workspace : get().settings.lastWorkspace
+      const temporary = opts?.temporary === true
       const session = await call(
         window.morrow.session.create({
           workspace,
           model: get().settings.defaultModel,
-          permissionMode: get().settings.permissionMode
+          permissionMode: get().settings.permissionMode,
+          ...(temporary ? { temporary: true } : {})
         })
       )
       set({
         session,
         activeSessionId: session.id,
         sessions: upsertSessionMeta(get().sessions, deriveMeta(session)),
+        run: null,
+        pendingPermission: null,
+        pendingQuestion: null,
+        streaming: null,
+        demoStep: null,
         canvas: { open: false, artifactId: null },
         planExpanded: true,
         toast: null
@@ -642,12 +935,58 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  async clearAllSessions() {
+    try {
+      const result = await call(window.morrow.session.clearAll())
+      set({
+        sessions: [],
+        session: null,
+        activeSessionId: null,
+        run: null,
+        runs: {},
+        pendingPermission: null,
+        pendingQuestion: null,
+        pendingPermissions: {},
+        pendingQuestions: {},
+        queues: {},
+        streaming: null,
+        demoStep: null,
+        canvas: { open: false, artifactId: null },
+        planExpanded: true,
+        focusMessageId: null,
+        sideChatOpen: false,
+        toast: null
+      })
+      get().notify('success', result.deleted > 0 ? `已清除 ${result.deleted} 个对话。` : '没有需要清除的对话。')
+      return result.deleted
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '清除全部对话失败')
+      return null
+    }
+  },
+
   async selectSession(id) {
     if (get().activeSessionId === id && get().session) return
-    set({ loadingSession: true, canvas: { open: false, artifactId: null }, planExpanded: true })
+    const request = ++sessionSelectRequest
+    set({ loadingSession: true, canvas: { open: false, artifactId: null }, planExpanded: true, demoStep: null, focusMessageId: null })
     try {
       const session = await call(window.morrow.session.load(id))
-      set({ session, activeSessionId: id, loadingSession: false, pendingPermission: null, pendingQuestion: null })
+      const queue = await window.morrow.queue.list(id)
+      // 快速连续切换时，较早的加载结果不能覆盖后选的会话
+      if (request !== sessionSelectRequest) return
+      set({
+        session,
+        activeSessionId: id,
+        loadingSession: false,
+        run: get().runs[id] ?? null,
+        pendingPermission: get().pendingPermissions[id] ?? null,
+        pendingQuestion: get().pendingQuestions[id] ?? null,
+        ...(queue.ok ? { queues: { ...get().queues, [id]: queue.data } } : {}),
+        // 后台运行的流式缓冲不属于新会话；切回时从增量落盘内容继续接流。
+        streaming: null,
+        // 演示进度属于被切走的会话，不能继续盖在新会话上
+        demoStep: null
+      })
     } catch (err) {
       set({ loadingSession: false })
       get().notify('error', err instanceof Error ? err.message : '会话加载失败')
@@ -658,7 +997,22 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     try {
       await call(window.morrow.session.remove(id))
       const sessions = get().sessions.filter((s) => s.id !== id)
-      set({ sessions })
+      const pendingPermissions = { ...get().pendingPermissions }
+      const pendingQuestions = { ...get().pendingQuestions }
+      const queues = { ...get().queues }
+      const runs = { ...get().runs }
+      delete pendingPermissions[id]
+      delete pendingQuestions[id]
+      delete queues[id]
+      delete runs[id]
+      set({
+        sessions,
+        pendingPermissions,
+        pendingQuestions,
+        queues,
+        runs,
+        ...(get().session?.id === id ? { run: null } : {})
+      })
       if (get().activeSessionId === id) {
         const next = sessions[0]
         set({ activeSessionId: next?.id ?? null, session: null, canvas: { open: false, artifactId: null } })
@@ -682,36 +1036,311 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
-  async sendMessage(text, attachments) {
+  async setSessionPinned(id, pinned) {
+    try {
+      const meta = await call(window.morrow.session.setPinned(id, pinned))
+      set((state) => ({
+        sessions: upsertSessionMeta(state.sessions, meta),
+        ...(state.session?.id === id ? { session: { ...state.session, pinned } } : {})
+      }))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '置顶操作失败')
+    }
+  },
+
+  async setSessionArchived(id, archived) {
+    try {
+      const meta = await call(window.morrow.session.setArchived(id, archived))
+      set((state) => ({
+        sessions: upsertSessionMeta(state.sessions, meta),
+        ...(state.session?.id === id ? { session: { ...state.session, archived } } : {})
+      }))
+      if (archived && get().activeSessionId === id) {
+        const next = get().sessions.find((item) => item.id !== id && !item.archived)
+        if (next) await get().selectSession(next.id)
+        // 没有其他可见对话时开一个空白对话，避免停留在已归档会话上
+        else await get().newSession({ workspace: get().session?.workspace ?? undefined })
+      }
+      get().notify('info', archived ? '对话已归档，可在 设置 → 归档 中恢复' : '对话已恢复到侧栏')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '归档操作失败')
+    }
+  },
+
+  async branchFromMessage(messageId) {
+    const session = get().session
+    if (!session) return
+    try {
+      const branch = await call(window.morrow.session.branch(session.id, messageId))
+      set({
+        session: branch,
+        activeSessionId: branch.id,
+        sessions: upsertSessionMeta(get().sessions, deriveMeta(branch)),
+        canvas: { open: false, artifactId: null },
+        run: null,
+        planExpanded: true
+      })
+      get().notify('success', '已从这条消息分叉出新对话')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '分叉失败')
+    }
+  },
+
+  async regenerateLast() {
+    const session = get().session
+    if (!session) return
+    if (get().run) {
+      get().notify('warning', '当前对话正在运行，先停止后再重新生成。')
+      return
+    }
+    try {
+      // 截断后的消息由主进程先发 messages_replaced，随后 run_started / run_finished
+      // 依序维护运行状态；这里不再按返回值回写 run，否则极快的本地模型会让已结束的
+      // 运行被重新标记为进行中。
+      await call(window.morrow.chat.regenerate(session.id))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '重新生成失败')
+    }
+  },
+
+  async editMessageAndResend(messageId, text) {
+    const session = get().session
+    if (!session) return
+    if (get().run) {
+      get().notify('warning', '当前对话正在运行，先停止后再编辑发送。')
+      return
+    }
+    try {
+      await call(window.morrow.chat.editResend(session.id, messageId, text))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '编辑重发失败')
+    }
+  },
+
+  async deleteMessagesAfter(messageId) {
+    const session = get().session
+    if (!session) return
+    if (get().run) {
+      get().notify('warning', '当前对话正在运行，先停止后再删除后续消息。')
+      return
+    }
+    try {
+      const latest = await call(window.morrow.chat.deleteAfter(session.id, messageId))
+      if (get().activeSessionId !== latest.id) return
+      set({
+        session: latest,
+        sessions: upsertSessionMeta(get().sessions, deriveMeta(latest)),
+        streaming: null
+      })
+      get().notify('success', '已删除后续消息')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '删除后续消息失败')
+    }
+  },
+
+  async exportCurrentSession(format) {
+    const session = get().session
+    if (!session) return
+    try {
+      const path = await call(window.morrow.session.exportSession(session.id, format))
+      if (path) get().notify('success', `已导出到 ${path}`)
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '导出失败')
+    }
+  },
+
+  async sendMessage(text, attachments, options) {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed && !attachments?.length) return false
+    const active = get()
+    if (active.compacting && (!active.compactingSessionId || active.compactingSessionId === active.session?.id)) {
+      get().notify('info', '正在压缩上下文，完成后再发送。')
+      return false
+    }
     let session = get().session
     if (!session || get().activeSessionId === null) {
       session = await get().newSession()
-      if (!session) return
+      if (!session) return false
+    }
+    const running = get().run
+    if (running && running.sessionId === session.id) {
+      // 当前对话运行中：加入队列，本轮结束后自动发送
+      return get().queueMessage(trimmed, attachments)
     }
     try {
-      // run_started 事件会插入用户消息；这里只负责发起请求
-      const result: SendMessageResult = await call(
+      // run_started 事件会插入用户消息并设置运行状态；这里只负责发起请求。
+      // 不能用 IPC 返回值回写 run：极快的本地模型可能在响应返回前就已经结束，
+      // 回写会把已完成的运行重新标记为「进行中」，导致下一条消息被误加入队列。
+      await call(
         window.morrow.chat.send({
+          sessionId: session.id,
+          text: trimmed,
+          attachments: attachments?.length ? attachments : undefined,
+          ...(options?.researchDepth ? { researchDepth: options.researchDepth } : {})
+        })
+      )
+      return true
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '消息发送失败')
+      return false
+    }
+  },
+
+  async startResearch(sessionId, input) {
+    try {
+      await call(window.morrow.chat.startResearch({ sessionId, ...input }))
+      return true
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '开始研究失败')
+      return false
+    }
+  },
+
+  async steerResearch(sessionId, text) {
+    try {
+      await call(window.morrow.chat.steerResearch({ sessionId, text }))
+      return true
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '追加研究要求失败')
+      return false
+    }
+  },
+
+  async queueMessage(text, attachments) {    const session = get().session
+    const trimmed = text.trim()
+    if (!session || (!trimmed && !attachments?.length)) return false
+    try {
+      const queue = await call(
+        window.morrow.queue.add({
           sessionId: session.id,
           text: trimmed,
           attachments: attachments?.length ? attachments : undefined
         })
       )
-      if (!get().run) {
-        set({ run: { runId: result.runId, sessionId: session.id, startedAt: now() } })
-      }
+      set((state) => ({ queues: { ...state.queues, [session.id]: queue } }))
+      get().notify('info', '已加入队列：本轮结束后自动发送。')
+      return true
     } catch (err) {
-      get().notify('error', err instanceof Error ? err.message : '消息发送失败')
+      get().notify('error', err instanceof Error ? err.message : '加入队列失败')
+      return false
+    }
+  },
+
+  async updateQueuedMessage(id, text) {
+    const session = get().session
+    if (!session) return
+    try {
+      const queue = await call(window.morrow.queue.update({ sessionId: session.id, queueId: id, text }))
+      set((state) => ({ queues: { ...state.queues, [session.id]: queue } }))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '修改排队消息失败')
+    }
+  },
+
+  async removeQueuedMessage(id) {
+    const session = get().session
+    if (!session) return
+    try {
+      const queue = await call(window.morrow.queue.remove({ sessionId: session.id, queueId: id }))
+      set((state) => ({ queues: { ...state.queues, [session.id]: queue } }))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '删除排队消息失败')
+    }
+  },
+
+  async interruptAndSendQueued(id) {
+    const session = get().session
+    if (!session) return
+    const sessionId = session.id
+    const item = (get().queues[sessionId] ?? []).find((queued) => queued.id === id)
+    if (!item) return
+    const sent = await get().interruptAndSend(item.text, item.attachments, sessionId)
+    if (!sent) return
+    // 只有确认消息已发出/已重新入队后才移除旧条目，避免失败时丢失
+    try {
+      const queue = await call(window.morrow.queue.remove({ sessionId, queueId: id }))
+      set((state) => ({ queues: { ...state.queues, [sessionId]: queue } }))
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '删除排队消息失败')
+    }
+  },
+
+  async interruptAndSend(text, attachments, targetSessionId) {
+    const trimmed = text.trim()
+    if (!trimmed && !attachments?.length) return false
+    const sessionId = targetSessionId ?? get().session?.id
+    if (!sessionId) return false
+    const known = get().sessions.some((item) => item.id === sessionId) || get().session?.id === sessionId
+    if (!known) return false
+    const active = get().runs[sessionId]
+    if (!active) {
+      if (get().session?.id === sessionId) return get().sendMessage(trimmed, attachments)
+      try {
+        await call(
+          window.morrow.chat.send({
+            sessionId,
+            text: trimmed,
+            attachments: attachments?.length ? attachments : undefined
+          })
+        )
+        return true
+      } catch (err) {
+        get().notify('error', err instanceof Error ? err.message : '发送消息失败')
+        return false
+      }
+    }
+    if (get().interrupting) return false
+    set({ interrupting: true })
+    try {
+      await call(window.morrow.chat.cancel(active.runId))
+      const deadline = Date.now() + 15_000
+      while (get().runs[sessionId] && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      if (get().runs[sessionId]) {
+        const queue = await call(
+          window.morrow.queue.add({
+            sessionId,
+            text: trimmed,
+            attachments: attachments?.length ? attachments : undefined
+          })
+        )
+        set((state) => ({ queues: { ...state.queues, [sessionId]: queue } }))
+        get().notify('warning', '停止当前任务超时，已把消息放回队列。')
+        return true
+      }
+      if (get().session?.id === sessionId) {
+        const sent = await get().sendMessage(trimmed, attachments)
+        if (sent) get().notify('success', '已打断上一轮并发送新消息。')
+        return sent
+      }
+      // 等待期间用户切走了会话：消息发回原会话，绝不落到新会话
+      await call(
+        window.morrow.chat.send({
+          sessionId,
+          text: trimmed,
+          attachments: attachments?.length ? attachments : undefined
+        })
+      )
+      get().notify('success', '已打断原对话并发送新消息。')
+      return true
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '打断并发送失败')
+      return false
+    } finally {
+      set({ interrupting: false })
     }
   },
 
   async stopRun() {
     const run = get().run
     if (!run) return
+    await get().stopRunById(run.runId)
+  },
+
+  async stopRunById(runId) {
     try {
-      await call(window.morrow.chat.cancel(run.runId))
+      await call(window.morrow.chat.cancel(runId))
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '停止失败')
     }
@@ -720,9 +1349,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async respondPermission(decision) {
     const request = get().pendingPermission
     if (!request) return
+    const requestId = request.id
     try {
-      await call(window.morrow.chat.respondPermission(request.id, decision))
-      set({ pendingPermission: null })
+      await call(window.morrow.chat.respondPermission(requestId, decision))
+      set((state) => (state.pendingPermission?.id === requestId ? { pendingPermission: null } : {}))
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '审批失败')
     }
@@ -731,9 +1361,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async respondQuestion(answer) {
     const request = get().pendingQuestion
     if (!request) return
+    const requestId = request.id
     try {
-      await call(window.morrow.chat.respondQuestion(request.id, answer))
-      set({ pendingQuestion: null })
+      await call(window.morrow.chat.respondQuestion(requestId, answer))
+      set((state) => (state.pendingQuestion?.id === requestId ? { pendingQuestion: null } : {}))
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '提交失败')
     }
@@ -764,9 +1395,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       const settings = await call(window.morrow.settings.saveProvider(input))
       applyTheme(settings)
       set({ settings, hasAnyApiKey: settings.providers.some((p) => p.apiKeyStored && p.kind !== 'demo') })
-      get().notify('success', '模型连接已保存')
+      get().notify('success', input.apiKey === '' ? '已清除保存的密钥' : '模型服务已保存')
     } catch (err) {
-      const message = err instanceof Error ? err.message : '模型连接保存失败'
+      const message = err instanceof Error ? err.message : '模型服务保存失败'
       get().notify('error', message)
       throw new Error(message)
     }
@@ -803,6 +1434,32 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  async saveWebSearch(input) {
+    try {
+      const settings = await call(window.morrow.settings.saveWebSearch(input))
+      set({ settings })
+      get().notify('success', '联网搜索设置已保存')
+      return true
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '保存联网搜索设置失败')
+      return false
+    }
+  },
+
+  async testWebSearch() {
+    try {
+      return await call(window.morrow.settings.testWebSearch())
+    } catch (err) {
+      return {
+        ok: false,
+        provider: '',
+        sourceCount: 0,
+        latencyMs: 0,
+        message: err instanceof Error ? err.message : '联网搜索测试失败'
+      }
+    }
+  },
+
   async removeProvider(providerId) {
     try {
       const settings = await call(window.morrow.settings.removeProvider(providerId))
@@ -813,6 +1470,15 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       const message = err instanceof Error ? err.message : '删除失败'
       get().notify('error', message)
       throw new Error(message)
+    }
+  },
+
+  async validateWorkspace(path) {
+    try {
+      const info = await call(window.morrow.workspace.validate(path))
+      return info.exists ? info : null
+    } catch {
+      return null
     }
   },
 
@@ -844,6 +1510,32 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       await call(window.morrow.app.openLogs())
     } catch {
       get().notify('error', '打开日志目录失败')
+    }
+  },
+
+  async changeDataDir() {
+    try {
+      const result = await call(window.morrow.app.changeDataDir())
+      if (result.canceled) return
+      get().notify(
+        'success',
+        result.restarted ? '数据目录已切换，Morrow 正在重启…' : '数据目录已保存，重启后生效'
+      )
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '更改数据目录失败')
+    }
+  },
+
+  async resetDataDir() {
+    try {
+      const result = await call(window.morrow.app.resetDataDir())
+      if (result.canceled) return
+      get().notify(
+        'success',
+        result.restarted ? '已恢复默认数据目录，Morrow 正在重启…' : '已恢复默认数据目录，重启后生效'
+      )
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '恢复默认数据目录失败')
     }
   },
 
@@ -881,8 +1573,24 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  toggleTerminal() {
+    set((state) => ({ terminalOpen: !state.terminalOpen, paletteOpen: false }))
+  },
+
+  openTerminal() {
+    set({ terminalOpen: true, paletteOpen: false })
+  },
+
+  closeTerminal() {
+    set({ terminalOpen: false })
+  },
+
   toggleCanvas() {
     const canvas = get().canvas
+    if (get().sideChatOpen) {
+      set({ sideChatOpen: false, canvas: { open: true, artifactId: canvas.artifactId } })
+      return
+    }
     if (canvas.open) {
       set({ canvas: { open: false, artifactId: null } })
       return
@@ -895,7 +1603,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async startGoal(objective, maxRounds) {
     const session = get().session
     if (!session) return
+    const sessionId = session.id
     try {
+      if (get().run) throw new Error('当前还有任务在运行，先停止或等它完成后再建立目标。')
       // 不传 maxRounds 时由主进程按目标复杂度自动估算（≤200 轮）；显式传值仅用于高级用法/测试
       const result = await call(
         window.morrow.goal.start({
@@ -904,7 +1614,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           ...(typeof maxRounds === 'number' && maxRounds > 0 ? { maxRounds } : {})
         })
       )
-      set((state) => ({ session: state.session ? { ...state.session, goal: result.goal } : state.session }))
+      set((state) => ({
+        session: state.session?.id === sessionId ? { ...state.session, goal: result.goal } : state.session
+      }))
       get().notify('success', '目标已建立，Morrow 将自动多轮推进。')
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '目标启动失败')
@@ -915,9 +1627,12 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async pauseGoal() {
     const session = get().session
     if (!session) return
+    const sessionId = session.id
     try {
-      const result = await call(window.morrow.goal.pause(session.id))
-      set((state) => ({ session: state.session ? { ...state.session, goal: result.goal } : state.session }))
+      const result = await call(window.morrow.goal.pause(sessionId))
+      set((state) => ({
+        session: state.session?.id === sessionId ? { ...state.session, goal: result.goal } : state.session
+      }))
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '暂停目标失败')
     }
@@ -926,9 +1641,13 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async resumeGoal() {
     const session = get().session
     if (!session) return
+    const sessionId = session.id
     try {
-      const result = await call(window.morrow.goal.resume(session.id))
-      set((state) => ({ session: state.session ? { ...state.session, goal: result.goal } : state.session }))
+      if (get().run) throw new Error('当前还有任务在运行，先停止或等它完成后再继续目标。')
+      const result = await call(window.morrow.goal.resume(sessionId))
+      set((state) => ({
+        session: state.session?.id === sessionId ? { ...state.session, goal: result.goal } : state.session
+      }))
       get().notify('success', '继续推进目标。')
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '继续目标失败')
@@ -938,9 +1657,12 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async stopGoal() {
     const session = get().session
     if (!session) return
+    const sessionId = session.id
     try {
-      const result = await call(window.morrow.goal.stop(session.id))
-      set((state) => ({ session: state.session ? { ...state.session, goal: result.goal } : state.session }))
+      const result = await call(window.morrow.goal.stop(sessionId))
+      set((state) => ({
+        session: state.session?.id === sessionId ? { ...state.session, goal: result.goal } : state.session
+      }))
       get().notify('info', '目标已结束。')
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '结束目标失败')
@@ -950,9 +1672,12 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async clearGoal() {
     const session = get().session
     if (!session) return
+    const sessionId = session.id
     try {
-      const result = await call(window.morrow.goal.clear(session.id))
-      set((state) => ({ session: state.session ? { ...state.session, goal: result.goal } : state.session }))
+      const result = await call(window.morrow.goal.clear(sessionId))
+      set((state) => ({
+        session: state.session?.id === sessionId ? { ...state.session, goal: result.goal } : state.session
+      }))
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '清除目标失败')
     }
@@ -988,13 +1713,79 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   openCanvas(artifactId) {
     const session = get().session
     const target = artifactId ?? session?.artifacts[session.artifacts.length - 1]?.id ?? null
-    set({ canvas: { open: true, artifactId: target } })
+    set({ canvas: { open: true, artifactId: target }, sideChatOpen: false })
   },
   closeCanvas() {
     set({ canvas: { open: false, artifactId: null } })
   },
+  openSideChat(question) {
+    set({
+      sideChatOpen: true,
+      sideChatSeed: question?.trim() ? { question: question.trim(), nonce: Date.now() } : null,
+      settingsOpen: false,
+      paletteOpen: false
+    })
+  },
+  closeSideChat() {
+    set({ sideChatOpen: false })
+  },
+  toggleSideChat() {
+    if (get().sideChatOpen) set({ sideChatOpen: false })
+    else get().openSideChat()
+  },
+  clearSideChatSeed() {
+    set({ sideChatSeed: null })
+  },
   setPlanExpanded(value) {
     set({ planExpanded: value })
+  },
+
+  openRewind(messageId) {
+    if (!get().session) {
+      get().notify('warning', '先打开一个对话，再回退。')
+      return
+    }
+    set({ rewindOpen: true, rewindTargetMessageId: messageId ?? null })
+  },
+
+  closeRewind() {
+    set({ rewindOpen: false, rewindTargetMessageId: null })
+  },
+
+  async rewindTo(checkpointId, scope) {
+    const session = get().session
+    if (!session) return { ok: false, error: '先打开一个对话，再回退。' }
+    if (get().run) {
+      const message = '对话还在运行：先停止，再回到之前。'
+      get().notify('warning', message)
+      return { ok: false, error: message }
+    }
+    try {
+      const result = await call(window.morrow.checkpoints.rewind(session.id, checkpointId, scope))
+      const latest = await call(window.morrow.session.load(session.id))
+      set((state) => ({
+        // 回退已在主进程完成；若期间切到别的会话，只关闭旧弹窗，不能覆盖当前会话视图
+        ...(state.activeSessionId === session.id
+          ? { session: latest, streaming: null, canvas: { open: false, artifactId: null } }
+          : {}),
+        rewindOpen: false,
+        rewindTargetMessageId: null
+      }))
+      const parts = [
+        result.restoredFiles ? `恢复 ${result.restoredFiles} 个文件` : '',
+        result.removedFiles ? `删除 ${result.removedFiles} 个新建文件` : '',
+        result.removedMessages ? `移除 ${result.removedMessages} 条对话` : ''
+      ].filter(Boolean)
+      if (result.restoredFiles > 0 || result.removedFiles > 0) {
+        window.dispatchEvent(new CustomEvent('morrow:files-changed'))
+      }
+      get().notify('success', parts.length ? `已回到这一轮之前：${parts.join('，')}。` : '已回到这一轮之前。')
+      return { ok: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '回到这一轮之前失败'
+      get().notify('error', message)
+      return { ok: false, error: message }
+    }
   },
 
   async pickWorkspace() {
@@ -1007,12 +1798,21 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       if (session) {
         // 换工作区会新建会话：沿用当前显式模式（聊天/工作），避免用户切换文件夹后被悄悄切回工作模式
         const created = await call(
-          window.morrow.session.create({ workspace: info.path, ...(session.mode ? { mode: session.mode } : {}) })
+          window.morrow.session.create({
+            workspace: info.path,
+            ...(session.mode ? { mode: session.mode } : {}),
+            ...(session.temporary ? { temporary: true } : {})
+          })
         )
         set({
           session: created,
           activeSessionId: created.id,
-          sessions: upsertSessionMeta(get().sessions, deriveMeta(created))
+          sessions: upsertSessionMeta(get().sessions, deriveMeta(created)),
+          run: null,
+          pendingPermission: null,
+          pendingQuestion: null,
+          streaming: null,
+          demoStep: null
         })
       }
       get().notify('success', `已切换到 ${info.name}`)
@@ -1041,6 +1841,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   },
 
   async startDemo() {
+    if (get().run) {
+      get().notify('warning', '当前还有任务在运行，先停止或等它完成后再看演示。')
+      return
+    }
     try {
       const workspace = await call(window.morrow.workspace.createDemo())
       const session = await call(
@@ -1049,7 +1853,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           model: DEMO_MODEL,
           permissionMode: 'auto',
           mode: 'work',
-          title: '演示 · 季度销售分析'
+          title: '演示 · 季度销售分析',
+          demo: true
         })
       )
       set({
@@ -1069,6 +1874,14 @@ export const useAppStore = create<AppStore>()((set, get) => ({
 
   setSearchQuery(query) {
     set({ searchQuery: query })
+  },
+
+  focusMessage(messageId) {
+    set({ focusMessageId: messageId })
+  },
+
+  clearFocusMessage() {
+    set({ focusMessageId: null })
   },
 
   notify(kind, message, action) {
@@ -1094,9 +1907,18 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     const session = get().session
     const model = { providerId, modelId }
     if (session) {
+      const sessionId = session.id
       try {
-        const meta = await call(window.morrow.session.setModel(session.id, model))
-        set({ session: { ...session, model }, sessions: upsertSessionMeta(get().sessions, meta) })
+        const meta = await call(window.morrow.session.setModel(sessionId, model))
+        set((state) => {
+          if (state.session?.id !== sessionId) {
+            return { sessions: upsertSessionMeta(state.sessions, meta) }
+          }
+          const nextSession = { ...state.session, model }
+          if (meta.demo) nextSession.demo = true
+          else delete nextSession.demo
+          return { session: nextSession, sessions: upsertSessionMeta(state.sessions, meta) }
+        })
       } catch (err) {
         get().notify('error', err instanceof Error ? err.message : '切换模型失败')
       }
@@ -1112,15 +1934,41 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   async setPermissionMode(mode) {
     const session = get().session
     if (session) {
+      const sessionId = session.id
       try {
-        const meta = await call(window.morrow.session.setPermissionMode(session.id, mode))
-        set({ session: { ...session, permissionMode: mode }, sessions: upsertSessionMeta(get().sessions, meta) })
+        const meta = await call(window.morrow.session.setPermissionMode(sessionId, mode))
+        set((state) => ({
+          ...(state.session?.id === sessionId ? { session: { ...state.session, permissionMode: mode } } : {}),
+          sessions: upsertSessionMeta(state.sessions, meta)
+        }))
       } catch (err) {
         get().notify('error', err instanceof Error ? err.message : '切换权限失败')
       }
     }
     try {
       const settings = await call(window.morrow.settings.update({ permissionMode: mode }))
+      set({ settings })
+    } catch {
+      // 忽略
+    }
+  },
+
+  async setReasoningEffort(effort) {
+    const session = get().session
+    if (session) {
+      const sessionId = session.id
+      try {
+        const meta = await call(window.morrow.session.setReasoningEffort(sessionId, effort))
+        set((state) => ({
+          ...(state.session?.id === sessionId ? { session: { ...state.session, reasoningEffort: effort } } : {}),
+          sessions: upsertSessionMeta(state.sessions, meta)
+        }))
+      } catch (err) {
+        get().notify('error', err instanceof Error ? err.message : '切换推理强度失败')
+      }
+    }
+    try {
+      const settings = await call(window.morrow.settings.update({ reasoningEffort: effort }))
       set({ settings })
     } catch {
       // 忽略
@@ -1155,17 +2003,121 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     try {
       const meta = await call(window.morrow.session.setMode(session.id, mode))
       set((state) => ({
-        session: state.session ? { ...state.session, mode } : state.session,
+        session: state.session
+          ? {
+              ...state.session,
+              ...meta,
+              research: meta.research ?? null,
+              mode,
+              ...(mode === 'chat' || mode === 'research' ? { planMode: false } : {})
+            }
+          : state.session,
         sessions: upsertSessionMeta(state.sessions, meta)
       }))
       get().notify(
         'info',
         mode === 'chat'
           ? '已切到聊天模式：只讨论与只读分析，不改文件、不跑命令。'
-          : '已切到工作模式：可以读写文件、执行命令（受权限档位约束）。'
+          : mode === 'research'
+            ? '已切到深度研究模式：多轮检索、交叉核对，最后生成带引用的报告。'
+            : '已切到工作模式：可以读写文件、执行命令（受权限档位约束）。'
       )
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '切换模式失败')
+    }
+  },
+
+  async setPlanMode(enabled) {
+    const session = get().session
+    if (!session) {
+      get().notify('warning', '先新建或打开一个对话，再使用计划模式。')
+      return
+    }
+    if (enabled && (session.mode ?? 'work') === 'chat') {
+      get().notify('warning', '聊天模式不能进入计划模式：先切到工作模式。')
+      return
+    }
+    if (get().run) {
+      get().notify('warning', '本次任务正在运行，不能切换计划模式。先停止它再切换。')
+      return
+    }
+    const sessionId = session.id
+    try {
+      const meta = await call(window.morrow.plan.setMode(sessionId, enabled))
+      set((state) => ({
+        ...(state.session?.id === sessionId
+          ? { session: { ...state.session, planMode: enabled, plan: meta.plan ?? state.session.plan ?? null } }
+          : {}),
+        sessions: upsertSessionMeta(state.sessions, meta)
+      }))
+      get().notify(
+        'info',
+        enabled
+          ? '已进入计划模式：Morrow 会先探索并给出计划，批准后才执行。'
+          : '已退出计划模式。'
+      )
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '切换计划模式失败')
+    }
+  },
+
+  async approvePlan() {
+    const session = get().session
+    if (!session) return
+    if (get().run) {
+      get().notify('warning', '当前还有任务在运行，等它结束或先停止。')
+      return
+    }
+    const sessionId = session.id
+    try {
+      const result = await call(window.morrow.plan.approve(sessionId))
+      set((state) => ({
+        ...(state.session?.id === sessionId
+          ? { session: { ...state.session, plan: result.plan, planMode: false } }
+          : {}),
+        ...(result.meta ? { sessions: upsertSessionMeta(state.sessions, result.meta) } : {})
+      }))
+      get().notify('success', '计划已批准，Morrow 开始执行。')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '批准计划失败')
+    }
+  },
+
+  async revisePlan(feedback) {
+    const session = get().session
+    if (!session) return
+    if (get().run) {
+      get().notify('warning', '当前还有任务在运行，等它结束或先停止。')
+      return
+    }
+    const sessionId = session.id
+    try {
+      const result = await call(window.morrow.plan.revise(sessionId, feedback))
+      set((state) => ({
+        ...(state.session?.id === sessionId
+          ? { session: { ...state.session, planMode: true, plan: result.plan ?? state.session.plan ?? null } }
+          : {})
+      }))
+      get().notify('info', '已提交修改意见，Morrow 正在重新规划。')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '修改计划失败')
+    }
+  },
+
+  async rejectPlan(feedback) {
+    const session = get().session
+    if (!session) return
+    const sessionId = session.id
+    try {
+      const result = await call(window.morrow.plan.reject(sessionId, feedback))
+      set((state) => ({
+        ...(state.session?.id === sessionId
+          ? { session: { ...state.session, plan: result.plan, planMode: true } }
+          : {})
+      }))
+      get().notify('info', '计划已拒绝。你可以补充要求，让 Morrow 重新规划。')
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '拒绝计划失败')
     }
   },
 
@@ -1177,23 +2129,83 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
-  async saveArtifactAs(path) {
+  async saveArtifactToWorkspace(sessionId, artifactId) {
     try {
-      const saved = await call(window.morrow.artifacts.saveAs(path))
-      if (saved) get().notify('success', '已保存副本')
+      const result = await call(window.morrow.artifacts.saveToWorkspace(sessionId, artifactId))
+      set((state) =>
+        state.session?.id === sessionId
+          ? {
+              session: {
+                ...state.session,
+                artifacts: state.session.artifacts.map((item) =>
+                  item.id === result.artifact.id ? result.artifact : item
+                )
+              }
+            }
+          : {}
+      )
+      get().notify('success', `已保存到文件夹：${result.path}`)
     } catch (err) {
-      get().notify('error', err instanceof Error ? err.message : '保存失败')
+      get().notify('error', err instanceof Error ? err.message : '保存到文件夹失败')
+    }
+  },
+
+  async loadArtifactVersions(sessionId, artifactId) {
+    return call(window.morrow.artifacts.versions(sessionId, artifactId))
+  },
+
+  async readArtifactVersion(sessionId, artifactId, versionId) {
+    return call(window.morrow.artifacts.readVersion(sessionId, artifactId, versionId))
+  },
+
+  async restoreArtifactVersion(sessionId, artifactId, versionId) {
+    const artifact = await call(window.morrow.artifacts.restoreVersion(sessionId, artifactId, versionId))
+    set((state) =>
+      state.session?.id === sessionId
+        ? {
+            session: {
+              ...state.session,
+              artifacts: state.session.artifacts.map((item) => (item.id === artifact.id ? artifact : item))
+            }
+          }
+        : {}
+    )
+    get().notify('success', '已恢复到所选版本，并记录为一个新版本。')
+  },
+
+  async exportArtifact(sessionId, artifactId, format) {
+    const saved = await call(window.morrow.artifacts.exportFile(sessionId, artifactId, format))
+    if (saved) get().notify('success', `已导出：${saved}`)
+    return saved
+  },
+
+  async copyArtifactExport(sessionId, artifactId, format) {
+    try {
+      const text = await call(window.morrow.artifacts.exportText(sessionId, artifactId, format))
+      await navigator.clipboard.writeText(text)
+      const label = format === 'markdown' ? 'Markdown' : format === 'html' ? 'HTML' : '纯文本'
+      get().notify('success', `已复制${label}内容`)
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '复制导出内容失败')
     }
   },
 
   async compactSession() {
     const session = get().session
     if (!session) return
-    set({ compacting: true })
+    if (get().compacting) {
+      get().notify('info', '正在压缩上下文，完成后再试。')
+      return
+    }
+    const sessionId = session.id
+    set({ compacting: true, compactingSessionId: sessionId })
     try {
-      const result = await call(window.morrow.chat.compact(session.id))
-      const latest = await call(window.morrow.session.load(session.id))
-      set({ session: latest })
+      const result = await call(window.morrow.chat.compact(sessionId))
+      // 压缩期间用户可能切到别的会话：不要把视图强行拉回旧会话
+      if (get().activeSessionId === sessionId) {
+        const latest = await call(window.morrow.session.load(sessionId))
+        if (get().activeSessionId === sessionId) set({ session: latest })
+      }
       if (result.compacted) {
         const saved = result.savedTokens >= 1000 ? `${Math.round(result.savedTokens / 100) / 10}k` : `${result.savedTokens}`
         get().notify('success', `上下文已压缩，节省约 ${saved} tokens。`)
@@ -1203,7 +2215,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '压缩失败')
     } finally {
-      set({ compacting: false })
+      set((state) =>
+        state.compactingSessionId === sessionId ? { compacting: false, compactingSessionId: null } : {}
+      )
     }
   },
 
@@ -1213,7 +2227,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     try {
       await call(window.morrow.files.restoreSnapshot({ sessionId: session.id, snapshotPath, targetPath }))
       const latest = await call(window.morrow.session.load(session.id))
-      set({ session: latest })
+      set((state) => (state.activeSessionId === session.id ? { session: latest } : {}))
       get().notify('success', '已恢复到修改前的内容。')
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '恢复文件失败')

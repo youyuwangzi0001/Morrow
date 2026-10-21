@@ -14,6 +14,7 @@ export interface SkillView {
   name: string
   description: string
   source: 'workspace' | 'user'
+  builtin: boolean
   enabled: boolean
   dir: string
   skillPath: string

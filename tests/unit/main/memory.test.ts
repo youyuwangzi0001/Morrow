@@ -7,13 +7,14 @@
  * - 导出（Markdown + JSON）；
  * - 边界（空文本/超长/非法 scope/损坏存储恢复）。
  */
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MEMORY_DEFAULT_INJECTION_TOKENS,
   MEMORY_LEGACY_FILE,
+  MEMORY_STORE_FILE,
   MemoryService,
   getMemoryInjection,
   getMemoryPrompt,
@@ -64,6 +65,66 @@ function service(dataDir: string): MemoryService {
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
+
+describe('记忆存储文件权限', () => {
+  it.skipIf(process.platform === 'win32')('global.json 仅当前用户可读写', () => {
+    const { dataDir } = makeRoot()
+    const svc = service(dataDir)
+    svc.add({ scope: 'global', text: '全局记忆' })
+    expect(statSync(join(dataDir, 'memories', 'global.json')).mode & 0o777).toBe(0o600)
+  })
+})
+
+describe('工作区 .morrow 目录边界', () => {
+  it('junction/symlink 指向工作区外时拒绝读写项目记忆', () => {
+    const { root, dataDir, wsA } = makeRoot()
+    const outside = join(root, 'outside-memory')
+    mkdirSync(outside, { recursive: true })
+    try {
+      symlinkSync(outside, join(wsA, '.morrow'), 'junction')
+    } catch {
+      return // Windows 未开启开发者模式时无法创建链接
+    }
+    const svc = service(dataDir)
+    expect(() => svc.list('project', wsA)).toThrow(/工作区外/)
+    expect(() => svc.add({ scope: 'project', workspace: wsA, text: '不应写到工作区外' })).toThrow(/工作区外/)
+    expect(existsSync(join(outside, MEMORY_STORE_FILE))).toBe(false)
+  })
+})
+
+describe('工作区记忆文件边界', () => {
+  it('memories.json 软链接指向 .morrow 外时拒绝读写', () => {
+    const { root, dataDir, wsA } = makeRoot()
+    const outsideFile = join(root, 'outside-memories.json')
+    writeFileSync(outsideFile, JSON.stringify({ version: 1, entries: [{ id: 'x', text: 'secret' }], legacySeen: [] }), 'utf8')
+    const dir = join(wsA, '.morrow')
+    mkdirSync(dir, { recursive: true })
+    try {
+      symlinkSync(outsideFile, join(dir, MEMORY_STORE_FILE), 'file')
+    } catch {
+      return // Windows 未开启开发者模式时无法创建文件链接
+    }
+    const svc = service(dataDir)
+    expect(() => svc.list('project', wsA)).toThrow(/工作区外/)
+    expect(() => svc.add({ scope: 'project', workspace: wsA, text: '不应写到链接目标' })).toThrow(/工作区外/)
+    expect(readFileSync(outsideFile, 'utf8')).toContain('secret')
+  })
+
+  it('MEMORY.md 软链接指向 .morrow 外时拒绝迁移', () => {
+    const { root, dataDir, wsA } = makeRoot()
+    const outsideLegacy = join(root, 'outside-memory.md')
+    writeFileSync(outsideLegacy, '- [2026-01-01] 工作区外的秘密\n', 'utf8')
+    const dir = join(wsA, '.morrow')
+    mkdirSync(dir, { recursive: true })
+    try {
+      symlinkSync(outsideLegacy, join(dir, MEMORY_LEGACY_FILE), 'file')
+    } catch {
+      return
+    }
+    const svc = service(dataDir)
+    expect(() => svc.list('project', wsA)).toThrow(/工作区外/)
+  })
 })
 
 describe('旧 MEMORY.md 迁移', () => {
@@ -235,6 +296,18 @@ describe('注入过滤与 token 预算', () => {
     expect(wide.omitted).toBe(0)
   })
 
+  it('任意预算下 usedTokens 都不超过上限（包含 omitted 提示）', () => {
+    const { dataDir, wsA } = makeRoot()
+    const svc = service(dataDir)
+    for (let index = 0; index < 20; index += 1) {
+      svc.add({ scope: 'project', workspace: wsA, text: `第 ${index} 条记忆：${'预算'.repeat(30)}` })
+    }
+    for (const maxTokens of [64, 80, 96, 120, 160, 200, 240, 300, 400, 600]) {
+      const result = svc.injection(wsA, { maxTokens })
+      expect(result.usedTokens, `预算 ${maxTokens}`).toBeLessThanOrEqual(maxTokens)
+    }
+  })
+
   it('没有可注入条目时返回空文本', () => {
     const { dataDir, wsA } = makeRoot()
     const svc = service(dataDir)
@@ -325,11 +398,15 @@ describe('导出与边界', () => {
 
 describe('feature IPC 频道（feature:memory:*）', () => {
   it('注册后 add/list/toggle/injection/export 走真实服务，错误 payload 返回 ok=false', async () => {
-    const { dataDir, wsA } = makeRoot()
+    const { dataDir, wsA, wsB } = makeRoot()
     electronState.dataDir = dataDir
     const featureModule = await import('../../../src/main/features/memory')
     const { invokeFeatureForTest, registerFeatureHandler } = await import('../../../src/main/feature-ipc')
-    featureModule.registerMemoryFeature(registerFeatureHandler, { dataDir })
+    featureModule.registerMemoryFeature(registerFeatureHandler, {
+      dataDir,
+      // 单测不启动 Electron 设置/会话存储，用白名单模拟「已登记工作区」
+      isWorkspaceAllowed: (ws) => ws === wsA
+    })
     expect(featureModule.MEMORY_FEATURE_CHANNELS.length).toBe(8)
 
     const added = await invokeFeatureForTest<{ entry: MemoryEntry }>('feature:memory:add', {
@@ -390,6 +467,15 @@ describe('feature IPC 频道（feature:memory:*）', () => {
       text: '坏工作区'
     })
     expect(badWorkspace.ok).toBe(false)
+
+    // 真实存在但未登记的工作区同样拒绝，防止向任意目录写 .morrow
+    const unregisteredWorkspace = await invokeFeatureForTest('feature:memory:add', {
+      scope: 'project',
+      workspace: wsB,
+      text: '不应写入未登记工作区'
+    })
+    expect(unregisteredWorkspace.ok).toBe(false)
+    if (!unregisteredWorkspace.ok) expect(unregisteredWorkspace.error.message).toContain('已登记')
 
     const unregistered = await invokeFeatureForTest('feature:memory:does-not-exist', {})
     expect(unregistered.ok).toBe(false)

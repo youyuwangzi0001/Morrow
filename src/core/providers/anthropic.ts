@@ -127,13 +127,22 @@ export function buildAnthropicRequestBody(
   const converted = toAnthropicMessages(req.messages, req.system)
   const body: Record<string, unknown> = {
     model,
-    system: converted.system,
     messages: converted.messages,
     max_tokens: typeof req.maxTokens === 'number' && req.maxTokens > 0 ? req.maxTokens : 8192,
     stream: true
   }
+  if (converted.system) body.system = converted.system
   if (req.tools.length > 0) body.tools = req.tools.map(toAnthropicTool)
   if (typeof req.temperature === 'number') body.temperature = req.temperature
+  if (req.reasoning?.style === 'thinking') {
+    const budgets = { low: 1024, medium: 4096, high: 8192, xhigh: 16384, max: 32768 } as const
+    const budget = budgets[req.reasoning.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max'] ?? 4096
+    const maxTokens = typeof body.max_tokens === 'number' ? body.max_tokens : 8192
+    body.max_tokens = Math.max(maxTokens, budget + 1024)
+    // Anthropic 扩展思考要求 temperature 为 1
+    body.temperature = 1
+    body.thinking = { type: 'enabled', budget_tokens: budget }
+  }
   return body
 }
 
@@ -147,10 +156,14 @@ function mapAnthropicUsage(usage: {
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
 } | null | undefined): Usage {
+  const cacheRead = usage?.cache_read_input_tokens ?? 0
+  const cacheCreate = usage?.cache_creation_input_tokens ?? 0
+  // Anthropic 的 input_tokens 不含缓存读写；统一成「总输入 + 其中缓存读」口径，
+  // 与 OpenAI 的 prompt_tokens 对齐，费用估算和上下文占用才不会偏低。
   return {
-    inputTokens: usage?.input_tokens ?? 0,
+    inputTokens: (usage?.input_tokens ?? 0) + cacheRead + cacheCreate,
     outputTokens: usage?.output_tokens ?? 0,
-    ...(usage?.cache_read_input_tokens ? { cacheReadTokens: usage.cache_read_input_tokens } : {})
+    ...(cacheRead ? { cacheReadTokens: cacheRead } : {})
   }
 }
 
@@ -203,7 +216,7 @@ export class AnthropicProvider implements Provider {
   }
 
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
-    const policy: RetryPolicy = { maxRetries: 3, delays: this.retryDelays }
+    const policy: RetryPolicy = { maxRetries: DEFAULT_RETRY.maxRetries, delays: this.retryDelays }
     return streamWithRetry(() => this.attempt(req), {
       policy,
       signal: req.signal,
@@ -234,6 +247,11 @@ export class AnthropicProvider implements Provider {
     let inputTokens = 0
     let outputTokens = 0
     let cacheReadTokens = 0
+    let completed = false
+    let hasOutput = false
+    let finalizedToolCalls = 0
+    let hadParseError = false
+    let stopReason: string | null = null
 
     interface BlockState {
       kind: 'text' | 'thinking' | 'tool_use'
@@ -244,14 +262,14 @@ export class AnthropicProvider implements Provider {
     }
     const blocks = new Map<number, BlockState>()
 
-    for await (const payload of iterateSSEData(response.body)) {
+    streamLoop: for await (const payload of iterateSSEData(response.body)) {
       const event = payload as AnthropicStreamPayload
       switch (event.type) {
         case 'message_start': {
-          const usage = event.message?.usage
-          inputTokens = usage?.input_tokens ?? 0
-          cacheReadTokens = usage?.cache_read_input_tokens ?? 0
-          yield { type: 'usage', usage: { inputTokens, outputTokens: 0, ...(cacheReadTokens ? { cacheReadTokens } : {}) } }
+          const usage = mapAnthropicUsage(event.message?.usage)
+          inputTokens = usage.inputTokens
+          cacheReadTokens = usage.cacheReadTokens ?? 0
+          yield { type: 'usage', usage: { ...usage, outputTokens: 0 } }
           break
         }
         case 'content_block_start': {
@@ -267,6 +285,7 @@ export class AnthropicProvider implements Provider {
             }
             blocks.set(index, state)
             if (state.toolId && state.toolName) {
+              hasOutput = true
               yield { type: 'tool_call_start', index, id: state.toolId, name: state.toolName }
             }
           } else {
@@ -284,11 +303,14 @@ export class AnthropicProvider implements Provider {
           const delta = event.delta
           if (!delta) break
           if (delta.type === 'text_delta' && delta.text) {
+            hasOutput = true
             yield { type: 'text_delta', text: delta.text }
           } else if (delta.type === 'thinking_delta' && delta.thinking) {
+            hasOutput = true
             yield { type: 'thinking_delta', text: delta.thinking }
           } else if (delta.type === 'input_json_delta' && delta.partial_json) {
             if (state) state.json += delta.partial_json
+            hasOutput = true
             yield { type: 'tool_call_delta', index, argsDelta: delta.partial_json }
           }
           break
@@ -299,8 +321,10 @@ export class AnthropicProvider implements Provider {
           if (!state || state.ended) break
           state.ended = true
           if (state.kind === 'tool_use' && state.toolId && state.toolName) {
+            finalizedToolCalls += 1
             const input = parseToolArgs(state.json)
             if (!input) {
+              hadParseError = true
               const parseError = '模型输出的工具参数不是合法 JSON（可能因为内容过长被截断）'
               yield { type: 'notice', level: 'warn', message: `${parseError}（工具：${state.toolName}），将改为分步重试。` }
               yield { type: 'tool_call_end', index, id: state.toolId, name: state.toolName, input: {}, parseError }
@@ -312,6 +336,7 @@ export class AnthropicProvider implements Provider {
         }
         case 'message_delta': {
           const usage = event.usage
+          if (event.delta?.stop_reason) stopReason = event.delta.stop_reason
           if (typeof usage?.output_tokens === 'number') outputTokens = usage.output_tokens
           yield {
             type: 'usage',
@@ -333,7 +358,8 @@ export class AnthropicProvider implements Provider {
           })
         }
         case 'message_stop':
-          return
+          completed = true
+          break streamLoop
         default:
           // ping / 未知事件：忽略
           break
@@ -343,8 +369,12 @@ export class AnthropicProvider implements Provider {
     // 防御：服务端未发 message_stop 就断流时，把已开始的工具块收尾
     for (const [index, state] of blocks) {
       if (!state.ended && state.kind === 'tool_use' && state.toolId && state.toolName) {
+        state.ended = true
+        hasOutput = true
+        finalizedToolCalls += 1
         const input = parseToolArgs(state.json)
         if (!input) {
+          hadParseError = true
           yield {
             type: 'tool_call_end',
             index,
@@ -361,6 +391,36 @@ export class AnthropicProvider implements Provider {
     yield {
       type: 'usage',
       usage: { inputTokens, outputTokens, ...(cacheReadTokens ? { cacheReadTokens } : {}) }
+    }
+    if (stopReason === 'max_tokens' && !hadParseError) {
+      yield {
+        type: 'notice',
+        level: 'warn',
+        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。'
+      }
+    } else if (stopReason === 'refusal') {
+      yield {
+        type: 'notice',
+        level: 'warn',
+        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。'
+      }
+    }
+    if (!completed) {
+      if (!hasOutput && finalizedToolCalls === 0) {
+        throw new ProviderError('模型服务返回了空响应。', {
+          code: 'empty_response',
+          retryable: true,
+          providerId: this.id
+        })
+      }
+      // 有工具调用时保留已解析的调用交给 Agent 自修复；纯文本则明确报错，避免把半截回答当完整答案。
+      if (finalizedToolCalls === 0) {
+        throw new ProviderError('模型服务在回复完成前断开了连接，输出可能不完整。', {
+          code: 'incomplete_stream',
+          retryable: false,
+          providerId: this.id
+        })
+      }
     }
   }
 }

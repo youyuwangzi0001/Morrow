@@ -12,6 +12,7 @@ import type { Socket } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ToolContext } from '../../../src/core/types'
 import {
+  createSafeLookup,
   createWebFetchTool,
   fetchWebPage,
   htmlToReadable,
@@ -86,6 +87,15 @@ async function startFixture(): Promise<FixtureServer> {
         res.end(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]))
         return
       }
+      case '/huge-title': {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end(
+          `<html><head><title>${'T'.repeat(5000)}</title>` +
+            `<meta name="description" content="${'D'.repeat(5000)}"></head>` +
+            '<body><p>正文</p></body></html>'
+        )
+        return
+      }
       case '/missing': {
         res.writeHead(404, { 'Content-Type': 'text/html' })
         res.end('<h1>not found</h1>')
@@ -146,6 +156,9 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
     escapeApproved: false,
     demo: false,
     goal: null,
+    planMode: false,
+    getPlan: () => null,
+    proposePlan: (plan) => plan,
     emit: () => undefined,
     updateGoal: () => null,
     getTodos: () => [],
@@ -160,6 +173,46 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 }
 
 /* ── HTML → 可读文本 ──────────────────────────────────────────── */
+
+describe('createSafeLookup', () => {
+  it('supports Node 22+ all:true callbacks with an address array', async () => {
+    const lookup = createSafeLookup(async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1::1', family: 6 }
+    ])
+    const all = await new Promise<unknown>((resolve, reject) => {
+      ;(lookup as unknown as (host: string, opts: unknown, cb: unknown) => void)(
+        'example.com',
+        { all: true },
+        (err: NodeJS.ErrnoException | null, addresses?: unknown) => (err ? reject(err) : resolve(addresses))
+      )
+    })
+    expect(Array.isArray(all)).toBe(true)
+    expect(all as unknown[]).toHaveLength(2)
+
+    const one = await new Promise<{ address: string; family: number }>((resolve, reject) => {
+      ;(lookup as unknown as (host: string, opts: unknown, cb: unknown) => void)(
+        'example.com',
+        {},
+        (err: NodeJS.ErrnoException | null, address?: unknown, family?: unknown) =>
+          err ? reject(err) : resolve({ address: String(address), family: Number(family) })
+      )
+    })
+    expect(one).toEqual({ address: '93.184.216.34', family: 4 })
+  })
+
+  it('fails closed when every resolved address is private', async () => {
+    const lookup = createSafeLookup(async () => [{ address: '127.0.0.1', family: 4 }])
+    const error = await new Promise<NodeJS.ErrnoException>((resolve) => {
+      ;(lookup as unknown as (host: string, opts: unknown, cb: unknown) => void)(
+        'rebind.example',
+        { all: true },
+        (err: NodeJS.ErrnoException | null) => resolve(err as NodeJS.ErrnoException)
+      )
+    })
+    expect(error.code).toBe('SSRF_BLOCKED')
+  })
+})
 
 describe('htmlToReadable', () => {
   it('提取标题、meta 描述与正文，去掉 script/style/nav', () => {
@@ -302,6 +355,15 @@ describe('fetchWebPage（本地 HTTP fixture）', () => {
 
   it('读取 text/plain 内容', async () => {
     const fixture = await startFixture()
+    const huge = await fetchWebPage(`${fixture.url}/huge-title`, { allowPrivateNetwork: true })
+    expect(huge.title).toHaveLength(300)
+    expect(huge.description).toHaveLength(500)
+    const tool = createWebFetchTool({ allowPrivateNetwork: true })
+    const toolResult = await tool.execute({ url: `${fixture.url}/huge-title` }, makeCtx())
+    expect(toolResult.ok).toBe(true)
+    const output = String(toolResult.output)
+    expect(output.indexOf('不可信数据')).toBeLessThan(output.indexOf('网页标题'))
+
     const result = await fetchWebPage(`${fixture.url}/plain`, { allowPrivateNetwork: true })
     expect(result.text).toContain('纯文本内容 line-1')
     expect(result.contentType).toContain('text/plain')

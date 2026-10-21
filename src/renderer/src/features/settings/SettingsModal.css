@@ -4,8 +4,6 @@
   display: flex;
   align-items: stretch;
   gap: 0;
-  height: min(66vh, 588px);
-  min-height: 420px;
 }
 
 /* 左侧分类导航 */
@@ -15,6 +13,8 @@
   gap: 2px;
   width: 148px;
   flex: 0 0 auto;
+  min-height: 0;
+  overflow-y: auto;
   padding-right: 12px;
   border-right: 1px solid var(--line);
 }
@@ -563,15 +563,11 @@
 }
 
 .st-about-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 44px;
   height: 44px;
-  border: 1px solid var(--line-gold);
   border-radius: var(--r-md);
-  background: var(--gold-ghost);
-  color: var(--gold-bright);
-  font-size: 24px;
+  object-fit: contain;
 }
 
 .st-about-name {
@@ -642,6 +638,11 @@
   display: flex;
   gap: 8px;
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.st-hint.is-warn {
+  color: var(--rust, #a8654f);
 }
 
 .st-about-privacy {
@@ -662,10 +663,60 @@
   margin-top: 6px;
 }
 
+.st-danger-zone {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--rust, #a8654f) 26%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--rust, #a8654f) 5%, transparent);
+}
+
+.st-danger-copy {
+  min-width: 0;
+}
+
+.st-danger-copy .st-about-text {
+  margin-top: 5px;
+}
+
+.st-danger-zone > button {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.st-danger-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.st-danger-lead {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.st-danger-lead strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .st-about-shortcuts {
   margin-top: 20px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+@media (max-width: 620px) {
+  .st-danger-zone {
+    flex-direction: column;
+    gap: 10px;
+  }
 }
 
 .st-shortcut-grid {
@@ -689,10 +740,10 @@
 }
 /* ── R5：模型连接重做 / 上下文 Tab / 侧栏拖拽 / 标题栏画布 / Composer token chip ── */
 
-/* 设置面板略加高，容纳 5 个分类 */
+/* 为标题、页脚和内边距预留空间：只保留右侧面板一条滚动条，避免模态正文再套一层滚动 */
 .settings {
-  height: min(70vh, 620px);
-  min-height: 460px;
+  height: min(calc(84vh - 200px), 620px);
+  min-height: 220px;
 }
 
 /* 模型分组 */
@@ -1281,4 +1332,686 @@
   .st-detail-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── 联网搜索 ────────────────────────────────────────────────── */
+
+.st-search {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.st-search .field {
+  max-width: 520px;
+}
+
+.st-search-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 2px;
+}
+
+.st-search-test {
+  max-width: 560px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.st-search-test.is-ok {
+  border-color: var(--patina-dim);
+  background: var(--patina-dim);
+}
+
+.st-search-test.is-error {
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+}
+
+.st-search-test-message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.st-search-test.is-ok .st-search-test-message {
+  color: var(--patina);
+}
+
+.st-search-test.is-error .st-search-test-message {
+  color: var(--rust);
+}
+
+.st-search-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-search-sources button {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.st-search-sources button:hover {
+  color: var(--gold-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 项目规则文件列表 ─────────────────────────────────────────── */
+
+.st-rules-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.st-rules-budget {
+  margin: 2px 0 7px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+
+.st-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-rules-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.st-rules-list li.is-skipped {
+  opacity: 0.55;
+}
+
+.st-rules-scope {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-xs);
+  color: var(--gold);
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.st-rules-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.st-rules-name {
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.st-rules-path {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-rules-meta {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+/* ── 工作区权限规则与审批日志 ─────────────────────────────────── */
+
+.st-rule-form {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.st-rule-pattern {
+  flex: 1 1 180px;
+  min-width: 140px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+.st-perm-rules,
+.st-approval-log {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.st-perm-rules li,
+.st-approval-log li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+}
+
+.st-rule-decision {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.st-rule-decision.allow {
+  border-color: var(--patina-dim);
+  background: var(--patina-dim);
+  color: var(--patina);
+}
+
+.st-rule-decision.deny {
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.st-rule-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-approval-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.st-link-btn {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.st-link-btn:hover {
+  color: var(--gold-bright);
+  text-decoration: underline;
+}
+
+.st-approval-time {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.st-approval-tool {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 10.5px;
+}
+
+.st-approval-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+/* ── 自动化：自定义命令与运行钩子（P1-12） ───────────────────── */
+
+.st-automation {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.st-auto-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.st-auto-section + .st-auto-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.st-auto-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.st-auto-empty {
+  margin: 10px 0 0;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.st-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-command-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+}
+
+.st-command-list li.is-reserved {
+  border-color: color-mix(in srgb, var(--amber) 34%, var(--line));
+}
+
+.st-command-list li.is-reserved .st-command-name {
+  color: var(--amber);
+}
+
+.st-command-name {
+  flex: 0 0 auto;
+  color: var(--gold-bright);
+  font-size: 11px;
+}
+
+.st-command-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.st-command-hint {
+  color: var(--text-3);
+}
+
+.st-hook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.st-hook-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.st-hook-row.is-enabled {
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+}
+
+.st-hook-command {
+  flex: 1 1 220px;
+  min-width: 160px;
+  height: 30px;
+  font-size: 10.5px;
+}
+
+.st-hook-enabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.st-hook-enabled input {
+  accent-color: var(--gold);
+}
+
+.st-hook-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.st-hook-saved {
+  color: var(--patina);
+  font-size: 10.5px;
+}
+
+.st-spin {
+  animation: st-spin 0.9s linear infinite;
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 子代理角色（Swarm） */
+.st-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-agent-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+}
+
+.st-agent-title {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.st-agent-name {
+  flex: 0 0 auto;
+  color: var(--gold-bright);
+  font-size: 9.5px;
+}
+
+.st-agent-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+/* ── 功能与工具 ─────────────────────────────────────────────── */
+
+.st-tools {
+  display: flex;
+  flex-direction: column;
+}
+
+.st-tool-group {
+  margin-top: 14px;
+}
+
+.st-tool-group-label {
+  margin: 0 0 7px;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.st-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.st-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.st-tool-row:hover {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+}
+
+.st-tool-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-xs);
+  background: var(--gold-ghost);
+  color: var(--gold);
+}
+
+.st-tool-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.st-tool-title {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.st-tool-desc {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.st-tool-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 10px;
+  transition: color var(--dur-fast) ease;
+}
+
+.st-tool-row:hover .st-tool-open {
+  color: var(--gold);
+}
+
+/* ── 模型服务：先选服务，再看该服务的连接和模型 ─────────────── */
+
+.st-provider-picker {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 2px 0 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.st-provider-picker-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.st-provider-picker-copy .select-root {
+  width: 100%;
+}
+
+.st-add-provider-inline {
+  flex: 0 0 auto;
+  width: auto;
+  height: 34px;
+  margin-top: 0;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.st-provider-group {
+  margin-top: 0;
+}
+
+.st-provider-head.is-static {
+  cursor: default;
+}
+
+.st-provider-head.is-static:hover {
+  background: transparent;
+}
+
+.st-custom-hint {
+  margin: -2px 0 0;
+}
+
+/* ── 对话归档 ─────────────────────────────────────────────────── */
+
+.st-archive {
+  padding-bottom: 8px;
+}
+
+.st-archive-summary {
+  display: flex;
+  align-items: center;
+  margin: 16px 0 8px;
+  color: var(--text-3);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.st-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-archive-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  transition: border-color var(--dur-fast) ease;
+}
+
+.st-archive-row:hover {
+  border-color: color-mix(in srgb, var(--gold) 24%, var(--line));
+}
+
+.st-archive-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.st-archive-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.st-archive-preview {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.st-archive-meta {
+  margin: 1px 0 0;
+  color: var(--text-3);
+  font-size: 9.5px;
+  opacity: 0.85;
+}
+
+.st-archive-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.st-archive-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 28px 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  text-align: center;
+}
+
+.st-archive-empty-title {
+  margin: 3px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.st-archive-empty .st-hint {
+  margin: 0;
 }

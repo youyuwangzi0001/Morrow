@@ -1,16 +1,16 @@
-import { ArrowUpRight, Folder, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { SUGGESTIONS, findModel } from '@shared/models'
 import { useAppStore } from '../../state/store'
 import './Welcome.css'
 
 /* ── 编辑感问候：按时段变化 ───────────────────────────────────── */
 
-function greetingOf(hour: number): { zh: string; en: string } {
-  if (hour < 5) return { zh: '夜深了', en: 'Still up?' }
-  if (hour < 11) return { zh: '早上好', en: 'Good morning' }
-  if (hour < 13) return { zh: '中午好', en: 'Good afternoon' }
-  if (hour < 18) return { zh: '下午好', en: 'Good afternoon' }
-  return { zh: '晚上好', en: 'Good evening' }
+function greetingOf(hour: number): string {
+  if (hour < 5) return '夜深了'
+  if (hour < 11) return '早上好'
+  if (hour < 13) return '中午好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
 }
 
 function dateLine(date: Date): string {
@@ -40,10 +40,8 @@ function noteOf(date: Date): string {
 export function Welcome(): React.JSX.Element {
   const demoAvailable = useAppStore((s) => s.demoAvailable)
   const startDemo = useAppStore((s) => s.startDemo)
-  const onboardingDone = useAppStore((s) => s.settings.onboardingDone)
   const sendMessage = useAppStore((s) => s.sendMessage)
   const hasAnyApiKey = useAppStore((s) => s.hasAnyApiKey)
-  const workspace = useAppStore((s) => s.settings.lastWorkspace)
   const modelRef = useAppStore((s) => s.settings.defaultModel)
   const providers = useAppStore((s) => s.settings.providers)
   const openSettings = useAppStore((s) => s.openSettings)
@@ -51,11 +49,6 @@ export function Welcome(): React.JSX.Element {
   const now = new Date()
   const greeting = greetingOf(now.getHours())
   const model = findModel(providers, modelRef)
-  const workspaceName = workspace ? (workspace.split(/[\\/]/).filter(Boolean).pop() ?? workspace) : null
-
-  const openOnboarding = (): void => {
-    useAppStore.setState({ onboardingOpen: true })
-  }
 
   return (
     <div className="welcome">
@@ -66,26 +59,19 @@ export function Welcome(): React.JSX.Element {
         </p>
 
         <h1 className="welcome-title">
-          <em className="welcome-en serif">{greeting.en},</em>
-          <span className="welcome-zh">{greeting.zh}，今天想完成什么？</span>
+          <span className="welcome-zh">{greeting}，今天想完成什么？</span>
         </h1>
         <p className="welcome-sub">说清想要的结果就行，过程我来想办法。</p>
 
-        <div className="welcome-actions">
-          {demoAvailable ? (
+        {demoAvailable ? (
+          <div className="welcome-actions">
             <button type="button" className="welcome-demo" onClick={() => void startDemo()}>
               <Sparkles size={15} strokeWidth={1.5} aria-hidden />
               <span>看一场演示</span>
               <span className="welcome-demo-meta mono">离线 · 约 40 秒</span>
             </button>
-          ) : null}
-          {!onboardingDone ? (
-            <button type="button" className="welcome-link" onClick={openOnboarding}>
-              连接我的模型
-              <ArrowUpRight size={13} strokeWidth={1.5} aria-hidden />
-            </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="welcome-papers">
           {SUGGESTIONS.map((suggestion, index) => (
@@ -105,11 +91,6 @@ export function Welcome(): React.JSX.Element {
         </div>
 
         <div className="welcome-foot">
-          <span className="welcome-foot-item">
-            <Folder size={12} strokeWidth={1.5} aria-hidden />
-            <span className="truncate">{workspaceName ?? '还没有工作区'}</span>
-          </span>
-          <span className="welcome-foot-dot" aria-hidden />
           {hasAnyApiKey ? (
             <span className="welcome-foot-item">
               <span className="welcome-model-dot is-on" aria-hidden />

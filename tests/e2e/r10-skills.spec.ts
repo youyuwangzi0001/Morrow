@@ -16,7 +16,7 @@ import { expect, test } from '@playwright/test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchMorrow, root, screenshotPath } from './launch'
-import { dismissOnboarding, waitForStoreReady } from './store'
+import { dismissOnboarding, openToolPanel, waitForStoreReady } from './store'
 
 type InvokeResult<T> =
   | { ok: true; data: T }
@@ -142,7 +142,7 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
       if (!initial.ok) throw new Error('技能库 feature 频道未注册')
       const userDir = initial.data.userDir
       expect(userDir).toContain('skills')
-      expect(initial.data.skills).toEqual([])
+      expect(initial.data.skills.map((item) => item.name)).toEqual(expect.arrayContaining(['code-review', 'debugging']))
 
       // 1. 从 zip 真实安装
       const zipPath = writeZip(join(fixtureDir, 'release-skill.zip'), {
@@ -225,7 +225,8 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
       })
       expect(removed.ok).toBe(true)
       if (!removed.ok) throw new Error(removed.error.message)
-      expect(removed.data.skills).toEqual([])
+      expect(removed.data.skills.some((item) => item.name === 'release')).toBe(false)
+      expect(removed.data.skills.map((item) => item.name)).toEqual(expect.arrayContaining(['code-review']))
       expect(existsSync(join(userDir, 'release'))).toBe(false)
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
@@ -250,13 +251,23 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
       const installed = await invoke(morrow.page, 'feature:skills:install', { sourcePath: zipPath, workspace: null })
       expect(installed.ok).toBe(true)
 
-      // 统一工作台入口：TitleBar 扳手按钮 → 菜单里的「技能库」
-      const workbench = morrow.page.getByRole('button', { name: '打开工作台 (Ctrl+Shift+W)' })
-      if ((await workbench.count()) === 0) test.skip(true, '未找到工作台入口（TitleBar 扳手按钮）')
-      await workbench.click()
-      await morrow.page.getByRole('button', { name: '技能库' }).click()
+      // 统一入口：设置 → 功能与工具 → 技能
+      await openToolPanel(morrow.page, '技能库')
       await morrow.page.waitForSelector('[data-testid="skills-panel"]', { timeout: 10_000 })
       await morrow.page.waitForTimeout(300)
+      const bodyOverflow = await morrow.page
+        .getByRole('dialog', { name: '技能' })
+        .evaluate((panel) => {
+          const body = panel.querySelector<HTMLElement>('.modal-body')
+          return body ? body.scrollHeight - body.clientHeight : null
+        })
+      expect(bodyOverflow).not.toBeNull()
+      expect(bodyOverflow!).toBeLessThanOrEqual(1)
+      // 内置技能随首次启动安装，面板里应能看到
+      const builtin = morrow.page.getByRole('option', { name: /code-review/ }).first()
+      await expect(builtin).toBeVisible()
+      await builtin.click()
+      await expect(morrow.page.getByText('代码审查').first()).toBeVisible()
       await morrow.page.screenshot({ path: screenshotPath('r10-skills-dark.png') })
 
       // 选中列表里的 release 技能（安装后默认选中第一个，这里显式点一下更稳）
@@ -270,6 +281,7 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
         ;(state?.getState().setTheme as ((theme: string) => void) | undefined)?.('light')
       })
       await morrow.page.waitForTimeout(400)
+      await morrow.page.waitForTimeout(260)
       await morrow.page.screenshot({ path: screenshotPath('r10-skills-light.png') })
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })

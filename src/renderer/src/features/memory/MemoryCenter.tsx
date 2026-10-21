@@ -1,12 +1,12 @@
 /**
  * R10-D 记忆中心面板（独立受控组件，Lead 挂载：<MemoryCenter open={...} onClose={...} />）。
  *
- * - 项目记忆（跟随当前工作区，存在 <workspace>/.morrow/memories.json）与全局记忆（应用数据目录）分组；
+ * - 项目记忆（跟随当前文件夹，存在 <workspace>/.morrow/memories.json）与全局记忆（应用数据目录）分组；
  * - 搜索、添加、编辑、启用/停用、删除、清空（二次确认）、导出 Markdown/JSON；
  * - 显示旧 MEMORY.md 迁移数量、启用条目 token 估算、以及「会注入系统提示的原文」预览；
  * - 所有数据都通过 window.morrow.features.invoke('feature:memory:*') 走真实主进程。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Brain,
   Check,
@@ -18,8 +18,7 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Trash2,
-  X
+  Trash2
 } from 'lucide-react'
 import { useAppStore } from '../../state/store'
 import { Badge, Button, EmptyHint, ErrorNote, IconButton, Modal, Segmented, Spinner, TextArea, TextInput } from '../../ui'
@@ -38,12 +37,12 @@ import './MemoryCenter.css'
 export interface MemoryCenterProps {
   open: boolean
   onClose: () => void
-  /** 可选：覆盖当前工作区；不传时自动取当前会话工作区 / 最近工作区 */
+  /** 可选：覆盖当前文件夹；不传时自动取当前对话文件夹 / 最近文件夹 */
   workspace?: string | null
 }
 
 const SCOPE_OPTIONS: { value: MemoryScope; label: string; description: string }[] = [
-  { value: 'project', label: '项目记忆', description: '跟随当前工作区，只在当前项目里生效' },
+  { value: 'project', label: '项目记忆', description: '跟随当前文件夹，只在当前项目里生效' },
   { value: 'global', label: '全局记忆', description: '跨项目生效，例如「始终用简体中文回答」' }
 ]
 
@@ -81,18 +80,37 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
   const [editTags, setEditTags] = useState('')
   const [busy, setBusy] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<{ kind: 'delete' | 'clear'; id?: string } | null>(null)
+  const [confirm, setConfirm] = useState<{
+    kind: 'delete' | 'clear'
+    id?: string
+    scope: MemoryScope
+    workspace: string | null
+  } | null>(null)
   const [injection, setInjection] = useState<MemoryInjection | null>(null)
   const [showInjection, setShowInjection] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
+  // 防止范围/工作区切换后，旧请求的晚到结果覆盖新范围的数据
+  const scopeRef = useRef(scope)
+  const workspaceRef = useRef(workspace)
+  scopeRef.current = scope
+  workspaceRef.current = workspace
+  const listToken = useRef(0)
+  const injectionToken = useRef(0)
+
   const load = useCallback(async (): Promise<void> => {
     if (!open) return
+    // 旧的 load 闭包（例如变更后的跟随刷新）在当前范围已切换时直接放弃
+    if (scope !== scopeRef.current || workspace !== workspaceRef.current) return
     if (scope === 'project' && !workspace) {
+      listToken.current += 1
       setData(null)
       setError(null)
+      setLoading(false)
       return
     }
+    const token = ++listToken.current
+    setData(null)
     setLoading(true)
     setError(null)
     try {
@@ -101,20 +119,23 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
         workspace: scope === 'project' ? workspace : null,
         includeDisabled: true
       })
+      if (token !== listToken.current || scope !== scopeRef.current || workspace !== workspaceRef.current) return
       setData(result)
     } catch (err) {
+      if (token !== listToken.current || scope !== scopeRef.current || workspace !== workspaceRef.current) return
       setError(errorText(err, '读取记忆失败'))
     } finally {
-      setLoading(false)
+      if (token === listToken.current) setLoading(false)
     }
   }, [open, scope, workspace])
 
   const loadInjection = useCallback(async (): Promise<void> => {
+    const token = ++injectionToken.current
     try {
       const result = await memoryApi.injection({ workspace: workspace ?? null, maxTokens: 600 })
-      setInjection(result)
+      if (token === injectionToken.current && workspace === workspaceRef.current) setInjection(result)
     } catch {
-      setInjection(null)
+      if (token === injectionToken.current && workspace === workspaceRef.current) setInjection(null)
     }
   }, [workspace])
 
@@ -126,6 +147,30 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
     if (!open) return
     void loadInjection()
   }, [open, loadInjection, data])
+
+  const changeScope = (next: MemoryScope): void => {
+    if (next === scope) return
+    // 确认框/编辑态属于旧范围，必须同步清掉，避免把「清空项目记忆」作用到全局范围
+    setScope(next)
+    setConfirm(null)
+    setEditingId(null)
+    setAdding(false)
+    setDraftText('')
+    setDraftTags('')
+    setEditText('')
+    setEditTags('')
+    setNotice(null)
+    setError(null)
+    setQuery('')
+  }
+
+  useEffect(() => {
+    setConfirm(null)
+    setEditingId(null)
+    setAdding(false)
+    setNotice(null)
+    setError(null)
+  }, [workspace])
 
   const entries = useMemo(() => {
     const all = data?.entries ?? []
@@ -176,6 +221,7 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
   }
 
   const startEdit = (entry: MemoryEntry): void => {
+    setAdding(false)
     setEditingId(entry.id)
     setEditText(entry.text)
     setEditTags(entry.tags.join('，'))
@@ -224,15 +270,19 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
 
   const confirmDelete = async (): Promise<void> => {
     if (!confirm) return
+    // 使用打开确认框时捕获的范围，避免用户在请求期间切范围导致清错数据
+    const targetScope = confirm.scope
+    const targetWorkspace = confirm.workspace
+    const targetLabel = targetScope === 'project' ? '项目记忆' : '全局记忆'
     setBusy(true)
     setError(null)
     try {
       if (confirm.kind === 'delete' && confirm.id) {
-        await memoryApi.remove({ scope, workspace: scope === 'project' ? workspace : null, id: confirm.id })
+        await memoryApi.remove({ scope: targetScope, workspace: targetWorkspace, id: confirm.id })
         setNotice('已删除这条记忆')
       } else if (confirm.kind === 'clear') {
-        const result = await memoryApi.clear({ scope, workspace: scope === 'project' ? workspace : null })
-        setNotice(`已清空 ${result.removed} 条${scopeLabel}`)
+        const result = await memoryApi.clear({ scope: targetScope, workspace: targetWorkspace })
+        setNotice(`已清空 ${result.removed} 条${targetLabel}`)
       }
       setConfirm(null)
       await load()
@@ -269,15 +319,12 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
     <Modal
       open={open}
       onClose={onClose}
-      title="记忆中心"
-      description="记忆是 Morrow 的参考笔记。启用的条目会在需要时参考；不会当作指令，也不会授权操作。"
+      title="记忆"
+      description="记忆是 Morrow 的参考笔记。启用的条目会在相关任务里参考；不会当作指令，也不会授权操作。"
       width={860}
-      ariaLabel="记忆中心"
+      ariaLabel="记忆"
       footer={
         <footer className="mc-foot">
-          <span className="mc-foot-note">
-            <X size={11} strokeWidth={1.8} aria-hidden /> 记忆属于参考背景，不是指令，也不会授权任何操作。
-          </span>
           <Button variant="ghost" size="sm" onClick={onClose}>
             关闭
           </Button>
@@ -286,11 +333,11 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
     >
       <div className="mc-root">
         <div className="mc-top">
-          <Segmented ariaLabel="记忆范围" value={scope} options={SCOPE_OPTIONS} onChange={setScope} />
+          <Segmented ariaLabel="记忆范围" value={scope} options={SCOPE_OPTIONS} onChange={changeScope} />
           {scope === 'project' ? (
-            <span className="mc-workspace mono" title={workspace ?? '未选择工作区'}>
+            <span className="mc-workspace mono" title={workspace ?? '未选择文件夹'}>
               <Folder size={12} strokeWidth={1.5} aria-hidden />
-              {workspace ? shortenPath(workspace) : '未选择工作区'}
+              {workspace ? shortenPath(workspace) : '未选择文件夹'}
             </span>
           ) : (
             <span className="mc-workspace mono">
@@ -321,10 +368,10 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
 
         {!canWrite ? (
           <ErrorNote
-            title="还没有选择工作区"
-            detail="项目记忆跟随工作文件夹。先在左侧选择一个工作区，或切到「全局记忆」。"
+            title="还没有选择文件夹"
+            detail="项目记忆跟随文件夹。先在左侧选择一个文件夹，或切到「全局记忆」。"
             action={
-              <Button variant="ghost" size="sm" onClick={() => setScope('global')}>
+              <Button variant="ghost" size="sm" onClick={() => changeScope('global')}>
                 去全局记忆
               </Button>
             }
@@ -336,12 +383,11 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
             <Badge tone="neutral">共 {stats.total} 条</Badge>
             <Badge tone="success">启用 {stats.enabled}</Badge>
             {stats.disabled > 0 ? <Badge tone="neutral">停用 {stats.disabled}</Badge> : null}
-            <Badge tone="gold">
-              预计使用 {stats.enabledTokens} / {stats.limitTokens} 字
-            </Badge>
-            {stats.migratedTotal > 0 ? <Badge tone="mauve">旧记忆迁移 {stats.migratedTotal}</Badge> : null}
-            {stats.legacyFileDetected ? (
-              <span className="mc-legacy-hint">检测到 .morrow/MEMORY.md，新写入会继续自动迁移</span>
+            <span title="仅统计当前范围；实际注入与预算见「会参考的内容」">
+              <Badge tone="gold">启用条目约 {stats.enabledTokens} tokens</Badge>
+            </span>
+            {stats.migratedTotal > 0 ? (
+              <span className="mc-legacy-hint">旧记忆已迁移 {stats.migratedTotal} 条</span>
             ) : null}
           </div>
         ) : null}
@@ -351,7 +397,7 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
             variant="ghost"
             size="sm"
             icon={<Eye size={13} strokeWidth={1.6} aria-hidden />}
-            aria-label="注入预览"
+            aria-label="Morrow 会参考的内容"
             aria-pressed={showInjection}
             onClick={() => void togglePreview()}
           >
@@ -382,7 +428,7 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
             size="sm"
             icon={<Trash2 size={13} strokeWidth={1.6} aria-hidden />}
             disabled={!stats || stats.total === 0}
-            onClick={() => setConfirm({ kind: 'clear' })}
+            onClick={() => setConfirm({ kind: 'clear', scope, workspace: scope === 'project' ? workspace : null })}
           >
             清空{scopeLabel}
           </Button>
@@ -396,12 +442,12 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
         {error ? <ErrorNote title="操作失败" detail={error} action={<Button variant="ghost" size="sm" onClick={() => void load()}>重试</Button>} /> : null}
 
         {showInjection && injection ? (
-          <section className="mc-injection" aria-label="注入预览">
+          <section className="mc-injection" aria-label="Morrow 会参考的内容">
             <header className="mc-injection-head">
               <Brain size={13} strokeWidth={1.6} aria-hidden />
               <span>会参考的内容</span>
               <span className="mono">
-                {injection.included}/{injection.totalEnabled} 条 · 预计 {injection.usedTokens}/{injection.limitTokens} 字
+                {injection.included}/{injection.totalEnabled} 条 · 预计 {injection.usedTokens}/{injection.limitTokens} tokens
                 {injection.omitted > 0 ? ` · ${injection.omitted} 条因篇幅未使用` : ''}
               </span>
             </header>
@@ -449,11 +495,11 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
           <div className="mc-confirm" role="alertdialog" aria-label="确认操作">
             <span>
               {confirm.kind === 'clear'
-                ? `确定清空全部${scopeLabel}吗？清空后旧 MEMORY.md 里已迁移过的内容不会自动回来。`
+                ? `确定清空全部${confirm.scope === 'project' ? '项目记忆' : '全局记忆'}吗？清空后旧 MEMORY.md 里已迁移过的内容不会自动回来。`
                 : '确定删除这条记忆吗？'}
             </span>
             <div className="mc-confirm-actions">
-              <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm(null)}>
                 取消
               </Button>
               <Button variant="danger" size="sm" loading={busy} onClick={() => void confirmDelete()}>
@@ -524,7 +570,7 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
                             #{tag}
                           </span>
                         ))}
-                        {!entry.enabled ? <span className="mc-disabled-note">已停用，不注入</span> : null}
+                        {!entry.enabled ? <span className="mc-disabled-note">已停用，不会参考</span> : null}
                       </div>
                     </>
                   )}
@@ -545,7 +591,19 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
                   <IconButton label="编辑这条记忆" size={26} onClick={() => startEdit(entry)}>
                     <Pencil size={12} strokeWidth={1.6} aria-hidden />
                   </IconButton>
-                  <IconButton label="删除这条记忆" size={26} tone="danger" onClick={() => setConfirm({ kind: 'delete', id: entry.id })}>
+                  <IconButton
+                    label="删除这条记忆"
+                    size={26}
+                    tone="danger"
+                    onClick={() =>
+                      setConfirm({
+                        kind: 'delete',
+                        id: entry.id,
+                        scope,
+                        workspace: scope === 'project' ? workspace : null
+                      })
+                    }
+                  >
                     <Trash2 size={12} strokeWidth={1.6} aria-hidden />
                   </IconButton>
                 </div>

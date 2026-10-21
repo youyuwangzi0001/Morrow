@@ -173,6 +173,8 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       const { page } = first
       await waitForStoreReady(page)
       await dismissOnboarding(page)
+      // 记忆 IPC 只接受已登记工作区；模拟用户已选择这个文件夹
+      await setLastWorkspaceViaStore(page, workspace)
 
       /* ── 1) 旧 MEMORY.md 迁移 + scope 隔离 ── */
       const migrated = await feature<MemoryListWire>(page, 'feature:memory:list', {
@@ -202,6 +204,18 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       })
       expect(projectEntry.entry.scope).toBe('project')
       expect(globalEntry.entry.scope).toBe('global')
+
+      // 未登记的同级目录不能作为项目记忆工作区（防止向任意目录写 .morrow）
+      const unregisteredAdd = await featureRaw(page, 'feature:memory:add', {
+        scope: 'project',
+        workspace: outside,
+        text: '不应写入未登记工作区'
+      })
+      expect(unregisteredAdd.ok).toBe(false)
+      expect(unregisteredAdd.error?.message).toContain('已登记')
+      const unregisteredInjection = await featureRaw(page, 'feature:memory:injection', { workspace: outside })
+      expect(unregisteredInjection.ok).toBe(false)
+      expect(existsSync(join(outside, '.morrow'))).toBe(false)
 
       await feature(page, 'feature:memory:update', {
         scope: 'project',
@@ -421,10 +435,10 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       await openWorkbenchPanel(page, 'memory')
       const memoryRoot = page.locator('.mc-root')
       await expect(memoryRoot).toBeVisible({ timeout: 15_000 })
-      await expect(page.locator('.modal-title').filter({ hasText: '记忆中心' })).toBeVisible()
+      await expect(page.locator('.modal-title').filter({ hasText: '记忆' })).toBeVisible()
       // 旧 MEMORY.md 迁移条目出现在面板里
       await expect(page.locator('.mc-list')).toContainText('E2E 迁移记忆：周报按季度口径汇总')
-      await expect(memoryRoot).toContainText('旧记忆迁移')
+      await expect(memoryRoot).toContainText('旧记忆已迁移')
 
       // 添加一条项目记忆
       await page.getByRole('button', { name: '添加记忆' }).click()
@@ -437,18 +451,35 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       // 行内停用 + 搜索
       const addedEntry = page.locator('.mc-entry').filter({ hasText: 'UI 添加的记忆' })
       await addedEntry.getByRole('switch', { name: '停用这条记忆' }).click()
-      await expect(addedEntry).toContainText('已停用，不注入')
+      await expect(addedEntry).toContainText('已停用，不会参考')
       await page.getByLabel('搜索记忆').fill('UI 添加')
       await expect(page.locator('.mc-entry')).toHaveCount(1)
       await page.getByLabel('搜索记忆').fill('')
 
-      // 注入预览（停用条目不出现，旧迁移条目出现）
-      await page.getByRole('button', { name: '注入预览' }).click()
+      // 切范围时必须清掉旧范围的清空确认，不能把「清空项目记忆」执行成「清空全局记忆」
+      await page.getByRole('radio', { name: '全局记忆' }).click()
+      await page.getByRole('button', { name: '添加记忆' }).click()
+      await page.getByLabel('新的全局记忆').fill('UI 全局记忆：始终使用简体中文。')
+      await page.getByRole('button', { name: '保存记忆' }).click()
+      await expect(page.locator('.mc-list')).toContainText('UI 全局记忆')
+      await page.getByRole('radio', { name: '项目记忆' }).click()
+      await expect(page.locator('.mc-list')).toContainText('E2E 迁移记忆')
+      await page.getByRole('button', { name: '清空项目记忆' }).click()
+      await expect(page.getByRole('alertdialog', { name: '确认操作' })).toBeVisible()
+      await page.getByRole('radio', { name: '全局记忆' }).click()
+      await expect(page.getByRole('alertdialog', { name: '确认操作' })).toHaveCount(0)
+      await expect(page.locator('.mc-list')).toContainText('UI 全局记忆')
+      await page.getByRole('radio', { name: '项目记忆' }).click()
+      await expect(page.locator('.mc-list')).toContainText('E2E 迁移记忆')
+
+      // 注入预览（停用条目不出现，旧迁移条目与全局记忆出现）
+      await page.getByRole('button', { name: 'Morrow 会参考的内容' }).click()
       const injection = page.locator('.mc-injection')
       await expect(injection).toBeVisible({ timeout: 10_000 })
       await expect(injection).toContainText('E2E 迁移记忆')
+      await expect(injection).toContainText('UI 全局记忆')
       await expect(injection).not.toContainText('UI 添加的记忆')
-      await expect(injection).toContainText('字')
+      await expect(injection).toContainText('tokens')
       await page.evaluate(() => {
         document.querySelector('.modal-body')?.scrollTo(0, 0)
       })
@@ -456,6 +487,7 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
 
       // 明色主题截图（沿用全局主题 tokens）
       await setThemeViaStore(page, 'light')
+      await page.waitForTimeout(260)
       await page.screenshot({ path: screenshotPath('r10-memory-center-light.png') })
       await setThemeViaStore(page, 'dark')
       await page.locator('.mc-foot').getByRole('button', { name: '关闭' }).click()
@@ -466,19 +498,25 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       await expect(page.locator('.pp-root')).toBeVisible({ timeout: 15_000 })
       await expect(page.locator('.modal-title').filter({ hasText: '项目' })).toBeVisible()
       await expect(page.locator('.pp-project')).toContainText('UI 项目')
-      // 当前工作区项目默认被选中并带出指令
-      await expect(page.getByLabel('项目指令（会注入 Agent 的系统提示）')).toHaveValue(/先给结论/)
+      // 默认是项目主页（概览）：标题、项目内对话入口、说明与资料摘要
+      await expect(page.locator('.pp-home-title')).toHaveText('UI 项目')
+      await expect(page.locator('.pp-home-composer textarea')).toBeVisible()
+      await expect(page.locator('.pp-home-cards')).toContainText('UI 项目指令：先给结论')
+      await expect(page.locator('.pp-home-cards')).toContainText('brief.md')
+      // 切到说明与资料：当前工作区项目默认被选中并带出完整指令
+      await page.getByRole('tab', { name: '说明与资料' }).click()
+      await expect(page.getByLabel('长期说明（Morrow 做任务时会参考）')).toHaveValue(/先给结论/)
       await expect(page.locator('.pp-knowledge-list')).toContainText('brief.md')
       // 知识文件会异步重新校验并显示真实大小（不是一直「校验中…」）
       await expect(page.locator('.pp-knowledge-size')).toContainText(/B|KB/i, { timeout: 10_000 })
 
       // 修改指令并保存
-      await page.getByLabel('项目指令（会注入 Agent 的系统提示）').fill('UI 项目指令（已保存）：先给结论，再给数据来源，并列出风险。')
+      await page.getByLabel('长期说明（Morrow 做任务时会参考）').fill('UI 项目指令（已保存）：先给结论，再给数据来源，并列出风险。')
       await page.getByRole('button', { name: '保存项目' }).click()
       await expect(page.locator('.pp-notice')).toContainText('项目已保存')
 
       // 上下文预览：指令 + 知识摘要 + 记忆
-      await page.getByRole('button', { name: '上下文预览' }).click()
+      await page.getByRole('button', { name: 'Morrow 会看到什么' }).click()
       const preview = page.locator('.pp-preview')
       await expect(preview).toBeVisible({ timeout: 10_000 })
       await expect(preview).toContainText('UI 项目指令（已保存）')
@@ -514,6 +552,7 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       const { page } = morrow
       await waitForStoreReady(page)
       await dismissOnboarding(page)
+      await setLastWorkspaceViaStore(page, workspace)
       await installEventCollector(page)
       const provider = await page.evaluate(async (url: string) => {
         const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore

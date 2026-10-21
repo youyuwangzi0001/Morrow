@@ -11,8 +11,7 @@
  * 限制（见 docs/DOCUMENT-TOOLS.md）：不解析富文本格式/图表/合并单元格样式；日期单元格按 Excel
  * 序列值输出；跨工作表引用不会被求值器计算缓存值（公式本身仍保真写入）。
  */
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import JSZip from 'jszip'
 import type { ToolResult } from '../../shared/types'
 import type { ToolContext } from '../types'
@@ -20,7 +19,7 @@ import { formatBytes, sha256, truncateText } from '../util'
 import { getBoolean, getNumber, getString } from './args'
 import { ToolExecutionError, ToolInputError } from './errors'
 import { decodeXmlText } from './docx-tools'
-import { recordRestoreManifest, snapshotFile } from './fs-tools'
+import { atomicWriteFileSync, recordRestoreManifest, snapshotFile } from './fs-tools'
 import { cellRefToCoord, coordToRef, evaluateSheet, type CellInput } from './xlsx-formula'
 import { displayPath, resolveWorkspacePath } from './paths'
 import { okResult, oneLineInput, type ToolImpl } from './types'
@@ -36,6 +35,9 @@ const DEFAULT_READ_COLS = 50
 const MAX_READ_COLS = 500
 const MAX_CELL_DISPLAY = 120
 const MAX_FORMULAS_LISTED = 300
+/** Excel 单元格文本与公式的硬上限（超出后 Excel 会修复/拒绝打开） */
+const MAX_CELL_CHARS = 32_767
+const MAX_FORMULA_CHARS = 8_192
 
 /* ── XML 小工具（XLSX 部件都是简单 XML，用轻量解析避免引入 DOM） ── */
 
@@ -195,7 +197,12 @@ function cellDisplay(cell: ParsedCell, sharedStrings: string[]): string {
   return cell.rawValue ?? ''
 }
 
-function parseSheetCells(sheetXml: string): ParsedCell[] {
+interface ParsedSheetCells {
+  cells: ParsedCell[]
+  truncated: boolean
+}
+
+function parseSheetCells(sheetXml: string): ParsedSheetCells {
   const cells: ParsedCell[] = []
   const rowRegex = /<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g
   let inferredRow = 0
@@ -229,10 +236,10 @@ function parseSheetCells(sheetXml: string): ParsedCell[] {
         ...(inlineMatch ? { inlineText: collectInlineText(inlineMatch[1]) } : {}),
         ...(attrs.s ? { styleIndex: Number(attrs.s) } : {})
       })
-      if (cells.length > 200_000) return cells
+      if (cells.length >= 200_000) return { cells, truncated: true }
     }
   }
-  return cells
+  return { cells, truncated: false }
 }
 
 /* ── read_xlsx ────────────────────────────────────────────────── */
@@ -321,7 +328,8 @@ export const readXlsxTool: ToolImpl = {
     const rawPath = getString(input, 'path', { required: true })
     const resolved = resolveWorkspacePath(rawPath, ctx.workspace, {
       escapeApproved: ctx.escapeApproved,
-      requireExist: true
+      requireExist: true,
+      allowedExternalFiles: ctx.attachedFiles
     })
     if (resolved.isDirectory) throw new ToolInputError(`「${rawPath}」是一个文件夹，不是 Excel 文件。`, '请指定具体的 .xlsx 文件。')
     const stat = statSync(resolved.real)
@@ -359,7 +367,8 @@ export const readXlsxTool: ToolImpl = {
         sections.push(`\n## 工作表：${sheet.name}\n（缺少工作表数据，文件可能损坏）`)
         continue
       }
-      const cells = parseSheetCells(sheetXml)
+      const parsedSheet = parseSheetCells(sheetXml)
+      const cells = parsedSheet.cells
       const range = requestedRange ?? null
       const rowsMap = new Map<number, Map<number, ParsedCell>>()
       let maxRow = 0
@@ -379,7 +388,7 @@ export const readXlsxTool: ToolImpl = {
       const startColumn = range?.startColumn ?? 0
       const lastRow = Math.min(maxRow, startRow + maxRows - 1)
       const lastColumn = Math.min(maxColumn, startColumn + maxCols - 1)
-      const truncated = maxRow > lastRow || maxColumn > lastColumn
+      const truncated = maxRow > lastRow || maxColumn > lastColumn || parsedSheet.truncated
       if (truncated) truncatedAny = true
       const matrix: string[][] = []
       const formulas: string[] = []
@@ -406,6 +415,9 @@ export const readXlsxTool: ToolImpl = {
       if (includeFormulas && formulas.length > 0) {
         sheetLines.push('', '公式：', ...formulas.map((formula) => `- ${formula}`))
       }
+      if (parsedSheet.truncated) {
+        sheetLines.push('', '（工作表单元格超过 20 万个，只解析了前 20 万个；请用 range 缩小范围）')
+      }
       sections.push(sheetLines.join('\n'))
       sheetMeta.push({
         name: sheet.name,
@@ -414,7 +426,8 @@ export const readXlsxTool: ToolImpl = {
         rows: matrix.length,
         columns: matrix[0]?.length ?? 0,
         formulas: formulaCount,
-        truncated
+        truncated,
+        cellsTruncated: parsedSheet.truncated
       })
     }
     if (truncatedAny) sections.push('\n（有工作表超出显示上限，可用 range / max_rows / max_cols 分段读取。）')
@@ -485,7 +498,21 @@ export function parseWriteSheets(raw: unknown): WriteSheetInput[] {
       }
       return row.map((cell) => {
         if (cell === undefined || cell === null || cell === '') return null
-        if (typeof cell === 'string') return cell
+        if (typeof cell === 'string') {
+          if (cell.startsWith('=') && cell.length - 1 > MAX_FORMULA_CHARS) {
+            throw new ToolInputError(
+              `工作表「${name}」第 ${rowIndex + 1} 行有公式过长（${cell.length - 1} 字符，Excel 上限 ${MAX_FORMULA_CHARS}）。`,
+              '请缩短公式或拆成多个单元格。'
+            )
+          }
+          if (!cell.startsWith('=') && cell.length > MAX_CELL_CHARS) {
+            throw new ToolInputError(
+              `工作表「${name}」第 ${rowIndex + 1} 行有单元格文本过长（${cell.length} 字符，Excel 上限 ${MAX_CELL_CHARS}）。`,
+              '请拆分到多个单元格或缩短文本。'
+            )
+          }
+          return cell
+        }
         if (typeof cell === 'number') {
           if (!Number.isFinite(cell)) throw new ToolInputError(`工作表「${name}」第 ${rowIndex + 1} 行包含非有限数字。`, '请检查数字。')
           return cell
@@ -673,7 +700,7 @@ async function verifyWorkbookBuffer(
   const expected = new Map(formulas.map((formula) => [`${formula.sheet}!${formula.ref}`, formula]))
   for (const sheet of parts.sheets) {
     const xml = await readZipXml(zip, sheet.part)
-    for (const cell of parseSheetCells(xml)) {
+    for (const cell of parseSheetCells(xml).cells) {
       const match = expected.get(`${sheet.name}!${cell.ref}`)
       if (!match) continue
       if (cell.formula !== match.formula) {
@@ -732,15 +759,14 @@ export const writeXlsxTool: ToolImpl = {
     if (/\.(xls|xlsb|xlsm|ods)$/i.test(rawPath)) {
       throw new ToolInputError('旧版/宏/ODS 表格格式不支持，请使用 .xlsx。', '把输出路径改成 .xlsx；旧格式需要先另存为 .xlsx。')
     }
-    if (!/\.xlsx$/i.test(rawPath)) throw new ToolInputError('path 必须以 .xlsx 结尾。', '例如 out/sales.xlsx（避免生成无法打开的伪表格文件）。')
+    if (!/\.xlsx$/i.test(resolved.absolute)) throw new ToolInputError('path 必须以 .xlsx 结尾。', '例如 out/sales.xlsx（避免生成无法打开的伪表格文件）。')
     const display = displayPath(resolved.absolute, ctx.workspace)
     const { buffer, formulas } = await buildWorkbookBuffer(sheets)
     const verification = await verifyWorkbookBuffer(buffer, sheets, formulas)
 
     const existed = existsSync(resolved.absolute) && statSync(resolved.absolute).isFile()
     const snapshot = existed ? snapshotFile(resolved.absolute, ctx) : null
-    mkdirSync(dirname(resolved.absolute), { recursive: true })
-    writeFileSync(resolved.absolute, buffer)
+    atomicWriteFileSync(resolved.real, buffer)
     const afterHash = sha256(buffer)
     recordRestoreManifest(ctx, resolved.absolute, snapshot?.beforeHash ?? null, afterHash)
 
@@ -776,6 +802,7 @@ export const writeXlsxTool: ToolImpl = {
       bytes: buffer.length,
       created: !existed,
       snapshotId: snapshot?.snapshotId ?? null,
+      snapshotPath: snapshot?.snapshotPath ?? null,
       beforeHash: snapshot?.beforeHash ?? null,
       afterHash
     })

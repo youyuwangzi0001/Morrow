@@ -16,6 +16,11 @@
   z-index: 2;
 }
 
+/* 初始焦点落在这个全屏容器上；不要给整屏画焦点框 */
+.onb:focus {
+  outline: none;
+}
+
 .onb-glow {
   position: absolute;
   inset: 0;
@@ -47,8 +52,15 @@
   flex-direction: column;
   align-items: center;
   color: var(--text);
-  font-size: 20px;
   line-height: 1;
+}
+
+.onb-brand-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 8px rgba(214, 186, 130, 0.16));
+  user-select: none;
 }
 
 .onb-brand-horizon {

@@ -556,6 +556,44 @@ describe('上下文压缩', () => {
     }
   })
 
+  it('摘要阶段被中断时新建停止消息，不把历史 assistant 误标为 interrupted', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const controller = new AbortController()
+      const events: RuntimeEvent[] = []
+      const provider = new ScriptedProvider([
+        { text: '这次摘要会被中断。', delayMs: 1000 },
+        { text: '不应到达。' }
+      ])
+      const running = runAgent({
+        runId: 'run_compact_abort',
+        sessionId: 'session_compact_abort',
+        provider,
+        model: { ...MODEL, contextWindow: 2500 },
+        systemPrompt: '你是测试助手。',
+        history: longHistory(),
+        userMessage: userMessage('继续'),
+        workspace: ws.root,
+        permissionMode: 'auto',
+        snapshotDir: ws.snapshotDir,
+        signal: controller.signal,
+        emit: (event) => events.push(event),
+        onPermission: async () => 'once',
+        onAskUser: async () => ({ value: 'a', label: 'A' })
+      })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      controller.abort()
+      const result = await running
+      expect(result.reason).toBe('cancelled')
+      expect(result.messages).toHaveLength(1)
+      expect(result.messages[0].interrupted).toBe(true)
+      expect(result.messages[0].content.some((block) => block.type === 'text' && block.text.includes('本轮运行已停止'))).toBe(true)
+      expect(events.filter((event) => event.type === 'run_finished')).toHaveLength(1)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
   it('摘要模型失败时用本地摘要兜底，对话继续', async () => {
     const ws = makeTempWorkspace()
     try {
@@ -959,5 +997,23 @@ describe('compactSession 的 threshold 参数', () => {
     expect(compacted.compacted).toBe(true)
     expect(compacted.messages[0].role).toBe('system')
     expect(provider.calls[0].system).toContain('压缩器')
+  })
+})
+
+describe('思考耗时', () => {
+  it('完成后把思考耗时写入 thinking 块，供 UI 显示「思考了 N 秒」', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const { result } = await runScript(ws, [{ thinking: '先想一想。', text: '想好了。' }])
+      const message = result.messages[0]
+      const block = message.content.find((item) => item.type === 'thinking')
+      expect(block?.type).toBe('thinking')
+      if (block?.type === 'thinking') {
+        expect(typeof block.durationMs).toBe('number')
+        expect(block.durationMs).toBeGreaterThanOrEqual(0)
+      }
+    } finally {
+      ws.cleanup()
+    }
   })
 })

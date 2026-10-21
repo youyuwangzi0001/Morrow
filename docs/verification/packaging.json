@@ -1,10 +1,10 @@
 {
   "ok": true,
   "mode": "all",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-10-19T15:25:16.221Z",
+  "startedAt": "2026-10-21T17:54:31.441Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,65 +13,170 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 10310,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never"
+      "durationMs": 33754,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\build-final3 -c.electronDist=C:/交付成品/Morrow/node_modules/electron/dist"
     },
     {
       "name": "zip",
       "exitCode": 0,
-      "durationMs": 15914
-    },
-    {
-      "name": "dir",
-      "exitCode": 0,
-      "durationMs": 8729,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never"
+      "durationMs": 20761
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 16331,
-      "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-1.0.0-portable.exe)"
+      "durationMs": 18541,
+      "command": "launcher(C:\\交付成品\\Morrow\\tmp\\release-final3\\Morrow-0.1.0-portable.exe)"
     }
   ],
   "artifacts": {
-    "portableFolder": {
-      "kind": "folder",
-      "path": "release/Morrow-1.0.0-portable",
-      "exePath": "release/Morrow-1.0.0-portable/Morrow.exe",
-      "exeSizeBytes": 107520,
-      "sizeBytes": 416032200,
-      "sizeMB": 396.76,
-      "fileCount": 147,
-      "extras": [
-        "portable.marker",
-        "启动 Morrow.cmd",
-        "启动 Morrow（兼容模式）.cmd",
-        "创建桌面快捷方式.cmd",
-        "修复图标显示.cmd"
-      ],
-      "note": "推荐交付形态：Morrow.exe 为轻量启动器（自动 --no-sandbox 后启动 Morrow-app.exe），无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）与兼容模式启动脚本"
-    },
-    "portableZip": {
-      "kind": "zip",
-      "path": "release/Morrow-1.0.0-portable-win64.zip",
-      "sizeBytes": 166655475,
-      "sizeMB": 158.94,
-      "sha256": "a7b7031e066c3e0d42fe407dfae97834b315c11d94dfedfe3cc1704e699401e8"
-    },
     "portableExe": {
       "kind": "portable-exe",
-      "path": "release/Morrow-1.0.0-portable.exe",
-      "sizeBytes": 166753280,
-      "sizeMB": 159.03,
-      "sha256": "5126138b6077274b378fb6d42b0022f0955d6efe88dfda8cef3737b01013271d",
-      "note": "自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 .morrow-runtime-<ver> 缓存（不依赖 %TEMP%），之后秒开；自动加 --no-sandbox 以兼容本机受限环境；无代码签名，SmartScreen 可能提示未知发布者"
+      "path": "deliver/Morrow-0.1.0-portable.exe",
+      "sizeBytes": 196774400,
+      "sizeMB": 187.66,
+      "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b",
+      "signed": false,
+      "signature": {
+        "signed": false,
+        "status": "NotSigned",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "signerSubject": null,
+        "signerThumbprint": null,
+        "signerNotAfter": null,
+        "timestampSubject": null,
+        "timestampTime": null
+      },
+      "note": "自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 .morrow-runtime-<ver> 缓存（不依赖 %TEMP%），之后秒开；自动加 --no-sandbox 以兼容本机受限环境；未签名时首次运行仍可能被 SmartScreen 拦截。"
     }
   },
   "logs": {
-    "combined": "docs/verification/logs/dist-all-2026-10-19T15-25-16-134Z.log"
+    "combined": "docs/verification/logs/dist-all-2026-10-21T17-54-31-439Z.log"
   },
-  "primaryArtifact": "portableFolder",
-  "finishedAt": "2026-10-19T15:26:08.691Z",
-  "durationMs": 52470
+  "signing": {
+    "enabled": false,
+    "method": "none",
+    "description": null,
+    "reason": "未配置代码签名证书（MORROW_SIGN_PFX / MORROW_SIGN_THUMBPRINT / MORROW_SIGN_SUBJECT，或 MORROW_SIGN_AUTO=1）；产物保持未签名",
+    "timestampUrl": "http://timestamp.digicert.com",
+    "signtool": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+    "certificate": null,
+    "artifacts": {
+      "portableExe": {
+        "signed": false,
+        "status": "NotSigned",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "signerSubject": null,
+        "signerThumbprint": null,
+        "signerNotAfter": null,
+        "timestampSubject": null,
+        "timestampTime": null
+      }
+    }
+  },
+  "delivery": {
+    "dir": "deliver",
+    "cleaned": true,
+    "createdAt": "2026-10-21T17:55:47.895Z",
+    "folder": null,
+    "artifacts": [
+      {
+        "name": "portable-exe",
+        "path": "deliver/Morrow-0.1.0-portable.exe",
+        "sizeBytes": 196774400,
+        "sizeMB": 187.66,
+        "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
+      }
+    ],
+    "usage": "deliver/使用说明.txt",
+    "sha256Sums": "deliver/SHA256SUMS.txt",
+    "license": "deliver/LICENSE",
+    "checksums": [
+      {
+        "path": "Morrow-0.1.0-portable.exe",
+        "sizeBytes": 196774400,
+        "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
+      },
+      {
+        "path": "使用说明.txt",
+        "sizeBytes": 1318,
+        "sha256": "9a7722081b2c27e29b56155856729930e3d579773a6ee10340936469a7ee3e6e"
+      },
+      {
+        "path": "LICENSE",
+        "sizeBytes": 1070,
+        "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
+      }
+    ],
+    "totalSizeBytes": 196777037,
+    "totalSizeMB": 187.66,
+    "totalFileCount": 4
+  },
+  "primaryArtifact": "portableExe",
+  "notes": "Morrow 0.1.0 单文件最终交付：仅保留 Morrow-0.1.0-portable.exe、使用说明、SHA256SUMS 与 LICENSE；本次单文件产物由 --all 构建后裁剪为单文件（文件夹版/zip 不交付），future npm run dist 默认只构建单文件。项目面板范围切换、数据目录自定义已包含。启动器嵌入完整 Win32 manifest；未配置代码签名证书，产物 signed:false。",
+  "finishedAt": "2026-10-21T17:55:53.569Z",
+  "durationMs": 82128,
+  "verification": {
+    "typecheck": {
+      "ok": true,
+      "command": "npm run typecheck",
+      "note": "0 error"
+    },
+    "unit": {
+      "ok": true,
+      "command": "npm run test:unit",
+      "passed": 768,
+      "skipped": 5,
+      "files": 75
+    },
+    "build": {
+      "ok": true,
+      "command": "npm run build"
+    },
+    "package": {
+      "ok": true,
+      "command": "npm run dist",
+      "mode": "portable",
+      "note": "默认只交付单文件 exe；文件夹/zip 仅内部 --all 构建检查"
+    },
+    "sourceE2E": {
+      "ok": true,
+      "passed": 151,
+      "total": 151,
+      "note": "a–m 67 + n–z 84，8.7m；含项目面板与数据目录新用例"
+    },
+    "packagedSmoke": {
+      "portable": {
+        "ok": true,
+        "evidence": "docs/verification/smoke-packaged.json",
+        "exeSha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
+      }
+    },
+    "packagedE2E": {
+      "ok": true,
+      "passed": 4,
+      "total": 4,
+      "note": "从单文件 exe 解压运行时",
+      "specs": [
+        "tests/e2e/packaged-terminal.spec.ts",
+        "tests/e2e/packaged-ui-fixes.spec.ts",
+        "tests/e2e/r8-packaged-browser.spec.ts",
+        "tests/e2e/r8-packaged-tools.spec.ts"
+      ]
+    },
+    "uiCopyReview": {
+      "ok": true,
+      "passed": 1,
+      "total": 1,
+      "spec": "tests/e2e/r10-ui-copy-review.spec.ts",
+      "note": "包含在 151 内"
+    },
+    "signatures": {
+      "mainEntryPoints": "NotSigned",
+      "note": "无代码签名证书；签名支持见 README「代码签名」"
+    },
+    "directLaunch": {
+      "portable": "单文件冒烟/直启通过，运行时 app.asar 与交付包一致"
+    }
+  },
+  "deliveryMode": "single"
 }

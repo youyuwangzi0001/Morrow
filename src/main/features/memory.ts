@@ -30,6 +30,7 @@ import {
   type MemoryScope
 } from '../services/memory-service'
 import { log } from '../services/logger'
+import { resolveWorkspaceDir } from './workspace-roots'
 
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 兼容；模块不直接依赖 feature-ipc） */
 export type RegisterFeatureChannel = (
@@ -52,6 +53,8 @@ export const MEMORY_FEATURE_CHANNELS = [
 export interface MemoryFeatureOptions {
   /** 显式数据目录（测试用）；不传时在 app ready 后解析真实 userData */
   dataDir?: string
+  /** 测试用：覆盖已登记工作区校验；生产环境始终走 resolveWorkspaceDir */
+  isWorkspaceAllowed?: (workspace: string) => boolean
 }
 
 function record(payload: unknown): Record<string, unknown> {
@@ -78,6 +81,25 @@ function requireString(payload: Record<string, unknown>, key: string): string {
   return value
 }
 
+/** 记忆 IPC 的工作区边界：只接受已登记的、真实存在的工作区目录。 */
+function resolveProjectWorkspace(data: Record<string, unknown>, options: MemoryFeatureOptions): string {
+  const raw = workspaceOf(data)
+  if (!raw) throw new Error('项目记忆需要指定工作区')
+  if (options.isWorkspaceAllowed) {
+    if (!options.isWorkspaceAllowed(raw)) throw new Error('记忆只能读写已登记的工作区。')
+    return raw
+  }
+  return resolveWorkspaceDir(raw, '记忆只能读写已登记的工作区。')
+}
+
+function targetWorkspace(
+  data: Record<string, unknown>,
+  scope: MemoryScope,
+  options: MemoryFeatureOptions
+): string | null {
+  return scope === 'global' ? null : resolveProjectWorkspace(data, options)
+}
+
 function stringTags(value: unknown): string[] | undefined {
   if (value === undefined || value === null) return undefined
   if (!Array.isArray(value)) throw new Error('tags 必须是字符串数组')
@@ -98,17 +120,17 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
   register('feature:memory:list', (payload) => {
     const data = record(payload)
     const scope = parseScope(data)
-    const workspace = workspaceOf(data)
+    const workspace = targetWorkspace(data, scope, options)
     const query = typeof data.query === 'string' ? data.query : undefined
-    const result = service().list(scope, workspace, { query, includeDisabled: data.includeDisabled === true })
-    return result
+    return service().list(scope, workspace, { query, includeDisabled: data.includeDisabled === true })
   })
 
   register('feature:memory:add', (payload) => {
     const data = record(payload)
+    const scope = parseScope(data)
     const entry = service().add({
-      scope: parseScope(data),
-      workspace: workspaceOf(data),
+      scope,
+      workspace: targetWorkspace(data, scope, options),
       text: requireString(data, 'text'),
       tags: stringTags(data.tags),
       enabled: data.enabled !== false,
@@ -126,40 +148,54 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
     const tags = stringTags(data.tags)
     if (tags !== undefined) patch.tags = tags
     if (data.enabled !== undefined) patch.enabled = data.enabled === true
-    const entry = service().update(scope, workspaceOf(data), requireString(data, 'id'), patch)
+    const entry = service().update(scope, targetWorkspace(data, scope, options), requireString(data, 'id'), patch)
     return { entry }
   })
 
   register('feature:memory:toggle', (payload) => {
     const data = record(payload)
+    const scope = parseScope(data)
     const id = requireString(data, 'id')
     const enabled = typeof data.enabled === 'boolean' ? data.enabled : undefined
-    const entry = service().toggle(parseScope(data), workspaceOf(data), id, enabled)
+    const entry = service().toggle(scope, targetWorkspace(data, scope, options), id, enabled)
     return { entry }
   })
 
   register('feature:memory:remove', (payload) => {
     const data = record(payload)
-    service().remove(parseScope(data), workspaceOf(data), requireString(data, 'id'))
+    const scope = parseScope(data)
+    service().remove(scope, targetWorkspace(data, scope, options), requireString(data, 'id'))
     return { removed: true }
   })
 
   register('feature:memory:clear', (payload) => {
     const data = record(payload)
-    const result = service().clear(parseScope(data), workspaceOf(data))
-    log.info('memory cleared', { scope: data.scope, removed: result.removed })
+    const scope = parseScope(data)
+    const result = service().clear(scope, targetWorkspace(data, scope, options))
+    log.info('memory cleared', { scope, removed: result.removed })
     return result
   })
 
   register('feature:memory:export', (payload) => {
     const data = record(payload)
-    return service().exportMemory(parseScope(data), workspaceOf(data))
+    const scope = parseScope(data)
+    return service().exportMemory(scope, targetWorkspace(data, scope, options))
   })
 
   /** 注入预览：UI 展示「哪些记忆会被送进系统提示 / 用多少 token」，也是验收证据 */
   register('feature:memory:injection', (payload) => {
     const data = record(payload)
-    return getMemoryInjection(workspaceOf(data), {
+    const rawWorkspace = workspaceOf(data)
+    let workspace: string | null = null
+    if (rawWorkspace) {
+      if (options.isWorkspaceAllowed) {
+        if (!options.isWorkspaceAllowed(rawWorkspace)) throw new Error('记忆只能读写已登记的工作区。')
+        workspace = rawWorkspace
+      } else {
+        workspace = resolveWorkspaceDir(rawWorkspace, '记忆只能读写已登记的工作区。')
+      }
+    }
+    return getMemoryInjection(workspace, {
       dataDir,
       maxTokens: typeof data.maxTokens === 'number' ? data.maxTokens : undefined
     })

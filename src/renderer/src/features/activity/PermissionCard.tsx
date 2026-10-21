@@ -2,16 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest } from '@shared/types'
 import { useAppStore } from '../../state/store'
-import { Kbd } from '../../ui'
+import { Kbd, hasOpenModal } from '../../ui'
 import { CodeBlock } from '../../components/markdown/CodeBlock'
 import { DiffView } from '../../components/diff/DiffView'
-import { permissionExplanation } from './tool-meta'
+import { permissionExplanation, toolPath } from './tool-meta'
 import './activity.css'
 
 const RISK_META: Record<PermissionRequest['risk'], { label: string; description: string }> = {
-  low: { label: '低风险', description: '只读或可撤销的操作' },
-  medium: { label: '中风险', description: '会修改工作区里的内容' },
-  high: { label: '高风险', description: '可能影响工作区外或删除数据' }
+  low: { label: '低风险', description: '只看不改，或随时能撤回' },
+  medium: { label: '中风险', description: '会修改文件夹里的内容' },
+  high: { label: '高风险', description: '可能影响文件夹外或删除数据' }
 }
 
 const RISK_ICON: Record<PermissionRequest['risk'], React.JSX.Element> = {
@@ -44,10 +44,19 @@ export function PermissionCard({ request }: { request: PermissionRequest }): Rea
 
   const risk = RISK_META[request.risk]
   const explanation = permissionExplanation(request)
+  const allowAlways = request.allowAlways !== false
   const preview = request.preview
   const isDiff = preview?.kind === 'diff'
   const previewLines = preview ? preview.content.split('\n').length : 0
   const collapsible = isDiff && previewLines > 14
+  const targetPath = toolPath({ name: request.toolName, input: request.input })
+  const isNewFile = Boolean(isDiff && preview && /^---\s+\/dev\/null/m.test(preview.content))
+  const diffLabel = targetPath ? `${targetPath}${isNewFile ? ' · 新文件' : ''}` : undefined
+  // 标题和说明已经点了文件名时，不再重复一行「写入文件：…」
+  const showSummary =
+    Boolean(request.summary) &&
+    request.summary !== explanation &&
+    !(targetPath && request.summary.includes(targetPath))
 
   const respond = (decision: PermissionDecision): void => {
     if (submitting) return
@@ -57,6 +66,8 @@ export function PermissionCard({ request }: { request: PermissionRequest }): Rea
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      // 有弹窗盖在上面时，Esc/Enter 属于弹窗，不能误拒绝审批
+      if (hasOpenModal()) return
       if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return
       const active = document.activeElement as HTMLElement | null
       if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
@@ -100,9 +111,7 @@ export function PermissionCard({ request }: { request: PermissionRequest }): Rea
       <p className="permission-desc" id="permission-desc">
         {explanation}
       </p>
-      {request.summary && request.summary !== explanation ? (
-        <p className="permission-summary">{request.summary}</p>
-      ) : null}
+      {showSummary ? <p className="permission-summary">{request.summary}</p> : null}
 
       {preview ? (
         <div className="permission-preview">
@@ -119,7 +128,7 @@ export function PermissionCard({ request }: { request: PermissionRequest }): Rea
                 <span>{collapsible ? (previewOpen ? '收起改动预览' : `查看改动预览（${previewLines} 行）`) : '改动预览'}</span>
               </button>
               {!collapsible || previewOpen ? (
-                <DiffView patch={preview.content} contextLines={2} maxHeight={260} />
+                <DiffView patch={preview.content} contextLines={2} maxHeight={260} filePath={diffLabel} />
               ) : null}
             </>
           ) : preview.kind === 'command' ? (
@@ -147,14 +156,24 @@ export function PermissionCard({ request }: { request: PermissionRequest }): Rea
           <span>允许一次</span>
           <Kbd>Enter</Kbd>
         </button>
-        <button
-          type="button"
-          className="perm-btn"
-          onClick={() => respond('always')}
-          disabled={submitting !== null}
-        >
-          本次会话都允许
-        </button>
+        {allowAlways ? (
+          <button
+            type="button"
+            className="perm-btn"
+            onClick={() => respond('always')}
+            disabled={submitting !== null}
+            title="以后这个文件夹里的同类操作不再询问；可在「设置 → 权限」里取消"
+          >
+            始终允许（本文件夹）
+          </button>
+        ) : (
+          <span
+            className="permission-once-note"
+            title="高风险操作、外部动作和越界访问不提供「始终允许」，每次都会重新询问。"
+          >
+            高风险 / 外部动作 · 需逐次确认
+          </span>
+        )}
         <button
           type="button"
           className="perm-btn perm-btn-deny"

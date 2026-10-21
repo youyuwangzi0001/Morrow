@@ -12,23 +12,28 @@
  * - 删除：必须显式 confirm:true；工作区根不可删；非空目录必须 recursive:true。
  */
 import {
-  copyFileSync,
+  closeSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
   type Stats
 } from 'node:fs'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { sha256 } from '@core/util'
 import { inspectWorkspacePath, isPathInsideWorkspace, normalizeWorkspace } from '@core/tools/paths'
+import { TEXT_PREVIEW_MAX_BYTES } from '../../shared/file-types'
+import { formatBytes } from '../../shared/format'
+import { isProbablyBinary } from './file-probe'
 
-export const MAX_READ_BYTES = 2 * 1024 * 1024
+export const MAX_READ_BYTES = TEXT_PREVIEW_MAX_BYTES
 export const MAX_WRITE_BYTES = 8 * 1024 * 1024
 export const MAX_LIST_ENTRIES = 2000
 
@@ -242,18 +247,6 @@ export interface ReadWorkspaceResult {
   truncated: boolean
 }
 
-export function isProbablyBinary(buffer: Buffer): boolean {
-  const sample = buffer.subarray(0, 8192)
-  if (sample.includes(0)) return true
-  const text = sample.toString('utf8')
-  if (!text) return false
-  let replacement = 0
-  for (let i = 0; i < text.length; i += 1) {
-    if (text.charCodeAt(i) === 0xfffd) replacement += 1
-  }
-  return replacement / Math.max(1, text.length) > 0.1
-}
-
 export function readWorkspaceFile(
   workspace: string,
   inputPath: string,
@@ -265,16 +258,26 @@ export function readWorkspaceFile(
   if (resolved.isDirectory) throw new WorkspaceFileError('NOT_A_FILE', '这是一个文件夹，不能作为文本文件打开。')
   const stat = statSync(resolved.absolute)
   const maxBytes = Math.max(1024, Math.min(MAX_READ_BYTES, options.maxBytes ?? MAX_READ_BYTES))
-  if (stat.size > maxBytes) {
-    throw new WorkspaceFileError(
-      'TOO_LARGE',
-      `文件有 ${formatBytes(stat.size)}，超过 ${formatBytes(maxBytes)} 的文本打开上限。`,
-      '可以先用命令行或其它工具处理这个大文件。'
-    )
-  }
+  const truncated = stat.size > maxBytes
   let buffer: Buffer
   try {
-    buffer = readFileSync(resolved.absolute)
+    if (!truncated) {
+      buffer = readFileSync(resolved.absolute)
+    } else {
+      const fd = openSync(resolved.absolute, 'r')
+      try {
+        const prefix = Buffer.alloc(maxBytes)
+        let offset = 0
+        while (offset < maxBytes) {
+          const read = readSync(fd, prefix, offset, maxBytes - offset, offset)
+          if (read <= 0) break
+          offset += read
+        }
+        buffer = prefix.subarray(0, offset)
+      } finally {
+        closeSync(fd)
+      }
+    }
   } catch (err) {
     throw new WorkspaceFileError('READ_FAILED', `读取文件失败：${err instanceof Error ? err.message : String(err)}`)
   }
@@ -282,7 +285,7 @@ export function readWorkspaceFile(
     throw new WorkspaceFileError(
       'BINARY',
       '这是一个二进制文件，编辑器不能以文本方式打开。',
-      '图片/文档等二进制文件可以交给 Morrow 处理，但不能直接编辑源码。'
+      '图片/文档等二进制文件可以交给 Morrow 预览，但不能直接编辑源码。'
     )
   }
   return {
@@ -292,7 +295,7 @@ export function readWorkspaceFile(
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     encoding: 'utf8',
-    truncated: false
+    truncated
   }
 }
 
@@ -349,9 +352,10 @@ function takeSnapshot(input: {
   const stamp = `${Date.now()}`
   const snapshotPath = snapshotPathFor(input.snapshotRoot, input.target, stamp)
   try {
+    const data = readFileSync(input.target)
     mkdirSync(dirname(snapshotPath), { recursive: true })
-    copyFileSync(input.target, snapshotPath)
-    const beforeHash = sha256(readFileSync(input.target))
+    writeFileSync(snapshotPath, data)
+    const beforeHash = sha256(data)
     const record: SnapshotRecord = {
       snapshotPath,
       targetPath: input.target,
@@ -431,7 +435,7 @@ export function writeWorkspaceFile(
   const temp = join(dir, `.morrow-tmp-${process.pid}-${randomBytes(4).toString('hex')}`)
   try {
     writeFileSync(temp, buffer, { encoding: 'utf8' })
-    renameSync(temp, target)
+    renameWithRetry(temp, target)
   } catch (err) {
     try {
       rmSync(temp, { force: true })
@@ -451,8 +455,22 @@ export function writeWorkspaceFile(
   }
 }
 
-function conflictError(currentMtimeMs: number | null): WorkspaceFileError {
-  const error = new WorkspaceFileError(
+/** Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY。 */
+function renameWithRetry(from: string, to: string): void {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      renameSync(from, to)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw err
+      if (attempt === 3) throw err
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (attempt + 1))
+    }
+  }
+}
+
+function conflictError(currentMtimeMs: number | null): WorkspaceFileError {  const error = new WorkspaceFileError(
     'MTIME_CONFLICT',
     '文件在编辑器打开后被外部修改了，已停止保存。请重新加载文件后再试。',
     '如果确认要用当前内容覆盖，请先重新加载文件，再保存一次。'
@@ -491,7 +509,7 @@ export function createWorkspaceEntry(
     const temp = join(parent, `.morrow-tmp-${process.pid}-${randomBytes(3).toString('hex')}`)
     try {
       writeFileSync(temp, '', 'utf8')
-      renameSync(temp, resolved.absolute)
+      renameWithRetry(temp, resolved.absolute)
     } catch (err) {
       try {
         rmSync(temp, { force: true })
@@ -521,7 +539,7 @@ export function renameWorkspaceEntry(workspace: string, fromPath: string, toPath
   if (!isDirectoryPath(parent)) throw new WorkspaceFileError('PARENT_MISSING', '目标位置的上级文件夹不存在。')
   const isDir = from.isDirectory
   try {
-    renameSync(from.absolute, to.absolute)
+    renameWithRetry(from.absolute, to.absolute)
   } catch (err) {
     throw new WorkspaceFileError('RENAME_FAILED', `重命名失败：${err instanceof Error ? err.message : String(err)}`)
   }
@@ -596,60 +614,4 @@ export function inspectWorkspaceEntry(workspace: string, inputPath: string): Wor
     }
   }
   return entry
-}
-
-/* ── 附件 / 拖拽辅助 ─────────────────────────────────────────── */
-
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico'])
-
-export function workspaceAttachment(workspace: string, inputPath: string): {
-  id: string
-  name: string
-  path: string
-  size: number
-  kind: 'text' | 'image' | 'file'
-  content: string | null
-  truncated?: boolean
-} {
-  const ws = requireWorkspace(workspace)
-  const resolved = resolveInside(ws, inputPath)
-  if (!resolved.exists || resolved.isDirectory) {
-    throw new WorkspaceFileError('NOT_A_FILE', '只能把文件作为附件添加。')
-  }
-  const stat = statSync(resolved.absolute)
-  const ext = extname(resolved.absolute).slice(1).toLowerCase()
-  let kind: 'text' | 'image' | 'file'
-  if (IMAGE_EXTS.has(ext)) {
-    kind = 'image'
-  } else if (stat.size > MAX_READ_BYTES * 4) {
-    kind = 'file'
-  } else {
-    kind = isProbablyBinary(readFileSync(resolved.absolute)) ? 'file' : 'text'
-  }
-  let content: string | null = null
-  let truncated = false
-  if (kind === 'text' && stat.size <= 512 * 1024) {
-    const raw = readFileSync(resolved.absolute, 'utf8')
-    if (raw.length > 120_000) {
-      content = raw.slice(0, 120_000)
-      truncated = true
-    } else {
-      content = raw
-    }
-  }
-  return {
-    id: `att_${Date.now()}_${randomBytes(3).toString('hex')}`,
-    name: basename(resolved.absolute),
-    path: resolved.absolute,
-    size: stat.size,
-    kind,
-    content,
-    ...(truncated ? { truncated } : {})
-  }
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

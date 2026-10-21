@@ -1,0 +1,972 @@
+/* ─────────────────────────────────────────────────────────────
+   桌面灵动岛 · Morrow 小伙伴
+   透明无边框窗口：墨色玻璃胶囊，金色只点亮状态与关键动作。
+   ───────────────────────────────────────────────────────────── */
+
+html.island-root,
+body.island-root {
+  background: transparent !important;
+}
+
+body.island-root #root {
+  background: transparent;
+  overflow: hidden;
+}
+
+body.island-root {
+  user-select: none;
+  cursor: default;
+}
+
+/* 灵动岛自己的玻璃材质变量：默认墨夜，浅色主题切到米色玻璃。 */
+html.island-root {
+  --island-pill-bg: linear-gradient(112deg, rgba(28, 33, 42, 0.96) 0%, rgba(14, 17, 22, 0.985) 46%, rgba(9, 11, 15, 0.99) 100%);
+  --island-pill-shadow: 0 20px 48px -18px rgba(0, 0, 0, 0.82), 0 2px 10px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(244, 229, 192, 0.09), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  --island-pill-hover-border: rgba(228, 206, 158, 0.55);
+  --island-pill-hover-shadow: 0 22px 54px -16px rgba(0, 0, 0, 0.86), 0 0 0 1px rgba(200, 174, 125, 0.16),
+    0 0 30px -6px rgba(200, 174, 125, 0.22), inset 0 1px 0 rgba(244, 229, 192, 0.12);
+  --island-panel-bg: radial-gradient(320px 180px at 82% -10%, rgba(200, 174, 125, 0.1), transparent 70%),
+    linear-gradient(158deg, rgba(22, 27, 35, 0.985) 0%, rgba(10, 12, 16, 0.995) 58%, rgba(7, 9, 12, 1) 100%);
+  --island-panel-shadow: 0 26px 70px -22px rgba(0, 0, 0, 0.86), 0 2px 12px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(244, 229, 192, 0.08);
+  --island-head-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent);
+  --island-surface: rgba(255, 255, 255, 0.022);
+  --island-surface-hover: rgba(255, 255, 255, 0.04);
+  --island-task-run-bg: radial-gradient(180px 80px at 100% 0%, rgba(200, 174, 125, 0.08), transparent 70%),
+    rgba(255, 255, 255, 0.022);
+  --island-line-gold: rgba(200, 174, 125, 0.22);
+  --island-progress-track: rgba(200, 174, 125, 0.1);
+  --island-composer-bg: rgba(6, 8, 11, 0.62);
+  --island-foot-bg: rgba(6, 8, 11, 0.4);
+}
+
+html.island-root[data-theme='light'] {
+  --island-pill-bg: linear-gradient(112deg, rgba(252, 248, 240, 0.97) 0%, rgba(246, 239, 228, 0.985) 46%, rgba(239, 231, 218, 0.99) 100%);
+  --island-pill-shadow: 0 18px 44px -20px rgba(74, 58, 32, 0.32), 0 2px 8px rgba(74, 58, 32, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72), inset 0 -1px 0 rgba(90, 70, 38, 0.1);
+  --island-pill-hover-border: rgba(138, 106, 60, 0.5);
+  --island-pill-hover-shadow: 0 22px 50px -18px rgba(74, 58, 32, 0.36), 0 0 0 1px rgba(138, 106, 60, 0.14),
+    0 0 26px -8px rgba(138, 106, 60, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --island-panel-bg: radial-gradient(320px 180px at 82% -10%, rgba(138, 106, 60, 0.09), transparent 70%),
+    linear-gradient(158deg, rgba(252, 248, 240, 0.985) 0%, rgba(245, 238, 226, 0.995) 58%, rgba(239, 231, 217, 1) 100%);
+  --island-panel-shadow: 0 24px 64px -24px rgba(74, 58, 32, 0.35), 0 2px 10px rgba(74, 58, 32, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --island-head-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent);
+  --island-surface: rgba(27, 26, 23, 0.028);
+  --island-surface-hover: rgba(27, 26, 23, 0.055);
+  --island-task-run-bg: radial-gradient(180px 80px at 100% 0%, rgba(138, 106, 60, 0.07), transparent 70%),
+    rgba(27, 26, 23, 0.028);
+  --island-line-gold: rgba(138, 106, 60, 0.28);
+  --island-progress-track: rgba(138, 106, 60, 0.14);
+  --island-composer-bg: rgba(255, 252, 246, 0.72);
+  --island-foot-bg: rgba(255, 252, 246, 0.55);
+}
+
+.island-shell {
+  height: 100%;
+  width: 100%;
+  padding: 8px;
+  -webkit-app-region: drag;
+}
+
+.island-shell[data-expanded] {
+  -webkit-app-region: no-drag;
+}
+
+.island-shell[data-expanded] .island-pill {
+  display: none;
+}
+
+.island-frame {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── 收起态胶囊 ─────────────────────────────────────────────── */
+
+.island-pill {
+  position: relative;
+  flex: 0 0 68px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 10px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-gold);
+  background: var(--island-pill-bg);
+  box-shadow: var(--island-pill-shadow);
+  overflow: hidden;
+  isolation: isolate;
+  animation: island-in var(--dur-slow) var(--ease-out);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+  cursor: grab;
+}
+
+.island-pill:active {
+  cursor: grabbing;
+}
+
+.island-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(120px 60px at 80% -40%, rgba(200, 174, 125, 0.2), transparent 70%),
+    radial-gradient(90px 70px at 6% 130%, rgba(200, 174, 125, 0.1), transparent 72%);
+  pointer-events: none;
+}
+
+.island-shell:not([data-expanded]) .island-pill:hover {
+  border-color: var(--island-pill-hover-border);
+  box-shadow: var(--island-pill-hover-shadow);
+}
+
+.island-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.island-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.island-title {
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.008em;
+  color: var(--text);
+}
+
+.island-detail {
+  margin: 0;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.island-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0.66;
+  transition: opacity var(--dur-base) var(--ease-out);
+  -webkit-app-region: no-drag;
+}
+
+.island-pill:hover .island-actions,
+.island-actions:focus-within {
+  opacity: 1;
+}
+
+.island-icon-btn {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color var(--dur-fast) linear, background var(--dur-fast) linear;
+  -webkit-app-region: no-drag;
+}
+
+.island-icon-btn:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+.island-icon-btn:focus-visible,
+.island-send:focus-visible,
+.island-text-btn:focus-visible,
+.island-recent button:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.island-chevron {
+  color: var(--text-3);
+}
+
+.island-unread {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold-bright);
+  box-shadow: 0 0 7px rgba(228, 206, 158, 0.85);
+  animation: island-dot 2.2s ease-in-out infinite;
+}
+
+/* 进度细线 */
+.island-progress-line {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--island-progress-track);
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.island-progress-line::before {
+  content: '';
+  display: block;
+  height: 100%;
+  width: var(--island-progress, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(200, 174, 125, 0.55), var(--gold-bright));
+  box-shadow: 0 0 8px rgba(228, 206, 158, 0.55);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.island-shell[data-status='running'] .island-progress-line,
+.island-shell[data-status='waiting'] .island-progress-line {
+  opacity: 1;
+}
+
+.island-shell[data-status='waiting'] .island-progress-line::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 55%, transparent), var(--amber));
+}
+
+.island-progress-line.is-indeterminate::before {
+  width: 34%;
+  animation: island-progress 1.7s var(--ease-out) infinite;
+}
+
+/* ── 小伙伴本体 ─────────────────────────────────────────────── */
+
+.island-pet {
+  position: relative;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 32% 26%, #272c35 0%, #10141a 48%, #080a0d 100%);
+  border: 1px solid var(--line-gold);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.09),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.45),
+    0 3px 10px rgba(0, 0, 0, 0.45);
+}
+
+.island-pet[data-large] {
+  flex-basis: 42px;
+  width: 42px;
+  height: 42px;
+}
+
+.island-pet-face {
+  width: 90%;
+  height: 90%;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.island-pet-halo {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(200, 174, 125, 0.3), rgba(200, 174, 125, 0) 66%);
+  filter: blur(5px);
+  opacity: 0.5;
+  animation: island-breathe 4.8s ease-in-out infinite;
+}
+
+.island-pet-orbit {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px dashed rgba(228, 206, 158, 0.4);
+  opacity: 0;
+}
+
+.island-pet[data-status='running'] .island-pet-orbit {
+  opacity: 0.75;
+  animation: island-spin 7.2s linear infinite;
+}
+
+.island-pet[data-status='waiting'] .island-pet-orbit {
+  opacity: 0.9;
+  border-color: rgba(201, 162, 39, 0.62);
+  animation: island-spin 4.4s linear infinite reverse;
+}
+
+.island-pet[data-status='running'] .island-pet-halo,
+.island-pet[data-status='waiting'] .island-pet-halo {
+  opacity: 0.72;
+  animation-duration: 2.6s;
+}
+
+.island-pet[data-status='done'] {
+  border-color: color-mix(in srgb, var(--patina) 55%, transparent);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.09),
+    0 0 18px -2px color-mix(in srgb, var(--patina) 28%, transparent);
+}
+
+.island-pet[data-status='error'] {
+  border-color: color-mix(in srgb, var(--rust) 60%, transparent);
+}
+
+.island-pet-eyes {
+  transform-origin: 20px 19.4px;
+  animation: island-blink 6.4s ease-in-out infinite;
+}
+
+.island-pet-spark {
+  animation: island-spark 3.4s ease-in-out infinite;
+  transform-origin: 30.6px 10.6px;
+}
+
+.island-pet[data-status='running'] .island-pet-spark {
+  animation-duration: 1.6s;
+}
+
+/* 运行中的声纹 */
+.island-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.island-wave i {
+  width: 2px;
+  border-radius: 2px;
+  background: var(--gold);
+  opacity: 0.75;
+  animation: island-wave 1.05s ease-in-out infinite;
+}
+
+.island-wave i:nth-child(1) {
+  height: 5px;
+  animation-delay: -0.3s;
+}
+
+.island-wave i:nth-child(2) {
+  height: 10px;
+  animation-delay: -0.12s;
+}
+
+.island-wave i:nth-child(3) {
+  height: 7px;
+  animation-delay: -0.42s;
+}
+
+.island-wave i:nth-child(4) {
+  height: 4px;
+  animation-delay: -0.2s;
+}
+
+/* ── 展开面板 ───────────────────────────────────────────────── */
+
+.island-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  border: 1px solid var(--line-gold);
+  background: var(--island-panel-bg);
+  box-shadow: var(--island-panel-shadow);
+  overflow: hidden;
+  animation: island-panel-in var(--dur-base) var(--ease-spring);
+  -webkit-app-region: no-drag;
+}
+
+.island-panel-head {
+  flex: 0 0 62px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--island-head-bg);
+  -webkit-app-region: drag;
+}
+
+.island-panel-head .island-icon-btn {
+  margin-left: auto;
+}
+
+.island-panel-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.island-panel-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.island-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-2);
+  letter-spacing: 0.03em;
+}
+
+.island-status-chip i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.island-status-chip em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  margin-left: 2px;
+}
+
+.island-status-chip[data-status='running'] {
+  color: var(--gold-bright);
+}
+
+.island-status-chip[data-status='waiting'] {
+  color: var(--amber);
+}
+
+.island-status-chip[data-status='done'] {
+  color: var(--patina);
+}
+
+.island-status-chip[data-status='error'] {
+  color: var(--rust);
+}
+
+.island-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.island-panel-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* 当前任务卡 */
+.island-task {
+  flex: 0 0 auto;
+  padding: 11px 12px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--island-surface);
+}
+
+.island-task[data-status='running'],
+.island-task[data-status='waiting'] {
+  border-color: var(--island-line-gold);
+  background: var(--island-task-run-bg);
+}
+
+.island-task-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.island-eyebrow {
+  margin: 0 0 3px;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.island-task-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.island-count {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--gold);
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--island-line-gold);
+  background: var(--gold-ghost);
+}
+
+.island-task-detail {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+.island-task-bar {
+  margin-top: 9px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--island-progress-track);
+  overflow: hidden;
+}
+
+.island-task-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 60%, transparent), var(--gold-bright));
+  box-shadow: 0 0 10px rgba(228, 206, 158, 0.4);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.island-task-bar.is-live span {
+  width: 34%;
+  animation: island-progress 1.8s var(--ease-out) infinite;
+}
+
+.island-todos {
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 96px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.island-todos::-webkit-scrollbar {
+  display: none;
+}
+
+.island-todo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.island-todo[data-status='in_progress'] {
+  color: var(--text);
+}
+
+.island-todo[data-status='completed'] {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 174, 125, 0.35);
+}
+
+.island-todo-icon {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(200, 174, 125, 0.32);
+  color: var(--text-invert);
+}
+
+.island-todo[data-status='completed'] .island-todo-icon {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.island-todo[data-status='in_progress'] .island-todo-icon {
+  border-color: var(--gold);
+  background: var(--gold-ghost);
+}
+
+.island-todo[data-status='in_progress'] .island-todo-icon i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold-bright);
+  box-shadow: 0 0 6px rgba(228, 206, 158, 0.8);
+  animation: island-dot 1.4s ease-in-out infinite;
+}
+
+.island-empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+.island-empty-hint svg {
+  color: var(--gold);
+  opacity: 0.75;
+}
+
+/* 快速输入 */
+.island-composer {
+  flex: 0 0 auto;
+  padding: 8px 10px 6px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--island-composer-bg);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+
+.island-composer:focus-within {
+  border-color: var(--line-gold);
+  box-shadow: 0 0 0 3px var(--gold-ghost);
+}
+
+.island-composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  max-height: 104px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 2px 1px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.55;
+  caret-color: var(--gold-bright);
+  user-select: text;
+  -webkit-app-region: no-drag;
+}
+
+.island-composer textarea::placeholder {
+  color: var(--text-3);
+}
+
+.island-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.island-compose-hint {
+  font-size: 9px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.island-send {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-gold);
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--gold-bright), var(--gold));
+  color: var(--text-invert);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), filter var(--dur-fast) linear, opacity var(--dur-fast) linear;
+  -webkit-app-region: no-drag;
+}
+
+.island-send:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.island-send:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.island-spin {
+  animation: island-spin 0.9s linear infinite;
+}
+
+.island-error {
+  margin: 5px 1px 0;
+  font-size: 10.5px;
+  color: var(--rust);
+}
+
+/* 最近对话 */
+.island-recent {
+  flex: 0 0 auto;
+}
+
+.island-recent ul {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.island-recent button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
+  -webkit-app-region: no-drag;
+}
+
+.island-recent button:hover {
+  background: var(--island-surface-hover);
+  color: var(--text);
+}
+
+.island-recent-icon {
+  flex: 0 0 14px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.island-recent-icon i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(200, 174, 125, 0.6);
+}
+
+.island-recent-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.island-recent-time {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--text-3);
+}
+
+.island-tip {
+  margin: auto 0 0;
+  padding: 8px 2px 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.island-tip::before {
+  content: '';
+  width: 16px;
+  height: 1px;
+  flex: 0 0 16px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  opacity: 0.55;
+}
+
+.island-tip svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+  opacity: 0.6;
+}
+
+/* 底部 */
+.island-panel-foot {
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--island-foot-bg);
+  -webkit-app-region: no-drag;
+}
+
+.island-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color var(--dur-fast) linear, background var(--dur-fast) linear;
+}
+
+.island-text-btn:hover {
+  color: var(--text);
+  background: var(--island-surface-hover);
+}
+
+.island-text-btn.is-gold {
+  margin-left: auto;
+  color: var(--gold-bright);
+}
+
+.island-text-btn.is-gold:hover {
+  background: var(--gold-ghost);
+}
+
+.island-hide {
+  margin-left: 2px;
+  width: 24px;
+  height: 24px;
+  color: var(--text-3);
+}
+
+/* ── 动效 ───────────────────────────────────────────────────── */
+
+@keyframes island-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes island-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes island-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes island-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes island-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.12);
+  }
+}
+
+@keyframes island-spark {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes island-wave {
+  0%,
+  100% {
+    transform: scaleY(0.55);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 0.95;
+  }
+}
+
+@keyframes island-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes island-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-shell *,
+  .island-shell *::before,
+  .island-shell *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

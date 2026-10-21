@@ -12,6 +12,8 @@ import {
   X
 } from 'lucide-react'
 import { Markdown } from '../../../components/markdown/Markdown'
+import { isTableFileName } from '@shared/file-types'
+import { TablePreview } from '../preview/OfficePreviews'
 import { CodeEditor, type CodeEditorHandle } from '../../../components/editor/CodeEditor'
 import { languageLabel } from '../../../components/editor/languages'
 import { IconButton } from '../../../ui'
@@ -21,6 +23,8 @@ import './editor.css'
 export interface EditorPaneProps {
   doc: EditorDocument
   theme: 'dark' | 'light'
+  /** 当前会话/全局处于只读模式（动态变化，不写进 doc.readOnly） */
+  readOnlyMode: boolean
   onContentChange: (value: string) => void
   onSave: () => void
   onForceSave: () => void
@@ -39,6 +43,7 @@ export interface EditorPaneProps {
 export function EditorPane({
   doc,
   theme,
+  readOnlyMode,
   onContentChange,
   onSave,
   onForceSave,
@@ -51,17 +56,23 @@ export function EditorPane({
 }: EditorPaneProps): React.JSX.Element {
   const editorRef = useRef<CodeEditorHandle>(null)
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 })
-  const previewAvailable = doc.language === 'markdown' || doc.language === 'html'
+  const tablePreview = isTableFileName(doc.relPath || doc.title)
+  const svgPreview = /\.svg$/i.test(doc.relPath || doc.title)
+  const previewAvailable = doc.language === 'markdown' || doc.language === 'html' || tablePreview || svgPreview
   const showPreview = doc.preview && previewAvailable
-  const readOnly = doc.readOnly || doc.binary || doc.truncated
+  const previewLabel = tablePreview ? '预览表格' : svgPreview ? '预览图形' : doc.language === 'markdown' ? '预览 Markdown' : '预览网页'
+  const readOnly = readOnlyMode || doc.readOnly || doc.binary || doc.truncated
 
   const status = useMemo(() => {
-    if (doc.binary) return { tone: 'muted', label: '二进制文件' }
     if (doc.loading) return { tone: 'muted', label: '读取中' }
     if (doc.error) return { tone: 'danger', label: '读取失败' }
+    if (doc.binary) return { tone: 'muted', label: '二进制文件' }
+    if (doc.truncated) return { tone: 'warning', label: '仅预览开头' }
+    if (readOnlyMode) return { tone: 'muted', label: '只读模式' }
+    if (doc.readOnly) return { tone: 'muted', label: '只读' }
     if (doc.dirty) return { tone: 'warning', label: '未保存' }
     return { tone: 'success', label: '已保存' }
-  }, [doc.binary, doc.dirty, doc.error, doc.loading])
+  }, [doc.binary, doc.dirty, doc.error, doc.loading, doc.readOnly, doc.truncated, readOnlyMode])
 
   const saveLabel = doc.conflict ? '覆盖保存 (Ctrl+S)' : '保存 (Ctrl+S)'
 
@@ -75,7 +86,6 @@ export function EditorPane({
           <span className="editor-toolbar-sep" aria-hidden />
           <span className="editor-lang mono">{languageLabel(doc.language)}</span>
           <span className={`editor-status mono is-${status.tone}`}>{status.label}</span>
-          {readOnly && !doc.binary ? <span className="editor-readonly mono">只读</span> : null}
         </div>
         <div className="editor-toolbar-right">
           {showPreview ? null : (
@@ -84,7 +94,13 @@ export function EditorPane({
             </span>
           )}
           {doc.conflict ? (
-            <button type="button" className="editor-text-btn is-danger" onClick={onForceSave} title="用编辑器里的内容覆盖磁盘文件">
+            <button
+              type="button"
+              className="editor-text-btn is-danger"
+              onClick={onForceSave}
+              disabled={readOnly}
+              title={readOnly ? '当前是只读模式，不能覆盖保存' : '用编辑器里的内容覆盖磁盘文件'}
+            >
               <TriangleAlert size={12} strokeWidth={1.7} aria-hidden />
               覆盖保存
             </button>
@@ -100,23 +116,31 @@ export function EditorPane({
               保存
             </button>
           )}
-          <button type="button" className="editor-text-btn" onClick={onShowHistory} title="查看这个文件的版本历史">
-            <Clock size={12} strokeWidth={1.7} aria-hidden />
-            历史
-          </button>
+          {doc.workspace ? (
+            <button type="button" className="editor-text-btn" onClick={onShowHistory} title="查看这个文件的版本历史">
+              <Clock size={12} strokeWidth={1.7} aria-hidden />
+              历史
+            </button>
+          ) : null}
           {previewAvailable ? (
             <button
               type="button"
               className={['editor-text-btn', showPreview ? 'is-active' : ''].filter(Boolean).join(' ')}
               onClick={onTogglePreview}
               aria-pressed={showPreview}
-              title={showPreview ? '回到编辑' : doc.language === 'markdown' ? '预览 Markdown' : '预览网页'}
+              title={showPreview ? '回到编辑' : previewLabel}
             >
               {showPreview ? <Pencil size={12} strokeWidth={1.7} aria-hidden /> : <Eye size={12} strokeWidth={1.7} aria-hidden />}
               {showPreview ? '编辑' : '预览'}
             </button>
           ) : null}
-          <button type="button" className="editor-text-btn" onClick={onRequestSaveAs} title="另存为工作区内的新文件">
+          <button
+            type="button"
+            className="editor-text-btn"
+            onClick={onRequestSaveAs}
+            disabled={readOnlyMode}
+            title={readOnlyMode ? '当前是只读模式，不能另存文件' : '另存为文件夹内的新文件'}
+          >
             <SaveAll size={12} strokeWidth={1.7} aria-hidden />
             另存为
           </button>
@@ -144,10 +168,17 @@ export function EditorPane({
             <button type="button" onClick={onReload}>
               重新加载
             </button>
-            <button type="button" onClick={onForceSave}>
+            <button type="button" onClick={onForceSave} disabled={readOnly}>
               覆盖保存
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {doc.previewNote && !doc.binary && !doc.truncated && !doc.error ? (
+        <div className="editor-banner is-info" role="status">
+          <FileWarning size={13} strokeWidth={1.7} aria-hidden />
+          <span>{doc.previewNote}</span>
         </div>
       ) : null}
 
@@ -173,11 +204,18 @@ export function EditorPane({
             <div className="editor-preview-paper selectable">
               <Markdown text={doc.content} />
             </div>
+          ) : tablePreview ? (
+            <TablePreview content={doc.content} relPath={doc.relPath} />
+          ) : svgPreview ? (
+            <div className="editor-preview-svg">
+              <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc.content)}`} alt={doc.title} />
+            </div>
           ) : (
             <iframe
               className="editor-preview-frame"
               title={`${doc.title} 预览`}
-              sandbox="allow-scripts allow-forms"
+              // 本地 HTML 预览不需要脚本/表单；可交互 HTML 走画布成品的独立沙箱
+              sandbox=""
               srcDoc={doc.content}
               referrerPolicy="no-referrer"
             />

@@ -31,6 +31,9 @@ function makeCtx(ws: TempWorkspace, overrides: Partial<ToolContext> = {}, state:
     escapeApproved: false,
     demo: false,
     goal: null,
+    planMode: false,
+    getPlan: () => null,
+    proposePlan: (plan) => plan,
     emit: () => undefined,
     updateGoal: () => null,
     getTodos: () => state.todos,
@@ -39,7 +42,7 @@ function makeCtx(ws: TempWorkspace, overrides: Partial<ToolContext> = {}, state:
     },
     getArtifacts: () => state.artifacts,
     addArtifact: (artifact) => {
-      state.artifacts.push(artifact)
+      state.artifacts = [...state.artifacts.filter((item) => item.id !== artifact.id), artifact]
     },
     askUser: async () => ({ value: 'A', label: '方案 A' }),
     progress: (note) => {
@@ -64,6 +67,22 @@ describe('read_file', () => {
       expect(result.meta).toMatchObject({ startLine: 2, endLine: 2, hasMore: true })
     } finally {
       ws.cleanup()
+    }
+  })
+
+  it('显式附加的工作区外文件可读，未授权的外部路径仍被拒绝', async () => {
+    const ws = makeTempWorkspace()
+    const outside = makeTempWorkspace({ 'attached.txt': '这是外部附件\n' })
+    try {
+      const external = join(outside.root, 'attached.txt')
+      const denied = await executeTool('read_file', { path: external }, makeCtx(ws))
+      expect(denied.ok).toBe(false)
+      const allowed = await executeTool('read_file', { path: external }, makeCtx(ws, { attachedFiles: [external] }))
+      expect(allowed.ok, allowed.error).toBe(true)
+      expect(allowed.output).toContain('这是外部附件')
+    } finally {
+      ws.cleanup()
+      outside.cleanup()
     }
   })
 
@@ -323,6 +342,23 @@ describe('run_command', () => {
     }
   }, 20_000)
 
+  it('运行中取消会终止命令并返回中断结果', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const controller = new AbortController()
+      const command = isWindows ? 'Start-Sleep -Seconds 10' : 'sleep 10'
+      const pending = executeTool('run_command', { command }, makeCtx(ws, { signal: controller.signal }))
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      controller.abort()
+      const result = await pending
+      expect(result.ok).toBe(false)
+      expect(String(result.error)).toContain('中断')
+      expect(Number(result.meta?.durationMs)).toBeLessThan(5000)
+    } finally {
+      ws.cleanup()
+    }
+  }, 20_000)
+
   it('cwd 越界被拦截', async () => {
     const ws = makeTempWorkspace()
     try {
@@ -433,6 +469,37 @@ describe('meta 工具', () => {
       expect(state.artifacts).toHaveLength(1)
       expect(state.artifacts[0]).toMatchObject({ title: '分析报告', kind: 'html' })
       expect(state.artifacts[0].content).toContain('报告')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('open_artifact 同一路径/同一内联标题只保留一张卡片，重复打开视为更新', async () => {
+    const ws = makeTempWorkspace({ 'report.html': '<html><body>报告 v1</body></html>' })
+    try {
+      const state: CtxState = { todos: [], artifacts: [], progressNotes: [] }
+      const ctx = makeCtx(ws, {}, state)
+      const first = await executeTool('open_artifact', { title: '分析报告', path: 'report.html' }, ctx)
+      expect(first.ok).toBe(true)
+      const firstId = String((first.meta as { artifactId?: string }).artifactId)
+      expect(state.artifacts).toHaveLength(1)
+
+      writeFileSync(join(ws.root, 'report.html'), '<html><body>报告 v2</body></html>', 'utf8')
+      const second = await executeTool('open_artifact', { title: '分析报告（更新）', path: 'report.html' }, ctx)
+      expect(second.ok).toBe(true)
+      expect((second.meta as { updated?: boolean }).updated).toBe(true)
+      expect(state.artifacts).toHaveLength(1)
+      expect(state.artifacts[0].id).toBe(firstId)
+      expect(state.artifacts[0].title).toBe('分析报告（更新）')
+      expect(state.artifacts[0].content).toContain('v2')
+
+      const inlineCtx = makeCtx(ws, {}, state)
+      const inline1 = await executeTool('open_artifact', { title: '内联笔记', kind: 'markdown', content: '# v1' }, inlineCtx)
+      const inline2 = await executeTool('open_artifact', { title: '内联笔记', kind: 'markdown', content: '# v2' }, inlineCtx)
+      expect((inline1.meta as { updated?: boolean }).updated).toBe(false)
+      expect((inline2.meta as { updated?: boolean }).updated).toBe(true)
+      expect(state.artifacts.filter((item) => item.title === '内联笔记')).toHaveLength(1)
+      expect(state.artifacts.find((item) => item.title === '内联笔记')?.content).toBe('# v2')
     } finally {
       ws.cleanup()
     }

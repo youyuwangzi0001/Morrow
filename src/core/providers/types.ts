@@ -133,13 +133,45 @@ export function toProviderError(err: unknown, providerId?: string): ProviderErro
   return new ProviderError(`模型请求失败：${message}`, { code: 'provider_error', retryable: false, providerId, cause: err })
 }
 
-/** 读取错误响应文本（失败不抛错） */
-export async function readTextSafe(response: Response): Promise<string> {
-  try {
-    return await response.text()
-  } catch {
-    return ''
+/**
+ * 读取错误响应文本（失败不抛错）。
+ * 限制读取字节数：有些网关出错时返回整页 HTML/日志，全部读进内存只会拖慢报错。
+ */
+export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Promise<string> {
+  const body = response.body
+  if (!body) {
+    try {
+      return (await response.text()).slice(0, maxBytes)
+    } catch {
+      return ''
+    }
   }
+  const reader = body.getReader()
+  const decoder = new TextDecoder('utf-8', { fatal: false })
+  let text = ''
+  let bytes = 0
+  try {
+    while (bytes < maxBytes) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const previous = bytes
+      bytes += value.byteLength
+      if (bytes > maxBytes) {
+        text += decoder.decode(value.subarray(0, maxBytes - previous), { stream: true })
+        break
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+  } catch {
+    // 读取失败：返回已经读到的部分
+  }
+  try {
+    await reader.cancel()
+  } catch {
+    // 流已关闭
+  }
+  text += decoder.decode()
+  return text
 }
 
 /**

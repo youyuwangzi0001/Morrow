@@ -12,8 +12,16 @@ import './files'
 import './editor-history'
 import './connectors'
 import './search'
+import './terminal'
+import './git'
+import './commands'
+import './agents'
+import './sidechat'
+import './rules'
+import './permissions'
 import { registerMemoryFeature } from './memory'
 import { registerProjectsFeature } from './projects'
+import { registerSchedulesFeature } from './schedules'
 import { registerSkillsFeature } from './skills'
 import { registerBrowserFeature } from './browser'
 import { warmSearchIndex } from './search'
@@ -21,6 +29,7 @@ import { warmSearchIndex } from './search'
 export function registerFeatureModules(): void {
   registerMemoryFeature(registerFeatureHandler)
   registerProjectsFeature(registerFeatureHandler)
+  registerSchedulesFeature(registerFeatureHandler)
   registerSkillsFeature(registerFeatureHandler)
   registerBrowserFeature()
   warmSearchIndex()

@@ -32,7 +32,8 @@ export function makeTempWorkspace(files: Record<string, string> = {}): TempWorks
     root,
     snapshotDir,
     cleanup: () => {
-      rmSync(root, { recursive: true, force: true })
+      // Windows 上刚退出的 ConPTY 宿主可能短暂占用工作目录
+      rmSync(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 })
       rmSync(snapshotDir, { recursive: true, force: true })
     }
   }
@@ -47,7 +48,7 @@ export function copyDemoWorkspace(source: string): TempWorkspace {
     root,
     snapshotDir,
     cleanup: () => {
-      rmSync(root, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 })
       rmSync(snapshotDir, { recursive: true, force: true })
     }
   }

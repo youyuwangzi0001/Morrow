@@ -5,7 +5,7 @@
  * - 协议：initialize → notifications/initialized → tools/list → tools/call；
  * - 失败处理：启动失败、未知 server/tool、工具错误、JSON-RPC 错误、协议脏数据、超时、进程退出；
  * - 生命周期：每次调用后进程必须被清理（超时/协议错误也杀进程）；输出有上限；
- * - 工具语义：mcp_list（meta，只读模式可列）、mcp_call（exec，高风险→审批）。
+ * - 工具语义：mcp_list（exec，只读拒绝，ask/auto 逐次审批）、mcp_call（exec，高风险→审批）。
  *
  * 用本机 Node 启动的 mock stdio MCP server 验证真实进程/管道链路，不依赖公网或第三方 MCP 包。
  */
@@ -39,12 +39,34 @@ const MOCK_SERVER_SOURCE = [
   '  let message',
   '  try { message = JSON.parse(line) } catch { return }',
   "  if (message.method === 'initialize' && message.id !== undefined) {",
-  "    send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'morrow-mock', version: '1.0.0' } } })",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: 'morrow-mock', version: '1.0.0' } } })",
   '    return',
   '  }',
   "  if (message.method === 'notifications/initialized') return",
   "  if (message.method === 'tools/list' && message.id !== undefined) {",
   "    send({ jsonrpc: '2.0', id: message.id, result: { tools } })",
+  '    return',
+  '  }',
+  "  if (message.method === 'resources/list' && message.id !== undefined) {",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { resources: [{ uri: 'memo://notes/1', name: 'Notes', mimeType: 'text/plain' }] } })",
+  '    return',
+  '  }',
+  "  if (message.method === 'resources/templates/list' && message.id !== undefined) {",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { resourceTemplates: [{ uriTemplate: 'memo://notes/{id}', name: 'Note' }] } })",
+  '    return',
+  '  }',
+  "  if (message.method === 'resources/read' && message.id !== undefined) {",
+  "    const uri = message.params && message.params.uri",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { contents: [{ uri, mimeType: 'text/plain', text: '# Note from ' + uri }] } })",
+  '    return',
+  '  }',
+  "  if (message.method === 'prompts/list' && message.id !== undefined) {",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { prompts: [{ name: 'summarize', description: '总结主题', arguments: [{ name: 'topic', required: true }] }] } })",
+  '    return',
+  '  }',
+  "  if (message.method === 'prompts/get' && message.id !== undefined) {",
+  "    const topic = message.params && message.params.arguments && message.params.arguments.topic",
+  "    send({ jsonrpc: '2.0', id: message.id, result: { description: '总结模板', messages: [{ role: 'user', content: { type: 'text', text: '请总结：' + topic } }] } })",
   '    return',
   '  }',
   "  if (message.method === 'tools/call' && message.id !== undefined) {",
@@ -134,6 +156,9 @@ function makeCtx(workspace: string | null = null, overrides: Partial<ToolContext
     escapeApproved: false,
     demo: false,
     goal: null,
+    planMode: false,
+    getPlan: () => null,
+    proposePlan: (plan) => plan,
     emit: () => undefined,
     updateGoal: () => null,
     getTodos: () => [],
@@ -466,8 +491,8 @@ describe('mcp_call', () => {
 /* ── 注册与权限语义 ───────────────────────────────────────────── */
 
 describe('MCP 工具注册与权限语义', () => {
-  it('mcp_list 是 meta（只读模式可列、子代理拿不到）', () => {
-    expect(toolCategory('mcp_list')).toBe('meta')
+  it('mcp_list 是外部动作（会启动进程/联网，只读拒绝，ask/auto 逐次审批）', () => {
+    expect(toolCategory('mcp_list')).toBe('exec')
     expect(toolRiskFor('mcp_list')).toBe('low')
   })
 
@@ -481,18 +506,51 @@ describe('MCP 工具注册与权限语义', () => {
     expect(tool.definition.titleFor({ server: 'mock', tool: 'echo' })).toContain('mock.echo')
   })
 
-  it('web_fetch / mcp_list / mcp_call 已注册进 registry，子代理只读工具集不包含它们', async () => {
+  it('web_fetch / mcp_list / mcp_call / mcp_resources / mcp_prompt 已注册进 registry，只读工具清单不包含它们', async () => {
     const defs = (await import('../../../src/core/tools/registry')).TOOL_DEFINITIONS.map((tool) => tool.name)
     expect(defs).toContain('web_fetch')
     expect(defs).toContain('mcp_list')
     expect(defs).toContain('mcp_call')
+    expect(defs).toContain('mcp_resources')
+    expect(defs).toContain('mcp_prompt')
     const readOnly = (await import('../../../src/core/tools/registry')).READ_ONLY_TOOL_DEFINITIONS.map((tool) => tool.name)
     expect(readOnly).not.toContain('web_fetch')
     expect(readOnly).not.toContain('mcp_call')
     expect(readOnly).not.toContain('mcp_list')
+    expect(readOnly).not.toContain('mcp_resources')
+    expect(readOnly).not.toContain('mcp_prompt')
   })
 
-  it('executeTool 走 registry 时能执行 mcp_list；子代理（readOnly）被拦截', async () => {
+  it('mcp_resources / mcp_prompt 列出并读取资源与提示词', async () => {
+    const setup = setupMock()
+    setEnv('MORROW_MCP_CONFIG', setup.configPath)
+    const list = await executeTool('mcp_resources', { action: 'list', server: 'mock' }, makeCtx())
+    expect(list.ok).toBe(true)
+    expect(list.output).toContain('memo://notes/1')
+    expect(list.output).toContain('memo://notes/{id}')
+    const read = await executeTool('mcp_resources', { action: 'read', server: 'mock', uri: 'memo://notes/1' }, makeCtx())
+    expect(read.ok).toBe(true)
+    expect(read.output).toContain('# Note from memo://notes/1')
+    const prompts = await executeTool('mcp_prompt', { action: 'list', server: 'mock' }, makeCtx())
+    expect(prompts.ok).toBe(true)
+    expect(prompts.output).toContain('summarize')
+    const prompt = await executeTool(
+      'mcp_prompt',
+      { action: 'get', server: 'mock', name: 'summarize', arguments: { topic: 'MCP' } },
+      makeCtx()
+    )
+    expect(prompt.ok).toBe(true)
+    expect(prompt.output).toContain('请总结：MCP')
+
+    const badResourceAction = await executeTool('mcp_resources', { action: 'delete', server: 'mock' }, makeCtx())
+    expect(badResourceAction.ok).toBe(false)
+    expect(badResourceAction.error).toContain('list 或 read')
+    const badPromptAction = await executeTool('mcp_prompt', { action: 'run', server: 'mock' }, makeCtx())
+    expect(badPromptAction.ok).toBe(false)
+    expect(badPromptAction.error).toContain('list 或 get')
+  })
+
+  it('executeTool 走 registry 时能执行 mcp_list；工具层只读兜底会拦截', async () => {
     const setup = setupMock()
     setEnv('MORROW_MCP_CONFIG', setup.configPath)
     const result = await executeTool('mcp_list', {}, makeCtx())

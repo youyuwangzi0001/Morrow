@@ -19,6 +19,8 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -26,16 +28,18 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Morrow")]
 [assembly: AssemblyDescription("Morrow - 住在你电脑里的 AI 工作伙伴")]
 [assembly: AssemblyCompany("Morrow Studio")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
+[assembly: AssemblyVersion("0.1.0.0")]
+[assembly: AssemblyFileVersion("0.1.0.0")]
+[assembly: AssemblyInformationalVersion("0.1.0")]
 
 internal static class MorrowLauncher
 {
-    private const string Version = "1.0.0";
+    private const string Version = "0.1.0";
     private const string AppFolderName = ".morrow-runtime-" + Version;
     private const string AppExeName = "Morrow-app.exe";
     private const string ZipResourceName = "MorrowApp.zip";
+    private const string RuntimeStampFile = ".morrow-runtime-complete";
+    private static string cachedRuntimeStamp;
 #if FOLDER_MODE
     private const bool FolderMode = true;
 #else
@@ -52,7 +56,9 @@ internal static class MorrowLauncher
 
         try
         {
-            if (!File.Exists(appExe))
+            // 单文件版必须校验缓存是否对应当前内嵌包：只按版本号判断会让同版本重建继续运行旧代码。
+            bool runtimeReady = FolderMode ? File.Exists(appExe) : RuntimeIsCurrent(appDir);
+            if (!runtimeReady)
             {
                 if (FolderMode)
                 {
@@ -63,11 +69,12 @@ internal static class MorrowLauncher
                         MessageBoxIcon.Error);
                     return 1;
                 }
+                TryDeleteStaleRuntime(appDir);
                 bool ok = TryExtract(appDir, exeDir);
                 if (!ok)
                 {
                     MessageBox.Show(
-                        "Morrow 无法在程序所在目录写入运行文件。\n\n请把 Morrow 放到有写入权限的文件夹（例如桌面或文档目录）后再试。",
+                        "Morrow 无法更新运行文件。\n\n如果 Morrow 正在运行，请先完全退出再启动；否则请把 Morrow 放到有写入权限的文件夹（例如桌面或文档目录）后再试。",
                         "Morrow 启动失败",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
@@ -106,6 +113,47 @@ internal static class MorrowLauncher
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return 1;
+        }
+    }
+
+    /// <summary>内嵌应用 zip 的 SHA-256；用作运行时缓存的版本指纹。</summary>
+    private static string GetRuntimeStamp()
+    {
+        if (!string.IsNullOrEmpty(cachedRuntimeStamp)) return cachedRuntimeStamp;
+        using (Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ZipResourceName))
+        {
+            if (resource == null) throw new InvalidOperationException("安装资源缺失（MorrowApp.zip）");
+            using (SHA256 sha = SHA256.Create())
+            {
+                cachedRuntimeStamp = BitConverter.ToString(sha.ComputeHash(resource)).Replace("-", "");
+            }
+        }
+        return cachedRuntimeStamp;
+    }
+
+    private static bool RuntimeIsCurrent(string appDir)
+    {
+        try
+        {
+            if (!File.Exists(Path.Combine(appDir, AppExeName))) return false;
+            string stampPath = Path.Combine(appDir, RuntimeStampFile);
+            return File.Exists(stampPath) && File.ReadAllText(stampPath).Trim() == GetRuntimeStamp();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryDeleteStaleRuntime(string appDir)
+    {
+        try
+        {
+            if (Directory.Exists(appDir)) Directory.Delete(appDir, true);
+        }
+        catch
+        {
+            // 旧进程仍占用时交给解压覆盖；若仍失败，TryExtract 会回退到 LOCALAPPDATA
         }
     }
 
@@ -188,7 +236,7 @@ internal static class MorrowLauncher
                 }
                 splash.Close();
             }
-            File.WriteAllText(Path.Combine(targetDir, ".morrow-runtime-complete"), Version);
+            File.WriteAllText(Path.Combine(targetDir, RuntimeStampFile), GetRuntimeStamp());
             return true;
         }
         catch

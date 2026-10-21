@@ -94,16 +94,6 @@
   background: var(--surface-inset);
 }
 
-.editor-readonly {
-  flex: 0 0 auto;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-xs);
-  color: var(--text-3);
-  font-size: 9px;
-  line-height: 15px;
-}
-
 .editor-cursor {
   color: var(--text-3);
   font-size: 9.5px;
@@ -189,6 +179,12 @@
   border-left-color: var(--rust);
   background: var(--rust-dim);
   color: var(--rust);
+}
+
+.editor-banner.is-info {
+  border-left-color: var(--line-strong);
+  background: var(--surface-inset);
+  color: var(--text-3);
 }
 
 .editor-banner-actions {
@@ -521,6 +517,10 @@
   gap: 6px;
 }
 
+.editor-history-dirty-warning {
+  color: var(--amber);
+}
+
 /* ── 未保存确认 / 另存为对话框内容 ───────────────────────────── */
 
 .editor-dialog-text {
@@ -582,8 +582,7 @@
 
   .editor-path,
   .editor-lang,
-  .editor-cursor,
-  .editor-readonly {
+  .editor-cursor {
     display: none;
   }
 

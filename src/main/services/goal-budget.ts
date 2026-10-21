@@ -128,8 +128,6 @@ export const FILE_PRODUCING_TOOLS: ReadonlySet<string> = new Set([
   'edit_file',
   'write_xlsx',
   'edit_docx',
-  'write_docx',
-  'write_pdf',
   'open_artifact'
 ])
 

@@ -41,6 +41,7 @@ describe('src/core/index 公共出口契约', () => {
       'edit_docx',
       'read_xlsx',
       'write_xlsx',
+      'read_pptx',
       'glob',
       'grep',
       'run_command',
@@ -50,10 +51,15 @@ describe('src/core/index 公共出口契约', () => {
       'ask_user',
       'remember',
       'task',
+      'swarm',
       'open_artifact',
+      'web_search',
       'web_fetch',
+      'terminal',
       'mcp_list',
       'mcp_call',
+      'mcp_resources',
+      'mcp_prompt',
       'browser_open',
       'browser_click',
       'browser_type',
@@ -86,6 +92,7 @@ describe('src/core/index 公共出口契约', () => {
       'read_pdf',
       'read_docx',
       'read_xlsx',
+      'read_pptx',
       'glob',
       'grep',
       'list_skills',
@@ -106,8 +113,9 @@ describe('src/core/index 公共出口契约', () => {
     expect(prompt).toContain('询问模式')
     expect(prompt).toContain('用户喜欢表格')
     expect(prompt).toContain('C:\\demo')
-    const subagentPrompt = core.buildSystemPrompt({ tools: core.READ_ONLY_TOOL_DEFINITIONS, readOnly: true })
-    expect(subagentPrompt).toContain('子代理')
+    // 子代理与主代理同权限，主提示词不能再声称子代理只读
+    expect(prompt).toContain('与主代理同权限')
+    expect(prompt).not.toContain('它只能只读')
   })
 
   it('权限与工具元信息可用于主进程 UI', () => {
@@ -118,7 +126,7 @@ describe('src/core/index 公共出口契约', () => {
       input: { path: 'a.txt' },
       title: '读取 a.txt'
     }
-    expect(core.evaluatePermission(readTarget, { mode: 'read-only', workspace: null, isSubagent: false, isDemo: false, sessionGrants: new Set() })).toEqual({
+    expect(core.evaluatePermission(readTarget, { mode: 'read-only', workspace: null, isDemo: false, sessionGrants: new Set() })).toEqual({
       action: 'allow'
     })
     expect(core.toolCategory('run_command')).toBe('exec')

@@ -2,12 +2,12 @@
  * R10-G 连接器管理面板 E2E（真实 Electron + 真实主进程 feature IPC + 真实文件/加密）。
  *
  * 无 LLM、不联网、不产生费用：
- * 1. 打开工作台 → 连接器面板（Lead 已挂载到 Workbench）；
+ * 1. 从设置 → 功能与工具打开连接器面板；
  * 2. 通过面板 UI 添加 Streamable HTTP MCP 连接器（本地 mock server），测试连接 → 工具列表；
  * 3. 保存后验证真实落盘：`<dataDir>/mcp.json` 只有 `$MORROW_SECRET:` 标记，密钥加密文件无明文；
  * 4. 再次测试已保存连接器：解密后的 Authorization 请求头真实发到 mock server；
  * 5. 启停开关、SSRF 拒绝（localhost 未勾选 allowPrivateNetwork）、file:// 协议拒绝、删除清理；
- * 6. templates 全部 exampleOnly（不伪造内置服务）；截图深色面板。
+ * 6. catalog 条目名合法、地址与运行时字段完整；截图深色面板。
  */
 import { expect, test } from '@playwright/test'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
@@ -15,7 +15,7 @@ import type { Socket } from 'node:net'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchMorrow, screenshotPath, type MorrowApp } from './launch'
-import { dismissOnboarding, waitForStoreReady } from './store'
+import { dismissOnboarding, openToolPanel, setThemeViaStore, waitForStoreReady } from './store'
 
 type InvokeResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } }
 
@@ -27,7 +27,7 @@ interface MockMcpServer {
 
 const INITIALIZE_RESULT = {
   protocolVersion: '2024-11-05',
-  capabilities: { tools: {} },
+  capabilities: { tools: {}, resources: {}, prompts: {} },
   serverInfo: { name: 'e2e-mock-http', version: '1.0.0' }
 }
 
@@ -79,6 +79,26 @@ async function startMockMcp(): Promise<MockMcpServer> {
         reply(TOOLS_RESULT)
         return
       }
+      if (message.method === 'resources/list') {
+        reply({ resources: [{ uri: 'memo://notes/1', name: 'Notes', mimeType: 'text/plain' }] })
+        return
+      }
+      if (message.method === 'resources/templates/list') {
+        reply({ resourceTemplates: [{ uriTemplate: 'memo://notes/{id}', name: 'Note' }] })
+        return
+      }
+      if (message.method === 'resources/read') {
+        reply({ contents: [{ uri: 'memo://notes/1', mimeType: 'text/plain', text: '# Note' }] })
+        return
+      }
+      if (message.method === 'prompts/list') {
+        reply({ prompts: [{ name: 'summarize', description: '总结主题', arguments: [{ name: 'topic', required: true }] }] })
+        return
+      }
+      if (message.method === 'prompts/get') {
+        reply({ messages: [{ role: 'user', content: { type: 'text', text: '请总结：MCP' } }] })
+        return
+      }
       if (message.method === 'tools/call') {
         const params = (message.params ?? {}) as Record<string, unknown>
         reply({ content: [{ type: 'text', text: JSON.stringify(params.arguments ?? {}) }] })
@@ -125,10 +145,21 @@ async function openConnectorsPanel(morrow: MorrowApp): Promise<void> {
   const { page } = morrow
   await dismissOnboarding(page)
   await waitForStoreReady(page)
-  await page.locator('[aria-label="打开工作台 (Ctrl+Shift+W)"]').click()
-  await expect(page.locator('.workbench-card').filter({ hasText: '连接器' })).toBeVisible()
-  await page.locator('.workbench-card').filter({ hasText: '连接器' }).click()
+  await openToolPanel(page, '连接器')
   await expect(page.getByTestId('connectors-panel')).toBeVisible({ timeout: 15_000 })
+  // 外层模态不滚动；左右两栏各自在面板内部滚动
+  const bodyOverflow = await page
+    .getByRole('dialog', { name: '外部工具（MCP）' })
+    .evaluate((panel) => {
+      const body = panel.querySelector<HTMLElement>('.modal-body')
+      return body ? body.scrollHeight - body.clientHeight : null
+    })
+  expect(bodyOverflow).not.toBeNull()
+  expect(bodyOverflow!).toBeLessThanOrEqual(1)
+  const pathFits = await page.locator('.conn-path').evaluate((element) => {
+    return element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + 1
+  })
+  expect(pathFits).toBe(true)
 }
 
 test.describe('R10-G 连接器管理面板', () => {
@@ -148,19 +179,24 @@ test.describe('R10-G 连接器管理面板', () => {
     const { page, dataDir } = morrow
     await openConnectorsPanel(morrow)
 
-    // feature IPC 已注册：templates 全部是「仅示例」，不伪造内置服务
-    const templates = await invoke<Array<{ exampleOnly: boolean }>>(page, 'feature:connectors:templates', {})
-    expect(templates.ok).toBe(true)
-    if (templates.ok) {
-      expect(templates.data.length).toBeGreaterThanOrEqual(4)
-      expect(templates.data.every((item) => item.exampleOnly === true)).toBe(true)
+    // feature IPC 已注册：目录条目名称合法、远程/本机字段完整
+    const catalog = await invoke<{ entries: Array<{ name: string; transport: string; requiresNpx: boolean; docsUrl: string }> }>(
+      page,
+      'feature:connectors:catalog',
+      {}
+    )
+    expect(catalog.ok).toBe(true)
+    if (catalog.ok) {
+      expect(catalog.data.entries.length).toBeGreaterThanOrEqual(8)
+      expect(catalog.data.entries.every((entry) => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(entry.name))).toBe(true)
+      expect(catalog.data.entries.every((entry) => entry.docsUrl.startsWith('https://'))).toBe(true)
     }
 
     // ── 1) 添加 HTTP 连接器（未勾选允许本机 → 先看 SSRF 拒绝）
-    await page.getByRole('button', { name: '添加连接器' }).click()
+    await page.getByRole('button', { name: '添加外部工具' }).click()
     await page.getByLabel('名称').fill('e2e-http')
     await page.getByRole('radio', { name: 'HTTP' }).click()
-    await page.getByLabel('MCP endpoint URL').fill(mock.url)
+    await page.getByLabel('服务地址').fill(mock.url)
 
     await page.getByRole('button', { name: '测试连接' }).click()
     await expect(page.locator('.conn-test-error')).toBeVisible({ timeout: 20_000 })
@@ -174,11 +210,24 @@ test.describe('R10-G 连接器管理面板', () => {
     await expect(page.locator('.conn-test-ok')).toContainText('连接成功')
     await expect(page.locator('.conn-test-ok')).toContainText('echo')
     await expect(page.locator('.conn-test-ok')).toContainText('list_items')
+    await expect(page.locator('.conn-test-ok')).toContainText('1 个资源')
+    await expect(page.locator('.conn-test-ok')).toContainText('1 个提示词')
+    await expect(page.locator('.conn-catalog').filter({ hasText: 'memo://notes/1' })).toBeVisible()
+    await expect(page.locator('.conn-catalog').filter({ hasText: 'summarize' })).toBeVisible()
 
     // ── 2) 加一个鉴权请求头（密钥只写不读）
     await page.locator('.conn-secrets').getByRole('button', { name: '添加' }).click()
     await page.getByLabel('请求头 headers键名').fill('Authorization')
     await page.getByLabel('请求头 headers值').fill('Bearer e2e-secret-token')
+
+    // OAuth 端点保存后由后端加密保管令牌；这里验证 UI 字段与配置落盘
+    await page.getByLabel('授权地址').fill('https://auth.example.com/oauth/authorize')
+    await page.getByLabel('令牌地址').fill('https://auth.example.com/oauth/token')
+    await page.getByLabel('Client ID').fill('e2e-client')
+    await page.getByLabel('Scope（空格分隔）').fill('read write')
+    await page.getByLabel('授权地址').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: screenshotPath('mcp-oauth-dark.png') })
 
     // ── 3) 保存并验证真实落盘（加密标记，无明文）
     await page.getByRole('button', { name: '保存' }).click()
@@ -188,6 +237,13 @@ test.describe('R10-G 连接器管理面板', () => {
     expect(saved).toBeTruthy()
     expect(saved.transport).toBe('http')
     expect(saved.url).toBe(mock.url)
+    expect(saved.oauth).toMatchObject({
+      authorizationUrl: 'https://auth.example.com/oauth/authorize',
+      tokenUrl: 'https://auth.example.com/oauth/token',
+      clientId: 'e2e-client',
+      scopes: ['read', 'write']
+    })
+    await expect(page.locator('.conn-oauth-status')).toContainText('未授权', { timeout: 10_000 })
     const headers = saved.headers as Record<string, string>
     expect(headers.Authorization.startsWith('$MORROW_SECRET:')).toBe(true)
     const rawConfigText = readFileSync(join(dataDir, 'mcp.json'), 'utf8')
@@ -224,15 +280,34 @@ test.describe('R10-G 连接器管理面板', () => {
     await page.waitForTimeout(300)
     await page.screenshot({ path: screenshotPath('r10-connectors-tools.png') })
 
-    // 截图证据 1（面板 + 已保存连接器）：把两栏滚回顶部，保证截图完整
-    await page.locator('.modal-body').evaluate((element) => {
-      element.scrollTop = 0
-    })
+    // 截图证据 1（面板 + 已保存连接器）：把编辑区滚回顶部，保证截图完整
     await page.locator('.conn-detail').evaluate((element) => {
       element.scrollTop = 0
     })
     await page.waitForTimeout(400)
     await page.screenshot({ path: screenshotPath('r10-connectors-panel.png') })
+
+    // ── 4.1) 同名新建被拒绝：不得覆盖已有连接器或其密钥
+    await page.getByRole('button', { name: '添加外部工具' }).click()
+    await page.getByLabel('名称').fill('e2e-http')
+    await page.getByRole('radio', { name: 'HTTP' }).click()
+    await page.getByLabel('服务地址').fill('https://evil.example.com/mcp')
+    await page.getByRole('button', { name: '保存' }).click()
+    const duplicateAlert = page.getByRole('alert').filter({ hasText: '操作失败' })
+    await expect(duplicateAlert).toBeVisible({ timeout: 10_000 })
+    await expect(duplicateAlert).toContainText('已被另一个外部工具使用')
+    const duplicateConfig = readMcpJson(dataDir).mcpServers['e2e-http']
+    expect(duplicateConfig?.url).toBe(mock.url)
+    await page.locator('.conn-detail').evaluate((element) => {
+      element.scrollTop = 0
+    })
+    await setThemeViaStore(page, 'light')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('connector-duplicate-name-light.png') })
+    await setThemeViaStore(page, 'dark')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('connector-duplicate-name-dark.png') })
+    await page.getByRole('button', { name: '取消' }).click()
 
     // ── 5) 启停开关真实写盘
     const item = page.getByTestId('connector-item').filter({ hasText: 'e2e-http' })
@@ -246,10 +321,10 @@ test.describe('R10-G 连接器管理面板', () => {
       .toBeUndefined()
 
     // ── 6) file:// 协议被配置校验拒绝
-    await page.getByRole('button', { name: '添加连接器' }).click()
+    await page.getByRole('button', { name: '添加外部工具' }).click()
     await page.getByLabel('名称').fill('e2e-bad-url')
     await page.getByRole('radio', { name: 'HTTP' }).click()
-    await page.getByLabel('MCP endpoint URL').fill('file:///C:/Windows/win.ini')
+    await page.getByLabel('服务地址').fill('file:///C:/Windows/win.ini')
     await page.getByRole('button', { name: '保存' }).click()
     await expect(page.getByRole('alert').filter({ hasText: '操作失败' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('alert').filter({ hasText: '操作失败' })).toContainText('只允许 http://')
@@ -274,8 +349,8 @@ test.describe('R10-G 连接器管理面板', () => {
     const { page, dataDir } = morrow
     await openConnectorsPanel(morrow)
 
-    await page.getByRole('radio', { name: '工作区级' }).click()
-    await expect(page.getByTestId('connectors-panel')).toContainText('需要先打开一个工作区文件夹')
+    await page.getByRole('radio', { name: '当前文件夹' }).click()
+    await expect(page.getByTestId('connectors-panel')).toContainText('需要先选择一个文件夹')
 
     // 用户级配置路径可见；工作区级路径不存在
     const paths = await invoke<{ userConfigPath: string; workspaceConfigPath: string | null }>(page, 'feature:connectors:paths', {})
@@ -286,7 +361,7 @@ test.describe('R10-G 连接器管理面板', () => {
     }
 
     // 切换回用户级仍可用
-    await page.getByRole('radio', { name: '用户级' }).click()
-    await expect(page.getByRole('button', { name: '添加连接器' })).toBeVisible()
+    await page.getByRole('radio', { name: '所有对话' }).click()
+    await expect(page.getByRole('button', { name: '添加外部工具' })).toBeVisible()
   })
 })

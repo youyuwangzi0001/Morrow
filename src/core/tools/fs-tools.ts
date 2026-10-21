@@ -6,8 +6,10 @@
  * - 写/编辑前把旧内容备份到 <snapshotDir>/<toolUseId>/<filename>，meta 里带 snapshotId；
  * - 文本读写统一 UTF-8（兼容 BOM/UTF-16LE），二进制文件拒绝按文本处理。
  */
+import { createHash, randomBytes } from 'node:crypto'
 import {
   appendFileSync,
+  chmodSync,
   closeSync,
   copyFileSync,
   existsSync,
@@ -16,6 +18,8 @@ import {
   readFileSync,
   readSync,
   readdirSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
   type Dirent
@@ -32,6 +36,8 @@ import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
 const MAX_READ_BYTES = 256 * 1024
 const MAX_WRITE_CHARS = 2 * 1024 * 1024
+/** 快照只为 diff/预览保留这个大小以内的文本；更大的文件仍完整备份，但用流式哈希避免整文件读入内存 */
+const MAX_SNAPSHOT_TEXT_BYTES = 2 * 1024 * 1024
 const DEFAULT_READ_LINES = 2000
 const MAX_READ_LINES = 20_000
 const MAX_LIST_ENTRIES = 400
@@ -81,6 +87,75 @@ function readFileHead(absolutePath: string, maxBytes: number): { buffer: Buffer;
   }
 }
 
+/** 原子写文件：先写同目录临时文件再 rename，避免进程崩溃留下半个文件 */
+export function atomicWriteFileSync(target: string, data: string | Uint8Array): void {
+  const dir = dirname(target)
+  mkdirSync(dir, { recursive: true })
+  const tmp = `${target}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+  let mode: number | null = null
+  try {
+    mode = statSync(target).mode
+  } catch {
+    // 新文件使用默认权限
+  }
+  try {
+    if (typeof data === 'string') {
+      writeFileSync(tmp, data, { encoding: 'utf8', ...(mode !== null ? { mode } : {}) })
+    } else {
+      writeFileSync(tmp, data, { ...(mode !== null ? { mode } : {}) })
+    }
+    if (mode !== null) {
+      try {
+        chmodSync(tmp, mode)
+      } catch {
+        // Windows/受限文件系统可能不支持；保留内容写入结果
+      }
+    }
+    // Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        renameSync(tmp, target)
+        break
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw err
+        if (attempt === 3) throw err
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (attempt + 1))
+      }
+    }
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      // 清理失败不影响原始错误
+    }
+    throw err
+  }
+}
+
+function atomicWriteTextFile(target: string, content: string): void {
+  atomicWriteFileSync(target, content)
+}
+
+/** 流式哈希：大文件/二进制快照不整文件读入内存 */
+function hashFileSync(absolutePath: string): string {
+  const fd = openSync(absolutePath, 'r')
+  const hash = createHash('sha256')
+  const buffer = Buffer.allocUnsafe(1024 * 1024)
+  try {
+    let position = 0
+    for (;;) {
+      const read = readSync(fd, buffer, 0, buffer.length, position)
+      if (read === 0) break
+      hash.update(buffer.subarray(0, read))
+      position += read
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return hash.digest('hex')
+}
+
 export interface SnapshotInfo {
   snapshotId: string
   snapshotPath: string
@@ -94,6 +169,16 @@ export interface SnapshotInfo {
  * 是否被用户手工改过：当前哈希 ≠ afterHash 且 ≠ beforeHash → 冲突，拒绝覆盖。
  * R7 审计修复：旧实现只有 before 快照，撤销会静默覆盖用户后来的修改。
  */
+/** 快照目录使用单层安全名：provider 返回的 tool id 不能带出 .. 或路径分隔符。 */
+function snapshotSegment(value: string): string {
+  const cleaned = value
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/\.{2,}/g, '_')
+    .replace(/^\.+/, '_')
+    .slice(0, 120)
+  return cleaned || 'tool'
+}
+
 export function recordRestoreManifest(
   ctx: ToolContext,
   absolutePath: string,
@@ -101,7 +186,7 @@ export function recordRestoreManifest(
   afterHash: string
 ): void {
   try {
-    const dir = join(ctx.snapshotDir, ctx.toolUseId)
+    const dir = join(ctx.snapshotDir, snapshotSegment(ctx.toolUseId))
     mkdirSync(dir, { recursive: true })
     writeFileSync(
       join(dir, '.restore.json'),
@@ -123,18 +208,27 @@ export function snapshotFile(absolutePath: string, ctx: ToolContext): SnapshotIn
   if (!existsSync(absolutePath)) return null
   const stat = statSync(absolutePath)
   if (!stat.isFile()) return null
-  const snapshotDir = join(ctx.snapshotDir, ctx.toolUseId)
+  const snapshotDir = join(ctx.snapshotDir, snapshotSegment(ctx.toolUseId))
   mkdirSync(snapshotDir, { recursive: true })
-  const snapshotPath = join(snapshotDir, basename(absolutePath))
+  const fileName = basename(absolutePath)
+  // 目标文件恰好叫 .restore.json 时不能覆盖同一目录下的撤销清单
+  const snapshotPath = join(snapshotDir, fileName === RESTORE_MANIFEST_FILE ? `snapshot-${fileName}` : fileName)
   copyFileSync(absolutePath, snapshotPath)
-  const buffer = readFileSync(absolutePath)
-  const decoded = decodeTextBuffer(buffer)
+  const beforeHash = hashFileSync(snapshotPath)
+  let beforeText: string | null = null
+  let beforeBinary = false
+  if (stat.size <= MAX_SNAPSHOT_TEXT_BYTES) {
+    const buffer = readFileSync(snapshotPath)
+    const decoded = decodeTextBuffer(buffer)
+    beforeText = decoded.binary ? null : decoded.text
+    beforeBinary = decoded.binary
+  }
   return {
     snapshotId: ctx.toolUseId,
     snapshotPath,
-    beforeHash: sha256(buffer),
-    beforeText: decoded.binary ? null : decoded.text,
-    beforeBinary: decoded.binary
+    beforeHash,
+    beforeText,
+    beforeBinary
   }
 }
 
@@ -179,7 +273,8 @@ export const readFileTool: ToolImpl = {
     const rawPath = getString(input, 'path', { required: true })
     const resolved = resolveWorkspacePath(rawPath, ctx.workspace, {
       escapeApproved: ctx.escapeApproved,
-      requireExist: true
+      requireExist: true,
+      allowedExternalFiles: ctx.attachedFiles
     })
     if (resolved.isDirectory) {
       throw new ToolInputError(`「${rawPath}」是一个文件夹，不是文件。`, '可以改用 list_dir 查看文件夹内容。')
@@ -267,22 +362,32 @@ export const writeFileTool: ToolImpl = {
     const existed = existsSync(resolved.absolute) && statSync(resolved.absolute).isFile()
     // append 同样要备份旧内容（撤销/差异视图依赖快照 + beforeHash/diff）
     const snapshot = snapshotFile(resolved.absolute, ctx)
-    mkdirSync(dirname(resolved.absolute), { recursive: true })
-    if (append) appendFileSync(resolved.absolute, rawContent, 'utf8')
-    else writeFileSync(resolved.absolute, rawContent, 'utf8')
+    // 写真实路径而不是链接路径：保留符号链接本身，同时与撤销记录的目标路径保持一致
+    const writeTarget = resolved.real
+    mkdirSync(dirname(writeTarget), { recursive: true })
+    if (append) appendFileSync(writeTarget, rawContent, 'utf8')
+    else atomicWriteTextFile(writeTarget, rawContent)
 
     const displayPath = relativeOrAbsolute(resolved.absolute, ctx)
     const writtenBytes = Buffer.byteLength(rawContent, 'utf8')
     const writtenLines = countLines(rawContent)
     let afterText: string | null = rawContent
     let afterHash = sha256(rawContent)
-    let afterLines = writtenLines
+    let afterLines: number | null = writtenLines
     if (append) {
-      const afterBuffer = readFileSync(resolved.absolute)
-      const afterDecoded = decodeTextBuffer(afterBuffer)
-      afterText = afterDecoded.binary ? null : afterDecoded.text
-      afterHash = sha256(afterBuffer)
-      afterLines = afterText !== null ? countLines(afterText) : 0
+      const afterSize = statSync(resolved.absolute).size
+      if (afterSize <= MAX_SNAPSHOT_TEXT_BYTES) {
+        const afterBuffer = readFileSync(resolved.absolute)
+        const afterDecoded = decodeTextBuffer(afterBuffer)
+        afterText = afterDecoded.binary ? null : afterDecoded.text
+        afterHash = sha256(afterBuffer)
+        afterLines = afterText !== null ? countLines(afterText) : 0
+      } else {
+        // 大文件只做流式哈希，避免 append 后把整文件读入内存；行数按未知展示
+        afterText = null
+        afterHash = hashFileSync(resolved.absolute)
+        afterLines = null
+      }
     }
     const diff =
       snapshot && snapshot.beforeText !== null && afterText !== null
@@ -292,8 +397,10 @@ export const writeFileTool: ToolImpl = {
     const lines = [
       `${append ? (existed ? '已追加写入' : '已创建并写入') : existed ? '已覆盖' : '已创建'} ${displayPath}`,
       append
-        ? `新增 ${writtenLines} 行 / ${formatBytes(writtenBytes)} · 现共 ${afterLines} 行`
-        : `${afterLines} 行 · ${formatBytes(writtenBytes)}`,
+        ? `新增 ${writtenLines} 行 / ${formatBytes(writtenBytes)} · 现共 ${
+            afterLines !== null ? `${afterLines} 行` : '文件较大，行数未统计'
+          }`
+        : `${afterLines ?? writtenLines} 行 · ${formatBytes(writtenBytes)}`,
       diff ? `改动 ${diffSummary(diff)}` : '',
       snapshot ? '旧内容已备份，可撤销。' : ''
     ].filter(Boolean)
@@ -388,7 +495,7 @@ export const editFileTool: ToolImpl = {
     }
     const snapshot = snapshotFile(resolved.absolute, ctx)
     const nextText = replaceAll ? text.split(needle).join(newString) : text.replace(needle, () => newString)
-    writeFileSync(resolved.absolute, nextText, 'utf8')
+    atomicWriteTextFile(resolved.real, nextText)
     const afterHashEdit = sha256(nextText)
     recordRestoreManifest(ctx, resolved.absolute, snapshot?.beforeHash ?? null, afterHashEdit)
     const diff = createUnifiedDiff(text, nextText, relativeOrAbsolute(resolved.absolute, ctx))

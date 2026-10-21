@@ -2,10 +2,10 @@
  * R10-H 技能库面板。
  *
  * 独立受控组件（Lead 挂载）：`<SkillsPanel open={open} onClose={onClose} />`
- * - 列出「工作区自带技能」与「用户技能库」；搜索 / 启用状态筛选 / 排序；
+ * - 列出「文件夹自带技能」与「我的技能」；搜索 / 启用状态筛选 / 排序；
  * - 详情：描述、来源、路径、文件清单、SKILL.md 原文；
  * - 启用 / 禁用（Agent 的 list_skills / read_skill / 系统提示只看到已启用技能）；
- * - 从本地文件夹或 .zip 安装到用户技能库（主进程做 zip-slip/大小/白名单校验）；
+ * - 从本地文件夹或 .zip 安装到我的技能（主进程做 zip-slip/大小/白名单校验）；
  * - 删除用户技能、打开目录、重新扫描、错误态。
  *
  * 不联网、不接市场；所有操作都走 `feature:skills:*` IPC。
@@ -77,8 +77,14 @@ function formatTime(timestamp: number | null): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function sourceLabel(skill: Pick<SkillView, 'source'>): string {
-  return skill.source === 'user' ? '用户技能库' : '工作区'
+function sourceLabel(skill: Pick<SkillView, 'source' | 'builtin'>): string {
+  if (skill.builtin) return '内置技能'
+  return skill.source === 'user' ? '我的技能' : '当前文件夹'
+}
+
+function shortenPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean)
+  return parts.length <= 3 ? path : `…/${parts.slice(-2).join('/')}`
 }
 
 export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Element {
@@ -135,7 +141,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
     [workspace]
   )
 
-  // 面板打开时加载列表；工作区切换时重新加载
+  // 面板打开时加载列表；文件夹切换时重新加载
   useEffect(() => {
     if (!open) return
     setActionError(null)
@@ -172,7 +178,9 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
 
   const skills = snapshot?.skills ?? []
   const enabledCount = skills.filter((skill) => skill.enabled).length
-  const userCount = skills.filter((skill) => skill.source === 'user').length
+  const builtinCount = skills.filter((skill) => skill.builtin).length
+  const mineCount = skills.filter((skill) => !skill.builtin && skill.source === 'user').length
+  const folderCount = skills.filter((skill) => !skill.builtin && skill.source !== 'user').length
 
   const visibleSkills = useMemo(() => {
     const keyword = query.trim().toLowerCase()
@@ -329,11 +337,11 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
         if (installOpen || deleteTarget) return
         onClose()
       }}
-      title="技能库"
+      title="技能"
       description="技能是给 Morrow 的任务说明。启用后，做相关任务时会参考；只从本地安装，不上网、不执行代码。"
       width={980}
       layer="overlay"
-      ariaLabel="技能库"
+      ariaLabel="技能"
     >
       <div className="skills-panel" data-testid="skills-panel">
         <div className="skills-toolbar">
@@ -374,8 +382,9 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
         </div>
 
         <p className="skills-summary">
-          共 {skills.length} 个技能（用户技能库 {userCount} 个 · 已启用 {enabledCount} 个）
-          {snapshot?.workspace ? ` · 当前工作区：${snapshot.workspace}` : ' · 未绑定工作区，仅显示用户技能库'}
+          共 {skills.length} 个 · 内置 {builtinCount} · 我的 {mineCount}
+          {folderCount > 0 ? ` · 当前文件夹 ${folderCount}` : ''} · 已启用 {enabledCount}
+          {snapshot?.workspace ? null : ' · 还没有选择文件夹'}
         </p>
 
         {loadError ? <ErrorNote title={loadError} /> : null}
@@ -405,8 +414,8 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
           <div className="skills-list" role="listbox" aria-label="技能列表">
             {loading && skills.length === 0 ? (
               <div className="skills-list-loading">
-                <Spinner size={16} label="正在读取技能库" />
-                <span>正在读取技能库…</span>
+                <Spinner size={16} label="正在读取技能" />
+                <span>正在读取技能…</span>
               </div>
             ) : visibleSkills.length === 0 ? (
               <div className="skills-list-empty">
@@ -438,7 +447,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
                         <Badge tone={skill.source === 'user' ? 'gold' : 'neutral'}>{sourceLabel(skill)}</Badge>
                         {skill.shadowed ? (
                           <Badge tone="warning" mono>
-                            被工作区覆盖
+                            被文件夹覆盖
                           </Badge>
                         ) : null}
                         {!skill.enabled ? <Badge tone="neutral">已禁用</Badge> : null}
@@ -498,7 +507,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
                       <Badge tone={current.source === 'user' ? 'gold' : 'neutral'}>{sourceLabel(current)}</Badge>
                       <Badge tone={current.enabled ? 'success' : 'neutral'}>{current.enabled ? '已启用' : '已禁用'}</Badge>
                       {current.shadowed ? (
-                        <Badge tone="warning">同名工作区技能优先</Badge>
+                        <Badge tone="warning">同名文件夹技能优先</Badge>
                       ) : null}
                     </div>
                   </div>
@@ -539,7 +548,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
                 <p className="skills-detail-desc">{current.description}</p>
                 <div className="skills-path-row">
                   <code className="skills-path" title={current.skillPath}>
-                    {current.skillPath}
+                    {shortenPath(current.skillPath)}
                   </code>
                   <IconButton label="复制技能路径" onClick={() => copySkillPath(current)}>
                     <Copy size={13} aria-hidden />
@@ -549,7 +558,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
                   {current.enabled
                     ? '已启用：Morrow 在做相关任务时会参考它。'
                     : '已禁用：Morrow 暂时不会参考它。'}
-                  {current.shadowed ? ' 当前工作区有同名技能，实际会使用工作区里的那份。' : ''}
+                  {current.shadowed ? ' 当前文件夹有同名技能，实际会使用文件夹里的那份。' : ''}
                 </p>
 
                 <div className="skills-detail-scroll">
@@ -590,7 +599,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
         open={installOpen}
         onClose={() => (installBusy ? undefined : setInstallOpen(false))}
         title="安装技能"
-        description="从本地文件夹或 .zip 技能包安装到用户技能库。安装只复制 Markdown 与资源文件，不执行任何代码；可执行/脚本文件会被拒绝。"
+        description="从本地文件夹或 .zip 技能包安装到我的技能。安装只复制 Markdown 与资源文件，不执行任何代码；可执行/脚本文件会被拒绝。"
         width={620}
         layer="modal"
         ariaLabel="安装技能"
@@ -686,7 +695,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
         open={deleteTarget !== null}
         onClose={() => (deleteBusy ? undefined : setDeleteTarget(null))}
         title="删除技能"
-        description={deleteTarget ? `确定删除用户技能「${deleteTarget.name}」吗？会删除用户技能库里的整个技能目录，无法撤销。` : ''}
+        description={deleteTarget ? `确定删除用户技能「${deleteTarget.name}」吗？会删除我的技能里的整个技能目录，无法撤销。` : ''}
         width={460}
         layer="modal"
         ariaLabel="删除技能"
@@ -707,7 +716,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
             <p>技能目录：</p>
             <code className="skills-path">{deleteTarget.dir}</code>
             <p className="skills-install-hint">
-              工作区自带的技能不在这里删除；如果只想暂时停用，请用「禁用」。
+              文件夹自带的技能不在这里删除；如果只想暂时停用，请用「禁用」。
             </p>
           </div>
         ) : null}
@@ -715,11 +724,11 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
 
       <div className="skills-footnote">
         <span className="skills-footnote-path" title={snapshot?.userDir ?? ''}>
-          用户技能库：{snapshot?.userDir ?? '（加载中…）'}
+          我的技能：{snapshot?.userDir ? shortenPath(snapshot.userDir) : '（加载中…）'}
         </span>
         <span className="skills-footnote-actions">
           <Button variant="ghost" size="sm" icon={<FolderOpen size={13} />} onClick={() => void openUserDir()}>
-            打开技能库目录
+            打开技能文件夹
           </Button>
           <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} loading={loading} onClick={() => void rescan()}>
             重新扫描

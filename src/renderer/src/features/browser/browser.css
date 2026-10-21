@@ -139,6 +139,23 @@
   color: var(--text-2);
 }
 
+/* Agent 正在操作同一个可见页面：轻量金色状态徽标，不抢地址栏焦点 */
+.browser-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 19px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--line));
+  border-radius: var(--r-full);
+  background: var(--gold-ghost);
+  color: var(--gold);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .browser-viewport {
   position: relative;
   flex: 1;
@@ -358,6 +375,15 @@
   box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.6);
 }
 
+.browser-toast.is-success {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--line-strong));
+  color: var(--text);
+}
+
+.browser-toast-message {
+  min-width: 0;
+}
+
 .browser-toast button {
   display: inline-flex;
   align-items: center;
@@ -366,6 +392,21 @@
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
+}
+
+.browser-toast .browser-toast-action {
+  flex: none;
+  padding: 2px 9px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-full);
+  color: var(--gold);
+  font-size: 11px;
+  transition: background 120ms, color 120ms;
+}
+
+.browser-toast .browser-toast-action:hover {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
 }
 
 .browser-surface .truncate {

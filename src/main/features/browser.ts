@@ -16,9 +16,12 @@
  *   feature:browser:stop             → BrowserState
  *   feature:browser:close            → BrowserState
  *   feature:browser:decide-download  { id, allow } → { decided: true }
+ *   feature:browser:reveal-download  { path } → { revealed: true }（只允许 downloads 内的真实文件）
  *   feature:browser:debug-info       → 调试信息（仅 --test-mode 下可用，E2E 用）
  * 事件：
  *   feature:browser:state              BrowserState
+ *   feature:browser:present            Agent 打开网页，渲染层展开浏览器面板
+ *   feature:browser:closed             Agent 关闭网页，渲染层收起面板
  *   feature:browser:download           BrowserDownloadRequest（需用户批准）
  *   feature:browser:download-resolved  { id, allow }
  */
@@ -107,13 +110,18 @@ export function installBrowserFeature(service: BrowserService = browserService):
     service.decideDownload(id, data.allow === true)
     return { decided: true, allow: data.allow === true }
   })
+  registerFeatureHandler('feature:browser:reveal-download', (payload) => {
+    const data = asRecord(payload)
+    service.revealDownload(readString(data, 'path'))
+    return { revealed: true }
+  })
   registerFeatureHandler('feature:browser:debug-info', () => {
     const testMode = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
     if (!testMode) throw new Error('debug 信息仅在测试模式可用。')
     return service.debugInfo()
   })
 
-  log.info('browser feature installed', { channels: 12 })
+  log.info('browser feature installed', { channels: 13 })
 }
 
 // 由 Lead 的 features/index.ts 在 app ready 后调用 registerFeatureModules()，

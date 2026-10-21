@@ -5,7 +5,8 @@
  * - 系统提示词自动列出可用技能；
  * - 同名优先级、frontmatter description、越界与未知技能错误路径。
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildSystemPrompt } from '../../../src/core/prompt'
@@ -26,11 +27,34 @@ function makeSkillWorkspace(): ReturnType<typeof makeTempWorkspace> {
     'skills/extra/SKILL.md': '---\ndescription: 把长文整理成三行摘要\nname: summarize\n---\n# Summarize\nStep one.\n',
     'skills/release/SKILL.md': '# Release skill (低优先级)\nThis copy should lose to .morrow/skills.\n',
     'in/skills/audit/SKILL.md': '# Audit skill\nCheck evidence before claiming done.\n',
-    'in/skills/release/SKILL.md': '# Nested release copy\nShould lose to top-level skills.\n'
+    'in/skills/release/SKILL.md': '# Nested release copy\nShould lose to top-level skills.\n',
+    'docs/SKILL.md': '# Not a skill root\nShould not be readable via read_skill path.\n'
   })
 }
 
 describe('技能发现（discoverSkills）', () => {
+  it('拒绝 SKILL.md 符号链接，不能借技能读取工作区外文件', async () => {
+    const ws = makeTempWorkspace()
+    const outside = mkdtempSync(join(tmpdir(), 'morrow-skill-outside-'))
+    try {
+      writeFileSync(join(outside, 'SKILL.md'), '# LEAKED OUTSIDE SKILL\nSECRET_CANARY', 'utf8')
+      const leakDir = join(ws.root, '.morrow', 'skills', 'leak')
+      mkdirSync(leakDir, { recursive: true })
+      try {
+        symlinkSync(join(outside, 'SKILL.md'), join(leakDir, 'SKILL.md'), 'file')
+      } catch {
+        return // Windows 未开启开发者模式时无法建符号链接
+      }
+      expect(discoverSkills(ws.root).some((skill) => skill.name === 'leak')).toBe(false)
+      const listed = await executeTool('list_skills', {}, makeToolContext(ws))
+      expect(listed.ok).toBe(true)
+      expect(listed.output).not.toContain('leak')
+    } finally {
+      ws.cleanup()
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
   it('按优先级扫描 .morrow/skills、skills 与一级子目录 skills（in/skills）', () => {
     const ws = makeSkillWorkspace()
     try {
@@ -133,6 +157,9 @@ describe('list_skills / read_skill（M21）', () => {
 
       const notSkill = await executeTool('read_skill', { name: 'x', path: 'README.md' }, { ...ctx })
       expect(notSkill.ok).toBe(false)
+      const outsideConvention = await executeTool('read_skill', { name: 'x', path: 'docs/SKILL.md' }, ctx)
+      expect(outsideConvention.ok).toBe(false)
+      expect(outsideConvention.error).toContain('技能目录约定')
 
       const noWorkspace = await executeTool('list_skills', {}, makeToolContext(ws, { workspace: null }))
       expect(noWorkspace.ok).toBe(false)
@@ -160,7 +187,7 @@ describe('系统提示词自动列出技能', () => {
     const ws = makeSkillWorkspace()
     try {
       const prompt = buildSystemPrompt({ workspace: ws.root, permissionMode: 'auto' })
-      expect(prompt).toContain('## 可用技能（工作区发现）')
+      expect(prompt).toContain('## 可用技能（工作区）')
       expect(prompt).toContain('`release`')
       expect(prompt).toContain('Read changelog')
       expect(prompt).toContain('read_skill')

@@ -150,8 +150,6 @@ test.describe('R8 #5 显式聊天 / 工作模式', () => {
       await expect(page.locator('.composer-perm-lock')).toBeVisible()
       await expect(page.locator('.composer-picker-perm')).toHaveCount(0)
       await expect(page.locator('.composer-input')).toHaveAttribute('placeholder', /聊天模式/)
-      await expect(page.locator('.composer-hint')).toContainText(/只讨论/)
-      await expect(page.locator('.tb-mode')).toContainText('聊天')
       await expect(page.locator('.composer-bar-left .icon-btn[aria-label*="目标"]')).toHaveCount(0)
 
       /* ── 2) Goal 入口不可用：不只是隐藏按钮，IPC 也被主进程拒绝 ── */
@@ -212,7 +210,6 @@ test.describe('R8 #5 显式聊天 / 工作模式', () => {
       await expect(page.locator('.composer-picker-mode .segmented-item.is-active')).toHaveText('工作')
       await expect(page.locator('.composer-picker-perm')).toHaveCount(1)
       await expect(page.locator('.composer-perm-lock')).toHaveCount(0)
-      await expect(page.locator('.tb-mode')).toContainText('工作')
       await expect(page.locator('.composer-bar-left .icon-btn[aria-label*="目标"]')).toHaveCount(1)
 
       /* ── 5) 工作模式同一句：真实写入；运行中尝试切 chat 被拒绝 ── */
@@ -268,7 +265,6 @@ test.describe('R8 #5 显式聊天 / 工作模式', () => {
       await waitForStoreReady(page)
       await waitMode(page, 'chat')
       await expect(page.locator('.composer-picker-mode .segmented-item.is-active')).toHaveText('聊天')
-      await expect(page.locator('.tb-mode')).toContainText('聊天')
       await expect(page.locator('.composer-perm-lock')).toBeVisible()
       await expect(page.locator('.composer-bar-left .icon-btn[aria-label*="目标"]')).toHaveCount(0)
       await page.screenshot({ path: screenshotPath('r8-mode-restart-persist.png') })

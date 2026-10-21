@@ -8,6 +8,8 @@ import './editor.css'
 
 export interface HistoryDrawerProps {
   doc: EditorDocument
+  /** 当前会话/全局只读模式：查看历史可以，恢复写盘必须禁用 */
+  readOnly?: boolean
   onClose: () => void
   loadVersions: (doc: EditorDocument) => Promise<HistoryVersion[]>
   loadDiff: (doc: EditorDocument, versionId: string) => Promise<EditorHistorySelection>
@@ -16,7 +18,7 @@ export interface HistoryDrawerProps {
 
 const SOURCE_LABEL: Record<HistoryVersion['source'], string> = {
   user: '手动保存',
-  agent: 'Agent 修改',
+  agent: 'Morrow 修改',
   baseline: '打开时基线',
   restore: '版本恢复'
 }
@@ -41,6 +43,7 @@ function formatSize(bytes: number): string {
  */
 export function HistoryDrawer({
   doc,
+  readOnly = false,
   onClose,
   loadVersions,
   loadDiff,
@@ -72,8 +75,9 @@ export function HistoryDrawer({
 
   useEffect(() => {
     void load()
+    // 保存后 mtime 变化 → 自动刷新版本列表（抽屉打开时也能看到新版本）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc.id, doc.absPath])
+  }, [doc.id, doc.absPath, doc.mtimeMs])
 
   useEffect(() => {
     if (!selectedId) {
@@ -150,7 +154,7 @@ export function HistoryDrawer({
           <div className="editor-history-status">
             <Clock size={16} strokeWidth={1.5} aria-hidden />
             <p>还没有版本记录。</p>
-            <p className="editor-history-hint">保存一次或让 Agent 修改这个文件后，历史会出现在这里。</p>
+            <p className="editor-history-hint">保存一次或让 Morrow 修改这个文件后，历史会出现在这里。</p>
           </div>
         ) : (
           <>
@@ -207,6 +211,9 @@ export function HistoryDrawer({
                     {confirming ? (
                       <div className="editor-history-confirm" role="alertdialog" aria-label="确认恢复版本">
                         <span>恢复后当前内容会被覆盖，并记录为一个新版本。</span>
+                        {doc.dirty ? (
+                          <span className="editor-history-dirty-warning">编辑器里还有未保存的修改，恢复后这些修改会丢失。</span>
+                        ) : null}
                         <div className="editor-history-confirm-actions">
                           <button type="button" className="editor-text-btn" onClick={() => setConfirming(false)} disabled={restoring}>
                             取消
@@ -217,7 +224,13 @@ export function HistoryDrawer({
                         </div>
                       </div>
                     ) : (
-                      <button type="button" className="editor-text-btn" onClick={() => setConfirming(true)} disabled={doc.readOnly}>
+                      <button
+                        type="button"
+                        className="editor-text-btn"
+                        onClick={() => setConfirming(true)}
+                        disabled={readOnly || doc.readOnly}
+                        title={readOnly ? '当前是只读模式，不能恢复版本' : undefined}
+                      >
                         <RotateCcw size={12} strokeWidth={1.7} aria-hidden />
                         恢复到这个版本
                       </button>

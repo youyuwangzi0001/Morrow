@@ -10,7 +10,7 @@
  * 启动的是构建产物：`out/main/index.js`（先 `npm run build`）。
  */
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 // 项目没有 "type": "module"，Playwright 会按 CJS 转译 .ts，因此这里用 __dirname。
@@ -153,8 +153,14 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
   }
 }
 
-/** 确保截图目录存在，返回文件路径。 */
+/** 确保截图目录存在，返回文件路径。先删除旧文件，避免 Windows 上覆盖被缩略图/索引服务短暂占用。 */
 export function screenshotPath(name: string): string {
   mkdirSync(screensDir, { recursive: true })
-  return join(screensDir, name)
+  const target = join(screensDir, name)
+  try {
+    rmSync(target, { force: true })
+  } catch {
+    // 删除失败时仍交给 Playwright 覆盖
+  }
+  return target
 }

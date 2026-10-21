@@ -28,10 +28,17 @@
 }
 
 .app-main {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+}
+
+/* 侧边聊天打开时占用右侧栏，画布保留在后台以便关闭后原样恢复 */
+.app.is-sidechat-open .canvas-root,
+.app.is-sidechat-open .canvas-resizer {
+  display: none;
 }
 
 .app-conversation {
@@ -101,12 +108,13 @@
 }
 
 .app-boot-mark {
-  font-size: 84px;
-  line-height: 0.9;
-  color: var(--text);
-  letter-spacing: -0.04em;
-  opacity: 0.92;
-  text-shadow: 0 0 60px rgba(200, 174, 125, 0.14);
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  opacity: 0.96;
+  filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 22px rgba(214, 186, 130, 0.18));
+  user-select: none;
 }
 
 .app-boot-horizon {

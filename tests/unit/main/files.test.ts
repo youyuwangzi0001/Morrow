@@ -5,7 +5,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,7 +24,6 @@ import {
   readWorkspaceFile,
   renameWorkspaceEntry,
   statWorkspaceFile,
-  workspaceAttachment,
   writeWorkspaceFile
 } from '../../../src/main/services/workspace-files'
 
@@ -105,11 +103,14 @@ describe('readWorkspaceFile', () => {
     expect(result.mtimeMs).toBeGreaterThan(0)
   })
 
-  it('二进制文件（含 NUL 字节）与超大文件给出可读错误', () => {
+  it('二进制文件报错；超过读取上限时只读截断', () => {
     writeFileSync(join(workspace, 'binary.bin'), Buffer.from([0x00, 0x01, 0x02, 0xff]))
     expect(errorCode(() => readWorkspaceFile(workspace, 'binary.bin'))).toBe('BINARY')
     writeFileSync(join(workspace, 'big.txt'), 'x'.repeat(2 * 1024 * 1024 + 10))
-    expect(errorCode(() => readWorkspaceFile(workspace, 'big.txt'))).toBe('TOO_LARGE')
+    const truncated = readWorkspaceFile(workspace, 'big.txt', { maxBytes: 2 * 1024 * 1024 })
+    expect(truncated.truncated).toBe(true)
+    expect(truncated.content.length).toBe(2 * 1024 * 1024)
+    expect(truncated.size).toBe(2 * 1024 * 1024 + 10)
     expect(errorCode(() => readWorkspaceFile(workspace, 'docs'))).toBe('NOT_A_FILE')
     expect(errorCode(() => readWorkspaceFile(workspace, 'missing.txt'))).toBe('NOT_FOUND')
   })
@@ -229,18 +230,5 @@ describe('symlink / junction 防逃逸', () => {
   it('绝对路径越界与 ../ 越界都被拒绝', () => {
     expect(errorCode(() => readWorkspaceFile(workspace, '../outside/outside.txt'))).toBe('OUTSIDE_WORKSPACE')
     expect(errorCode(() => readWorkspaceFile(workspace, join(outsideDir, 'outside.txt')))).toBe('OUTSIDE_WORKSPACE')
-  })
-})
-
-describe('workspaceAttachment（拖拽/附件）', () => {
-  it('文本文件带内容；图片按扩展名标记 image', () => {
-    const text = workspaceAttachment(workspace, 'readme.md')
-    expect(text.kind).toBe('text')
-    expect(text.content).toContain('Morrow')
-    writeFileSync(join(workspace, 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-    const image = workspaceAttachment(workspace, 'pic.png')
-    expect(image.kind).toBe('image')
-    expect(image.content).toBeNull()
-    expect(lstatSync(join(workspace, 'pic.png')).isFile()).toBe(true)
   })
 })

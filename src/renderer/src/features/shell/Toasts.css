@@ -16,6 +16,11 @@
   pointer-events: none;
 }
 
+/* 侧边聊天打开时把通知让到抽屉左侧，避免遮住停止/发送控件 */
+.app:has(.sidechat) .toasts {
+  right: 416px;
+}
+
 .toast-item {
   position: relative;
   display: flex;
@@ -149,7 +154,8 @@
 }
 
 @media (max-width: 760px) {
-  .toasts {
+  .toasts,
+  .app:has(.sidechat) .toasts {
     right: 12px;
     left: 12px;
     bottom: 12px;

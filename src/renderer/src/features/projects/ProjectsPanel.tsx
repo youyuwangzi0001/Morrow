@@ -1,25 +1,32 @@
 /**
  * R10-E Projects 面板（独立受控组件，Lead 挂载：<ProjectsPanel open={...} onClose={...} />）。
  *
- * - 左侧项目列表（置顶/启用/工作区丢失提示），右侧编辑：名称、描述、项目指令、知识文件、启用/置顶；
- * - 新建项目默认使用当前会话工作区；知识文件支持「工作区内相对路径」或系统文件选择器，保存前逐个校验；
- * - 「上下文预览」展示会注入 Agent 的「项目指令 + 知识摘要 + 记忆中心」原文与 token 估算；
+ * - 左侧项目列表（置顶/启用/文件夹丢失提示），右侧编辑：名称、描述、长期说明、参考资料、启用/置顶；
+ * - 新建项目默认使用当前对话文件夹；参考资料支持「文件夹内相对路径」或系统文件选择器，保存前逐个校验；
+ * - 「Morrow 会看到什么」展示会注入 Agent 的「长期说明 + 参考资料摘要 + 记忆中心」原文与 token 估算；
  * - 所有数据通过 window.morrow.features.invoke('feature:projects:*') 走真实主进程。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowRight,
+  ArrowUpRight,
+  Brain,
   Check,
   Eye,
   FileText,
   FolderSearch,
   Layers,
+  LoaderCircle,
+  MessageSquare,
   Pin,
   PinOff,
   Plus,
   Save,
+  Sparkles,
   Trash2
 } from 'lucide-react'
+import type { SessionMeta } from '@shared/types'
 import { useAppStore } from '../../state/store'
 import {
   Badge,
@@ -28,6 +35,7 @@ import {
   ErrorNote,
   IconButton,
   Modal,
+  Segmented,
   Spinner,
   Switch,
   TextArea,
@@ -47,9 +55,20 @@ import './ProjectsPanel.css'
 export interface ProjectsPanelProps {
   open: boolean
   onClose: () => void
-  /** 可选：覆盖当前工作区；不传时自动取当前会话工作区 / 最近工作区 */
+  /** 可选：覆盖当前文件夹；不传时自动取当前对话文件夹 / 最近文件夹 */
   workspace?: string | null
+  /** 打开时默认显示的视图：概览（项目主页）或说明与资料（编辑） */
+  initialView?: ProjectsPanelView
 }
+
+export type ProjectsPanelView = 'home' | 'settings'
+
+type ProjectScope = 'all' | 'current'
+
+const PROJECT_SCOPE_OPTIONS: Array<{ value: ProjectScope; label: string; description: string }> = [
+  { value: 'all', label: '全部项目', description: '显示所有文件夹的项目' },
+  { value: 'current', label: '当前文件夹', description: '只显示当前文件夹的项目；没有时可新建' }
+]
 
 interface ProjectForm {
   name: string
@@ -86,13 +105,30 @@ function shortenPath(path: string): string {
   return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`
 }
 
-export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: ProjectsPanelProps): React.JSX.Element {
+function shortTime(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  const date = new Date(ts)
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+export function ProjectsPanel({ open, onClose, workspace: workspaceProp, initialView = 'home' }: ProjectsPanelProps): React.JSX.Element {
   const storeWorkspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace)
   const workspace = workspaceProp !== undefined ? workspaceProp : storeWorkspace
+  const sessions = useAppStore((s) => s.sessions)
+  const runs = useAppStore((s) => s.runs)
+  const pendingPermissions = useAppStore((s) => s.pendingPermissions)
+  const pendingQuestions = useAppStore((s) => s.pendingQuestions)
+  const sendKey = useAppStore((s) => s.settings.sendKey)
+  const selectSession = useAppStore((s) => s.selectSession)
 
   const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [scope, setScope] = useState<ProjectScope>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [view, setView] = useState<ProjectsPanelView>(initialView)
   const [form, setForm] = useState<ProjectForm>(EMPTY_FORM)
   const [formWorkspace, setFormWorkspace] = useState<string>('')
   const [knowledgeInput, setKnowledgeInput] = useState('')
@@ -100,23 +136,47 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [picking, setPicking] = useState(false)
+  const [pickingWorkspace, setPickingWorkspace] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [preview, setPreview] = useState<ProjectContext | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [homeContext, setHomeContext] = useState<ProjectContext | null>(null)
+  const [homeContextLoading, setHomeContextLoading] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedRef = useRef<string | null>(null)
   const creatingRef = useRef(false)
+  const scopeRef = useRef<ProjectScope>('all')
   selectedRef.current = selectedId
   creatingRef.current = creating
+  scopeRef.current = scope
 
   const selected = useMemo(() => projects.find((project) => project.id === selectedId) ?? null, [projects, selectedId])
   const currentWorkspaceProject = useMemo(
     () => (workspace ? projects.find((project) => sameWorkspace(project.workspace, workspace)) ?? null : null),
     [projects, workspace]
   )
+  const visibleProjects = useMemo(
+    () => (scope === 'current' && workspace
+      ? projects.filter((project) => sameWorkspace(project.workspace, workspace))
+      : projects),
+    [projects, scope, workspace]
+  )
+  const projectSessions = useMemo(() => {
+    if (!selected) return [] as SessionMeta[]
+    return sessions
+      .filter(
+        (session) =>
+          !session.temporary && session.workspace && sameWorkspace(session.workspace, selected.workspace)
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [sessions, selected])
 
   const applyProject = useCallback((project: ProjectSummary | null): void => {
     setSelectedId(project?.id ?? null)
@@ -136,12 +196,14 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
     setFormWorkspace(project?.workspace ?? '')
     setKnowledgeInput('')
     // 不在这里清空 knowledgeInfo：切换/保存同一项目时保留已有大小信息，避免出现「校验中…」闪动；
-    // 知识文件校验 effect 会按当前 form.knowledgePaths 重新填充/覆盖。
+    // 参考资料校验 effect 会按当前 form.knowledgePaths 重新填充/覆盖。
     setPreview(null)
     setPreviewOpen(false)
     setConfirmDelete(false)
     setError(null)
     setNotice(null)
+    setDraft('')
+    setSendError(null)
   }, [])
 
   const load = useCallback(
@@ -152,12 +214,16 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
         const result = await projectsApi.list()
         setProjects(result.projects)
         const current = selectedRef.current
-        const target =
-          (preferId ? result.projects.find((project) => project.id === preferId) : null) ??
-          (current ? result.projects.find((project) => project.id === current) : null) ??
-          (workspace ? result.projects.find((project) => sameWorkspace(project.workspace, workspace)) : null) ??
-          result.projects[0] ??
-          null
+        const currentProject = workspace
+          ? result.projects.find((project) => sameWorkspace(project.workspace, workspace)) ?? null
+          : null
+        const target = scopeRef.current === 'current'
+          ? currentProject
+          : (preferId ? result.projects.find((project) => project.id === preferId) : null) ??
+            (current ? result.projects.find((project) => project.id === current) : null) ??
+            currentProject ??
+            result.projects[0] ??
+            null
         if (!creatingRef.current) applyProject(target)
       } catch (err) {
         setError(errorText(err, '读取项目列表失败'))
@@ -170,10 +236,42 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
 
   useEffect(() => {
     if (!open) return
+    setView(initialView)
+    setSendError(null)
     void load()
-  }, [open, load])
+  }, [open, initialView, load])
 
-  /* 知识文件逐个重新校验（大小/存在/边界），失效文件在保存前就能看到 */
+  /* 概览视图：读取项目背景（说明 + 资料 + 记忆），用于项目主页展示 */
+  useEffect(() => {
+    if (!open || view !== 'home' || !selected || !selected.workspaceExists) {
+      setHomeContext(null)
+      return
+    }
+    let cancelled = false
+    setHomeContextLoading(true)
+    void projectsApi
+      .context({ workspace: selected.workspace, maxTokens: 1600, ignoreActive: true })
+      .then((result) => {
+        if (!cancelled) setHomeContext(result)
+      })
+      .catch(() => {
+        if (!cancelled) setHomeContext(null)
+      })
+      .finally(() => {
+        if (!cancelled) setHomeContextLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, view, selected])
+
+  useEffect(() => {
+    if (!open || view !== 'home' || creating) return
+    const timer = window.setTimeout(() => composerRef.current?.focus(), 200)
+    return () => window.clearTimeout(timer)
+  }, [open, view, creating, selectedId])
+
+  /* 参考资料逐个重新校验（大小/存在/边界），失效文件在保存前就能看到 */
   const knowledgeKey = form.knowledgePaths.join('\u0000')
   useEffect(() => {
     if (!open || !formWorkspace) return
@@ -200,8 +298,23 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
     }
   }, [open, formWorkspace, knowledgeKey])
 
+  const changeScope = (next: ProjectScope): void => {
+    if (next === scope) return
+    setScope(next)
+    setConfirmDelete(false)
+    setNotice(null)
+    setError(null)
+    if (next === 'current') {
+      if (currentWorkspaceProject) applyProject(currentWorkspaceProject)
+      else applyProject(null)
+    } else if (selectedId && !projects.some((project) => project.id === selectedId)) {
+      applyProject(null)
+    }
+  }
+
   const startCreate = (): void => {
     setCreating(true)
+    setView('settings')
     setSelectedId(null)
     setForm({ ...EMPTY_FORM, name: workspace ? workspaceName(workspace) : '' })
     setFormWorkspace(workspace ?? '')
@@ -216,7 +329,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
 
   const save = async (): Promise<void> => {
     if (!formWorkspace) {
-      setError('先选择一个工作区，再创建项目。')
+      setError('先选择一个文件夹，再创建项目。')
       return
     }
     setSaving(true)
@@ -232,7 +345,10 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
           pinned: form.pinned,
           active: form.active
         })
+        setCreating(false)
+        creatingRef.current = false
         await load(created.id)
+        setView('home')
         setNotice('项目已创建')
       } else if (selectedId) {
         const updated = await projectsApi.update({
@@ -265,7 +381,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
       await projectsApi.remove({ id: selectedId })
       setConfirmDelete(false)
       await load(null)
-      setNotice('项目已删除（工作区文件不受影响）')
+      setNotice('项目已删除（文件夹文件不受影响）')
     } catch (err) {
       setError(errorText(err, '删除项目失败'))
     } finally {
@@ -283,7 +399,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
       setForm((current) => ({ ...current, active: next }))
       const result = await projectsApi.list()
       setProjects(result.projects)
-      setNotice(next ? '项目已启用：上下文会注入 Agent' : '项目已停用：不再注入 Agent')
+      setNotice(next ? '项目已启用：下次对话会带上这些内容' : '项目已停用：下次对话不再带上这些内容')
     } catch (err) {
       setError(errorText(err, '切换启用状态失败'))
     }
@@ -308,7 +424,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
     const raw = knowledgeInput.trim()
     if (!raw) return
     if (!formWorkspace) {
-      setError('先选择工作区，再添加知识文件。')
+      setError('先选择文件夹，再添加参考资料。')
       return
     }
     try {
@@ -322,13 +438,37 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
       setKnowledgeInput('')
       setError(null)
     } catch (err) {
-      setError(errorText(err, '知识文件校验失败'))
+      setError(errorText(err, '参考资料校验失败'))
+    }
+  }
+
+  const pickProjectFolder = async (): Promise<void> => {
+    setPickingWorkspace(true)
+    setError(null)
+    try {
+      const result = await window.morrow.workspace.pick()
+      if (!result.ok) {
+        setError(result.error.message)
+        return
+      }
+      if (!result.data) return
+      const existing = projects.find((project) => sameWorkspace(project.workspace, result.data!.path))
+      if (existing) {
+        setError(`这个文件夹已经是「${existing.name}」项目了，直接从左侧打开它。`)
+        return
+      }
+      setFormWorkspace(result.data.path)
+      setForm((current) => ({ ...current, name: current.name || result.data!.name }))
+    } catch (err) {
+      setError(errorText(err, '选择项目文件夹失败'))
+    } finally {
+      setPickingWorkspace(false)
     }
   }
 
   const pickKnowledge = async (): Promise<void> => {
     if (!formWorkspace) {
-      setError('先选择工作区，再选择知识文件。')
+      setError('先选择文件夹，再选择参考资料。')
       return
     }
     setPicking(true)
@@ -351,7 +491,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
         })
       }
     } catch (err) {
-      setError(errorText(err, '选择知识文件失败'))
+      setError(errorText(err, '选择参考资料失败'))
     } finally {
       setPicking(false)
     }
@@ -381,23 +521,68 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
       setPreview(result)
       setPreviewOpen(true)
     } catch (err) {
-      setError(errorText(err, '生成上下文预览失败'))
+      setError(errorText(err, '生成Morrow 会看到什么失败'))
     } finally {
       setPreviewLoading(false)
     }
   }
 
   const editing = creating || !!selected
-  const canCreateHere = !!workspace && !currentWorkspaceProject && !creating
+
+  const startChat = async (): Promise<void> => {
+    if (!selected || !selected.workspaceExists || starting) return
+    const text = draft.trim()
+    if (!text) return
+    setStarting(true)
+    setSendError(null)
+    try {
+      const state = useAppStore.getState()
+      const created = await state.newSession({ workspace: selected.workspace })
+      if (!created) {
+        setSendError('新建对话失败，检查一下模型设置。')
+        return
+      }
+      const sent = await state.sendMessage(text)
+      if (!sent) {
+        setSendError('消息没有发出去，检查一下模型连接后再试。')
+        return
+      }
+      setDraft('')
+      onClose()
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  const openBlankChat = async (): Promise<void> => {
+    if (!selected || !selected.workspaceExists) return
+    onClose()
+    await useAppStore.getState().newSession({ workspace: selected.workspace })
+  }
+
+  const openProjectSession = (sessionId: string): void => {
+    onClose()
+    void selectSession(sessionId)
+  }
+
+  const onComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.nativeEvent.isComposing) return
+    const ctrlSend = sendKey === 'ctrl+enter'
+    const sendNow = ctrlSend ? event.ctrlKey || event.metaKey : !event.shiftKey && !event.ctrlKey && !event.metaKey
+    if (event.key === 'Enter' && sendNow) {
+      event.preventDefault()
+      void startChat()
+    }
+  }
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="项目"
-      description="每个工作区可以有一个项目：写下说明和常用资料，Morrow 做任务时会参考。只有启用的项目才生效；资料必须放在当前工作区内。"
-      width={940}
-      ariaLabel="项目管理"
+      description="启用后的项目会把说明与资料带进新对话；记忆中心按自己的设置单独生效。"
+      width={1040}
+      ariaLabel="项目"
       footer={
         <footer className="pp-foot">
           <span className="pp-foot-note">
@@ -412,10 +597,12 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
       <div className="pp-root">
         <aside className="pp-side" aria-label="项目列表">
           <div className="pp-side-head">
-            <span className="pp-side-title">
-              <Layers size={13} strokeWidth={1.6} aria-hidden /> 项目
-            </span>
-            <Badge tone="neutral">{projects.length}</Badge>
+            <Segmented
+              ariaLabel="项目范围"
+              value={scope}
+              options={PROJECT_SCOPE_OPTIONS}
+              onChange={changeScope}
+            />
             <div className="pp-side-spacer" />
             <Button
               variant="gold"
@@ -431,12 +618,22 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
             <div className="pp-side-loading">
               <Spinner label="读取项目" /> 读取中…
             </div>
-          ) : projects.length === 0 ? (
-            <EmptyHint>还没有项目。为当前工作区建一个项目，写下这个项目的规矩和常用资料。</EmptyHint>
+          ) : visibleProjects.length === 0 ? (
+            <EmptyHint>
+              {scope === 'current'
+                ? workspace
+                  ? '当前文件夹还没有项目。新建后，项目说明与资料只用于这个文件夹里的对话。'
+                  : '先在顶栏选择一个文件夹，才能为当前文件夹建项目。'
+                : '还没有项目。为当前文件夹建一个项目，写下这个项目的长期说明和常用资料。'}
+            </EmptyHint>
           ) : (
             <ul className="pp-project-list">
-              {projects.map((project) => {
+              {visibleProjects.map((project) => {
                 const isCurrent = workspace ? sameWorkspace(project.workspace, workspace) : false
+                const conversationCount = sessions.filter(
+                  (session) =>
+                    !session.temporary && session.workspace && sameWorkspace(session.workspace, project.workspace)
+                ).length
                 return (
                   <li key={project.id}>
                     <button
@@ -460,13 +657,16 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                         <span className="truncate">{shortenPath(project.workspace)}</span>
                       </span>
                       <span className="pp-project-meta">
-                        {project.active ? <Badge tone="gold">启用</Badge> : <Badge tone="neutral">停用</Badge>}
-                        {isCurrent ? <Badge tone="success">当前工作区</Badge> : null}
+                        {project.active ? <Badge tone="gold">已启用</Badge> : <Badge tone="neutral">已停用</Badge>}
+                        {isCurrent ? <Badge tone="success">当前文件夹</Badge> : null}
                         {!project.workspaceExists ? (
                           <Badge tone="danger">
-                            <AlertTriangle size={9} strokeWidth={2} aria-hidden /> 工作区丢失
+                            <AlertTriangle size={9} strokeWidth={2} aria-hidden /> 文件夹丢失
                           </Badge>
                         ) : null}
+                      </span>
+                      <span className="pp-project-stats mono">
+                        {conversationCount} 对话 · {project.knowledgeCount} 资料
                       </span>
                     </button>
                   </li>
@@ -475,14 +675,16 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
             </ul>
           )}
 
-          {!workspace ? <p className="pp-side-note">当前会话还没有工作区：先选择一个文件夹才能建项目。</p> : null}
+          {!workspace ? <p className="pp-side-note">当前对话还没有文件夹：先选择一个文件夹才能建项目。</p> : null}
         </aside>
 
         <section className="pp-detail" aria-label="项目详情">
           {!editing ? (
             <div className="pp-empty">
               <EmptyHint>
-                从左侧选择一个项目，或为当前工作区新建项目。项目知识只读取工作区内的文本文件，且不会发送到网络。
+                {scope === 'current' && workspace
+                  ? `当前文件夹「${workspaceName(workspace)}」还没有项目。新建后，项目说明与资料只用于这个文件夹里的对话。`
+                  : '从左侧选择一个项目，或为当前文件夹新建项目。项目说明与资料只用于这个文件夹里的对话。'}
               </EmptyHint>
               <Button variant="gold" onClick={startCreate} icon={<Plus size={14} strokeWidth={1.8} aria-hidden />}>
                 新建项目
@@ -490,17 +692,29 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
             </div>
           ) : (
             <>
-              <div className="pp-form-head">
-                <div>
-                  <h3 className="pp-form-title">{creating ? '新建项目' : form.name || selected?.name || '项目'}</h3>
-                  <p className="pp-form-sub mono" title={formWorkspace}>
-                    {formWorkspace ? shortenPath(formWorkspace) : '（未选择工作区）'}
-                  </p>
+              {!creating && selected ? (
+                <div className="pp-tabs" role="tablist" aria-label="项目视图">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === 'home'}
+                    className={view === 'home' ? 'is-active' : ''}
+                    onClick={() => setView('home')}
+                  >
+                    概览
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === 'settings'}
+                    className={view === 'settings' ? 'is-active' : ''}
+                    onClick={() => setView('settings')}
+                  >
+                    说明与资料
+                  </button>
+                  <span className="pp-tabs-hint mono">只有启用的项目会参与对话</span>
                 </div>
-                {!creating && selected ? (
-                  <span className="pp-form-updated mono">更新于 {formatProjectTime(selected.updatedAt)}</span>
-                ) : null}
-              </div>
+              ) : null}
 
               {notice ? (
                 <p className="pp-notice" role="status">
@@ -508,6 +722,245 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                 </p>
               ) : null}
               {error ? <ErrorNote title="操作失败" detail={error} /> : null}
+
+              {!creating && view === 'home' && selected ? (
+                <div className="pp-home">
+                  <header className="pp-home-head">
+                    <div className="pp-home-state-row">
+                      <span
+                        className={[
+                          'pp-home-state',
+                          selected.workspaceExists ? (selected.active ? 'is-ok' : 'is-muted') : 'is-warn'
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        <i />
+                        {selected.workspaceExists ? (selected.active ? '已启用' : '已暂停') : '文件夹不在了'}
+                      </span>
+                      <IconButton
+                        label={selected.pinned ? '取消置顶' : '置顶项目'}
+                        size={24}
+                        active={selected.pinned}
+                        onClick={() => void togglePinned(!selected.pinned)}
+                      >
+                        {selected.pinned ? <PinOff size={12} strokeWidth={1.5} /> : <Pin size={12} strokeWidth={1.5} />}
+                      </IconButton>
+                    </div>
+                    <h3 className="pp-home-title serif">{selected.name}</h3>
+                    <p className="pp-home-desc">
+                      {selected.description || '还没有项目描述，写一句让未来的自己知道这里在做什么。'}
+                    </p>
+                    <div className="pp-home-meta">
+                      <span title={selected.workspace}>
+                        <Layers size={11} strokeWidth={1.5} />
+                        {shortenPath(selected.workspace)}
+                      </span>
+                      <span>
+                        <MessageSquare size={11} strokeWidth={1.5} />
+                        {projectSessions.length} 段对话
+                      </span>
+                      <span>
+                        <FileText size={11} strokeWidth={1.5} />
+                        {selected.knowledgeCount} 份资料
+                      </span>
+                      {homeContext?.memory && homeContext.memory.included > 0 ? (
+                        <span>
+                          <Brain size={11} strokeWidth={1.5} />
+                          记忆 {homeContext.memory.included} 条
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="pp-home-actions">
+                      <Button
+                        variant="gold"
+                        size="sm"
+                        onClick={() => void openBlankChat()}
+                        disabled={!selected.workspaceExists}
+                        icon={<MessageSquare size={12} strokeWidth={1.7} />}
+                      >
+                        在项目中新建对话
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setView('settings')}
+                        icon={<Save size={12} strokeWidth={1.6} />}
+                      >
+                        管理说明与资料
+                      </Button>
+                    </div>
+                  </header>
+
+                  {!selected.workspaceExists ? (
+                    <div className="pp-home-warn">
+                      <AlertTriangle size={13} strokeWidth={1.6} />
+                      项目文件夹被移动或删除了。重新放回原路径，或在「说明与资料」里移除后重新创建项目。
+                    </div>
+                  ) : (
+                    <section className="pp-home-start" aria-label="开始项目对话">
+                      <div className="pp-home-start-head">
+                        <p className="pp-home-start-label">开始对话</p>
+                        <span className="pp-home-start-note">
+                          <Sparkles size={10} strokeWidth={1.5} />
+                          {selected.active ? '会自动带上项目说明与资料' : '项目已暂停：本次不会带上项目说明与资料'}
+                        </span>
+                      </div>
+                      <div className="pp-home-composer">
+                        <textarea
+                          ref={composerRef}
+                          rows={2}
+                          value={draft}
+                          spellCheck={false}
+                          placeholder={`在「${selected.name}」里问点什么…`}
+                          aria-label="项目内首条消息"
+                          onChange={(event) => setDraft(event.target.value)}
+                          onKeyDown={onComposerKeyDown}
+                        />
+                        <div className="pp-home-composer-foot">
+                          <span className="mono">
+                            {sendKey === 'ctrl+enter' ? 'Ctrl+Enter' : 'Enter'} 开始 · Shift+Enter 换行
+                          </span>
+                          <button
+                            type="button"
+                            className="pp-home-send"
+                            aria-label="开始项目对话"
+                            disabled={!draft.trim() || starting}
+                            onClick={() => void startChat()}
+                          >
+                            {starting ? (
+                              <LoaderCircle size={14} className="pp-home-spin" />
+                            ) : (
+                              <ArrowRight size={14} strokeWidth={1.8} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      {sendError ? <p className="pp-home-error">{sendError}</p> : null}
+                    </section>
+                  )}
+
+                  <div className="pp-home-cards">
+                    <section className="pp-home-card">
+                      <div className="pp-home-card-head">
+                        <h4>项目说明</h4>
+                        <button type="button" onClick={() => setView('settings')}>
+                          编辑
+                        </button>
+                      </div>
+                      {selected.instructions ? (
+                        <p className="pp-home-instructions">{selected.instructions}</p>
+                      ) : (
+                        <p className="pp-home-empty">还没有长期说明。告诉 Morrow 这个项目是什么、你希望它怎么做。</p>
+                      )}
+                    </section>
+
+                    <section className="pp-home-card">
+                      <div className="pp-home-card-head">
+                        <h4>
+                          资料 <span className="mono">{selected.knowledgeCount}</span>
+                        </h4>
+                        <button type="button" onClick={() => setView('settings')}>
+                          管理
+                        </button>
+                      </div>
+                      {homeContextLoading ? (
+                        <p className="pp-home-empty">正在读取资料…</p>
+                      ) : (homeContext?.knowledge.length ?? 0) > 0 || (homeContext?.staleKnowledge.length ?? 0) > 0 ? (
+                        <ul className="pp-home-knowledge">
+                          {(homeContext?.knowledge ?? []).slice(0, 4).map((file) => (
+                            <li key={file.path}>
+                              <FileText size={11} strokeWidth={1.5} />
+                              <span className="truncate">{file.path}</span>
+                              <span className="mono pp-home-file-size">{formatFileSize(file.size)}</span>
+                            </li>
+                          ))}
+                          {(homeContext?.staleKnowledge ?? []).slice(0, 2).map((file) => (
+                            <li key={`stale-${file.path}`} className="is-stale" title={file.error}>
+                              <AlertTriangle size={11} strokeWidth={1.5} />
+                              <span className="truncate">{file.path}</span>
+                              <span className="pp-home-file-size">失效</span>
+                            </li>
+                          ))}
+                          {(homeContext?.knowledge.length ?? 0) > 4 ? (
+                            <li className="pp-home-knowledge-more">还有 {(homeContext?.knowledge.length ?? 0) - 4} 份…</li>
+                          ) : null}
+                        </ul>
+                      ) : (
+                        <p className="pp-home-empty">还没有资料。把参考文档放进项目文件夹，再在管理里选进来。</p>
+                      )}
+                    </section>
+                  </div>
+
+                  <section className="pp-home-recent" aria-label="项目内对话">
+                    <div className="pp-home-recent-head">
+                      <h4>
+                        项目内对话 <span className="mono">{projectSessions.length}</span>
+                      </h4>
+                      {projectSessions.length > 0 ? <span className="pp-home-recent-hint">继续之前的工作</span> : null}
+                    </div>
+                    {projectSessions.length === 0 ? (
+                      <p className="pp-home-empty">这里还没有对话。从上面的输入框开始第一句。</p>
+                    ) : (
+                      <ul className="pp-home-sessions">
+                        {projectSessions.slice(0, 6).map((session) => {
+                          const attention = Boolean(pendingPermissions[session.id] || pendingQuestions[session.id])
+                          const running = Boolean(runs[session.id])
+                          return (
+                            <li key={session.id}>
+                              <button type="button" onClick={() => openProjectSession(session.id)}>
+                                <span className="pp-home-session-icon" aria-hidden>
+                                  {attention ? (
+                                    <AlertTriangle size={12} strokeWidth={1.7} className="is-attention" />
+                                  ) : running ? (
+                                    <span className="pp-home-session-pulse" />
+                                  ) : (
+                                    <MessageSquare size={12} strokeWidth={1.5} />
+                                  )}
+                                </span>
+                                <span className="pp-home-session-main">
+                                  <span className="pp-home-session-title truncate">
+                                    {session.title || '未命名对话'}
+                                  </span>
+                                  <span className="pp-home-session-preview truncate">
+                                    {session.preview ||
+                                      (attention ? '等待你的确认' : running ? '正在运行' : '还没有消息')}
+                                  </span>
+                                </span>
+                                <span className="pp-home-session-time mono">{shortTime(session.updatedAt)}</span>
+                                <ArrowUpRight size={12} strokeWidth={1.5} className="pp-home-session-open" />
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </section>
+                </div>
+              ) : (
+                <>
+              <div className="pp-form-head">
+                <div>
+                  <h3 className="pp-form-title">{creating ? '新建项目' : form.name || selected?.name || '项目'}</h3>
+                  <p className="pp-form-sub mono" title={formWorkspace}>
+                    {formWorkspace ? shortenPath(formWorkspace) : '（未选择文件夹）'}
+                  </p>
+                </div>
+                {creating ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="pp-pick-folder"
+                    loading={pickingWorkspace}
+                    icon={<FolderSearch size={13} strokeWidth={1.6} aria-hidden />}
+                    onClick={() => void pickProjectFolder()}
+                  >
+                    选择项目文件夹
+                  </Button>
+                ) : selected ? (
+                  <span className="pp-form-updated mono">更新于 {formatProjectTime(selected.updatedAt)}</span>
+                ) : null}
+              </div>
 
               <div className="pp-fields">
                 <TextInput
@@ -525,7 +978,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                 />
                 <TextArea
-                  label="项目指令（会注入 Agent 的系统提示）"
+                  label="长期说明（Morrow 做任务时会参考）"
                   hint="写这个项目的背景、口径、规矩与禁止事项。例如：金额单位是元、报告必须用简体中文、不要改 in/ 下的原始数据。"
                   rows={7}
                   value={form.instructions}
@@ -540,7 +993,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                   checked={form.active}
                   onChange={(next) => void toggleActive(next)}
                   label="启用项目"
-                  description="启用后项目指令、知识摘要与记忆会注入 Agent；停用则不注入"
+                  description="启用后长期说明与参考资料摘要会带给 Morrow；记忆中心按自己的设置单独注入"
                 />
                 <Switch
                   checked={form.pinned}
@@ -550,17 +1003,17 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                 />
               </div>
 
-              <section className="pp-knowledge" aria-label="项目知识文件">
+              <section className="pp-knowledge" aria-label="项目参考资料">
                 <header className="pp-knowledge-head">
                   <FileText size={13} strokeWidth={1.6} aria-hidden />
-                  <span>知识文件</span>
+                  <span>参考资料</span>
                   <span className="pp-knowledge-count mono">
-                    {form.knowledgePaths.length}/20 · 单文件 ≤512KB · 仅工作区内文本文件
+                    {form.knowledgePaths.length}/20 · 单文件 ≤512KB · 仅文件夹内文本文件
                   </span>
                 </header>
 
                 {form.knowledgePaths.length === 0 ? (
-                  <EmptyHint>还没有知识文件。可以添加工作区内的 md / txt / csv / json 等文本资料。</EmptyHint>
+                  <EmptyHint>还没有参考资料。可以添加文件夹内的 md / txt / csv / json 等文本资料。</EmptyHint>
                 ) : (
                   <ul className="pp-knowledge-list">
                     {form.knowledgePaths.map((relativePath) => {
@@ -577,7 +1030,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                               {info ? `${formatFileSize(info.size)} · ${new Date(info.mtime).toLocaleDateString('zh-CN')}` : '校验中…'}
                             </span>
                           )}
-                          <IconButton label={`移除知识文件 ${relativePath}`} size={24} onClick={() => removeKnowledge(relativePath)}>
+                          <IconButton label={`移除参考资料 ${relativePath}`} size={24} onClick={() => removeKnowledge(relativePath)}>
                             <Trash2 size={11} strokeWidth={1.6} aria-hidden />
                           </IconButton>
                         </li>
@@ -588,8 +1041,8 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
 
                 <div className="pp-knowledge-add">
                   <TextInput
-                    aria-label="知识文件相对路径"
-                    placeholder="工作区内相对路径，例如 docs/brief.md"
+                    aria-label="参考资料相对路径"
+                    placeholder="文件夹内相对路径，例如 docs/brief.md"
                     value={knowledgeInput}
                     onChange={(event) => setKnowledgeInput(event.target.value)}
                     onKeyDown={(event) => {
@@ -615,22 +1068,22 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
               </section>
 
               {previewOpen && preview ? (
-                <section className="pp-preview" aria-label="上下文预览">
+                <section className="pp-preview" aria-label="Morrow 会看到什么">
                   <header className="pp-preview-head">
                     <Eye size={13} strokeWidth={1.6} aria-hidden />
-                    <span>会注入的上下文</span>
+                    <span>Morrow 会参考的内容</span>
                     <span className="mono">
-                      {preview.usedTokens}/{preview.limitTokens} tokens · 知识 {preview.knowledge.length} 个 · 记忆{' '}
+                      项目内容 {preview.usedTokens}/{preview.limitTokens} tokens · 参考资料 {preview.knowledge.length} 个 · 记忆{' '}
                       {preview.memory?.included ?? 0} 条{preview.truncated ? ' · 已截断' : ''}
                     </span>
                   </header>
                   {preview.staleKnowledge.length > 0 ? (
                     <p className="pp-preview-warn">
-                      <AlertTriangle size={11} strokeWidth={1.8} aria-hidden /> 已跳过失效知识文件：
+                      <AlertTriangle size={11} strokeWidth={1.8} aria-hidden /> 已跳过失效的参考资料：
                       {preview.staleKnowledge.map((item) => item.path).join('、')}
                     </p>
                   ) : null}
-                  <pre className="pp-preview-text">{preview.text || '（项目还没有可注入的内容）'}</pre>
+                  <pre className="pp-preview-text">{preview.text || '（项目还没有可参考的内容）'}</pre>
                 </section>
               ) : null}
 
@@ -651,7 +1104,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                   loading={previewLoading}
                   onClick={() => void showPreview()}
                 >
-                  {previewOpen ? '收起预览' : '上下文预览'}
+                  {previewOpen ? '收起预览' : 'Morrow 会看到什么'}
                 </Button>
                 {!creating ? (
                   <Button
@@ -683,7 +1136,7 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
 
               {confirmDelete && selected ? (
                 <div className="pp-confirm" role="alertdialog" aria-label="确认删除项目">
-                  <span>确定删除项目「{selected.name}」吗？只删除项目配置，不会动工作区里的任何文件。</span>
+                  <span>确定删除项目「{selected.name}」吗？只删除项目配置，不会动文件夹里的任何文件。</span>
                   <div className="pp-confirm-actions">
                     <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
                       取消
@@ -694,19 +1147,12 @@ export function ProjectsPanel({ open, onClose, workspace: workspaceProp }: Proje
                   </div>
                 </div>
               ) : null}
+                </>
+              )}
             </>
           )}
         </section>
       </div>
-
-      {canCreateHere ? (
-        <div className="pp-cta">
-          <span>当前工作区还没有项目。</span>
-          <Button variant="gold" size="sm" onClick={startCreate}>
-            为「{workspace ? workspaceName(workspace) : ''}」新建项目
-          </Button>
-        </div>
-      ) : null}
     </Modal>
   )
 }

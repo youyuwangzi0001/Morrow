@@ -137,6 +137,8 @@ export interface SkillView {
   name: string
   description: string
   source: 'workspace' | 'user'
+  /** 由应用首次启动安装的内置技能（仍存放在用户技能库，可禁用/删除） */
+  builtin: boolean
   enabled: boolean
   dir: string
   skillPath: string
@@ -340,6 +342,7 @@ export class SkillsService {
   readonly dataDir: string
   readonly userDir: string
   readonly stateFile: string
+  private readonly builtinNames: Set<string>
 
   constructor(options: SkillsServiceOptions) {
     if (!options || typeof options.dataDir !== 'string' || !options.dataDir.trim()) {
@@ -348,6 +351,18 @@ export class SkillsService {
     this.dataDir = resolve(options.dataDir)
     this.userDir = join(this.dataDir, 'skills')
     this.stateFile = join(this.dataDir, 'skills-state.json')
+    this.builtinNames = this.loadBuiltinNames()
+  }
+
+  private loadBuiltinNames(): Set<string> {
+    try {
+      const parsed = JSON.parse(readFileSync(join(this.userDir, '.builtin-skills.json'), 'utf8')) as {
+        skills?: Record<string, unknown>
+      }
+      return new Set(Object.keys(parsed.skills ?? {}))
+    } catch {
+      return new Set()
+    }
   }
 
   /** 确保数据目录与用户技能库存在 */
@@ -410,6 +425,7 @@ export class SkillsService {
       name: skill.name,
       description: skill.description,
       source: skill.source,
+      builtin: skill.source === 'user' && this.builtinNames.has(skill.name),
       enabled: entry?.enabled !== false,
       dir: skill.dir,
       skillPath: skill.skillPath,
@@ -628,18 +644,26 @@ export class SkillsService {
       if (!skillMd) throw new Error('技能包里缺少 SKILL.md（技能必须有 SKILL.md 说明文件）。')
       const frontmatterName = describeSkill(readFileSync(skillMd, 'utf8')).declaredName
       const targetName = sanitizeSkillDirName(frontmatterName || nameHint)
-      const targetDir = join(this.userDir, targetName)
-      if (existsSync(targetDir)) {
+      // 大小写不敏感地查找同名目录（Linux 上 Foo/foo 不能并存，否则状态键会冲突）
+      const collision = readdirSync(this.userDir, { withFileTypes: true }).find(
+        (entry) => !entry.name.startsWith('.') && entry.name.toLowerCase() === targetName.toLowerCase()
+      )
+      const targetDir = collision ? join(this.userDir, collision.name) : join(this.userDir, targetName)
+      if (collision) {
         if (options.overwrite !== true) {
-          throw new Error(`技能库已有同名技能「${targetName}」。请先删除旧技能，或改用「覆盖安装」。`)
+          throw new Error(`技能库已有同名技能「${collision.name}」。请先删除旧技能，或改用「覆盖安装」。`)
         }
-        // 覆盖安装：先删旧目录（仍受 userDir 边界保护）
+        // 覆盖安装：拒绝符号链接，再删除用户技能库内的真实目录
+        const lst = safeLstat(targetDir)
+        if (!lst || !lst.isDirectory() || lst.isSymbolicLink()) {
+          throw new Error('拒绝覆盖：目标不是用户技能库内的普通目录。')
+        }
         const targetReal = realpathSync(targetDir)
         const userReal = realpathSync(this.userDir)
         if (!isInside(userReal, targetReal) || pathKey(targetReal) === pathKey(userReal)) {
           throw new Error('拒绝覆盖：目标目录不在用户技能库内。')
         }
-        rmSync(targetReal, { recursive: true, force: true })
+        rmSync(targetDir, { recursive: true, force: true })
       }
       try {
         renameSync(staging, targetDir)

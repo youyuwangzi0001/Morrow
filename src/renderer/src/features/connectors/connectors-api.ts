@@ -6,6 +6,7 @@
  * 所有返回值都是「已脱敏视图」：env/headers 只有 key + 掩码，没有明文密钥。
  */
 import type { Result } from '@shared/types'
+import type { ConnectorCatalogEntry, ConnectorRuntimeStatus } from '@shared/connector-catalog'
 
 export const CONNECTOR_CHANNELS = {
   list: 'feature:connectors:list',
@@ -15,10 +16,16 @@ export const CONNECTOR_CHANNELS = {
   setEnabled: 'feature:connectors:set-enabled',
   test: 'feature:connectors:test',
   tools: 'feature:connectors:tools',
-  templates: 'feature:connectors:templates',
+  catalog: 'feature:connectors:catalog',
+  runtime: 'feature:connectors:runtime',
+  install: 'feature:connectors:install',
   paths: 'feature:connectors:paths',
   trustWorkspace: 'feature:connectors:trust-workspace',
-  secretStatus: 'feature:connectors:secret-status'
+  secretStatus: 'feature:connectors:secret-status',
+  oauthStart: 'feature:connectors:oauth-start',
+  oauthStatus: 'feature:connectors:oauth-status',
+  oauthRevoke: 'feature:connectors:oauth-revoke',
+  oauthEvent: 'feature:connectors:oauth'
 } as const
 
 export type ConnectorScope = 'user' | 'workspace'
@@ -30,6 +37,21 @@ export interface ConnectorSecretField {
   masked: string
   hasSecret: boolean
   plaintext: boolean
+}
+
+export interface ConnectorOAuthInput {
+  authorizationUrl: string
+  tokenUrl: string
+  clientId: string
+  scopes?: string[]
+}
+
+export interface ConnectorOAuthStatus {
+  configured: boolean
+  authorized: boolean
+  expiresAt: number | null
+  hasRefreshToken: boolean
+  expired: boolean
 }
 
 export interface ConnectorView {
@@ -45,6 +67,7 @@ export interface ConnectorView {
   args?: string[]
   cwd?: string
   url?: string
+  oauth?: ConnectorOAuthInput
   env: ConnectorSecretField[]
   headers: ConnectorSecretField[]
   configPath: string
@@ -74,29 +97,52 @@ export interface ConnectorToolInfo {
   inputSchema?: Record<string, unknown>
 }
 
+export interface ConnectorResourceInfo {
+  uri: string
+  name?: string
+  description?: string
+  mimeType?: string
+}
+
+export interface ConnectorResourceTemplateInfo {
+  uriTemplate: string
+  name?: string
+  description?: string
+  mimeType?: string
+}
+
+export interface ConnectorPromptArgument {
+  name: string
+  description?: string
+  required?: boolean
+}
+
+export interface ConnectorPromptInfo {
+  name: string
+  description?: string
+  arguments?: ConnectorPromptArgument[]
+}
+
 export interface ConnectorTestResult {
   ok: boolean
   transport: ConnectorTransport
   latencyMs: number
   tools?: ConnectorToolInfo[]
+  resources?: { supported: boolean; resources: ConnectorResourceInfo[]; templates: ConnectorResourceTemplateInfo[] }
+  prompts?: { supported: boolean; prompts: ConnectorPromptInfo[] }
   error?: string
   hint?: string
   blockedReason?: 'ssrf-blocked' | 'invalid-config' | 'timeout' | 'network' | 'http-status' | 'protocol' | 'auth'
   warnings?: string[]
 }
 
-export interface ConnectorTemplate {
-  id: string
-  name: string
-  transport: ConnectorTransport
-  description: string
-  exampleOnly: true
-  command?: string
-  args?: string[]
-  url?: string
-  headerKeys?: string[]
-  notes?: string[]
+export interface ConnectorCatalogInstallResult {
+  saved: boolean
+  view?: ConnectorView
+  test?: ConnectorTestResult
 }
+
+export type { ConnectorCatalogEntry, ConnectorRuntimeStatus }
 
 export interface ConnectorPaths {
   dataDir: string
@@ -130,6 +176,7 @@ export interface ConnectorSavePayload {
   allowPrivateNetwork?: boolean
   description?: string
   enabled?: boolean
+  oauth?: ConnectorOAuthInput | null
 }
 
 async function invoke<T>(channel: string, payload?: unknown): Promise<T> {
@@ -165,7 +212,19 @@ export const connectorsApi = {
     draft?: Record<string, unknown>
   }): Promise<ConnectorTestResult> => invoke(CONNECTOR_CHANNELS.test, options),
 
-  templates: (): Promise<ConnectorTemplate[]> => invoke(CONNECTOR_CHANNELS.templates, {}),
+  catalog: (): Promise<{ entries: ConnectorCatalogEntry[] }> => invoke(CONNECTOR_CHANNELS.catalog, {}),
+
+  runtime: (force = false): Promise<ConnectorRuntimeStatus> =>
+    invoke<ConnectorRuntimeStatus>(CONNECTOR_CHANNELS.runtime, { force }),
+
+  install: (options: {
+    scope: ConnectorScope
+    workspace?: string | null
+    id: string
+    token?: string
+    folder?: string
+    test: boolean
+  }): Promise<ConnectorCatalogInstallResult> => invoke(CONNECTOR_CHANNELS.install, options),
 
   paths: (workspace?: string | null): Promise<ConnectorPaths> =>
     invoke(CONNECTOR_CHANNELS.paths, workspace ? { workspace } : {}),
@@ -174,5 +233,14 @@ export const connectorsApi = {
     invoke(CONNECTOR_CHANNELS.trustWorkspace, { workspace }),
 
   secretStatus: (): Promise<{ mode: SecretStorageMode; secretsPath: string }> =>
-    invoke(CONNECTOR_CHANNELS.secretStatus, {})
+    invoke(CONNECTOR_CHANNELS.secretStatus, {}),
+
+  oauthStart: (scope: ConnectorScope, name: string, workspace?: string | null): Promise<{ authorizationUrl: string; redirectUri: string }> =>
+    invoke(CONNECTOR_CHANNELS.oauthStart, { scope, name, ...(workspace ? { workspace } : {}) }),
+
+  oauthStatus: (scope: ConnectorScope, name: string, workspace?: string | null): Promise<ConnectorOAuthStatus> =>
+    invoke(CONNECTOR_CHANNELS.oauthStatus, { scope, name, ...(workspace ? { workspace } : {}) }),
+
+  oauthRevoke: (scope: ConnectorScope, name: string, workspace?: string | null): Promise<{ removed: boolean }> =>
+    invoke(CONNECTOR_CHANNELS.oauthRevoke, { scope, name, ...(workspace ? { workspace } : {}) })
 }

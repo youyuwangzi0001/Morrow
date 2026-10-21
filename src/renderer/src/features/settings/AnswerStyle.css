@@ -1,0 +1,217 @@
+/* 全局回答风格 */
+
+.st-style {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 8px;
+}
+
+.st-style-intro .st-hint {
+  margin-top: 6px;
+  margin-bottom: 0;
+  max-width: 640px;
+  line-height: 1.7;
+}
+
+.st-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.st-style-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-height: 78px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.st-style-card:hover {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.st-style-card.is-active {
+  border-color: var(--line-gold);
+  background: linear-gradient(135deg, var(--gold-dim), var(--gold-ghost));
+  color: var(--text);
+}
+
+.st-style-card[aria-checked='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+.st-style-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.st-style-card-label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.st-style-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: var(--text-invert);
+  background: var(--gold);
+}
+
+.st-style-card-desc {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.st-style-card.is-active .st-style-card-desc {
+  color: var(--text-2);
+}
+
+.st-style-card-meta {
+  margin-top: 2px;
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+/* 自定义卡片独占一行，避免文字被挤成半列 */
+.st-style-card:nth-child(5) {
+  grid-column: span 2;
+  min-height: 0;
+}
+
+.st-style-custom {
+  padding: 14px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.st-style-custom-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.st-style-custom-count {
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.st-style-custom-count.is-dirty {
+  color: var(--gold);
+}
+
+.st-style-textarea {
+  width: 100%;
+  min-height: 112px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+
+.st-style-textarea::placeholder {
+  color: var(--text-3);
+}
+
+.st-style-textarea:focus {
+  border-color: var(--line-gold);
+  box-shadow: 0 0 0 3px var(--gold-ghost);
+}
+
+.st-style-custom-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.st-style-custom-foot .st-hint {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.st-style-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.st-style-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color var(--dur-fast) ease;
+}
+
+.st-style-reset:hover:not(:disabled) {
+  color: var(--gold);
+}
+
+.st-style-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .st-style-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .st-style-card:nth-child(5) {
+    grid-column: auto;
+  }
+
+  .st-style-custom-foot {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}

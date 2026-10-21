@@ -9,10 +9,12 @@ import {
   Eye,
   EyeOff,
   File as FileIcon,
+  FileAudio,
   FileCode2,
   FileImage,
   FilePlus2,
   FileText,
+  FileVideo,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -23,9 +25,25 @@ import {
   Search,
   Trash2
 } from 'lucide-react'
+import {
+  isAudioFileName,
+  isDocxFileName,
+  isPdfFileName,
+  isPreviewImageFileName,
+  isVideoFileName
+} from '@shared/file-types'
 import { useAppStore } from '../../state/store'
 import { Button, IconButton, Modal, TextInput } from '../../ui'
-import { FileApiError, filesApi, toAbsolutePath, dispatchOpenFile, type FileEntry } from './files-client'
+import {
+  FileApiError,
+  dispatchFileDeleted,
+  dispatchFileRenamed,
+  dispatchFilesChanged,
+  dispatchOpenFile,
+  filesApi,
+  toAbsolutePath,
+  type FileEntry
+} from './files-client'
 import './FileTree.css'
 
 /* ── 工具 ─────────────────────────────────────────────────────── */
@@ -35,7 +53,6 @@ const CODE_EXTS = new Set([
   'py', 'rb', 'go', 'rs', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'php', 'sh', 'ps1', 'bat', 'cmd', 'sql',
   'yml', 'yaml', 'toml', 'ini', 'conf', 'xml', 'svg'
 ])
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico'])
 const DOC_EXTS = new Set(['md', 'markdown', 'txt', 'csv', 'tsv', 'log', 'pdf', 'docx', 'xlsx', 'pptx'])
 
 function extOf(name: string): string {
@@ -45,7 +62,10 @@ function extOf(name: string): string {
 
 function fileIcon(name: string): React.ReactNode {
   const ext = extOf(name)
-  if (IMAGE_EXTS.has(ext)) return <FileImage size={13} strokeWidth={1.5} aria-hidden />
+  if (isPreviewImageFileName(name)) return <FileImage size={13} strokeWidth={1.5} aria-hidden />
+  if (isAudioFileName(name)) return <FileAudio size={13} strokeWidth={1.5} aria-hidden />
+  if (isVideoFileName(name)) return <FileVideo size={13} strokeWidth={1.5} aria-hidden />
+  if (isPdfFileName(name) || isDocxFileName(name)) return <FileText size={13} strokeWidth={1.5} aria-hidden />
   if (CODE_EXTS.has(ext)) return <FileCode2 size={13} strokeWidth={1.5} aria-hidden />
   if (DOC_EXTS.has(ext)) return <FileText size={13} strokeWidth={1.5} aria-hidden />
   return <FileIcon size={13} strokeWidth={1.5} aria-hidden />
@@ -60,9 +80,12 @@ function parentOf(path: string): string {
   return index === -1 ? '' : path.slice(0, index)
 }
 
-function baseName(path: string): string {
-  const index = path.lastIndexOf('/')
-  return index === -1 ? path : path.slice(index + 1)
+/** 文件的所有祖先目录（'a/b/file' → ['a', 'a/b']；根目录不列出） */
+function ancestorDirs(path: string): string[] {
+  const parts = path.split('/')
+  const dirs: string[] = []
+  for (let index = 1; index < parts.length; index += 1) dirs.push(parts.slice(0, index).join('/'))
+  return dirs
 }
 
 function messageOf(err: unknown): string {
@@ -76,6 +99,8 @@ function validName(name: string): string | null {
   if (value === '.' || value === '..') return '这个名字不能用。'
   if (/[\\/]/.test(value)) return '名字里不能包含 / 或 \\。'
   if (/[<>:"|?*\u0000-\u001f]/.test(value)) return '名字里包含 Windows 不允许的字符。'
+  if (/[. ]$/.test(value)) return '名字不能以空格或句点结尾。'
+  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value)) return '这是 Windows 保留名称，请换一个名字。'
   if (value.length > 120) return '名字太长了（最多 120 个字符）。'
   return null
 }
@@ -128,6 +153,7 @@ export function FileTree(): React.JSX.Element {
   const [loading, setLoading] = useState<Set<string>>(() => new Set())
   const [activePath, setActivePath] = useState<string | null>(null)
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
+  const [pendingReveal, setPendingReveal] = useState<string | null>(null)
   const [treeError, setTreeError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
@@ -138,40 +164,52 @@ export function FileTree(): React.JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const lastFocusRefresh = useRef(0)
+  const treeGeneration = useRef(0)
 
-  /* 加载一个目录（dir 为工作区相对路径，根目录是 ''） */
+  /* 加载一个目录（dir 为文件夹相对路径，根目录是 ''） */
   const loadDir = useCallback(
-    async (dir: string, force = false): Promise<void> => {
-      if (!workspace) return
-      if (!force && entries[dir]) return
+    async (dir: string, force = false): Promise<boolean> => {
+      if (!workspace) return false
+      if (!force && entries[dir]) return true
+      const generation = treeGeneration.current
       setLoading((previous) => new Set(previous).add(dir))
       try {
         const result = await filesApi.list(workspace, dir, showHidden)
+        // 文件夹/隐藏文件切换后，旧文件夹的晚到响应必须丢弃
+        if (generation !== treeGeneration.current) return false
         setEntries((previous) => ({ ...previous, [dir]: result.entries }))
         setLimited((previous) => ({ ...previous, [dir]: result.limited }))
         if (dir === '') setTreeError(null)
+        return true
       } catch (err) {
+        if (generation !== treeGeneration.current) return false
         const message = messageOf(err)
         if (dir === '') setTreeError(message)
         else notify('error', message)
+        return false
       } finally {
-        setLoading((previous) => {
-          const next = new Set(previous)
-          next.delete(dir)
-          return next
-        })
+        if (generation === treeGeneration.current) {
+          setLoading((previous) => {
+            const next = new Set(previous)
+            next.delete(dir)
+            return next
+          })
+        }
       }
     },
     [workspace, showHidden, entries, notify]
   )
 
-  /* 工作区/隐藏文件变化时重建文件树 */
+  /* 文件夹/隐藏文件变化时重建文件树 */
   useEffect(() => {
+    treeGeneration.current += 1
     setEntries({})
     setLimited({})
     setExpanded(new Set())
+    setLoading(new Set())
     setActivePath(null)
     setFocusedPath(null)
+    setPendingReveal(null)
     setTreeError(null)
     if (workspace) void loadDir('', true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,15 +224,50 @@ export function FileTree(): React.JSX.Element {
     }
   }, [showHidden])
 
-  /* 监听编辑器打开文件事件 → 高亮当前文件 */
+  /* 监听编辑器打开文件事件 → 高亮并展开祖先目录，让高亮行真正可见 */
   useEffect(() => {
     const onOpen = (event: Event): void => {
       const detail = (event as CustomEvent<{ path?: string }>).detail
-      if (detail?.path) setActivePath(detail.path)
+      if (!detail?.path) return
+      setActivePath(detail.path)
+      setPendingReveal(detail.path)
     }
     window.addEventListener('morrow:open-file', onOpen as EventListener)
     return () => window.removeEventListener('morrow:open-file', onOpen as EventListener)
   }, [])
+
+  useEffect(() => {
+    if (!pendingReveal || !workspace) return undefined
+    let cancelled = false
+    void (async () => {
+      for (const dir of ancestorDirs(pendingReveal)) {
+        if (entries[dir]) continue
+        const loaded = await loadDir(dir)
+        if (cancelled) return
+        if (!loaded) {
+          setPendingReveal(null)
+          return
+        }
+      }
+      if (cancelled) return
+      setExpanded((previous) => {
+        const next = new Set(previous)
+        for (const dir of ancestorDirs(pendingReveal)) next.add(dir)
+        return next
+      })
+      setPendingReveal(null)
+      requestAnimationFrame(() => {
+        bodyRef.current
+          ?.querySelector<HTMLElement>(`[data-path-key="${pathKey(pendingReveal)}"]`)
+          ?.scrollIntoView({ block: 'nearest' })
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+    // 仅在新的打开事件到来时执行；内部按当时的 entries 快照顺序加载缺失的祖先目录
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingReveal])
 
   /* 窗口重新获得焦点时静默刷新（外部改动后文件树不过期） */
   useEffect(() => {
@@ -220,6 +293,13 @@ export function FileTree(): React.JSX.Element {
       setRefreshing(false)
     }
   }, [workspace, refreshing, expanded, loadDir])
+
+  /* 编辑器保存/另存为后刷新文件树，新增文件不需要等窗口失焦再出现 */
+  useEffect(() => {
+    const onChange = (): void => void refresh()
+    window.addEventListener('morrow:files-changed', onChange)
+    return () => window.removeEventListener('morrow:files-changed', onChange)
+  }, [refresh])
 
   const toggleDir = (dir: string): void => {
     if (expanded.has(dir)) {
@@ -277,7 +357,7 @@ export function FileTree(): React.JSX.Element {
       return
     }
     if (entry.restricted) {
-      notify('warning', '这个链接指向工作区之外，已阻止打开。')
+      notify('warning', '这个链接指向文件夹之外，已阻止打开。')
       return
     }
     setActivePath(entry.path)
@@ -356,20 +436,45 @@ export function FileTree(): React.JSX.Element {
     setDialogError(null)
   }
 
+  /** 删除/改名后清掉旧路径的缓存与展开状态，避免继续请求已不存在的目录 */
+  const forgetPath = useCallback((path: string): void => {
+    const under = (candidate: string): boolean => candidate === path || candidate.startsWith(`${path}/`)
+    setEntries((previous) => {
+      const next: Record<string, FileEntry[]> = {}
+      for (const [dir, list] of Object.entries(previous)) {
+        if (under(dir)) continue
+        next[dir] = list.filter((entry) => !under(entry.path))
+      }
+      return next
+    })
+    setLimited((previous) => {
+      const next: Record<string, boolean> = {}
+      for (const [dir, value] of Object.entries(previous)) if (!under(dir)) next[dir] = value
+      return next
+    })
+    setExpanded((previous) => new Set([...previous].filter((dir) => !under(dir))))
+    setFocusedPath((current) => (current && under(current) ? null : current))
+  }, [])
+
   const submitDialog = async (): Promise<void> => {
     if (!dialog || dialogBusy || !workspace) return
     setDialogBusy(true)
     setDialogError(null)
     try {
       if (dialog.kind === 'delete') {
-        await filesApi.remove(dialog.entry.path, {
-          recursive: dialog.entry.kind === 'dir' && dialog.childCount > 0,
+        const removed = dialog.entry
+        await filesApi.remove(removed.path, {
+          recursive: removed.kind === 'dir' && dialog.childCount > 0,
           workspace
         })
-        notify('success', `已删除「${dialog.entry.name}」`)
-        if (activePath === dialog.entry.path || activePath?.startsWith(`${dialog.entry.path}/`)) setActivePath(null)
+        dispatchFileDeleted({ path: removed.path, isDir: removed.kind === 'dir' })
+        notify('success', `已删除「${removed.name}」`)
+        setActivePath((current) =>
+          current && (current === removed.path || current.startsWith(`${removed.path}/`)) ? null : current
+        )
+        forgetPath(removed.path)
         setDialog(null)
-        await reloadParents(dialog.entry.path)
+        await loadDir(parentOf(removed.path), true)
       } else if (dialog.kind === 'rename') {
         const name = dialogInput.trim()
         const invalid = validName(name)
@@ -381,12 +486,25 @@ export function FileTree(): React.JSX.Element {
           setDialog(null)
           return
         }
-        const target = joinPath(parentOf(dialog.entry.path), name)
-        await filesApi.rename(dialog.entry.path, target, workspace)
+        const renamed = dialog.entry
+        const target = joinPath(parentOf(renamed.path), name)
+        const wasExpanded = renamed.kind === 'dir' && expanded.has(renamed.path)
+        await filesApi.rename(renamed.path, target, workspace)
+        dispatchFileRenamed({ from: renamed.path, to: target, isDir: renamed.kind === 'dir' })
         notify('success', `已重命名为「${name}」`)
-        if (activePath === dialog.entry.path) setActivePath(target)
+        setActivePath((current) => {
+          if (!current) return current
+          if (current === renamed.path) return target
+          if (current.startsWith(`${renamed.path}/`)) return `${target}${current.slice(renamed.path.length)}`
+          return current
+        })
+        forgetPath(renamed.path)
         setDialog(null)
-        await reloadParents(dialog.entry.path, target)
+        await loadDir(parentOf(renamed.path), true)
+        if (wasExpanded) {
+          setExpanded((previous) => new Set(previous).add(target))
+          await loadDir(target, true)
+        }
       } else {
         const name = dialogInput.trim()
         const invalid = validName(name)
@@ -409,21 +527,21 @@ export function FileTree(): React.JSX.Element {
     }
   }
 
-  /* 重新加载受影响的目录（增删改后） */
-  const reloadParents = async (...paths: string[]): Promise<void> => {
-    const dirs = new Set<string>()
-    for (const path of paths) {
-      dirs.add(parentOf(path))
-      if (expanded.has(path)) dirs.add(path)
-    }
-    if (dirs.size === 0) dirs.add('')
-    for (const dir of dirs) await loadDir(dir, true)
-  }
-
   /* 键盘操作（tree 语义） */
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (rows.length === 0) return
-    const current = focusedIndex >= 0 ? focusedIndex : 0
+    // 树容器本身有焦点但尚未选中任何行时：方向键先落到首/末行，破坏性操作不落到第一行
+    if (focusedIndex < 0) {
+      if (event.key === 'ArrowDown' || event.key === 'Home') {
+        focusRow(rows[0].entry.path)
+        event.preventDefault()
+      } else if (event.key === 'ArrowUp' || event.key === 'End') {
+        focusRow(rows[rows.length - 1].entry.path)
+        event.preventDefault()
+      }
+      return
+    }
+    const current = focusedIndex
     const currentRow = rows[current]
     const move = (next: number): void => {
       const clamped = Math.max(0, Math.min(rows.length - 1, next))
@@ -528,7 +646,7 @@ export function FileTree(): React.JSX.Element {
   const rootLimited = limited[''] === true
 
   return (
-    <section className={['file-tree', collapsed ? 'is-collapsed' : ''].filter(Boolean).join(' ')} aria-label="工作区文件树">
+    <section className={['file-tree', collapsed ? 'is-collapsed' : ''].filter(Boolean).join(' ')} aria-label="文件夹文件树">
       <div className="ft-head">
         <button
           type="button"
@@ -589,7 +707,7 @@ export function FileTree(): React.JSX.Element {
               <input
                 className="ft-filter-input"
                 value={filter}
-                placeholder="过滤已展开的文件…"
+                placeholder="过滤已加载的文件…"
                 aria-label="过滤文件"
                 onChange={(event) => setFilter(event.target.value)}
               />
@@ -603,10 +721,10 @@ export function FileTree(): React.JSX.Element {
 
           {!workspace ? (
             <div className="ft-empty">
-              <p>还没有工作文件夹。</p>
+              <p>还没有文件夹。</p>
               <p className="ft-empty-hint">选一个文件夹后，这里会显示它的文件树。</p>
               <Button size="sm" variant="secondary" onClick={() => void pickWorkspace()}>
-                选择工作文件夹
+                选择文件夹
               </Button>
             </div>
           ) : readOnly ? (
@@ -619,7 +737,7 @@ export function FileTree(): React.JSX.Element {
           <div
             className="ft-body"
             role="tree"
-            aria-label="工作区文件"
+            aria-label="文件夹文件"
             tabIndex={0}
             ref={bodyRef}
             onKeyDown={handleKeyDown}
@@ -697,7 +815,10 @@ export function FileTree(): React.JSX.Element {
                   {hint ? <span className="ft-hint mono truncate">{hint}</span> : null}
                   {entry.isSymlink ? <Link2 size={10} strokeWidth={1.5} className="ft-badge" aria-label="符号链接" /> : null}
                   {entry.restricted ? (
-                    <AlertTriangle size={10} strokeWidth={1.5} className="ft-badge is-warn" aria-label="指向工作区外，已限制" />
+                    <AlertTriangle size={10} strokeWidth={1.5} className="ft-badge is-warn" aria-label="指向文件夹外，已限制" />
+                  ) : null}
+                  {isDir && limited[entry.path] ? (
+                    <span className="ft-limit-badge mono" title="文件过多，只显示前 2000 项">2000+</span>
                   ) : null}
                   {isDir && entries[entry.path]?.length ? (
                     <span className="ft-count mono" aria-hidden>
@@ -713,7 +834,7 @@ export function FileTree(): React.JSX.Element {
             ) : null}
             {rootLimited ? <p className="ft-limited mono">文件过多，只显示前 2000 项</p> : null}
             {filter.trim() && rows.length === 0 && Object.keys(entries).length > 0 ? (
-              <p className="ft-empty-hint ft-filter-empty">没有匹配「{filter.trim()}」的文件（只过滤已展开的目录）。</p>
+              <p className="ft-empty-hint ft-filter-empty">没有匹配「{filter.trim()}」的文件（只过滤已加载的目录）。</p>
             ) : null}
           </div>
         </>
@@ -776,10 +897,6 @@ export function FileTree(): React.JSX.Element {
               >
                 <Trash2 size={13} strokeWidth={1.5} aria-hidden /> 删除
               </button>
-              <div className="ft-menu-sep" role="separator" />
-              <button type="button" role="menuitem" className="ft-menu-item" onClick={() => void refresh()}>
-                <RefreshCw size={13} strokeWidth={1.5} aria-hidden /> 刷新
-              </button>
             </div>,
             document.body
           )
@@ -824,7 +941,7 @@ export function FileTree(): React.JSX.Element {
             {dialog.entry.kind === 'dir' && dialog.childCount > 0 ? (
               <p className="ft-confirm-detail mono">这个文件夹里还有 {dialog.childCount} 项内容。</p>
             ) : null}
-            <p className="ft-confirm-hint">工作区之外的其它文件不受影响。</p>
+            <p className="ft-confirm-hint">文件夹之外的其它文件不受影响。</p>
           </div>
         ) : (
           <div className="ft-dialog-form">

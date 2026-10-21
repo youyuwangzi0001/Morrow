@@ -10,18 +10,38 @@ import '@fontsource-variable/noto-serif-sc'
 
 import './styles/base.css'
 import App from './App'
+import { IslandApp } from './features/island/IslandApp'
 import { useAppStore } from './state/store'
+import { applyThemePreferences } from './theme'
 
 const container = document.getElementById('root')
 if (!container) throw new Error('root container missing')
+const rootElement = container
+
+const isIsland = window.location.hash === '#island'
+if (isIsland) {
+  document.documentElement.classList.add('island-root')
+  document.body.classList.add('island-root')
+}
 
 // 仅测试模式暴露 store，便于 E2E/截图驱动真实状态（生产环境不存在）
-if (window.morrow.isTest) {
+if (window.morrow.isTest && !isIsland) {
   ;(window as unknown as { __morrowStore: typeof useAppStore }).__morrowStore = useAppStore
 }
 
-createRoot(container).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
+async function mount(): Promise<void> {
+  // 灵动岛是独立窗口，不会经过主窗口的 store 初始化；先取一次设置，避免浅色主题下闪深色。
+  if (isIsland) {
+    try {
+      const result = await window.morrow.settings.get()
+      if (result.ok) applyThemePreferences(result.data)
+    } catch {
+      // 设置读取失败时保留默认深色
+    }
+  }
+  createRoot(rootElement).render(
+    <React.StrictMode>{isIsland ? <IslandApp /> : <App />}</React.StrictMode>
+  )
+}
+
+void mount()

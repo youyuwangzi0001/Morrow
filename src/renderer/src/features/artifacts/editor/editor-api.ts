@@ -3,11 +3,21 @@
  *
  * 契约（与 shell/Lead 对齐）：
  * - read  { workspace, path(相对), maxBytes? } → { path, content, size, mtimeMs, binary, truncated, encoding, readOnly? }
+ * - preview { workspace, path } → FilePreviewMeta（图片/PDF/DOCX/音视频）
+ * - docx-html { workspace, path } → { html, size, mtimeMs, warnings }
  * - write { workspace, path(相对), content, expectedMtimeMs? } → { path, size, mtimeMs, snapshot?, created }
  * - stat  { workspace, path } → { path, size, mtimeMs, kind }
  * - create{ workspace, path, kind:'file'|'dir' } → FileEntry
  * 所有 invoke 返回 Result<T>；错误抛出 EditorApiError（code FEATURE_ERROR，message 为中文可读原因）。
  */
+import type {
+  ArchivePreviewResult,
+  DocumentPreviewResult,
+  FilePreviewMeta,
+  PptxPreviewResult,
+  XlsxPreviewResult
+} from '@shared/file-types'
+import { TEXT_PREVIEW_MAX_BYTES } from '@shared/file-types'
 import type { Result } from '@shared/types'
 
 export interface ReadFileResult {
@@ -131,7 +141,7 @@ export function isReadOnlyMode(permissionMode: string | null | undefined): boole
 export async function readFile(
   workspace: string,
   path: string,
-  maxBytes = 2 * 1024 * 1024
+  maxBytes = TEXT_PREVIEW_MAX_BYTES
 ): Promise<ReadFileResult> {
   const data = await invoke<Record<string, unknown>>('feature:files:read', { workspace, path, maxBytes })
   return {
@@ -144,6 +154,43 @@ export async function readFile(
     encoding: typeof data.encoding === 'string' ? data.encoding : 'utf8',
     readOnly: data.readOnly === true
   }
+}
+
+export async function previewFile(workspace: string, path: string): Promise<FilePreviewMeta> {
+  return invoke<FilePreviewMeta>('feature:files:preview', { workspace, path })
+}
+
+export interface DocxHtmlResult {
+  html: string
+  size: number
+  mtimeMs: number
+  warnings: string[]
+}
+
+export async function docxHtml(workspace: string, path: string): Promise<DocxHtmlResult> {
+  const data = await invoke<Record<string, unknown>>('feature:files:docx-html', { workspace, path })
+  return {
+    html: typeof data.html === 'string' ? data.html : '',
+    size: toNumber(data.size),
+    mtimeMs: toNumber(data.mtimeMs),
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter((item): item is string => typeof item === 'string') : []
+  }
+}
+
+export async function xlsxPreview(workspace: string, path: string): Promise<XlsxPreviewResult> {
+  return invoke<XlsxPreviewResult>('feature:files:xlsx-preview', { workspace, path })
+}
+
+export async function pptxPreview(workspace: string, path: string): Promise<PptxPreviewResult> {
+  return invoke<PptxPreviewResult>('feature:files:pptx-preview', { workspace, path })
+}
+
+export async function documentPreview(workspace: string, path: string): Promise<DocumentPreviewResult> {
+  return invoke<DocumentPreviewResult>('feature:files:document-preview', { workspace, path })
+}
+
+export async function archiveList(workspace: string, path: string): Promise<ArchivePreviewResult> {
+  return invoke<ArchivePreviewResult>('feature:files:archive-list', { workspace, path })
 }
 
 export async function writeFile(

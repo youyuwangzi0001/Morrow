@@ -43,7 +43,8 @@ function GoalProgress({ goal }: { goal: Goal }): React.JSX.Element {
  * 无目标时返回 null，不占任何空间。
  */
 export function GoalBar(): React.JSX.Element | null {
-  const goal = useAppStore((s) => s.session?.goal ?? null)
+  const session = useAppStore((s) => s.session)
+  const goal = session?.goal ?? null
   const run = useAppStore((s) => s.run)
   const pauseGoal = useAppStore((s) => s.pauseGoal)
   const resumeGoal = useAppStore((s) => s.resumeGoal)
@@ -61,7 +62,7 @@ export function GoalBar(): React.JSX.Element | null {
 
   if (!goal) return null
 
-  const running = !!run && goal.status === 'active'
+  const running = !!run && goal.status === 'active' && run.sessionId === session?.id
   const status = goal.status
 
   const runAction = async (action: GoalAction): Promise<void> => {
@@ -112,7 +113,7 @@ export function GoalBar(): React.JSX.Element | null {
             <span className="goal-bar-objective truncate">{goal.objective}</span>
             <span className="goal-bar-sub mono">
               {goalRoundText(goal.round, goal.maxRounds)}
-              {running ? ' · 正在推进' : status === 'paused' ? ' · 已暂停自动续跑' : ''}
+              {running ? ' · 正在推进' : status === 'paused' ? ' · 已暂停 · 自动续跑已停止' : ''}
             </span>
           </span>
           <GoalProgress goal={goal} />
@@ -134,20 +135,26 @@ export function GoalBar(): React.JSX.Element | null {
               loading={busy === 'pause'}
               disabled={busy !== null}
               onClick={() => void runAction('pause')}
-              title="暂停自动续跑，当前轮结果会保留"
+              title="暂停并停止当前轮；已生成的内容会保留"
             >
               暂停
             </Button>
           ) : null}
-          {status === 'paused' ? (
+          {status === 'paused' || status === 'blocked' ? (
             <Button
               size="sm"
               variant="secondary"
               icon={<CirclePlay size={13} strokeWidth={1.5} />}
               loading={busy === 'resume'}
-              disabled={busy !== null}
+              disabled={busy !== null || run !== null}
               onClick={() => void runAction('resume')}
-              title="从下一轮继续推进目标"
+              title={
+                run
+                  ? '当前还有任务在收尾，稍后再继续'
+                  : status === 'blocked'
+                    ? '处理完阻塞后，从下一轮继续'
+                    : '从下一轮继续推进目标'
+              }
             >
               继续
             </Button>

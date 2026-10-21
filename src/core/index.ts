@@ -54,6 +54,8 @@ export {
   TOOL_DEFINITIONS,
   READ_ONLY_TOOL_DEFINITIONS,
   GOAL_TOOL_DEFINITION,
+  PLAN_TOOL_DEFINITION,
+  PLAN_MODE_TOOL_DEFINITIONS,
   toolDefinitionsForRun,
   executeTool,
   getToolDefinition,
@@ -81,7 +83,7 @@ export {
 } from './permissions'
 
 /* ── 提示词 / 上下文 ──────────────────────────────────────────── */
-export { buildSystemPrompt, buildGoalPromptSection } from './prompt'
+export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './prompt'
 export {
   estimateTokens,
   estimateMessageTokens,
@@ -128,5 +130,8 @@ export type {
   ProviderStreamRequest,
   RuntimeEventPayload,
   ToolContext,
-  SubagentRequest
+  SubagentRequest,
+  TerminalToolHandler,
+  TerminalToolInput,
+  TerminalToolResponse
 } from './types'

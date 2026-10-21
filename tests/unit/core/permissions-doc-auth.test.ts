@@ -12,7 +12,7 @@ function target(toolName: string, input: Record<string, unknown>): PermissionTar
 }
 
 function policy(workspace: string, mode: PermissionPolicyContext['mode']): PermissionPolicyContext {
-  return { mode, workspace, isSubagent: false, isDemo: false, sessionGrants: new Set() }
+  return { mode, workspace, isDemo: false, sessionGrants: new Set() }
 }
 
 describe('R2-A：write_xlsx 审批签名绑定路径与内容', () => {
