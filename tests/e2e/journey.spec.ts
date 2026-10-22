@@ -133,7 +133,7 @@ test.describe('Morrow 完整旅程', () => {
       scripts: [
         {
           text: '我先写一个测试文件。',
-          toolCalls: [{ name: 'write_file', arguments: { path: 'permission-test.md', content: 'hello from mock' } }]
+          toolCalls: [{ name: 'write_file', arguments: { path: '../permission-test-deny.md', content: 'hello from mock' } }]
         },
         { text: '好，那我不写文件了，你想让我怎么整理？' }
       ]
@@ -157,9 +157,7 @@ test.describe('Morrow 完整旅程', () => {
       const card = page.locator('.permission-card')
       await expect(card).toBeVisible({ timeout: 15_000 })
       await expect(card).toContainText('允许一次')
-      await expect(card).toContainText('新文件')
-      await expect(card).not.toContainText('/dev/null')
-      await expect(card.locator('.permission-summary')).toHaveCount(0)
+      await expect(card).toContainText('工作区外')
       await page.waitForTimeout(350) // 等入场动画结束，避免截到 opacity 0 的帧
       await page.screenshot({ path: screenshotPath('permission-card.png') })
 
@@ -177,7 +175,7 @@ test.describe('Morrow 完整旅程', () => {
       expect((denied[0].result as { ok?: boolean } | undefined)?.ok).toBe(false)
       expect(events.filter((event) => event.type === 'error')).toEqual([])
       // 文件确实没写入
-      expect(existsSync(join(workspace, 'permission-test.md'))).toBe(false)
+      expect(existsSync(join(workspace, '..', 'permission-test-deny.md'))).toBe(false)
       // Mock LLM 收到至少两轮（工具调用 → 工具结果回填）
       expect(mock.calls).toBeGreaterThanOrEqual(2)
       const state = await readStore(page)
@@ -198,7 +196,7 @@ test.describe('Morrow 完整旅程', () => {
       scripts: [
         {
           text: '我先写一个测试文件。',
-          toolCalls: [{ name: 'write_file', arguments: { path: 'permission-test.md', content: 'hello from mock' } }]
+          toolCalls: [{ name: 'write_file', arguments: { path: '../permission-test-allow.md', content: 'hello from mock' } }]
         },
         { text: '文件已经写好了。' }
       ]
@@ -231,7 +229,7 @@ test.describe('Morrow 完整旅程', () => {
         expect((event.result as { ok?: boolean } | undefined)?.ok, `工具失败：${JSON.stringify(event)}`).toBe(true)
       }
       // 文件真实写入且内容正确
-      const target = join(workspace, 'permission-test.md')
+      const target = join(workspace, '..', 'permission-test-allow.md')
       expect(existsSync(target)).toBe(true)
       expect(readFileSync(target, 'utf8')).toBe('hello from mock')
       expect(mock.calls).toBeGreaterThanOrEqual(2)
@@ -354,7 +352,7 @@ test.describe('Morrow 完整旅程', () => {
       await dismissOnboarding(page)
       await installEventCollector(page)
       const provider = await configureMockProvider(page, mock.openaiBaseUrl)
-      await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '权限测试 · 高风险' })
+      await createSession(page, { workspace, ...provider, permissionMode: 'ask', title: '权限测试 · 高风险' })
       await sendMessageViaStore(page, '请删除 out 目录。')
       await waitForRunStarted(page, 30_000)
 

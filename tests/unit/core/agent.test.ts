@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type {
@@ -174,21 +174,21 @@ describe('审批时序', () => {
     try {
       const harness = await runScript(
         ws,
-        [{ toolCalls: [{ name: 'write_file', input: { path: 'b.txt', content: 'x' } }] }, { text: '完成' }],
+        [{ toolCalls: [{ name: 'write_file', input: { path: '../b.txt', content: 'x' } }] }, { text: '完成' }],
         { permissionMode: 'ask' }
       )
       const { events, permissionCalls } = harness
       expect(permissionCalls).toHaveLength(1)
-      expect(permissionCalls[0]).toMatchObject({ toolName: 'write_file', category: 'write', risk: 'medium' })
+      expect(permissionCalls[0]).toMatchObject({ toolName: 'write_file', category: 'write', risk: 'high' })
       expect(permissionCalls[0].title).toContain('写入')
-      expect(permissionCalls[0].preview?.kind).toBe('diff')
+      expect(permissionCalls[0].preview?.kind).toBe('path')
       expect(indexOf(events, 'tool_started')).toBeLessThan(indexOf(events, 'permission_requested'))
       expect(indexOf(events, 'permission_requested')).toBeLessThan(indexOf(events, 'permission_resolved'))
       expect(indexOf(events, 'permission_resolved')).toBeLessThan(indexOf(events, 'tool_progress'))
       expect(indexOf(events, 'tool_progress')).toBeLessThan(indexOf(events, 'tool_finished'))
       const started = events.find((event) => event.type === 'tool_started')
       expect(started?.type === 'tool_started' && started.block.status).toBe('waiting')
-      expect(existsSync(join(ws.root, 'b.txt'))).toBe(true)
+      expect(existsSync(join(ws.root, '..', 'b.txt'))).toBe(true)
     } finally {
       ws.cleanup()
     }
@@ -199,10 +199,10 @@ describe('审批时序', () => {
     try {
       const harness = await runScript(
         ws,
-        [{ toolCalls: [{ name: 'write_file', input: { path: 'c.txt', content: 'x' } }] }, { text: '那我换个方案。' }],
+        [{ toolCalls: [{ name: 'write_file', input: { path: '../c.txt', content: 'x' } }] }, { text: '那我换个方案。' }],
         { permissionMode: 'ask', onPermission: async () => 'deny' }
       )
-      expect(existsSync(join(ws.root, 'c.txt'))).toBe(false)
+      expect(existsSync(join(ws.root, '..', 'c.txt'))).toBe(false)
       expect(harness.result.reason).toBe('complete')
       const toolBlock = harness.result.messages[0].content.find((block) => block.type === 'tool_use')
       expect(toolBlock).toMatchObject({ status: 'denied' })
@@ -232,31 +232,16 @@ describe('审批时序', () => {
     }
   })
 
-  it('「始终允许」按会话记忆：只有完全相同的调用不再弹审批', async () => {
+  it('ask 档工作区写入自动执行，不再弹审批', async () => {
     const ws = makeTempWorkspace()
     try {
-      const first = await runScript(
+      const harness = await runScript(
         ws,
-        [{ toolCalls: [{ name: 'write_file', input: { path: 'e.txt', content: '1' } }] }, { text: '完成' }],
-        { permissionMode: 'ask', onPermission: async () => 'always' }
+        [{ toolCalls: [{ name: 'write_file', input: { path: 'e-auto.txt', content: '1' } }] }, { text: '完成' }],
+        { permissionMode: 'ask' }
       )
-      expect(first.permissionCalls).toHaveLength(1)
-      // R7 审计修复：同路径但内容不同 = 新的写操作，必须重新询问
-      const second = await runScript(
-        ws,
-        [{ toolCalls: [{ name: 'write_file', input: { path: 'e.txt', content: '2' } }] }, { text: '完成' }],
-        { permissionMode: 'ask', onPermission: async () => 'deny' }
-      )
-      expect(second.permissionCalls).toHaveLength(1)
-      expect(readFileSync(join(ws.root, 'e.txt'), 'utf8')).toBe('1')
-      // 完全相同的调用（路径+内容一致）命中会话级授权，不再弹审批
-      const third = await runScript(
-        ws,
-        [{ toolCalls: [{ name: 'write_file', input: { path: 'e.txt', content: '1' } }] }, { text: '完成' }],
-        { permissionMode: 'ask', onPermission: async () => 'deny' }
-      )
-      expect(third.permissionCalls).toHaveLength(0)
-      expect(readFileSync(join(ws.root, 'e.txt'), 'utf8')).toBe('1')
+      expect(harness.permissionCalls).toHaveLength(0)
+      expect(readFileSync(join(ws.root, 'e-auto.txt'), 'utf8')).toBe('1')
     } finally {
       ws.cleanup()
     }
@@ -319,7 +304,7 @@ describe('中断收尾', () => {
         async *stream() {
           yield { type: 'tool_call_start', index: 0, id: 'call_pending', name: 'write_file' }
           yield { type: 'tool_call_delta', index: 0, argsDelta: '{"path":"f.txt","content":"x"}' }
-          yield { type: 'tool_call_end', index: 0, id: 'call_pending', name: 'write_file', input: { path: 'f.txt', content: 'x' } }
+          yield { type: 'tool_call_end', index: 0, id: 'call_pending', name: 'write_file', input: { path: '../f.txt', content: 'x' } }
           yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
         }
       }
@@ -353,7 +338,7 @@ describe('中断收尾', () => {
       const toolBlock = result.messages[0].content.find((block) => block.type === 'tool_use')
       expect(toolBlock).toMatchObject({ status: 'interrupted' })
       if (toolBlock?.type === 'tool_use') expect(toolBlock.result?.meta).toMatchObject({ interrupted: true })
-      expect(existsSync(join(ws.root, 'f.txt'))).toBe(false)
+      expect(existsSync(join(ws.root, '..', 'f.txt'))).toBe(false)
       // 中断也要发 permission_resolved('deny') 让 UI 收起审批卡
       const resolved = events.find((event) => event.type === 'permission_resolved')
       expect(resolved?.type === 'permission_resolved' && resolved.decision).toBe('deny')
@@ -465,6 +450,193 @@ describe('ask_user / 子代理 / 状态透传', () => {
       expect(progressNotes.length).toBeGreaterThan(1)
       // 子代理内部没有对主会话发 message_*（只有主代理的两条消息）
       expect(harness.result.messages).toHaveLength(2)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('模型直接收尾但计划未完成时，会先提醒同步计划再结束', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const harness = await runScript(ws, [
+        {
+          toolCalls: [
+            {
+              name: 'todo_write',
+              input: {
+                todos: [
+                  { text: '搭骨架', status: 'in_progress' },
+                  { text: '补细节', status: 'pending' }
+                ]
+              }
+            }
+          ]
+        },
+        { text: '已经全部做好了。' },
+        {
+          toolCalls: [
+            {
+              name: 'todo_write',
+              input: {
+                todos: [
+                  { text: '搭骨架', status: 'completed' },
+                  { text: '补细节', status: 'completed' }
+                ]
+              }
+            }
+          ]
+        },
+        { text: '计划已同步，全部完成。' }
+      ])
+      expect(harness.result.reason).toBe('complete')
+      expect(harness.result.todos.map((todo) => todo.status)).toEqual(['completed', 'completed'])
+      const nudge = harness.result.messages.find(
+        (message) =>
+          message.hidden === true &&
+          message.role === 'user' &&
+          message.content.some((block) => block.type === 'text' && block.text.includes('[系统检查]'))
+      )
+      expect(nudge).toBeTruthy()
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('长任务连续多步不更新计划时，会提醒模型同步进度', async () => {
+    const ws = makeTempWorkspace({ 'a.txt': 'ok' })
+    try {
+      const steps: Array<{ text?: string; toolCalls?: Array<{ name: string; input: Record<string, unknown> }> }> = []
+      for (let index = 0; index < 6; index += 1) {
+        const path = `note-${index}.txt`
+        writeFileSync(join(ws.root, path), `第 ${index} 份记录\n`)
+        steps.push({ toolCalls: [{ name: 'read_file', input: { path } }] })
+      }
+      steps.push({ text: '完成了。' }, { text: '仍在收尾。' }, { text: '结束。' })
+      const harness = await runScript(ws, steps, {
+        initialTodos: [{ id: 'todo_1', text: '长任务步骤', status: 'in_progress' }]
+      })
+      expect(harness.result.reason).toBe('complete')
+      const reminderSent = harness.provider.calls.some((call) =>
+        call.messages.some(
+          (message) =>
+            message.hidden === true &&
+            message.role === 'user' &&
+            message.content.some(
+              (block) => block.type === 'text' && block.text.includes('连续多步没有更新')
+            )
+        )
+      )
+      expect(reminderSent).toBe(true)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('视觉任务在收尾前会触发一次视觉打磨轮，并真实修改成品', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const harness = await runScript(
+        ws,
+        [
+          {
+            text: '先做一版。',
+            toolCalls: [
+              { name: 'write_file', input: { path: 'site.html', content: '<html><body>v1</body></html>' } },
+              { name: 'open_artifact', input: { title: '首页', path: 'site.html' } }
+            ]
+          },
+          { text: '做好了。' },
+          {
+            toolCalls: [
+              { name: 'edit_file', input: { path: 'site.html', old_string: 'v1', new_string: 'v2 polished' } }
+            ]
+          },
+          { text: '视觉打磨完成。' }
+        ],
+        { userMessage: userMessage('做一个页面，画面尽可能惊艳。') }
+      )
+      expect(harness.result.reason).toBe('complete')
+      expect(readFileSync(join(ws.root, 'site.html'), 'utf8')).toContain('v2 polished')
+      const nudge = harness.result.messages.find(
+        (message) =>
+          message.hidden === true &&
+          message.role === 'user' &&
+          message.content.some((block) => block.type === 'text' && block.text.includes('用户明确要求画面惊艳'))
+      )
+      expect(nudge).toBeTruthy()
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('计划全部完成后仍改文件：自动追加“收尾完善”步骤，不显示虚假的 6/6', async () => {
+    const ws = makeTempWorkspace({ 'a.txt': 'v1' })
+    try {
+      const harness = await runScript(
+        ws,
+        [
+          {
+            text: '继续优化。',
+            toolCalls: [{ name: 'edit_file', input: { path: 'a.txt', old_string: 'v1', new_string: 'v2' } }]
+          },
+          { text: '好了。' },
+          {
+            toolCalls: [
+              {
+                name: 'todo_write',
+                input: {
+                  todos: [
+                    { text: '步骤', status: 'completed' },
+                    { text: '收尾完善', status: 'completed' }
+                  ]
+                }
+              }
+            ]
+          },
+          { text: '全部完成。' }
+        ],
+        { initialTodos: [{ id: 'todo_done', text: '步骤', status: 'completed' }] }
+      )
+      expect(harness.result.reason).toBe('complete')
+      expect(harness.result.todos.map((todo) => todo.text)).toContain('收尾完善')
+      expect(harness.events.some((event) => event.type === 'todos_updated')).toBe(true)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('非视觉高质量交付也会触发交付前质量审查', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const harness = await runScript(
+        ws,
+        [
+          {
+            text: '先写报告。',
+            toolCalls: [
+              { name: 'write_file', input: { path: 'report.md', content: '# 报告\n\n初稿' } },
+              { name: 'open_artifact', input: { kind: 'markdown', title: '报告', path: 'report.md' } }
+            ]
+          },
+          { text: '报告完成。' },
+          {
+            toolCalls: [
+              { name: 'edit_file', input: { path: 'report.md', old_string: '初稿', new_string: '初稿\n\n数据口径：已核对' } }
+            ]
+          },
+          { text: '已补充交付前检查。' }
+        ],
+        { userMessage: userMessage('做一份专业、可直接交付的报告。') }
+      )
+      expect(harness.result.reason).toBe('complete')
+      expect(readFileSync(join(ws.root, 'report.md'), 'utf8')).toContain('数据口径：已核对')
+      const nudge = harness.result.messages.find(
+        (message) =>
+          message.hidden === true &&
+          message.role === 'user' &&
+          message.content.some((block) => block.type === 'text' && block.text.includes('用户明确要求高质量交付'))
+      )
+      expect(nudge).toBeTruthy()
     } finally {
       ws.cleanup()
     }
@@ -790,7 +962,7 @@ describe('精确上下文用量（contextUsed）', () => {
     const ws = makeTempWorkspace()
     try {
       const harness = await runScript(ws, [
-        { toolCalls: [{ name: 'todo_write', input: { todos: [{ text: '步骤一' }] } }] },
+        { toolCalls: [{ name: 'todo_write', input: { todos: [{ text: '步骤一', status: 'completed' }] } }] },
         { text: '完成。' }
       ])
       // ScriptedProvider 每轮返回 usage input=100 / output=20；两轮共 2 次请求

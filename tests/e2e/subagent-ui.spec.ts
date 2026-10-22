@@ -29,12 +29,12 @@ test('并行子代理：审批卡串行、活动条可见、两个子任务真�
       {
         text: '我并行安排两个子任务。',
         toolCalls: [
-          { name: 'task', arguments: { description: '写入 A', prompt: '请在工作区创建 alpha.txt，内容为 A。' } },
-          { name: 'task', arguments: { description: '写入 B', prompt: '请在工作区创建 beta.txt，内容为 B。' } }
+          { name: 'task', arguments: { description: '写入 A', prompt: '请在上一级目录创建 alpha.txt，内容为 A。' } },
+          { name: 'task', arguments: { description: '写入 B', prompt: '请在上一级目录创建 beta.txt，内容为 B。' } }
         ]
       },
-      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: 'alpha.txt', content: 'A' } }] },
-      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: 'beta.txt', content: 'B' } }] },
+      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: '../alpha.txt', content: 'A' } }] },
+      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: '../beta.txt', content: 'B' } }] },
       { text: '子任务 A 完成。' },
       { text: '子任务 B 完成。' },
       { text: '两个子任务都完成了。' }
@@ -73,8 +73,8 @@ test('并行子代理：审批卡串行、活动条可见、两个子任务真�
 
     await waitForRunFinished(page, 90_000)
     await expect(page.getByText('两个子任务都完成了。')).toBeVisible()
-    expect(existsSync(join(workspace, 'alpha.txt'))).toBe(true)
-    expect(existsSync(join(workspace, 'beta.txt'))).toBe(true)
+    expect(existsSync(join(workspace, '..', 'alpha.txt'))).toBe(true)
+    expect(existsSync(join(workspace, '..', 'beta.txt'))).toBe(true)
 
     const rows = page.locator('.spine-row.is-subagent')
     await expect(rows).toHaveCount(2)

@@ -52,6 +52,7 @@ import {
   setIslandExpanded,
   syncIslandVisibility
 } from './services/island'
+import { resolveWindowClose } from './services/lifecycle'
 import {
   createDemoWorkspace,
   describeWorkspace,
@@ -65,6 +66,7 @@ import { clearSearchIndex, invalidateSearchSession } from './services/search-inv
 import { clearScheduleSessionReferences } from './services/schedule-runtime'
 import { abortAllSideChats } from './features/sidechat'
 import { getTokenActivityService, initializeTokenActivity } from './services/token-activity-runtime'
+import { revealInFileManager } from './services/reveal'
 import { log } from './services/logger'
 import { cleanTargetDataDir, copyUserDataForMigration } from './services/data-dir-migration'
 import {
@@ -554,6 +556,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.windowClose, (): Result<void> => {
     windowOf()?.close()
+    return ok(undefined)
+  })
+
+  ipcMain.handle(IPC.windowResolveClose, (_e, payload: { action?: unknown }): Result<void> => {
+    if (payload?.action !== 'minimize' && payload?.action !== 'quit') {
+      return fail('CLOSE_ACTION_INVALID', '关闭动作不合法。')
+    }
+    resolveWindowClose(windowOf(), payload.action)
     return ok(undefined)
   })
 
@@ -1368,7 +1378,7 @@ export function registerIpcHandlers(): void {
     try {
       const target = resolveWorkspacePath(payload?.path, 'file')
       if (!target) return fail('FILE_UNAVAILABLE', '产物不在可访问的工作区内，或已被移动。')
-      shell.showItemInFolder(target)
+      revealInFileManager(target)
       return ok(undefined)
     } catch (err) {
       return fail('REVEAL_FAILED', err instanceof Error ? err.message : '打开文件夹失败')

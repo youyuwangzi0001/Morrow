@@ -51,7 +51,14 @@ internal static class MorrowLauncher
     {
         string exePath = Assembly.GetExecutingAssembly().Location;
         string exeDir = Path.GetDirectoryName(exePath);
-        string appDir = FolderMode ? exeDir : Path.Combine(exeDir, AppFolderName);
+        string exeRuntimeDir = Path.Combine(exeDir, AppFolderName);
+        string appDir = FolderMode ? exeDir : exeRuntimeDir;
+        if (!FolderMode)
+        {
+            // 上次因 exe 同级目录被占用而回退到 LOCALAPPDATA 时，继续复用该缓存。
+            string savedDir = ReadRuntimeLocation(exeDir);
+            if (savedDir != null && RuntimeIsCurrent(savedDir)) appDir = savedDir;
+        }
         string appExe = Path.Combine(appDir, AppExeName);
 
         try
@@ -69,8 +76,11 @@ internal static class MorrowLauncher
                         MessageBoxIcon.Error);
                     return 1;
                 }
+                appDir = exeRuntimeDir;
+                appExe = Path.Combine(appDir, AppExeName);
                 TryDeleteStaleRuntime(appDir);
-                bool ok = TryExtract(appDir, exeDir);
+                string installedDir;
+                bool ok = TryExtract(appDir, exeDir, out installedDir);
                 if (!ok)
                 {
                     MessageBox.Show(
@@ -80,6 +90,9 @@ internal static class MorrowLauncher
                         MessageBoxIcon.Error);
                     return 1;
                 }
+                // 回退到 LOCALAPPDATA 时，实际运行目录是 installedDir，不能再用 exe 同级路径。
+                appDir = installedDir;
+                appExe = Path.Combine(appDir, AppExeName);
             }
 
             string tempDir = Path.Combine(appDir, ".morrow-temp");
@@ -157,9 +170,26 @@ internal static class MorrowLauncher
         }
     }
 
-    /// <summary>顶层目录可写则解压到 exe 目录；否则回退 LOCALAPPDATA。返回是否成功。</summary>
-    private static bool TryExtract(string appDir, string exeDir)
+    /// <summary>读取上次回退到 LOCALAPPDATA 的运行目录；没有或不可读时返回 null。</summary>
+    private static string ReadRuntimeLocation(string exeDir)
     {
+        try
+        {
+            string file = Path.Combine(exeDir, ".morrow-runtime-location");
+            if (!File.Exists(file)) return null;
+            string dir = File.ReadAllText(file).Trim();
+            return string.IsNullOrEmpty(dir) ? null : dir;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>顶层目录可写则解压到 exe 目录；否则回退 LOCALAPPDATA。usedDir 是实际可用目录。</summary>
+    private static bool TryExtract(string appDir, string exeDir, out string usedDir)
+    {
+        usedDir = appDir;
         string fallbackDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Morrow",
@@ -167,10 +197,19 @@ internal static class MorrowLauncher
 
         if (InnerExtract(appDir))
         {
+            try
+            {
+                File.Delete(Path.Combine(exeDir, ".morrow-runtime-location"));
+            }
+            catch
+            {
+                // 无写入权限时忽略
+            }
             return true;
         }
         if (InnerExtract(fallbackDir))
         {
+            usedDir = fallbackDir;
             // 记忆回退位置，后续启动直接从 LOCALAPPDATA 运行
             try
             {

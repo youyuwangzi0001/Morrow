@@ -83,8 +83,14 @@ describe('命令中的工作区外绝对路径', () => {
       expect(detectOutsidePathInCommand(`Get-Content '${ws.root.replace(/\\/g, '/')}/a.txt'`, ws.root)).toBeNull()
     })
 
-    it('auto 模式下命令引用工作区外路径时提升为高风险审批', () => {
-      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Get-Content C:\\Windows\\win.ini' }), policy(ws.root, 'auto'))
+    it('完全访问下命令引用工作区外路径也直接执行', () => {
+      expect(
+        evaluatePermission(target('run_command', 'exec', { command: 'Get-Content C:\\Windows\\win.ini' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow', escape: true })
+    })
+
+    it('询问模式下命令引用工作区外路径提升为高风险审批', () => {
+      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Get-Content C:\\Windows\\win.ini' }), policy(ws.root, 'ask'))
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') {
         expect(gate.risk).toBe('high')
@@ -123,9 +129,12 @@ describe('命令中的工作区外绝对路径', () => {
     it('R11：file: 本地文件地址仍按越界处理（不能借 URL 规避）', () => {
       expect(detectOutsidePathInCommand('curl file:///C:/Windows/win.ini', ws.root)).toBeTruthy()
       expect(detectOutsidePathInCommand('curl file:/etc/passwd', ws.root)).toBeTruthy()
+      expect(
+        evaluatePermission(target('run_command', 'exec', { command: 'curl file:///C:/Windows/win.ini' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow', escape: true })
       const gate = evaluatePermission(
         target('run_command', 'exec', { command: 'curl file:///C:/Windows/win.ini' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') expect(gate.risk).toBe('high')
@@ -144,7 +153,7 @@ describe('命令中的工作区外绝对路径', () => {
       expect(detectOutsidePathInCommand('Get-Content %USERPROFILE:~0,8%\\secret.txt', ws.root)).toContain('环境变量')
       const uncGate = evaluatePermission(
         target('run_command', 'exec', { command: String.raw`Get-Content \\server\share\secret.txt` }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(uncGate.action).toBe('ask')
       if (uncGate.action === 'ask') expect(uncGate.risk).toBe('high')
@@ -162,7 +171,7 @@ describe('命令中的工作区外绝对路径', () => {
       expect(detectOutsidePathInCommand('cd ..; Get-ChildItem', ws.root)).not.toBeNull()
       const gate = evaluatePermission(
         target('run_command', 'exec', { command: 'Get-Content ../outside/canary.txt' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(gate.action).toBe('ask')
     })
@@ -180,27 +189,33 @@ describe('外部动作工具（web_fetch / mcp_call）', () => {
     expect(evaluatePermission(target('mcp_call', 'exec', { server: 's', tool: 't', arguments: {} }), policy(ws.root, 'read-only')).action).toBe('deny')
   })
 
-  it('ask 与 auto 都必须逐次审批（auto 不静默放行），且不提供「始终允许」', () => {
+  it('询问模式逐次审批，且不提供「始终允许」', () => {
     const web = target('web_fetch', 'exec', { url: 'https://example.com/a' })
     const list = target('mcp_list', 'exec', { server: 's' })
     const mcp = target('mcp_call', 'exec', { server: 's', tool: 't', arguments: { x: 1 } })
     for (const gate of [
       evaluatePermission(web, policy(ws.root, 'ask')),
-      evaluatePermission(web, policy(ws.root, 'auto')),
       evaluatePermission(list, policy(ws.root, 'ask')),
-      evaluatePermission(list, policy(ws.root, 'auto')),
-      evaluatePermission(mcp, policy(ws.root, 'ask')),
-      evaluatePermission(mcp, policy(ws.root, 'auto'))
+      evaluatePermission(mcp, policy(ws.root, 'ask'))
     ]) {
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') expect(gate.allowAlways).toBe(false)
     }
   })
 
-  it('即使有相同签名的会话授权也要再次询问', () => {
+  it('完全访问下外部动作直接执行', () => {
+    expect(evaluatePermission(target('web_fetch', 'exec', { url: 'https://example.com/a' }), policy(ws.root, 'auto'))).toEqual({
+      action: 'allow'
+    })
+    expect(evaluatePermission(target('mcp_call', 'exec', { server: 's', tool: 't', arguments: {} }), policy(ws.root, 'auto'))).toEqual({
+      action: 'allow'
+    })
+  })
+
+  it('询问模式下即使有相同签名的会话授权也要再次询问', () => {
     const web = target('web_fetch', 'exec', { url: 'https://example.com/a' })
-    const signature = permissionSignature(web, { mode: 'auto', workspace: ws.root, isDemo: false, sessionGrants: new Set() })
-    expect(evaluatePermission(web, policy(ws.root, 'auto', [signature])).action).toBe('ask')
+    const signature = permissionSignature(web, { mode: 'ask', workspace: ws.root, isDemo: false, sessionGrants: new Set() })
+    expect(evaluatePermission(web, policy(ws.root, 'ask', [signature])).action).toBe('ask')
   })
 })
 
@@ -222,30 +237,26 @@ describe('evaluatePermission：三档模式', () => {
       expect(gate.action).toBe('deny')
     })
 
-    it('ask：工作区内写文件需要审批，并带 diff 预览', () => {
-      const gate = evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'hello world' }), policy(ws.root, 'ask'))
-      expect(gate.action).toBe('ask')
-      if (gate.action === 'ask') {
-        expect(gate.risk).toBe('medium')
-        expect(gate.preview?.kind).toBe('diff')
-        expect(gate.preview?.content).toContain('hello world')
-        expect(gate.signature).toContain('write_file')
-        expect(gate.allowAlways).toBe(true)
-      }
+    it('ask：工作区内写文件与普通命令直接执行（旧自动体验）', () => {
+      expect(
+        evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'hello world' }), policy(ws.root, 'ask'))
+      ).toEqual({ action: 'allow' })
+      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm run test:unit' }), policy(ws.root, 'ask'))).toEqual({
+        action: 'allow'
+      })
     })
 
-    it('新建文件审批预览是标准 diff（渲染层可逐行展示）', () => {
+    it('询问模式下越界写入仍进入审批，并带 diff 预览', () => {
       const gate = evaluatePermission(
-        target('write_file', 'write', { path: 'new-file.txt', content: '第一行内容\n第二行内容' }),
+        target('write_file', 'write', { path: `${ws.root}/../outside-preview.txt`, content: '第一行内容\n第二行内容' }),
         policy(ws.root, 'ask')
       )
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') {
-        expect(gate.preview?.kind).toBe('diff')
-        expect(gate.preview?.content).toContain('--- /dev/null')
-        expect(gate.preview?.content).toContain('+++ b/new-file.txt')
-        expect(gate.preview?.content).toContain('@@ -0,0 +1,2 @@')
-        expect(gate.preview?.content).toContain('+第一行内容')
+        expect(gate.risk).toBe('high')
+        expect(gate.escape).toBe(true)
+        expect(gate.preview?.kind).toBe('path')
+        expect(gate.preview?.content).toContain('outside-preview.txt')
       }
     })
 
@@ -257,47 +268,24 @@ describe('evaluatePermission：三档模式', () => {
       expect(evaluatePermission(target('run_command', 'exec', { command: 'Get-ChildItem' }), policy(ws.root, 'auto'))).toEqual({ action: 'allow' })
     })
 
-    it('auto：危险命令仍然强询问（高风险）', () => {
-      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Remove-Item C:\\ -Recurse -Force' }), policy(ws.root, 'auto'))
+    it('auto：危险命令也直接执行（完全访问）', () => {
+      expect(
+        evaluatePermission(target('run_command', 'exec', { command: 'Remove-Item C:\\ -Recurse -Force' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow' })
+    })
+
+    it('ask：危险命令仍然强询问（高风险，不提供始终允许）', () => {
+      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Remove-Item C:\\ -Recurse -Force' }), policy(ws.root, 'ask'))
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') {
         expect(gate.risk).toBe('high')
         expect(gate.summary).toContain('高风险')
         expect(gate.allowAlways).toBe(false)
       }
-    })
-
-    it('危险命令不受「始终允许」记忆影响', () => {
-      const signature = permissionSignature(target('run_command', 'exec', { command: 'shutdown /s' }), policy(ws.root, 'auto'))
-      const gate = evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), policy(ws.root, 'auto', [signature]))
-      expect(gate.action).toBe('ask')
-    })
-
-    it('ask：「始终允许」的签名命中后自动放行（只限完全相同的参数）', () => {
-      const policyCtx = policy(ws.root, 'ask')
-      const first = evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), policyCtx)
-      expect(first.action).toBe('ask')
-      if (first.action !== 'ask') return
-      policyCtx.sessionGrants = new Set([first.signature])
-      // 完全相同的内容 → 放行
-      expect(evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), policyCtx)).toEqual({
-        action: 'allow'
-      })
-      // R7 审计修复：同路径不同内容 = 另一次写操作，必须重新询问
-      expect(evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'y' }), policyCtx).action).toBe('ask')
-    })
-
-    it('run_command：「始终允许」只绑定完全相同的命令与参数', () => {
-      const policyCtx = policy(ws.root, 'ask')
-      const command = 'node a.js --flag 1'
-      const first = evaluatePermission(target('run_command', 'exec', { command }), policyCtx)
-      expect(first.action).toBe('ask')
-      if (first.action !== 'ask') return
-      policyCtx.sessionGrants = new Set([first.signature])
-      expect(evaluatePermission(target('run_command', 'exec', { command }), policyCtx)).toEqual({ action: 'allow' })
-      // 不同参数 / 不同脚本 → 必须重新询问
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'node b.js --flag 1' }), policyCtx).action).toBe('ask')
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'node a.js --flag 2' }), policyCtx).action).toBe('ask')
+      const signature = permissionSignature(target('run_command', 'exec', { command: 'shutdown /s' }), policy(ws.root, 'ask'))
+      expect(evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), policy(ws.root, 'ask', [signature])).action).toBe(
+        'ask'
+      )
     })
 
     it('read-only：写文件 / 运行命令 / remember 一律直接拒绝（不进入询问）', () => {
@@ -319,9 +307,10 @@ describe('evaluatePermission：三档模式', () => {
       expect(evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), ctx)).toEqual({ action: 'allow' })
     })
 
-    it('子代理与主代理走同一权限链：写操作仍需审批', () => {
+    it('子代理与主代理走同一权限链：工作区写入自动执行，危险命令仍需审批', () => {
       const ctx = policy(ws.root, 'ask')
-      expect(evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), ctx).action).toBe('ask')
+      expect(evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), ctx).action).toBe('allow')
+      expect(evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), ctx).action).toBe('ask')
     })
   } finally {
     ws.cleanup()
@@ -331,9 +320,13 @@ describe('evaluatePermission：三档模式', () => {
 describe('工作区越界', () => {
   const ws = makeTempWorkspace({ 'a.txt': 'hello' })
   try {
-    it('工作区外路径触发高风险审批', () => {
+    it('完全访问下工作区外路径直接执行，询问模式仍审批', () => {
       const outside = ws.root.includes('\\') ? `${ws.root}\\..\\..\\outside.txt` : `${ws.root}/../../outside.txt`
-      const gate = evaluatePermission(target('read_file', 'read', { path: outside }), policy(ws.root, 'auto'))
+      expect(evaluatePermission(target('read_file', 'read', { path: outside }), policy(ws.root, 'auto'))).toEqual({
+        action: 'allow',
+        escape: true
+      })
+      const gate = evaluatePermission(target('read_file', 'read', { path: outside }), policy(ws.root, 'ask'))
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') {
         expect(gate.risk).toBe('high')
@@ -347,8 +340,12 @@ describe('工作区越界', () => {
       expect(evaluatePermission(target('read_file', 'read', { path: `${ws.root}/a.txt` }), policy(ws.root, 'ask'))).toEqual({ action: 'allow' })
     })
 
-    it('run_command 的 cwd 越界同样审批', () => {
-      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Get-Date', cwd: '..' }), policy(ws.root, 'auto'))
+    it('run_command 的 cwd 越界：完全访问直接执行，询问模式审批', () => {
+      expect(evaluatePermission(target('run_command', 'exec', { command: 'Get-Date', cwd: '..' }), policy(ws.root, 'auto'))).toEqual({
+        action: 'allow',
+        escape: true
+      })
+      const gate = evaluatePermission(target('run_command', 'exec', { command: 'Get-Date', cwd: '..' }), policy(ws.root, 'ask'))
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') expect(gate.risk).toBe('high')
     })
@@ -359,12 +356,16 @@ describe('工作区越界', () => {
 
     it('Office 文档读取越界同样进入高风险审批，而不是直接由工具报错', () => {
       for (const toolName of ['read_pdf', 'read_docx', 'read_xlsx']) {
-        const gate = evaluatePermission(target(toolName, 'read', { path: '../outside.bin' }), policy(ws.root, 'auto'))
+        const gate = evaluatePermission(target(toolName, 'read', { path: '../outside.bin' }), policy(ws.root, 'ask'))
         expect(gate.action).toBe('ask')
         if (gate.action === 'ask') {
           expect(gate.risk).toBe('high')
           expect(gate.escape).toBe(true)
         }
+        expect(evaluatePermission(target(toolName, 'read', { path: '../outside.bin' }), policy(ws.root, 'auto'))).toEqual({
+          action: 'allow',
+          escape: true
+        })
         expect(evaluatePermission(target(toolName, 'read', { path: 'in/inside.bin' }), policy(ws.root, 'auto'))).toEqual({
           action: 'allow'
         })
@@ -374,17 +375,21 @@ describe('工作区越界', () => {
     it('edit_docx 的输入或输出任一越界都要审批', () => {
       const outsideOutput = evaluatePermission(
         target('edit_docx', 'write', { path: 'in/template.docx', output_path: '../outside.docx' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(outsideOutput.action).toBe('ask')
       if (outsideOutput.action === 'ask') expect(outsideOutput.escape).toBe(true)
 
       const outsideInput = evaluatePermission(
         target('edit_docx', 'write', { path: '../outside.docx', output_path: 'out/ok.docx' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(outsideInput.action).toBe('ask')
       if (outsideInput.action === 'ask') expect(outsideInput.escape).toBe(true)
+
+      expect(
+        evaluatePermission(target('edit_docx', 'write', { path: '../outside.docx', output_path: 'out/ok.docx' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow', escape: true })
     })
   } finally {
     ws.cleanup()
@@ -407,12 +412,15 @@ describe('审批被拒绝的人话提示', () => {
 })
 
 describe('terminal 权限', () => {
-  it('stdin 写入即使 auto 模式也必须逐次确认，且不提供始终允许', () => {
+  it('stdin 写入：询问模式逐次确认，完全访问直接执行', () => {
     const ws = makeTempWorkspace()
     try {
+      expect(
+        evaluatePermission(target('terminal', 'exec', { action: 'write', id: 'task_1', data: 'rm -rf /\n' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow' })
       const gate = evaluatePermission(
         target('terminal', 'exec', { action: 'write', id: 'task_1', data: 'rm -rf /\n' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(gate.action).toBe('ask')
       if (gate.action === 'ask') {
@@ -428,9 +436,12 @@ describe('terminal 权限', () => {
   it('run/start 与 run_command 使用同样的危险命令和越界路径检查', () => {
     const ws = makeTempWorkspace()
     try {
+      expect(
+        evaluatePermission(target('terminal', 'exec', { action: 'start', command: 'rm -rf /' }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow' })
       const dangerStart = evaluatePermission(
         target('terminal', 'exec', { action: 'start', command: 'rm -rf /' }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(dangerStart.action).toBe('ask')
       if (dangerStart.action === 'ask') {
@@ -441,9 +452,12 @@ describe('terminal 权限', () => {
 
       const outsideCommand =
         process.platform === 'win32' ? 'Get-Content C:\\Windows\\win.ini' : 'cat /etc/passwd'
+      expect(
+        evaluatePermission(target('terminal', 'exec', { action: 'run', command: outsideCommand }), policy(ws.root, 'auto'))
+      ).toEqual({ action: 'allow', escape: true })
       const dangerRun = evaluatePermission(
         target('terminal', 'exec', { action: 'run', command: outsideCommand }),
-        policy(ws.root, 'auto')
+        policy(ws.root, 'ask')
       )
       expect(dangerRun.action).toBe('ask')
       if (dangerRun.action === 'ask') expect(dangerRun.summary).toContain('工作区外')

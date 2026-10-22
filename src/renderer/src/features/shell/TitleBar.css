@@ -163,26 +163,6 @@
   background: var(--line);
 }
 
-/* 上下文环：默认金，压力升高转为琥珀/锈红 */
-.tb-ctx {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  color: var(--gold);
-  border-radius: 50%;
-  -webkit-app-region: no-drag;
-}
-
-.tb-ctx.is-warning {
-  color: var(--amber);
-}
-
-.tb-ctx.is-danger {
-  color: var(--rust);
-}
-
 /* 窗口控制 */
 .tb-window {
   display: flex;

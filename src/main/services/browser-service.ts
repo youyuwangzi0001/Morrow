@@ -13,7 +13,7 @@
  *
  * 本文件不 import main/index / ipc / preload，避免循环依赖；窗口通过 IPC event.sender 反查。
  */
-import { app, BrowserWindow, WebContentsView, session, shell, type Session, type WebContents } from 'electron'
+import { app, BrowserWindow, WebContentsView, session, type Session, type WebContents } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -34,6 +34,7 @@ import {
   type BrowserState
 } from '../../core/browser-bridge'
 import { dataPath } from './paths'
+import { revealInFileManager } from './reveal'
 import { log } from './logger'
 
 /** Agent 打开网页时通知渲染层展开浏览器面板 */
@@ -860,7 +861,7 @@ export class BrowserService {
     } catch {
       throw new Error('这个路径不是可定位的文件。')
     }
-    shell.showItemInFolder(realTarget)
+    revealInFileManager(realTarget)
   }
 
   decideDownload(id: string, allow: boolean): void {
@@ -1051,21 +1052,36 @@ export class BrowserService {
     await this.waitForSurfaceShown()
     const webContents = surface.view.webContents
     const timeoutMs = Math.min(ctx.timeoutMs ?? BROWSER_LIMITS.openTimeoutMs, BROWSER_LIMITS.maxTimeoutMs)
-    try {
-      await this.withTimeout(webContents.loadURL(check.url), timeoutMs, '打开网页')
-    } catch (err) {
+    // 本地预览服务经常刚通过 terminal(start) 启动，端口还没 listen；直接打开会得到 ERR_CONNECTION_REFUSED。
+    // 对 localhost 做短暂重试，给静态服务器一个就绪窗口，而不是让 Agent 立刻换端口重来。
+    const local = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(check.url)
+    const attempts = local ? 12 : 1
+    let lastError: unknown = null
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500))
       try {
-        webContents.stop()
-      } catch {
-        // 忽略
+        await this.withTimeout(webContents.loadURL(check.url), timeoutMs, '打开网页')
+        return this.stateOf(webContents)
+      } catch (err) {
+        lastError = err
+        const message = err instanceof Error ? err.message : String(err)
+        const retryable = /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET/i.test(message)
+        if (attempt < attempts - 1 && retryable) continue
+        try {
+          webContents.stop()
+        } catch {
+          // 忽略
+        }
+        this.reportError({
+          code: 'LOAD_FAILED',
+          message: `页面加载失败：${message}`
+        })
+        throw new Error(
+          `打开网页失败：${message}${local ? '。本地预览服务可能还没启动或端口已变化，请查看终端日志并确认服务正在监听这个端口。' : ''}`
+        )
       }
-      this.reportError({
-        code: 'LOAD_FAILED',
-        message: `页面加载失败：${err instanceof Error ? err.message : String(err)}`
-      })
-      throw new Error(`打开网页失败：${err instanceof Error ? err.message : String(err)}`)
     }
-    return this.stateOf(webContents)
+    throw new Error(`打开网页失败：${lastError instanceof Error ? lastError.message : String(lastError)}`)
   }
 
   async automationClick(target: string, ctx: BrowserCallContext): Promise<BrowserActionResult> {

@@ -130,6 +130,10 @@ describe('write_file / edit_file（快照与 diff）', () => {
       expect(readFileSync(join(ws.root, 'out/报告.md'), 'utf8')).toBe('# 标题\n内容')
       expect(result.meta).toMatchObject({ created: true, snapshotId: null })
       expect(String(result.meta?.afterHash)).toMatch(/^[0-9a-f]{64}$/)
+      // 新建文件也要有 diff，UI 才能在写入后显示 +行数
+      expect(result.meta).toMatchObject({ diffAdded: 2, diffRemoved: 0 })
+      expect(String(result.meta?.diff)).toContain('+# 标题')
+      expect(String(result.meta?.diff)).toContain('+内容')
     } finally {
       ws.cleanup()
     }
@@ -218,6 +222,25 @@ describe('write_file / edit_file（快照与 diff）', () => {
     expect(diff.added).toBe(1)
     expect(diff.removed).toBe(1)
   })
+
+  it('大文件局部修改仍生成真实 diff，而不是 +0/-0', () => {
+    const lines = Array.from({ length: 2490 }, (_, index) => `line ${index}`)
+    const before = lines.join('\n')
+    const after = lines.map((line, index) => (index === 1200 ? 'line changed' : line)).join('\n')
+    const diff = createUnifiedDiff(before, after, 'big.css')
+    expect(diff.added).toBe(1)
+    expect(diff.removed).toBe(1)
+    expect(diff.patch).toContain('-line 1200')
+    expect(diff.patch).toContain('+line changed')
+    expect(diff.patch).not.toContain('内容较大')
+  })
+
+  it('只有换行符变化时给出明确说明而不是“内容没有变化”', () => {
+    const diff = createUnifiedDiff('a\nb\n', 'a\r\nb\r\n', 'f.txt')
+    expect(diff.added).toBe(0)
+    expect(diff.removed).toBe(0)
+    expect(diff.patch).toContain('仅换行符')
+  })
 })
 
 describe('list_dir / glob / grep', () => {
@@ -277,6 +300,21 @@ describe('list_dir / glob / grep', () => {
     }
   })
 
+  it('grep 的 path 传单个文件时直接搜索该文件', async () => {
+    const ws = wsWithTree()
+    try {
+      const result = await executeTool('grep', { pattern: '异常', path: 'notes/异常记录.md' }, makeCtx(ws))
+      expect(result.ok, result.error).toBe(true)
+      expect(result.meta?.matches).toBe(1)
+      expect(result.output).toContain('notes/异常记录.md:1')
+      const miss = await executeTool('grep', { pattern: '不存在的内容', path: 'notes/普通.md' }, makeCtx(ws))
+      expect(miss.ok).toBe(true)
+      expect(miss.output).toContain('没有找到匹配内容')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
   it('grep 跳过二进制文件并报告数量', async () => {
     const ws = wsWithTree()
     try {
@@ -301,6 +339,41 @@ describe('list_dir / glob / grep', () => {
   })
 })
 
+describe('delete_file（删除 diff 与备份）', () => {
+  it('删除文本文件：生成删除 diff、保留写前快照、文件真实消失', async () => {
+    const ws = makeTempWorkspace({ 'old.txt': '第一行\n第二行\n' })
+    try {
+      const result = await executeTool('delete_file', { path: 'old.txt' }, makeCtx(ws))
+      expect(result.ok, result.error).toBe(true)
+      expect(existsSync(join(ws.root, 'old.txt'))).toBe(false)
+      expect(result.meta).toMatchObject({
+        path: 'old.txt',
+        deleted: true,
+        afterHash: null,
+        diffAdded: 0,
+        diffRemoved: 2
+      })
+      expect(String(result.meta?.diff)).toContain('-第一行')
+      const snapshotPath = String(result.meta?.snapshotPath)
+      expect(existsSync(snapshotPath)).toBe(true)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('拒绝删除文件夹', async () => {
+    const ws = makeTempWorkspace({ 'dir/file.txt': 'x' })
+    try {
+      const result = await executeTool('delete_file', { path: 'dir' }, makeCtx(ws))
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('文件夹')
+      expect(existsSync(join(ws.root, 'dir'))).toBe(true)
+    } finally {
+      ws.cleanup()
+    }
+  })
+})
+
 describe('run_command', () => {
   it('真实执行命令并返回输出与退出码', async () => {
     const ws = makeTempWorkspace()
@@ -310,6 +383,23 @@ describe('run_command', () => {
       expect(result.ok).toBe(true)
       expect(result.output).toContain('你好 Morrow')
       expect(result.meta).toMatchObject({ exitCode: 0, timedOut: false })
+    } finally {
+      ws.cleanup()
+    }
+  }, 20_000)
+
+  it('使用注入的默认终端而不是固定 PowerShell', async () => {
+    if (!isWindows) return
+    const ws = makeTempWorkspace()
+    try {
+      const result = await executeTool(
+        'run_command',
+        { command: 'echo cmd_shell_ok' },
+        makeCtx(ws, { commandShell: { id: 'cmd', label: '命令提示符', file: 'cmd.exe' } })
+      )
+      expect(result.ok, result.error).toBe(true)
+      expect(result.output).toContain('cmd_shell_ok')
+      expect(result.meta).toMatchObject({ shellId: 'cmd', shell: '命令提示符' })
     } finally {
       ws.cleanup()
     }

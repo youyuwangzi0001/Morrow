@@ -645,22 +645,11 @@
   color: var(--rust, #a8654f);
 }
 
-.st-about-privacy {
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-
 .st-about-text {
   margin-top: 6px;
   color: var(--text-2);
   font-size: 12px;
   line-height: 1.75;
-}
-
-.st-about-privacy .st-link {
-  display: inline-flex;
-  margin-top: 6px;
 }
 
 .st-danger-zone {

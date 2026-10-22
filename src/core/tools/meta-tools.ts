@@ -34,8 +34,8 @@ export const todoWriteTool: ToolImpl = {
   definition: {
     name: 'todo_write',
     description:
-      '更新任务计划面板。用于多步骤任务：先列出 3-6 个步骤，执行过程中把当前步骤标为 in_progress、完成标为 completed。' +
-      '每次传入完整列表（不是增量）。简单的一两步任务不需要用。',
+      '更新任务计划面板。用于多步骤任务：先列出当前要执行的一小段，执行过程中把当前步骤标为 in_progress、完成标为 completed。' +
+      '每次传入完整列表（不是增量），可以分批追加下一段步骤；简单的一两步任务不需要用。',
     parameters: {
       type: 'object',
       properties: {
@@ -462,10 +462,26 @@ export const swarmTool: ToolImpl = {
         // 失败的子任务也可能已经改过文件；检查点必须登记，回退才不会漏文件
         for (const file of result.changedFiles ?? []) {
           const path = typeof file.absolutePath === 'string' ? file.absolutePath : ''
-          if (!path || typeof file.afterHash !== 'string') continue
+          const deleted = file.deleted === true
+          if (!path || (typeof file.afterHash !== 'string' && !deleted)) continue
           const existing = changedFiles.get(path)
-          if (existing) existing.afterHash = file.afterHash
-          else changedFiles.set(path, { ...file })
+          // 一个子任务新建、另一个子任务删除：整轮净零，不登记临时文件。
+          if (deleted && existing?.created === true) {
+            changedFiles.delete(path)
+            continue
+          }
+          if (existing) {
+            existing.afterHash = typeof file.afterHash === 'string' ? file.afterHash : null
+            existing.deleted = deleted
+            existing.diffAdded =
+              (typeof existing.diffAdded === 'number' ? existing.diffAdded : 0) +
+              (typeof file.diffAdded === 'number' ? file.diffAdded : 0)
+            existing.diffRemoved =
+              (typeof existing.diffRemoved === 'number' ? existing.diffRemoved : 0) +
+              (typeof file.diffRemoved === 'number' ? file.diffRemoved : 0)
+          } else {
+            changedFiles.set(path, { ...file })
+          }
         }
       })
     }

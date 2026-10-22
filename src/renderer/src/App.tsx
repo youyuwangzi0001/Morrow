@@ -23,6 +23,7 @@ import { DemoOverlay } from './features/demo/DemoOverlay'
 import { WorkbenchHost } from './features/workbench/WorkbenchHost'
 import { SideChat } from './features/sidechat/SideChat'
 import { RewindConfirm } from './features/checkpoints/RewindConfirm'
+import { CloseConfirm } from './features/shell/CloseConfirm'
 import { Button, HorizonLoader, ResizeHandle, hasOpenModal } from './ui'
 
 /**
@@ -223,6 +224,7 @@ export default function App(): React.JSX.Element {
       <Onboarding />
       <CommandPalette />
       <RewindConfirm />
+      <CloseConfirm />
       <DemoOverlay />
       <Toasts />
     </div>

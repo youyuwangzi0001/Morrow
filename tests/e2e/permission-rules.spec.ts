@@ -71,7 +71,7 @@ test('工作区权限规则持久化、deny 优先与审批日志', async () => 
       { text: '命令被拒绝。' },
       {
         text: '需要审批的命令。',
-        toolCalls: [{ name: 'run_command', arguments: { command: "Write-Output 'needs-approval'" } }]
+        toolCalls: [{ name: 'run_command', arguments: { command: 'Remove-Item out -Recurse -Force' } }]
       },
       { text: '审批命令已执行。' }
     ]
@@ -111,7 +111,6 @@ test('工作区权限规则持久化、deny 优先与审批日志', async () => 
     await page.locator('.composer-input').fill('执行需要审批的命令')
     await page.locator('.composer-input').press('Enter')
     await waitForPermission(page, 45_000)
-    await expect(page.getByRole('button', { name: '始终允许（本文件夹）' })).toBeVisible()
     await clickPermissionCard(page, 'once')
     await expect(page.getByText('审批命令已执行。')).toBeVisible({ timeout: 45_000 })
     await waitUntil(async () => (await readStore(page)).run === null, 20_000, '第三条完成')

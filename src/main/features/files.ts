@@ -19,7 +19,7 @@
  * 安全：边界/symlink/大小/二进制/原子写/快照/mtime 冲突都在 services/workspace-files 里；
  * 本模块额外做：只读全局拦截、缺失 workspace 时的安全回退、startDrag 只允许普通文件。
  */
-import { app, nativeImage, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, nativeImage, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { registerFeatureHandler } from '../feature-ipc'
@@ -49,6 +49,7 @@ import {
   writeWorkspaceFile
 } from '../services/workspace-files'
 import { log } from '../services/logger'
+import { revealInFileManager } from '../services/reveal'
 
 const SNAPSHOT_ROOT = () => dataPath('snapshots')
 
@@ -298,7 +299,7 @@ registerFeatureHandler('feature:files:reveal', (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   const stat = statWorkspaceFile(workspace, text(input.path))
-  shell.showItemInFolder(stat.absolutePath)
+  revealInFileManager(stat.absolutePath)
   return { ok: true, path: stat.path }
 })
 

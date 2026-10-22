@@ -14,6 +14,7 @@ import { clampInt, formatDuration } from '../util'
 import { getNumber, getString } from './args'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 import { displayPath, resolveWorkspacePath } from './paths'
+import { buildOneShotInvocation, commandFailureHint, shellSyntaxHint } from '../shell'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 300_000
@@ -64,19 +65,16 @@ export function killProcessTree(pid: number | undefined): void {
   }
 }
 
-function buildLaunch(command: string): { file: string; args: string[]; detached: boolean } {
-  if (process.platform === 'win32') {
-    // 强制 PowerShell 以 UTF-8 输出，避免中文乱码；$ProgressPreference 防止进度条污染输出
-    const prefix =
-      "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " +
-      '$OutputEncoding=[Console]::OutputEncoding; $ProgressPreference="SilentlyContinue"; '
-    return {
-      file: 'powershell.exe',
-      args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', prefix + command],
-      detached: false
-    }
+function buildLaunch(
+  command: string,
+  shell: Parameters<typeof buildOneShotInvocation>[0]
+): { file: string; args: string[]; detached: boolean } {
+  const invocation = buildOneShotInvocation(shell, command)
+  return {
+    ...invocation,
+    // POSIX 需要独立进程组，中断时可以整组杀掉；Windows 由 taskkill /T 处理
+    detached: process.platform !== 'win32'
   }
-  return { file: '/bin/sh', args: ['-lc', command], detached: true }
 }
 
 interface CapturedOutput {
@@ -142,7 +140,7 @@ export const runCommandTool: ToolImpl = {
   definition: {
     name: 'run_command',
     description:
-      '在工作区内执行一条命令（Windows 默认 PowerShell，其它平台 sh）。适合做计算、批处理、跑脚本、验证结果。' +
+      '在工作区内执行一条命令（使用用户设置的默认终端：PowerShell 7 / Windows PowerShell / cmd / Git Bash / WSL；其它平台 sh）。适合做计算、批处理、跑脚本、验证结果。' +
       '默认 120 秒超时，输出最多 32KB；工作目录必须在工作区内。危险命令（格式化磁盘/关机/删库/远程脚本等）会被权限层拦截。' +
       '执行前先想清楚命令是否只读、会不会覆盖用户文件；优先使用能明确看到结果的命令。',
     parameters: {
@@ -178,13 +176,16 @@ export const runCommandTool: ToolImpl = {
       command,
       cwd: displayCwd,
       absoluteCwd: resolved.absolute,
-      timeoutMs
+      timeoutMs,
+      shell: ctx.commandShell?.label ?? '默认终端',
+      shellId: ctx.commandShell?.id ?? 'default',
+      syntaxHint: shellSyntaxHint(ctx.commandShell)
     }
     if (ctx.signal.aborted) {
       return errResult('命令执行被中断（本轮运行已停止）。', undefined, { ...baseMeta, aborted: true })
     }
 
-    const { file, args, detached } = buildLaunch(command)
+    const { file, args, detached } = buildLaunch(command, ctx.commandShell)
     let child: ChildProcess
     try {
       child = spawn(file, args, {
@@ -281,7 +282,7 @@ export const runCommandTool: ToolImpl = {
         if (exitCode !== 0) {
           const result = errResult(
             `命令执行失败（退出码 ${exitCode ?? '未知'}）。`,
-            '检查命令语法、文件路径是否正确；如果是脚本报错，先读一下错误信息再修改。',
+            commandFailureHint(stderr, stdout, ctx.commandShell?.label ?? '默认终端'),
             meta
           )
           result.output = transcript

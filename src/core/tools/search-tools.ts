@@ -151,13 +151,14 @@ export const grepTool: ToolImpl = {
     name: 'grep',
     description:
       '在工作区文件内容里搜索正则表达式（JS 正则语法），返回「文件:行号: 内容」。' +
-      '可配合 include 限定文件类型（如 "*.md"）。自动跳过二进制与大于 1MB 的文件，最多返回 100 条匹配。' +
+      'path 可以是目录，也可以直接是单个文件。可配合 include 限定文件类型（如 "*.md"）。' +
+      '自动跳过二进制与大于 1MB 的文件，最多返回 100 条匹配。' +
       '找文件名用 glob，找文件内容用 grep。',
     parameters: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: '正则表达式，例如 "异常|退款" 或 "ORDER-\\\\d+"' },
-        path: { type: 'string', description: '搜索目录，相对工作区根目录（默认 "."）' },
+        path: { type: 'string', description: '搜索目录或单个文件，相对工作区根目录（默认 "."）' },
         include: { type: 'string', description: '只搜索匹配该 glob 的文件，例如 "*.md" 或 "**/*.csv"' },
         ignore_case: { type: 'boolean', description: '是否忽略大小写（默认 false）' }
       },
@@ -184,10 +185,28 @@ export const grepTool: ToolImpl = {
     const includeRegExp = include ? compileInclude(include) : null
     const resolved = resolveWorkspacePath(searchPath, ctx.workspace, {
       escapeApproved: ctx.escapeApproved,
-      requireExist: true,
-      requireDirectory: true
+      requireExist: true
     })
-    const { files, scanned, truncated } = await walkFiles(resolved.real, { signal: ctx.signal })
+    const singleFile = !resolved.isDirectory
+    let files: WalkEntry[]
+    let scanned: number
+    let truncated: boolean
+    if (singleFile) {
+      let size = 0
+      try {
+        size = statSync(resolved.real).size
+      } catch {
+        // 读不到大小时仍尝试读取，后续 readFileSync 失败会跳过
+      }
+      files = [{ absolute: resolved.real, relative: basename(resolved.real), name: basename(resolved.real), size }]
+      scanned = 1
+      truncated = false
+    } else {
+      const walked = await walkFiles(resolved.real, { signal: ctx.signal })
+      files = walked.files
+      scanned = walked.scanned
+      truncated = walked.truncated
+    }
     const matches: string[] = []
     let filesSearched = 0
     let skippedBinary = 0
@@ -196,7 +215,7 @@ export const grepTool: ToolImpl = {
 
     for (const file of files) {
       if (matches.length >= MAX_GREP_MATCHES || filesSearched >= MAX_GREP_FILES) break
-      if (includeRegExp && !includeRegExp.test(file.relative) && !includeRegExp.test(file.name)) continue
+      if (!singleFile && includeRegExp && !includeRegExp.test(file.relative) && !includeRegExp.test(file.name)) continue
       if (file.size > MAX_GREP_FILE_BYTES) {
         skippedLarge += 1
         continue

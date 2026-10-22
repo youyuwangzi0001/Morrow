@@ -3,8 +3,8 @@
  *
  * 三档模式（见 ARCHITECTURE §7）：
  * - read-only：只读工具自动允许；写/执行直接拒绝（提示切换模式）；越界仍会审批；
- * - ask（默认）：读自动；写/执行询问；越界询问；
- * - auto：工作区内写/执行自动；危险命令与越界仍然询问。
+ * - ask（默认）：读自动；工作区内写/执行自动；危险命令、外部动作与越界询问；
+ * - auto（完全访问）：写入、命令、危险操作、外部动作与越界一律自动执行，不弹审批。
  *
  * 显式会话模式（审计报告第 5 项）叠加在权限档位之上：
  * - chat：只允许只读工具 + ask_user；写文件/跑命令/写记忆/目标/计划/子代理等一律**直接拒绝**，
@@ -44,7 +44,8 @@ interface DangerRule {
 /**
  * 危险命令规则。命中即 risk=high：
  * - 在 read-only 下直接拒绝；
- * - 在 ask/auto 下仍然强询问（红色风险），且「始终允许」记忆不生效。
+ * - 在 ask 下仍然询问（红色风险），且「始终允许」记忆不生效；
+ * - 在 auto（完全访问）下直接执行，由用户事先承担授权范围。
  */
 const DANGER_RULES: DangerRule[] = [
   // 只把 `format C:` / `format /fs:...` 当成磁盘格式化；`npm run format` 等格式化工具不误报
@@ -238,7 +239,7 @@ export function isChatModeToolAllowed(toolName: string, category: ToolCategory):
 }
 
 export type PermissionGate =
-  | { action: 'allow' }
+  | { action: 'allow'; escape?: boolean }
   | { action: 'deny'; reason: string; hint?: string }
   | {
       action: 'ask'
@@ -261,6 +262,7 @@ const PATH_TOOLS = new Set([
   'read_pptx',
   'write_file',
   'edit_file',
+  'delete_file',
   'list_dir',
   'glob',
   'grep',
@@ -588,6 +590,13 @@ function buildWritePreview(target: PermissionTarget, ctx: PermissionPolicyContex
     }
     return { kind: 'diff', content: `修改文件 ${display}\n- ${oldString}\n+ ${newString}` }
   }
+  if (target.toolName === 'delete_file') {
+    if (before !== null) {
+      const diff = createUnifiedDiff(before, '', display)
+      return { kind: 'diff', content: diff.patch || `删除文件 ${display}` }
+    }
+    return { kind: 'text', content: `删除文件：${display}` }
+  }
   return undefined
 }
 
@@ -616,6 +625,7 @@ function buildPreview(target: PermissionTarget, ctx: PermissionPolicyContext): P
     }
     case 'write_file':
     case 'edit_file':
+    case 'delete_file':
       return buildWritePreview(target, ctx)
     case 'read_file':
     case 'list_dir':
@@ -683,6 +693,8 @@ function summarize(target: PermissionTarget, ctx: PermissionPolicyContext): stri
       return shown ? `写入文件：${shown}` : '写入文件'
     case 'edit_file':
       return shown ? `修改文件：${shown}` : '修改文件'
+    case 'delete_file':
+      return shown ? `删除文件：${shown}` : '删除文件'
     case 'read_file':
       return shown ? `读取文件：${shown}` : '读取文件'
     case 'open_artifact': {
@@ -772,7 +784,7 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
       return {
         action: 'deny',
         reason: '当前是「只读模式」，Morrow 不能写入项目记忆。',
-        hint: '需要记录长期信息时，请把输入框下方的权限切到「询问」或「自动」后重试。'
+        hint: '需要记录长期信息时，请把输入框下方的权限切到「询问」或「完全访问」后重试。'
       }
     }
     return {
@@ -781,11 +793,16 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
         target.category === 'exec'
           ? '当前是「只读模式」，Morrow 不能运行命令或调用外部工具。'
           : '当前是「只读模式」，Morrow 不能修改文件或写入记忆。',
-      hint: '如果确实需要执行，请把输入框下方的权限切到「询问」或「自动」后重试。'
+      hint: '如果确实需要执行，请把输入框下方的权限切到「询问」或「完全访问」后重试。'
     }
   }
 
   if (escape.escaped) {
+    // 完全访问：用户已明确选择「无需任何批准」，越界操作也直接执行；
+    // 但聊天/研究等受限会话仍保留审批边界，不能借档位绕过模式限制。
+    if (ctx.mode === 'auto' && (ctx.sessionMode === undefined || ctx.sessionMode === 'work')) {
+      return { action: 'allow', escape: true }
+    }
     return {
       action: 'ask',
       title: target.title,
@@ -814,8 +831,9 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
   if (target.category === 'read') return { action: 'allow' }
 
   // R8 外部动作：web_fetch / mcp_call。只读已在 writeLike 分支拒绝；
-  // ask 与 auto 都必须逐次审批（不查 sessionGrants），避免自动模式静默外发/启动外部进程。
+  // ask 下必须逐次审批（不查 sessionGrants），避免在「询问」档静默外发/启动外部进程。
   if (EXTERNAL_ACTION_TOOLS.has(target.toolName)) {
+    if (ctx.mode === 'auto') return { action: 'allow' }
     return {
       action: 'ask',
       title: target.title,
@@ -830,7 +848,9 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
   // 写 / 执行（read-only 已在上方直接拒绝）
   if (target.toolName === 'run_command' || target.toolName === 'terminal') {
     if (target.toolName === 'terminal' && terminalAction === 'write') {
-      // 向已有 shell/任务注入 stdin 等价于执行任意内容，无法判断危险性 → 每次都单独确认
+      // 向已有 shell/任务注入 stdin 等价于执行任意内容，无法判断危险性。
+      // 完全访问放行；询问档每次都单独确认。
+      if (ctx.mode === 'auto') return { action: 'allow' }
       return {
         action: 'ask',
         title: target.title,
@@ -853,6 +873,7 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
           : ''
     const danger = detectDangerousCommand(command)
     if (danger) {
+      if (ctx.mode === 'auto') return { action: 'allow' }
       return {
         action: 'ask',
         title: target.title,
@@ -865,6 +886,7 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
     }
     const outsidePath = detectOutsidePathInCommand(command, ctx.workspace)
     if (outsidePath) {
+      if (ctx.mode === 'auto') return { action: 'allow', escape: true }
       return {
         action: 'ask',
         title: target.title,
@@ -885,7 +907,9 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
   if (allowedByRule) return { action: 'allow' }
 
   if (ctx.sessionGrants.has(signature)) return { action: 'allow' }
-  if (ctx.mode === 'auto') return { action: 'allow' }
+  // 完全访问：一切直接执行；询问档等价于旧版「自动」：工作区内写/执行直接放行。
+  // 危险命令、外部动作、越界与终端写入已在上面单独处理。
+  if (ctx.mode === 'auto' || ctx.mode === 'ask') return { action: 'allow' }
 
   return {
     action: 'ask',
@@ -933,7 +957,7 @@ export function deniedMessage(target: PermissionTarget, reason: 'user' | 'unatte
       hint: '不要重复执行同一条命令。可以换一种更安全的方式（例如只读命令、先解释目的），或者询问用户希望在哪种方式下继续。'
     }
   }
-  if (target.toolName === 'write_file' || target.toolName === 'edit_file') {
+  if (target.toolName === 'write_file' || target.toolName === 'edit_file' || target.toolName === 'delete_file') {
     return {
       error: '用户拒绝了这次文件修改。',
       hint: '不要再次尝试同样的修改。请先向用户说明你打算改什么、为什么改，等用户确认后再试；或者改为只读的分析/建议。'

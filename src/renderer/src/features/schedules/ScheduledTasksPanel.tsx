@@ -345,7 +345,7 @@ export function ScheduledTasksPanel({ open, onClose }: { open: boolean; onClose:
       open={open}
       onClose={onClose}
       title="定时任务"
-      description="到点自动在新对话里执行。Morrow 需要保持运行；关闭窗口后留在托盘即可。"
+      description="到点自动在新对话里执行。Morrow 需要保持运行；关闭窗口时选择「最小化到任务栏」即可。"
       width={1040}
       ariaLabel="定时任务"
       footer={

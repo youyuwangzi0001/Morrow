@@ -587,7 +587,7 @@ export function useEditorDocs(): {
   const saveAll = useCallback(async (): Promise<boolean> => {
     if (readOnlyMode) {
       if (docsRef.current.some((doc) => doc.dirty)) {
-        notify('warning', '当前是只读模式，未保存的修改无法写入。可以切回「询问」或「自动」后再保存。')
+        notify('warning', '当前是只读模式，未保存的修改无法写入。可以切回「询问」或「完全访问」后再保存。')
         return false
       }
       return true

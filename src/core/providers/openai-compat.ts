@@ -24,14 +24,17 @@ import {
 } from './types'
 
 interface OpenAIDelta {
-  content?: string | null
+  /** 少数网关在多模态流里返回 content 数组 */
+  content?: string | Array<{ type?: string; text?: string }> | null
   reasoning_content?: string | null
   reasoning?: string | null
+  /** 旧版 OpenAI function calling（部分网关仍在使用） */
+  function_call?: { name?: string; arguments?: string | Record<string, unknown> } | null
   tool_calls?: Array<{
     index?: number
     id?: string
     type?: string
-    function?: { name?: string; arguments?: string }
+    function?: { name?: string; arguments?: string | Record<string, unknown> }
   }>
 }
 
@@ -185,6 +188,24 @@ interface ToolAccumulator {
   started: boolean
 }
 
+function contentText(content: OpenAIDelta['content']): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) return content.map((part) => part.text ?? '').join('')
+  return ''
+}
+
+function argsText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+  return ''
+}
+
 export class OpenAICompatProvider implements Provider {
   readonly id: string
   private readonly url: string
@@ -244,6 +265,8 @@ export class OpenAICompatProvider implements Provider {
     let hadParseError = false
     // 少数网关不返回 tool_call.index：沿用最近一次的索引，避免每个分片都变成幽灵调用
     let currentIndex = 0
+    // 旧版 function_call 只有一个调用，用 -1 与 tool_calls 区分
+    let legacyFunction: ToolAccumulator | null = null
 
     for await (const payload of iterateSSEData(response.body, () => {
       completed = true
@@ -275,9 +298,10 @@ export class OpenAICompatProvider implements Provider {
         hasOutput = true
         yield { type: 'thinking_delta', text: reasoning }
       }
-      if (typeof delta.content === 'string' && delta.content.length > 0) {
+      const textDelta = contentText(delta.content)
+      if (textDelta) {
         hasOutput = true
-        yield { type: 'text_delta', text: delta.content }
+        yield { type: 'text_delta', text: textDelta }
       }
       for (const call of delta.tool_calls ?? []) {
         const index = typeof call.index === 'number' ? call.index : currentIndex
@@ -289,7 +313,7 @@ export class OpenAICompatProvider implements Provider {
         }
         if (call.id && !acc.id) acc.id = call.id
         if (call.function?.name && !acc.name) acc.name = call.function.name
-        const argsDelta = call.function?.arguments ?? ''
+        const argsDelta = argsText(call.function?.arguments)
         if (argsDelta) acc.args += argsDelta
         if (!acc.started && acc.name) {
           acc.started = true
@@ -302,10 +326,32 @@ export class OpenAICompatProvider implements Provider {
           yield { type: 'tool_call_delta', index, argsDelta }
         }
       }
+      if (delta.function_call) {
+        if (!legacyFunction) legacyFunction = { index: -1, id: '', name: '', args: '', started: false }
+        const name = delta.function_call.name
+        if (name && !legacyFunction.name) legacyFunction.name = name
+        const argsDelta = argsText(delta.function_call.arguments)
+        if (argsDelta) legacyFunction.args += argsDelta
+        if (!legacyFunction.started && legacyFunction.name) {
+          legacyFunction.started = true
+          legacyFunction.id = legacyFunction.id || newId('call')
+          hasOutput = true
+          yield { type: 'tool_call_start', index: -1, id: legacyFunction.id, name: legacyFunction.name }
+          if (legacyFunction.args) {
+            yield { type: 'tool_call_delta', index: -1, argsDelta: legacyFunction.args }
+          }
+        } else if (legacyFunction.started && argsDelta) {
+          hasOutput = true
+          yield { type: 'tool_call_delta', index: -1, argsDelta }
+        }
+      }
     }
 
     // 流结束：补发 tool_call_end（含容错解析的参数）
-    for (const acc of [...toolAcc.values()].sort((a, b) => a.index - b.index)) {
+    const accumulators = [...toolAcc.values()]
+    if (legacyFunction?.name) accumulators.push(legacyFunction)
+
+    for (const acc of accumulators.sort((a, b) => a.index - b.index)) {
       if (!acc.name) continue
       finalizedToolCalls += 1
       if (!acc.started) {

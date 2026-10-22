@@ -424,7 +424,12 @@ export class SessionStore {
       id: makeId(source.temporary ? 'tmp' : 's'),
       ...(source.temporary ? { temporary: true } : {}),
       title: (title?.trim() || `${source.title} · 分支`).slice(0, 80),
-      messages: source.messages.slice(0, index + 1).map((message) => JSON.parse(JSON.stringify(message)) as ChatMessage),
+      // 检查点按会话隔离：分叉后的旧阶段节点没有可回退的记录，复制消息时去掉标记。
+      messages: source.messages.slice(0, index + 1).map((message) => {
+        const copy = JSON.parse(JSON.stringify(message)) as ChatMessage
+        delete copy.stageBoundary
+        return copy
+      }),
       todos: source.todos.map((todo) => ({ ...todo })),
       artifacts: source.artifacts.map((artifact) => ({ ...artifact })),
       pinned: false,

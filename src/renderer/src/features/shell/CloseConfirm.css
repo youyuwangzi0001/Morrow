@@ -1,0 +1,91 @@
+.close-choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.close-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  width: 100%;
+  padding: 15px 16px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-inset);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.close-choice:hover:not(:disabled) {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+}
+
+.close-choice:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.close-choice:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.close-choice:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.close-choice-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.close-choice-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.close-choice-copy strong {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.close-choice-copy span {
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+}
+
+.close-choice.is-danger:hover:not(:disabled) {
+  border-color: rgba(194, 121, 95, 0.42);
+}
+
+.close-choice.is-danger .close-choice-icon {
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.close-choice-error {
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: var(--fs-micro);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .close-choice {
+    transition: none;
+  }
+}

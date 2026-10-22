@@ -261,6 +261,12 @@
   display: flex;
   align-items: stretch;
   flex: 0 0 auto;
+  cursor: grab;
+}
+
+.canvas-doc-tab.is-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
 }
 
 .canvas-doc-tab .canvas-tab-inner {

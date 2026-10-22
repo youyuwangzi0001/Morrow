@@ -42,7 +42,7 @@ class ParallelTaskProvider implements Provider {
     if (step === 1) {
       if (label === 'A') {
         yield { type: 'tool_call_start', index: 0, id: 'write-a', name: 'write_file' }
-        yield { type: 'tool_call_end', index: 0, id: 'write-a', name: 'write_file', input: { path: 'a.txt', content: 'A' } }
+        yield { type: 'tool_call_end', index: 0, id: 'write-a', name: 'write_file', input: { path: '../a.txt', content: 'A' } }
       } else {
         yield { type: 'tool_call_start', index: 0, id: 'ask-b', name: 'ask_user' }
         yield {
@@ -112,7 +112,7 @@ describe('并行子代理交互串行', () => {
       expect(events.filter((event) => event.type === 'question_answered')).toHaveLength(1)
       expect(maxOpen, '同时打开了两张交互卡').toBe(1)
       expect(open).toBe(0)
-      expect(existsSync(join(ws.root, 'a.txt'))).toBe(true)
+      expect(existsSync(join(ws.root, '..', 'a.txt'))).toBe(true)
 
       const taskResults = result.messages
         .flatMap((message) => message.content)

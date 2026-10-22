@@ -217,6 +217,43 @@ export function Canvas(): React.JSX.Element | null {
   const [drawerSettled, setDrawerSettled] = useState(false)
   const [htmlReady, setHtmlReady] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
+  const [closedArtifacts, setClosedArtifacts] = useState<Set<string>>(new Set())
+  const [artifactOrder, setArtifactOrder] = useState<string[]>([])
+  const [docOrder, setDocOrder] = useState<string[]>([])
+  const [dragKey, setDragKey] = useState<string | null>(null)
+
+  const sessionId = session?.id ?? null
+  useEffect(() => {
+    setClosedArtifacts(new Set())
+    setArtifactOrder([])
+    setDocOrder([])
+    setDragKey(null)
+  }, [sessionId])
+
+  useEffect(() => {
+    setArtifactOrder((prev) => {
+      const ids = artifacts.map((artifact) => artifact.id)
+      const kept = prev.filter((id) => ids.includes(id))
+      return [...kept, ...ids.filter((id) => !kept.includes(id))]
+    })
+    // 从对话或空态重新打开一个已关闭的成品时，重新显示页签。
+    if (canvas.artifactId) {
+      setClosedArtifacts((prev) => {
+        if (!prev.has(canvas.artifactId!)) return prev
+        const next = new Set(prev)
+        next.delete(canvas.artifactId!)
+        return next
+      })
+    }
+  }, [artifacts, canvas.artifactId])
+
+  useEffect(() => {
+    const ids = editor.docs.map((doc) => doc.id)
+    setDocOrder((prev) => {
+      const kept = prev.filter((id) => ids.includes(id))
+      return [...kept, ...ids.filter((id) => !kept.includes(id))]
+    })
+  }, [editor.docs])
 
   useEffect(() => {
     if (!canvas.open) {
@@ -386,7 +423,37 @@ export function Canvas(): React.JSX.Element | null {
     !loading &&
     !error &&
     Boolean(active && ['code', 'markdown', 'html', 'text'].includes(displayKind))
-  const tabsVisible = editor.docs.length > 0 || artifacts.length > 1
+  const visibleArtifacts = artifacts.filter((artifact) => !closedArtifacts.has(artifact.id))
+  const artifactRank = new Map(artifactOrder.map((id, index) => [id, index]))
+  const orderedArtifacts = [...visibleArtifacts].sort(
+    (a, b) => (artifactRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (artifactRank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+  )
+  const docRank = new Map(docOrder.map((id, index) => [id, index]))
+  const orderedDocs = [...editor.docs].sort(
+    (a, b) => (docRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (docRank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+  )
+  const tabsVisible = visibleArtifacts.length > 0 || editor.docs.length > 0
+
+  const moveTab = (from: string, to: string, ids: string[], setIds: (next: string[]) => void): void => {
+    if (from === to) return
+    const current = [...ids]
+    const fromIndex = current.indexOf(from)
+    const toIndex = current.indexOf(to)
+    if (fromIndex < 0 || toIndex < 0) return
+    current.splice(fromIndex, 1)
+    current.splice(toIndex, 0, from)
+    setIds(current)
+  }
+
+  const closeArtifactTab = (id: string): void => {
+    const index = orderedArtifacts.findIndex((artifact) => artifact.id === id)
+    const next = orderedArtifacts[index + 1] ?? orderedArtifacts[index - 1] ?? null
+    setClosedArtifacts((prev) => new Set(prev).add(id))
+    if (canvas.artifactId !== id) return
+    if (next) openCanvas(next.id)
+    else if (orderedDocs[0]) editor.selectDoc(orderedDocs[0].id)
+    else closeCanvas()
+  }
 
   const dialogTitle = !editor.dialog
     ? ''
@@ -577,55 +644,117 @@ export function Canvas(): React.JSX.Element | null {
 
         {tabsVisible ? (
           <div className="canvas-tabs" role="tablist" aria-label="打开的成品与文件">
-            {artifacts.map((artifact) => {
+            {orderedArtifacts.map((artifact) => {
               const tabKind = resolveKind(artifact)
               const preview = previewableArtifactKind(artifact)
               const selected = !activeDoc && artifact.id === active?.id
+              const key = `a:${artifact.id}`
               return (
-                <button
+                <div
                   key={artifact.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  className={['canvas-tab', selected ? 'is-active' : ''].join(' ')}
-                  onClick={() => {
-                    editor.selectDoc(null)
-                    openCanvas(artifact.id)
-                    openPreviewableArtifact(artifact)
+                  className={[
+                    'canvas-doc-tab',
+                    selected ? 'is-active' : '',
+                    dragKey === key ? 'is-dragging' : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  draggable
+                  onDragStart={() => setDragKey(key)}
+                  onDragEnd={() => setDragKey(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (dragKey?.startsWith('a:')) {
+                      moveTab(
+                        dragKey.slice(2),
+                        artifact.id,
+                        orderedArtifacts.map((item) => item.id),
+                        setArtifactOrder
+                      )
+                    }
+                    setDragKey(null)
                   }}
-                  title={`${preview ? PREVIEW_KIND_LABEL[preview] : KIND_LABEL[tabKind]} · ${artifact.title}`}
                 >
-                  <FileGlyph kind={tabKind} />
-                  <span className="canvas-tab-title mono">{artifact.title}</span>
-                </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    className={['canvas-tab', 'canvas-tab-inner', selected ? 'is-active' : ''].join(' ')}
+                    onClick={() => {
+                      editor.selectDoc(null)
+                      openCanvas(artifact.id)
+                      openPreviewableArtifact(artifact)
+                    }}
+                    title={`${preview ? PREVIEW_KIND_LABEL[preview] : KIND_LABEL[tabKind]} · ${artifact.title}`}
+                  >
+                    <FileGlyph kind={tabKind} />
+                    <span className="canvas-tab-title mono">{artifact.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="canvas-tab-close"
+                    aria-label={`关闭 ${artifact.title}`}
+                    title={`关闭 ${artifact.title}`}
+                    onClick={() => closeArtifactTab(artifact.id)}
+                  >
+                    <X size={10} strokeWidth={1.8} aria-hidden />
+                  </button>
+                </div>
               )
             })}
-            {editor.docs.map((doc) => (
-              <div key={doc.id} className={['canvas-doc-tab', activeDoc?.id === doc.id ? 'is-active' : ''].join(' ')}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeDoc?.id === doc.id}
-                  className={['canvas-tab', 'canvas-tab-inner', activeDoc?.id === doc.id ? 'is-active' : ''].join(' ')}
-                  onClick={() => editor.selectDoc(doc.id)}
-                  title={doc.relPath || doc.title}
+            {orderedDocs.map((doc) => {
+              const key = `d:${doc.id}`
+              return (
+                <div
+                  key={doc.id}
+                  className={[
+                    'canvas-doc-tab',
+                    activeDoc?.id === doc.id ? 'is-active' : '',
+                    dragKey === key ? 'is-dragging' : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  draggable
+                  onDragStart={() => setDragKey(key)}
+                  onDragEnd={() => setDragKey(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (dragKey?.startsWith('d:')) {
+                      moveTab(
+                        dragKey.slice(2),
+                        doc.id,
+                        orderedDocs.map((item) => item.id),
+                        setDocOrder
+                      )
+                    }
+                    setDragKey(null)
+                  }}
                 >
-                  {previewGlyph(doc)}
-                  <span className="canvas-tab-title mono">{doc.title}</span>
-                  {doc.dirty ? <span className="canvas-tab-dirty" aria-hidden /> : null}
-                  {doc.readOnly ? <span className="canvas-tab-readonly mono">只读</span> : null}
-                </button>
-                <button
-                  type="button"
-                  className="canvas-tab-close"
-                  aria-label={`关闭 ${doc.title}`}
-                  title={`关闭 ${doc.title}`}
-                  onClick={() => editor.requestCloseDoc(doc.id)}
-                >
-                  <X size={10} strokeWidth={1.8} aria-hidden />
-                </button>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeDoc?.id === doc.id}
+                    className={['canvas-tab', 'canvas-tab-inner', activeDoc?.id === doc.id ? 'is-active' : ''].join(' ')}
+                    onClick={() => editor.selectDoc(doc.id)}
+                    title={doc.relPath || doc.title}
+                  >
+                    {previewGlyph(doc)}
+                    <span className="canvas-tab-title mono">{doc.title}</span>
+                    {doc.dirty ? <span className="canvas-tab-dirty" aria-hidden /> : null}
+                    {doc.readOnly ? <span className="canvas-tab-readonly mono">只读</span> : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="canvas-tab-close"
+                    aria-label={`关闭 ${doc.title}`}
+                    title={`关闭 ${doc.title}`}
+                    onClick={() => editor.requestCloseDoc(doc.id)}
+                  >
+                    <X size={10} strokeWidth={1.8} aria-hidden />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         ) : null}
 

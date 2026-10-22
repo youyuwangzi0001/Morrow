@@ -290,6 +290,125 @@
   justify-content: flex-end;
 }
 
+/* 上下文入口：输入框内的圆环；详情向上弹出，避免遮挡输入 */
+.composer-ctx {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.composer-ctx-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gold);
+  opacity: 0.82;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.composer-ctx-ring:hover,
+.composer-ctx-ring.is-open {
+  opacity: 1;
+  background: var(--surface-inset);
+}
+
+.composer-ctx-ring.is-warning {
+  color: var(--amber);
+}
+
+.composer-ctx-ring.is-danger {
+  color: var(--rust);
+}
+
+.composer-ctx-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  width: 292px;
+  max-width: calc(100% - 24px);
+  padding: 13px 14px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(120%);
+  box-shadow: var(--shadow-float);
+  color: var(--text);
+  animation: fade-in-up 140ms var(--ease-out) both;
+}
+
+.composer-ctx-pop-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+}
+
+.composer-ctx-pop-percent {
+  color: var(--gold);
+  font-size: var(--fs-micro);
+}
+
+.composer-ctx-pop-bar {
+  height: 4px;
+  margin: 8px 0 7px;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--surface-inset);
+}
+
+.composer-ctx-pop-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+}
+
+.composer-ctx-pop-sub {
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+
+.composer-ctx-pop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin: 12px 0 0;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+
+.composer-ctx-pop-grid > div {
+  min-width: 0;
+}
+
+.composer-ctx-pop-grid dt {
+  margin: 0 0 2px;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.composer-ctx-pop-grid dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 .composer-workspace {
   display: inline-flex;
   align-items: center;
@@ -331,31 +450,6 @@
   color: var(--text-3);
   font-size: 10px;
   letter-spacing: 0.04em;
-}
-
-.composer-ctx {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  transition:
-    border-color var(--dur-fast) ease,
-    background var(--dur-fast) ease,
-    color var(--dur-fast) ease;
-}
-
-.composer-ctx:hover {
-  border-color: var(--line-gold);
-  background: var(--gold-ghost);
-  color: var(--text-2);
 }
 
 /* 模型 / 权限：把 ui/Select 收成 composer 里的小 chip（宽度由容器查询控制） */
@@ -673,10 +767,6 @@
 
 /* 窄容器（画布打开 / 小窗口）逐级让位，避免工具条溢出 */
 @container (max-width: 760px) {
-  .composer-ctx {
-    display: none;
-  }
-
   /* 三个模式选项会多占一点宽度：先收起推理强度（仍可在设置里调整），保证底栏一行 */
   .composer-picker-reasoning {
     display: none;

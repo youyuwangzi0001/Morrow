@@ -22,10 +22,23 @@ function splitLines(text: string): string[] {
 }
 
 function summarize(before: string[], after: string[]): DiffResult {
-  const added = Math.max(0, after.length - before.length)
-  const removed = Math.max(0, before.length - after.length)
+  const count = (lines: string[]): Map<string, number> => {
+    const map = new Map<string, number>()
+    for (const line of lines) map.set(line, (map.get(line) ?? 0) + 1)
+    return map
+  }
+  const oldCount = count(before)
+  const newCount = count(after)
+  let removed = 0
+  let added = 0
+  for (const [line, countValue] of oldCount) {
+    removed += Math.max(0, countValue - (newCount.get(line) ?? 0))
+  }
+  for (const [line, countValue] of newCount) {
+    added += Math.max(0, countValue - (oldCount.get(line) ?? 0))
+  }
   return {
-    patch: `（内容较大，省略逐行 diff：旧文件 ${before.length} 行 → 新文件 ${after.length} 行）`,
+    patch: `（内容较大，省略逐行 diff：约 +${added} / -${removed} 行；旧文件 ${before.length} 行 → 新文件 ${after.length} 行）`,
     added,
     removed,
     truncated: true
@@ -72,18 +85,7 @@ function diffOps(a: string[], b: string[]): Array<{ type: 'eq' | 'add' | 'del'; 
   return ops
 }
 
-/**
- * 生成 unified diff 风格文本。
- * @param filePath 展示用路径（放 @@ 头）
- */
-export function createUnifiedDiff(before: string, after: string, filePath = 'file'): DiffResult {
-  if (before === after) return { patch: '', added: 0, removed: 0, truncated: false }
-  const oldLines = splitLines(before)
-  const newLines = splitLines(after)
-  if (oldLines.length > MAX_LINES_FOR_LCS || newLines.length > MAX_LINES_FOR_LCS) {
-    return summarize(oldLines, newLines)
-  }
-  const ops = diffOps(oldLines, newLines)
+function renderPatch(ops: Array<{ type: 'eq' | 'add' | 'del'; line: string; aIndex: number; bIndex: number }>, filePath: string): DiffResult {
   const added = ops.filter((op) => op.type === 'add').length
   const removed = ops.filter((op) => op.type === 'del').length
   if (added === 0 && removed === 0) return { patch: '', added: 0, removed: 0, truncated: false }
@@ -94,14 +96,12 @@ export function createUnifiedDiff(before: string, after: string, filePath = 'fil
   const context = 2
   let index = 0
   while (index < ops.length) {
-    // 找下一处变更
     if (ops[index].type === 'eq') {
       index += 1
       continue
     }
     const start = Math.max(0, index - context)
     let end = index
-    // 变更簇：两个变更之间间隔 <= context*2 就合并进同一个 hunk
     while (end < ops.length) {
       if (ops[end].type !== 'eq') {
         end += 1
@@ -120,9 +120,8 @@ export function createUnifiedDiff(before: string, after: string, filePath = 'fil
     const firstB = slice.find((op) => op.type !== 'del')?.bIndex ?? slice[0]?.bIndex ?? 0
     const oldCount = slice.filter((op) => op.type !== 'add').length
     const newCount = slice.filter((op) => op.type !== 'del').length
-    const header = `@@ -${firstA + 1},${oldCount} +${firstB + 1},${newCount} @@`
     hunks.push(`--- a/${filePath}`, `+++ b/${filePath}`)
-    hunks.push(header)
+    hunks.push(`@@ -${firstA + 1},${oldCount} +${firstB + 1},${newCount} @@`)
     patchLines += 3
     for (const op of slice) {
       const prefix = op.type === 'eq' ? ' ' : op.type === 'add' ? '+' : '-'
@@ -140,6 +139,71 @@ export function createUnifiedDiff(before: string, after: string, filePath = 'fil
     index = end
   }
   return { patch: hunks.join('\n'), added, removed, truncated }
+}
+
+/**
+ * 生成 unified diff 风格文本。
+ * @param filePath 展示用路径（放 @@ 头）
+ */
+export function createUnifiedDiff(before: string, after: string, filePath = 'file'): DiffResult {
+  if (before === after) return { patch: '', added: 0, removed: 0, truncated: false }
+  const oldLines = splitLines(before)
+  const newLines = splitLines(after)
+  // 只有换行符/行尾格式变化：内容行完全相同，给一个明确说明，不能误报成「内容没有变化」。
+  if (
+    oldLines.length === newLines.length &&
+    oldLines.every((line, index) => line === newLines[index])
+  ) {
+    return {
+      patch: `--- a/${filePath}
++++ b/${filePath}
+（仅换行符/行尾格式变化）`,
+      added: 0,
+      removed: 0,
+      truncated: false
+    }
+  }
+
+  // 大文件先裁掉公共前缀/后缀，再只对变化附近做 LCS；否则长文件会被整段降级成 +0/-0。
+  let oldStart = 0
+  let newStart = 0
+  let oldEnd = oldLines.length
+  let newEnd = newLines.length
+  if (oldLines.length > MAX_LINES_FOR_LCS || newLines.length > MAX_LINES_FOR_LCS) {
+    let prefix = 0
+    while (
+      prefix < oldLines.length &&
+      prefix < newLines.length &&
+      oldLines[prefix] === newLines[prefix]
+    ) {
+      prefix += 1
+    }
+    let suffix = 0
+    while (
+      suffix < oldLines.length - prefix &&
+      suffix < newLines.length - prefix &&
+      oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+    ) {
+      suffix += 1
+    }
+    const contextLines = 16
+    oldStart = Math.max(0, prefix - contextLines)
+    newStart = Math.max(0, prefix - contextLines)
+    oldEnd = Math.min(oldLines.length, oldLines.length - suffix + contextLines)
+    newEnd = Math.min(newLines.length, newLines.length - suffix + contextLines)
+    if (oldEnd - oldStart > MAX_LINES_FOR_LCS || newEnd - newStart > MAX_LINES_FOR_LCS) {
+      return summarize(oldLines, newLines)
+    }
+  }
+
+  const oldSlice = oldLines.slice(oldStart, oldEnd)
+  const newSlice = newLines.slice(newStart, newEnd)
+  const ops = diffOps(oldSlice, newSlice).map((op) => ({
+    ...op,
+    aIndex: op.aIndex + oldStart,
+    bIndex: op.bIndex + newStart
+  }))
+  return renderPatch(ops, filePath)
 }
 
 /** 给审批卡/工具结果用的一句话统计 */

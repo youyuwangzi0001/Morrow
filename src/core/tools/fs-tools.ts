@@ -1,5 +1,5 @@
 /**
- * 文件类工具：read_file / write_file / edit_file / list_dir。
+ * 文件类工具：read_file / write_file / edit_file / delete_file / list_dir。
  *
  * 共同安全约束：
  * - 所有路径经 resolveWorkspacePath（realpath 沙箱）；
@@ -13,6 +13,7 @@ import {
   closeSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -389,9 +390,10 @@ export const writeFileTool: ToolImpl = {
         afterLines = null
       }
     }
+    const beforeText = snapshot?.beforeText
     const diff =
-      snapshot && snapshot.beforeText !== null && afterText !== null
-        ? createUnifiedDiff(snapshot.beforeText, afterText, displayPath)
+      afterText !== null && (beforeText !== null && beforeText !== undefined || !existed)
+        ? createUnifiedDiff(beforeText ?? '', afterText, displayPath)
         : null
     recordRestoreManifest(ctx, resolved.absolute, snapshot?.beforeHash ?? null, afterHash)
     const lines = [
@@ -416,6 +418,8 @@ export const writeFileTool: ToolImpl = {
       writtenLines,
       appended: append,
       diff: diff?.patch ?? '',
+      diffAdded: diff?.added ?? 0,
+      diffRemoved: diff?.removed ?? 0,
       created: !existed
     }
     return okResult(lines.join('\n'), meta)
@@ -508,10 +512,89 @@ export const editFileTool: ToolImpl = {
       afterHash: afterHashEdit,
       matchCount: count,
       replaced: replaceAll ? count : 1,
-      diff: diff.patch
+      diff: diff.patch,
+      diffAdded: diff.added,
+      diffRemoved: diff.removed
     }
     return okResult(
       `已修改 ${relativeOrAbsolute(resolved.absolute, ctx)}（替换 ${replaceAll ? count : 1} 处，${diffSummary(diff)}）\n旧内容已备份，可撤销。`,
+      meta
+    )
+  }
+}
+
+/* ── delete_file ──────────────────────────────────────────────── */
+
+export const deleteFileTool: ToolImpl = {
+  definition: {
+    name: 'delete_file',
+    description:
+      '删除工作区内的一个文件。删除前自动备份旧内容并生成删除 diff，可回退。' +
+      '只删除文件，不删除文件夹；批量清理目录用 run_command。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '要删除的文件路径（相对工作区根目录）' }
+      },
+      required: ['path']
+    },
+    category: 'write',
+    risk: 'high',
+    titleFor: (input) => `删除 ${oneLineInput(input, 'path')}`
+  },
+  async execute(input, ctx): Promise<ToolResult> {
+    const rawPath = getString(input, 'path', { required: true })
+    const resolved = resolveWorkspacePath(rawPath, ctx.workspace, {
+      escapeApproved: ctx.escapeApproved,
+      requireExist: true
+    })
+    let stat
+    try {
+      stat = lstatSync(resolved.absolute)
+    } catch {
+      throw new ToolInputError(`文件不存在：${rawPath}`, '先用 list_dir 或 glob 确认路径。')
+    }
+    if (stat.isSymbolicLink()) {
+      throw new ToolInputError('这个路径是符号链接，已拒绝删除。', '请直接删除链接指向的真实文件，或使用系统文件管理器。')
+    }
+    if (stat.isDirectory()) {
+      throw new ToolInputError('delete_file 只能删除文件，不能删除文件夹。', '清理文件夹请使用 run_command，并先核对路径。')
+    }
+    if (!stat.isFile()) {
+      throw new ToolInputError('这个路径不是普通文件，无法删除。', '请确认路径指向一个文件。')
+    }
+    const snapshot = snapshotFile(resolved.absolute, ctx)
+    const beforeText = snapshot?.beforeText ?? null
+    const removedLines = beforeText !== null ? countLines(beforeText) : 0
+    const bytes = stat.size
+    const diff = beforeText !== null ? createUnifiedDiff(beforeText, '', relativeOrAbsolute(resolved.absolute, ctx)) : null
+    try {
+      rmSync(resolved.absolute)
+    } catch (err) {
+      throw new ToolInputError(
+        `删除文件失败：${err instanceof Error ? err.message : String(err)}`,
+        '文件可能被其他程序占用；关闭占用后重试。'
+      )
+    }
+    recordRestoreManifest(ctx, resolved.absolute, snapshot?.beforeHash ?? null, '')
+    const meta: Record<string, unknown> = {
+      snapshotId: snapshot?.snapshotId ?? null,
+      snapshotPath: snapshot?.snapshotPath ?? null,
+      path: relativeOrAbsolute(resolved.absolute, ctx),
+      absolutePath: resolved.absolute,
+      beforeHash: snapshot?.beforeHash ?? null,
+      afterHash: null,
+      bytes,
+      lines: 0,
+      deleted: true,
+      created: false,
+      diff: diff?.patch ?? '',
+      diffAdded: 0,
+      diffRemoved: removedLines
+    }
+    return okResult(
+      `已删除 ${relativeOrAbsolute(resolved.absolute, ctx)}（${removedLines} 行，${formatBytes(bytes)}）` +
+        (snapshot ? '\n删除前已备份，可回退。' : ''),
       meta
     )
   }
@@ -615,4 +698,4 @@ export const listDirTool: ToolImpl = {
   }
 }
 
-export const fsTools: ToolImpl[] = [readFileTool, writeFileTool, editFileTool, listDirTool]
+export const fsTools: ToolImpl[] = [readFileTool, writeFileTool, editFileTool, deleteFileTool, listDirTool]

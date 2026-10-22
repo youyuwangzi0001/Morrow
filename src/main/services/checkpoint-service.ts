@@ -43,8 +43,8 @@ import { log } from './logger'
 import { dataPath } from './paths'
 import type { SessionStore } from './session-store'
 
-const SAFE_ID = /^[A-Za-z0-9_-]{4,80}$/
-const MAX_CHECKPOINTS = 30
+const SAFE_ID = /^[A-Za-z0-9_-]{4,100}$/
+const MAX_CHECKPOINTS = 100
 const MAX_LABEL = 160
 
 function sha256File(path: string): string | null {
@@ -98,6 +98,8 @@ function normalizeCheckpoint(raw: unknown, sessionId: string): TurnCheckpoint | 
     messageId: item.messageId,
     messageIndex: typeof item.messageIndex === 'number' ? item.messageIndex : 0,
     label: item.label.slice(0, MAX_LABEL),
+    kind: item.kind === 'stage' ? 'stage' : 'turn',
+    keepMessage: item.keepMessage === true,
     createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
     files,
     todos: Array.isArray(item.todos) ? (item.todos as TurnCheckpoint['todos']) : [],
@@ -170,6 +172,8 @@ export class CheckpointService {
       messageId: userMessage.id,
       messageIndex,
       label: userMessageDisplayText(userMessage).replace(/\s+/g, ' ').trim().slice(0, MAX_LABEL) || '（空消息）',
+      kind: 'turn',
+      keepMessage: false,
       createdAt: Date.now(),
       files: [],
       todos: session.todos.map((todo) => ({ ...todo })),
@@ -179,6 +183,41 @@ export class CheckpointService {
     }
     this.save(checkpoint)
     this.prune(session.id)
+    return checkpoint
+  }
+
+  /**
+   * 阶段检查点：用户计划的一步完成后创建。files 从空开始，后续工具结果会记到它名下；
+   * 回退时保留边界消息（keepMessage），只撤销该阶段之后的改动。
+   */
+  createStage(input: {
+    sessionId: string
+    messageId: string
+    messageIndex: number
+    label: string
+    todos: TurnCheckpoint['todos']
+    artifactIds: string[]
+    plan: TurnCheckpoint['plan']
+    planMode: boolean
+  }): TurnCheckpoint | null {
+    if (!SAFE_ID.test(input.sessionId) || !input.messageId) return null
+    const checkpoint: TurnCheckpoint = {
+      id: `cp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      sessionId: input.sessionId,
+      messageId: input.messageId,
+      messageIndex: Math.max(0, input.messageIndex),
+      label: input.label.replace(/\s+/g, ' ').trim().slice(0, MAX_LABEL) || '阶段完成',
+      kind: 'stage',
+      keepMessage: true,
+      createdAt: Date.now(),
+      files: [],
+      todos: input.todos.map((todo) => ({ ...todo })),
+      artifactIds: [...input.artifactIds],
+      plan: input.plan ? (JSON.parse(JSON.stringify(input.plan)) as TurnCheckpoint['plan']) : null,
+      planMode: input.planMode
+    }
+    this.save(checkpoint)
+    this.prune(input.sessionId)
     return checkpoint
   }
 
@@ -194,12 +233,19 @@ export class CheckpointService {
       const entry = raw as Record<string, unknown>
       const path = typeof entry.absolutePath === 'string' ? entry.absolutePath : ''
       if (!path) continue
+      const deleted = entry.deleted === true
       const afterHash = typeof entry.afterHash === 'string' ? entry.afterHash : null
-      if (!afterHash) continue
+      if (!afterHash && !deleted) continue
       const created = entry.created === true
       const snapshotPath = typeof entry.snapshotPath === 'string' ? entry.snapshotPath : undefined
       const existing = checkpoint.files.find((file) => file.path === path)
       if (existing) {
+        // 本轮新建后又删除：净变化为零，从检查点里移除，回退预览不再列出这个临时文件。
+        if (deleted && existing.existed === false) {
+          checkpoint.files = checkpoint.files.filter((file) => file.path !== path)
+          changed = true
+          continue
+        }
         existing.afterHash = afterHash
         if (!existing.snapshotPath && snapshotPath && !created) existing.snapshotPath = snapshotPath
         changed = true
@@ -287,7 +333,10 @@ export class CheckpointService {
       conflicts,
       messageFound: messageIndex >= 0,
       fileCount: plan.size,
-      removableMessages: messageIndex >= 0 ? session.messages.length - messageIndex : 0
+      removableMessages:
+        messageIndex >= 0
+          ? session.messages.length - (checkpoint.keepMessage ? messageIndex + 1 : messageIndex)
+          : 0
     }
   }
 
@@ -434,8 +483,9 @@ export class CheckpointService {
     }
 
     if (scope !== 'code') {
-      removedMessages = session.messages.length - messageIndex
-      session.messages = session.messages.slice(0, messageIndex)
+      const cut = checkpoint.keepMessage ? messageIndex + 1 : messageIndex
+      removedMessages = session.messages.length - cut
+      session.messages = session.messages.slice(0, cut)
       session.todos = checkpoint.todos.map((todo) => ({ ...todo }))
       session.artifacts = session.artifacts.filter((artifact) => checkpoint.artifactIds.includes(artifact.id))
       session.plan = checkpoint.plan ? (JSON.parse(JSON.stringify(checkpoint.plan)) as Session['plan']) : null
@@ -471,7 +521,7 @@ export class CheckpointService {
       removedFiles,
       removedMessages
     })
-    return { checkpointId, scope, restoredFiles, removedFiles, removedMessages }
+    return { checkpointId, kind: checkpoint.kind ?? 'turn', scope, restoredFiles, removedFiles, removedMessages }
   }
 }
 

@@ -1,10 +1,10 @@
 {
   "ok": true,
-  "mode": "all",
+  "mode": "portable",
   "version": "0.1.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-10-21T17:54:31.441Z",
+  "startedAt": "2026-10-22T06:58:59.662Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,33 +13,28 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 33754,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\build-final3 -c.electronDist=C:/交付成品/Morrow/node_modules/electron/dist"
-    },
-    {
-      "name": "zip",
-      "exitCode": 0,
-      "durationMs": 20761
+      "durationMs": 19941,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r13d"
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 18541,
-      "command": "launcher(C:\\交付成品\\Morrow\\tmp\\release-final3\\Morrow-0.1.0-portable.exe)"
+      "durationMs": 23317,
+      "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.1.0-portable.exe)"
     }
   ],
   "artifacts": {
     "portableExe": {
       "kind": "portable-exe",
       "path": "deliver/Morrow-0.1.0-portable.exe",
-      "sizeBytes": 196774400,
-      "sizeMB": 187.66,
-      "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b",
+      "sizeBytes": 196799488,
+      "sizeMB": 187.68,
+      "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f",
       "signed": false,
       "signature": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\deliver-r13d\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -50,7 +45,7 @@
     }
   },
   "logs": {
-    "combined": "docs/verification/logs/dist-all-2026-10-21T17-54-31-439Z.log"
+    "combined": "docs/verification/logs/dist-portable-2026-10-22T06-58-59-635Z.log"
   },
   "signing": {
     "enabled": false,
@@ -64,7 +59,7 @@
       "portableExe": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\deliver-r13d\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -76,30 +71,29 @@
   "delivery": {
     "dir": "deliver",
     "cleaned": true,
-    "createdAt": "2026-10-21T17:55:47.895Z",
+    "createdAt": "2026-10-22T06:59:46.527Z",
     "folder": null,
     "artifacts": [
       {
         "name": "portable-exe",
         "path": "deliver/Morrow-0.1.0-portable.exe",
-        "sizeBytes": 196774400,
-        "sizeMB": 187.66,
-        "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
+        "sizeBytes": 196799488,
+        "sizeMB": 187.68,
+        "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f"
       }
     ],
     "usage": "deliver/使用说明.txt",
     "sha256Sums": "deliver/SHA256SUMS.txt",
-    "license": "deliver/LICENSE",
     "checksums": [
       {
         "path": "Morrow-0.1.0-portable.exe",
-        "sizeBytes": 196774400,
-        "sha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
+        "sizeBytes": 196799488,
+        "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f"
       },
       {
         "path": "使用说明.txt",
-        "sizeBytes": 1318,
-        "sha256": "9a7722081b2c27e29b56155856729930e3d579773a6ee10340936469a7ee3e6e"
+        "sizeBytes": 3390,
+        "sha256": "73fa34bab76c712857bc76db5978f448abf97190d393df5589d6b18c72235adb"
       },
       {
         "path": "LICENSE",
@@ -107,76 +101,13 @@
         "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
       }
     ],
-    "totalSizeBytes": 196777037,
-    "totalSizeMB": 187.66,
-    "totalFileCount": 4
+    "totalSizeBytes": 196803948,
+    "totalSizeMB": 187.69,
+    "totalFileCount": 3,
+    "finalizedAt": "2026-10-22T07:00:04.619Z"
   },
   "primaryArtifact": "portableExe",
-  "notes": "Morrow 0.1.0 单文件最终交付：仅保留 Morrow-0.1.0-portable.exe、使用说明、SHA256SUMS 与 LICENSE；本次单文件产物由 --all 构建后裁剪为单文件（文件夹版/zip 不交付），future npm run dist 默认只构建单文件。项目面板范围切换、数据目录自定义已包含。启动器嵌入完整 Win32 manifest；未配置代码签名证书，产物 signed:false。",
-  "finishedAt": "2026-10-21T17:55:53.569Z",
-  "durationMs": 82128,
-  "verification": {
-    "typecheck": {
-      "ok": true,
-      "command": "npm run typecheck",
-      "note": "0 error"
-    },
-    "unit": {
-      "ok": true,
-      "command": "npm run test:unit",
-      "passed": 768,
-      "skipped": 5,
-      "files": 75
-    },
-    "build": {
-      "ok": true,
-      "command": "npm run build"
-    },
-    "package": {
-      "ok": true,
-      "command": "npm run dist",
-      "mode": "portable",
-      "note": "默认只交付单文件 exe；文件夹/zip 仅内部 --all 构建检查"
-    },
-    "sourceE2E": {
-      "ok": true,
-      "passed": 151,
-      "total": 151,
-      "note": "a–m 67 + n–z 84，8.7m；含项目面板与数据目录新用例"
-    },
-    "packagedSmoke": {
-      "portable": {
-        "ok": true,
-        "evidence": "docs/verification/smoke-packaged.json",
-        "exeSha256": "04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b"
-      }
-    },
-    "packagedE2E": {
-      "ok": true,
-      "passed": 4,
-      "total": 4,
-      "note": "从单文件 exe 解压运行时",
-      "specs": [
-        "tests/e2e/packaged-terminal.spec.ts",
-        "tests/e2e/packaged-ui-fixes.spec.ts",
-        "tests/e2e/r8-packaged-browser.spec.ts",
-        "tests/e2e/r8-packaged-tools.spec.ts"
-      ]
-    },
-    "uiCopyReview": {
-      "ok": true,
-      "passed": 1,
-      "total": 1,
-      "spec": "tests/e2e/r10-ui-copy-review.spec.ts",
-      "note": "包含在 151 内"
-    },
-    "signatures": {
-      "mainEntryPoints": "NotSigned",
-      "note": "无代码签名证书；签名支持见 README「代码签名」"
-    },
-    "directLaunch": {
-      "portable": "单文件冒烟/直启通过，运行时 app.asar 与交付包一致"
-    }
-  },
-  "deliveryMode": "single"
+  "notes": "Morrow 0.1.0 打包完成：启动器嵌入完整 Win32 manifest；未配置代码签名证书，产物 signed:false。 deliver/ 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。",
+  "finishedAt": "2026-10-22T06:59:48.787Z",
+  "durationMs": 49125
 }

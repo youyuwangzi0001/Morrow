@@ -11,12 +11,19 @@ import { ensureDataDirs, resolveDataDir } from './services/paths'
 import { installMcpRuntimeEnv } from './services/mcp-service'
 import { configureMemoryRuntime } from './services/memory-service'
 import { configureProjectsRuntime } from './services/project-service'
-import { getSettingsStore } from './services/settings-store'
 import { getTerminalManager } from './services/terminal-manager'
 import { configurePermissionRulesRuntime } from './services/permission-rules'
 import { initializeTokenActivity } from './services/token-activity-runtime'
 import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
 import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
+import {
+  configureLifecycle,
+  handleMainWindowClose,
+  isAppQuitting,
+  markAppQuitting,
+  quitApp,
+  requestCloseFromIsland
+} from './services/lifecycle'
 import { log } from './services/logger'
 
 protocol.registerSchemesAsPrivileged([
@@ -64,8 +71,9 @@ function bootstrap(dataDir: string): void {
     registerFeatureModules()
     installFeatureIpc()
     initializeTokenActivity()
+    configureLifecycle(() => mainWindow)
     createWindow()
-    configureIsland({ openMain: showMainWindow })
+    configureIsland({ openMain: showMainWindow, requestClose: () => void requestCloseFromIsland() })
     createIsland()
     createTray()
     initializeScheduleRuntime()
@@ -77,7 +85,7 @@ function bootstrap(dataDir: string): void {
   })
 
   app.on('before-quit', () => {
-    isQuitting = true
+    markAppQuitting()
   })
 
   app.on('will-quit', () => {
@@ -95,14 +103,9 @@ function bootstrap(dataDir: string): void {
   })
 
   app.on('window-all-closed', () => {
-    if (isQuitting) return
-    let closeToTray = true
-    try {
-      closeToTray = getSettingsStore().get().closeToTray
-    } catch {
-      // 设置尚未就绪时按默认留在托盘
-    }
-    if (process.platform !== 'darwin' && !closeToTray) app.quit()
+    // 关闭动作已由主窗口 close 事件处理：最小化会保留窗口，退出会设置 quitting。
+    // 这里保持进程运行（托盘/灵动岛仍在），避免误退出后台任务。
+    if (isAppQuitting()) return
   })
 
   app.on('web-contents-created', (_event, contents) => {
@@ -159,7 +162,6 @@ function installSecurityPolicy(): void {
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-let isQuitting = false
 
 function appIconPath(): string | null {
   return [
@@ -177,6 +179,7 @@ export function showMainWindow(): void {
     return
   }
   if (win.isMinimized()) win.restore()
+  win.setSkipTaskbar(false)
   win.show()
   win.focus()
   win.flashFrame(false)
@@ -197,8 +200,7 @@ function createTray(): void {
     {
       label: '退出',
       click: () => {
-        isQuitting = true
-        app.quit()
+        quitApp()
       }
     }
   ])
@@ -251,6 +253,7 @@ export function createWindow(): BrowserWindow {
     minHeight: toDip(760),
     center: true,
     show: false,
+    skipTaskbar: false,
     frame: false,
     backgroundColor: '#0B0D10',
     title: 'Morrow',
@@ -269,6 +272,8 @@ export function createWindow(): BrowserWindow {
   mainWindow.once('ready-to-show', () => {
     const win = mainWindow
     if (!win) return
+    // 隐藏/最小化时继续渲染流式增量；否则从灵动岛回来会一次性补做大量布局而像卡死。
+    win.webContents.setBackgroundThrottling(false)
     win.show()
     win.focus()
     // 构造参数的 DIP 取整可能造成 ±1 物理像素偏差；等窗口完成首帧后再校正一次内容尺寸。
@@ -291,22 +296,9 @@ export function createWindow(): BrowserWindow {
     markIslandRead()
   })
   mainWindow.on('close', (event) => {
-    if (isQuitting) return
     const win = mainWindow
     if (!win || win.isDestroyed()) return
-    let closeToTray = true
-    try {
-      closeToTray = getSettingsStore().get().closeToTray
-    } catch {
-      // 设置未就绪时按默认
-    }
-    if (!closeToTray) {
-      isQuitting = true
-      app.quit()
-      return
-    }
-    event.preventDefault()
-    win.hide()
+    handleMainWindowClose(event, win)
   })
   mainWindow.on('closed', () => {
     mainWindow = null

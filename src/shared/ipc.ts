@@ -6,6 +6,7 @@ import type {
   ModelInfo,
   Attachment,
   Bootstrap,
+  CloseAction,
   CreateSessionInput,
   DemoInfo,
   FileSearchResult,
@@ -40,6 +41,7 @@ export const IPC = {
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
+  windowResolveClose: 'window:resolve-close',
   windowState: 'window:state',
 
   sessionList: 'session:list',
@@ -128,6 +130,8 @@ export const IPC = {
 
 export const EVENT_CHANNEL = 'morrow:event'
 export const WINDOW_STATE_CHANNEL = 'morrow:window-state'
+/** 主进程请求渲染层弹出关闭询问（最小化到任务栏 / 完全退出） */
+export const WINDOW_CLOSE_REQUEST_CHANNEL = 'morrow:window-close-requested'
 /** 系统通知点击后聚焦某个会话（主 → 渲染） */
 export const FOCUS_SESSION_CHANNEL = 'morrow:focus-session'
 /** 灵动岛状态推送（主进程 → 灵动岛窗口） */
@@ -262,8 +266,12 @@ export interface MorrowApi {
     minimize(): Promise<Result<void>>
     toggleMaximize(): Promise<Result<boolean>>
     close(): Promise<Result<void>>
+    /** 在关闭询问弹窗里做出选择：记住并立即执行 */
+    resolveClose(action: Exclude<CloseAction, 'ask'>): Promise<Result<void>>
     getState(): Promise<Result<WindowState>>
     onStateChange(listener: (state: WindowState) => void): () => void
+    /** 主进程请求显示关闭询问弹窗 */
+    onCloseRequested(listener: () => void): () => void
   }
   chat: {
     send(input: SendMessageInput): Promise<Result<SendMessageResult>>

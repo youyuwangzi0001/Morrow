@@ -32,7 +32,7 @@ test.describe('跨会话运行态', () => {
       scripts: [
         {
           text: '我先写一个文件。',
-          toolCalls: [{ name: 'write_file', arguments: { path: 'cross.md', content: 'from session A' } }]
+          toolCalls: [{ name: 'write_file', arguments: { path: '../cross.md', content: 'from session A' } }]
         },
         { text: '写好了。' }
       ]
@@ -94,7 +94,7 @@ test.describe('跨会话运行态', () => {
       await clickPermissionCard(page, 'once')
       await waitForRunFinished(page, 30_000)
 
-      expect(existsSync(join(workspace, 'cross.md'))).toBe(true)
+      expect(existsSync(join(workspace, '..', 'cross.md'))).toBe(true)
       const pending = await page.evaluate(() => {
         const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
         const state = store.getState()
@@ -128,7 +128,7 @@ test.describe('跨会话运行态', () => {
       scripts: [
         {
           text: '等待批准再写。',
-          toolCalls: [{ name: 'write_file', arguments: { path: 'new-session.md', content: 'ok' } }]
+          toolCalls: [{ name: 'write_file', arguments: { path: '../new-session.md', content: 'ok' } }]
         },
         { text: '写好了。' }
       ]
@@ -166,7 +166,7 @@ test.describe('跨会话运行态', () => {
       await expect(page.locator('.permission-card')).toBeVisible({ timeout: 10_000 })
       await clickPermissionCard(page, 'once')
       await waitForRunFinished(page, 30_000)
-      expect(existsSync(join(workspace, 'new-session.md'))).toBe(true)
+      expect(existsSync(join(workspace, '..', 'new-session.md'))).toBe(true)
     } finally {
       await morrow.close()
       await mock.close()
@@ -182,7 +182,7 @@ test.describe('跨会话运行态', () => {
         {
           delayMs: 1_200,
           text: '我先写一个文件。',
-          toolCalls: [{ name: 'write_file', arguments: { path: 'cross-toast.md', content: 'from A' } }]
+          toolCalls: [{ name: 'write_file', arguments: { path: '../cross-toast.md', content: 'from A' } }]
         },
         { text: '写好了。' }
       ]
@@ -228,7 +228,7 @@ test.describe('跨会话运行态', () => {
       await expect(page.locator('.permission-card')).toBeVisible({ timeout: 10_000 })
       await clickPermissionCard(page, 'once')
       await waitForRunFinished(page, 30_000)
-      expect(existsSync(join(workspace, 'cross-toast.md'))).toBe(true)
+      expect(existsSync(join(workspace, '..', 'cross-toast.md'))).toBe(true)
     } finally {
       await morrow.close()
       await mock.close()

@@ -170,6 +170,12 @@ interface ActiveRun {
   liveMessages: Map<string, ChatMessage>
   /** 本轮检查点 id（文件变更登记、回退用） */
   checkpointId?: string
+  /** 当前阶段检查点 id（todo 步骤完成后切换；阶段内的工具改动登记到这里） */
+  stageCheckpointId?: string
+  /** 本轮开始前已有的消息数（用于阶段消息下标） */
+  messageCountBase: number
+  /** 已处理过的完成 todo id（避免同一阶段重复创建检查点） */
+  completedTodoIds: Set<string>
   /** 本轮待处理的审批请求（用于审批日志与「始终允许」持久化） */
   permissionRequests: Map<string, PermissionRequest>
   /** 本轮模型的参考价格（用于累计费用） */
@@ -663,6 +669,8 @@ export class AgentService {
       baselineArtifacts: session.artifacts.length,
       baselineCompletedTodos: session.todos.filter((todo) => todo.status === 'completed').length,
       liveMessages: new Map(),
+      messageCountBase: session.messages.length,
+      completedTodoIds: new Set(session.todos.filter((todo) => todo.status === 'completed').map((todo) => todo.id)),
       permissionRequests: new Map(),
       pricing: resolved.modelInfo.pricing,
       liveTodos: null,
@@ -702,6 +710,7 @@ export class AgentService {
     const reasoningEffort = session.reasoningEffort ?? this.settingsStore.get().reasoningEffort
     const agents = loadAgentRoles(session.workspace)
     const globalSettings = this.settingsStore.get()
+    const terminalShell = getTerminalManager().commandShell(globalSettings.terminalShell)
     const systemPrompt =
       researchPlanning && session.research
         ? [
@@ -725,6 +734,7 @@ export class AgentService {
             ...(sessionMode === 'work' && !planMode ? { agents } : {}),
             answerStyle: globalSettings.answerStyle,
             answerStyleCustom: globalSettings.answerStyleCustom,
+            terminalShell: { id: terminalShell.id, label: terminalShell.label },
             tools: undefined
           })
 
@@ -756,6 +766,7 @@ export class AgentService {
           answerStyle: globalSettings.answerStyle,
           answerStyleCustom: globalSettings.answerStyleCustom,
           ocrPdf: createPdfOcrHandler(),
+          commandShell: terminalShell,
           snapshotDir,
           ...(webSearch ? { webSearch } : {}),
           terminal,
@@ -763,7 +774,8 @@ export class AgentService {
           reasoningEffort,
           agents: researchMode ? [] : agents,
           signal: controller.signal,
-          maxSteps: researchPlanning ? 2 : researchMode ? 50 : 60,
+          // 正常任务不再限制单轮步数；只有研究计划阶段保留 2 步的轻量探索。
+          ...(researchPlanning ? { maxSteps: 2 } : {}),
           autoCompact: this.settingsStore.get().autoCompact,
           compactThreshold: this.settingsStore.get().compactThreshold,
           goal: sessionMode === 'work' && !planMode && goal?.status === 'active' ? goal : null,
@@ -1740,11 +1752,11 @@ export class AgentService {
             const changedFiles = (event.result.meta as Record<string, unknown> | undefined)?.changedFiles
             if ((event.result.ok || Array.isArray(changedFiles)) && active.checkpointId) {
               try {
-                getCheckpointService(this.sessionStore).recordToolResult(
-                  active.sessionId,
-                  active.checkpointId,
-                  event.result.meta
-                )
+                const checkpoints = getCheckpointService(this.sessionStore)
+                checkpoints.recordToolResult(active.sessionId, active.checkpointId, event.result.meta)
+                if (active.stageCheckpointId && active.stageCheckpointId !== active.checkpointId) {
+                  checkpoints.recordToolResult(active.sessionId, active.stageCheckpointId, event.result.meta)
+                }
               } catch (err) {
                 log.warn('checkpoint record failed', { sessionId: active.sessionId, error: String(err) })
               }
@@ -1796,6 +1808,57 @@ export class AgentService {
         active.liveTodos = event.todos
         const completedNow = event.todos.filter((todo) => todo.status === 'completed').length
         if (completedNow > active.baselineCompletedTodos) active.roundProgressActions += 1
+        const newlyCompleted = event.todos.filter(
+          (todo) => todo.status === 'completed' && !active.completedTodoIds.has(todo.id)
+        )
+        for (const todo of newlyCompleted) active.completedTodoIds.add(todo.id)
+        if (newlyCompleted.length > 0 && active.checkpointId && !active.demo && !active.researchPlanning) {
+          const session = this.sessionStore.get(active.sessionId)
+          const mode = session?.mode ?? 'work'
+          if (session && mode === 'work' && session.planMode !== true) {
+            const live = [...active.liveMessages.values()]
+            const boundary = live[live.length - 1]
+            if (boundary) {
+              const titles = newlyCompleted.map((todo) => todo.text.replace(/\s+/g, ' ').trim()).filter(Boolean)
+              const label =
+                titles.length === 1
+                  ? `完成：${titles[0].slice(0, 80)}`
+                  : `完成 ${titles.length} 个步骤：${titles.join('、').slice(0, 80)}`
+              try {
+                const stage = getCheckpointService(this.sessionStore).createStage({
+                  sessionId: active.sessionId,
+                  messageId: boundary.id,
+                  messageIndex: active.messageCountBase + live.length - 1,
+                  label,
+                  todos: event.todos,
+                  artifactIds: session.artifacts.map((artifact) => artifact.id),
+                  plan: session.plan ?? null,
+                  planMode: false
+                })
+                if (stage) {
+                  active.stageCheckpointId = stage.id
+                  boundary.stageBoundary = { checkpointId: stage.id, label }
+                  this.scheduleIncrementalSave(active, true)
+                  // 让正在看的 UI 立刻出现阶段节点，而不是等本轮结束重载会话
+                  this.forward(
+                    {
+                      seq: 0,
+                      runId: active.runId,
+                      sessionId: active.sessionId,
+                      at: Date.now(),
+                      type: 'message_completed',
+                      messageId: boundary.id,
+                      message: guard.redactMessage(boundary)
+                    },
+                    window
+                  )
+                }
+              } catch (err) {
+                log.warn('stage checkpoint create failed', { sessionId: active.sessionId, error: String(err) })
+              }
+            }
+          }
+        }
         this.scheduleIncrementalSave(active)
         break
       }
@@ -2318,12 +2381,18 @@ export class AgentService {
           const processes = manager.list().filter((item) => item.cwd === workspace)
           return { ok: true, summary: `共 ${processes.length} 个进程。`, processes }
         }
+        const selectedShell = this.settingsStore.get().terminalShell || undefined
         if (input.action === 'start') {
-          const process = manager.startTask(input.command ?? '', workspace, input.title)
+          const process = manager.startTask(input.command ?? '', workspace, input.title, selectedShell)
           return { ok: true, summary: '后台任务已启动。', process }
         }
         if (input.action === 'run') {
-          const result = await manager.runOnce(input.command ?? '', workspace, input.timeoutMs ?? 120_000)
+          const result = await manager.runOnce(
+            input.command ?? '',
+            workspace,
+            input.timeoutMs ?? 120_000,
+            selectedShell
+          )
           return {
             ok: true,
             summary: result.timedOut ? '命令超时，已停止。' : '命令结束。',
@@ -2448,7 +2517,16 @@ export class AgentService {
     }
     const guard = this.guardFor(active.sessionId)
     const compactedMessages = result.compactedMessages
-    const safeMessages = (compactedMessages ?? result.messages).map((message) => guard.redactMessage(message))
+    // 阶段节点是主进程在流式消息上打的标；内核返回的消息副本不带这个字段，落盘前按 id 补回。
+    const stageBoundaries = new Map<string, NonNullable<ChatMessage['stageBoundary']>>()
+    for (const message of active.liveMessages.values()) {
+      if (message.stageBoundary) stageBoundaries.set(message.id, message.stageBoundary)
+    }
+    const safeMessages = (compactedMessages ?? result.messages).map((message) => {
+      const redacted = guard.redactMessage(message)
+      const boundary = stageBoundaries.get(message.id)
+      return boundary ? { ...redacted, stageBoundary: boundary } : redacted
+    })
     // 自动压缩返回的是完整会话历史；先替换，避免 applyRunResult 把旧消息继续并回来
     if (compactedMessages) session.messages = safeMessages
     // 计划模式运行带回计划（pending）；执行模式运行不得清掉已批准的计划。

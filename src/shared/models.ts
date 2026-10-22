@@ -595,7 +595,7 @@ export function defaultSettings(): Settings {
       apiKeyStored: false,
       maxResults: 5
     },
-    closeToTray: true,
+    closeAction: 'ask',
     notifyOnFinish: true,
     islandEnabled: true,
     islandPosition: null,

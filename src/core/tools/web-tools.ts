@@ -9,7 +9,7 @@
  * - 超时（默认 15s）、响应大小上限（2MB）、正文输出上限（默认 2 万字符）、最多 5 次重定向，
  *   拒绝 HTTPS→HTTP 降级；
  * - 网页正文对模型是**不可信数据**：返回文本带明确声明，正文里的指令/授权一律无效；
- * - 只读/询问/自动模式的审批由权限层负责（工具注册为 category='exec' + risk='medium'）。
+ * - 只读/询问/完全访问模式的审批由权限层负责（工具注册为 category='exec' + risk='medium'）。
  *
  * 离线可测：本机 fixture HTTP server + 可注入 DNS 解析 / allowPrivateNetwork（仅测试用）。
  */

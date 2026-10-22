@@ -48,14 +48,9 @@ import { isReasoningEffort, REASONING_EFFORTS } from '@shared/reasoning'
 import { RESEARCH_DEPTHS } from '@shared/research'
 import { useAppStore } from '../../state/store'
 import { IconButton, Segmented, Select } from '../../ui'
-import {
-  contextSnapshot,
-  contextSourceLabel,
-  formatExactTokens,
-  formatUsageTokens
-} from '../settings/context-format'
 import { requestSettingsTab } from '../settings/settings-tab'
 import { openWorkbench } from '../workbench/events'
+import { ContextMeter } from './ContextMeter'
 import './Composer.css'
 
 const MAX_INPUT_HEIGHT = 220
@@ -80,17 +75,17 @@ const PERMISSION_OPTIONS: { value: PermissionMode; label: string; description: s
   {
     value: 'read-only',
     label: '只读',
-    description: '只能读文件；任何写入、删除、命令执行都先问你'
+    description: '只能读文件；写入、删除与命令执行会被直接拒绝'
   },
   {
     value: 'ask',
     label: '询问',
-    description: '读文件自动放行；写文件、跑命令前先问你'
+    description: '工作区内的写入与命令自动执行；危险命令、外部动作与越界访问先问你'
   },
   {
     value: 'auto',
-    label: '自动',
-    description: '不再询问，写入与命令直接执行；只建议在你信任的任务里用'
+    label: '完全访问',
+    description: '无需任何批准：写入、命令、危险操作与工作区外访问都直接执行'
   }
 ]
 
@@ -413,7 +408,6 @@ export function Composer(): React.JSX.Element {
 
   const modelRef = session?.model ?? settings.defaultModel
   const modelInfo = findModel(settings.providers, modelRef)
-  const context = contextSnapshot(session?.usage, modelInfo?.contextWindow)
   const permissionMode = session?.permissionMode ?? settings.permissionMode
   const permission = PERMISSION_OPTIONS.find((item) => item.value === permissionMode) ?? PERMISSION_OPTIONS[1]
   const reasoningEffort = session?.reasoningEffort ?? settings.reasoningEffort
@@ -552,7 +546,7 @@ export function Composer(): React.JSX.Element {
       return
     }
     if ((current.permissionMode ?? state.settings.permissionMode) === 'read-only') {
-      notify('warning', '只读模式不能写文件：先把权限模式切到询问或自动。')
+      notify('warning', '只读模式不能写文件：先把权限模式切到询问或完全访问。')
       return
     }
     const workspace = current.workspace
@@ -629,7 +623,7 @@ export function Composer(): React.JSX.Element {
             : planMode
               ? '计划模式只出方案：执行计划后再生成规则文件。'
               : permissionMode === 'read-only'
-                ? '只读模式不能写文件：先切换到询问或自动。'
+                ? '只读模式不能写文件：先切换到询问或完全访问。'
                 : null
     return [
       { name: 'new', label: '新建对话', description: '把当前对话收起来，开一个新对话', run: () => void newSession() },
@@ -1441,26 +1435,11 @@ export function Composer(): React.JSX.Element {
             <IconButton label="侧边聊天（/btw）" size={28} onClick={() => openSideChat()}>
               <MessageSquare size={15} strokeWidth={1.5} aria-hidden />
             </IconButton>
+            <ContextMeter />
           </div>
 
           <div className="composer-bar-right">
             {runningCurrent ? <span className="composer-elapsed mono">{formatElapsed(elapsed)}</span> : null}
-            {settings.showTokenMeter && context.used > 0 ? (
-              <button
-                type="button"
-                className="composer-ctx"
-                title={`上下文 ${formatExactTokens(context.used)} / ${formatExactTokens(context.limit)} tokens · ${contextSourceLabel(context.source)}（点击打开「设置 → 上下文」）`}
-                aria-label={`上下文 ${formatUsageTokens(context.used)} / ${formatUsageTokens(context.limit)}，打开上下文设置`}
-                onClick={() => {
-                  requestSettingsTab('context')
-                  openSettings()
-                }}
-              >
-                <span className="mono">
-                  {formatUsageTokens(context.used)}/{formatUsageTokens(context.limit)}
-                </span>
-              </button>
-            ) : null}
             {reasoningAvailable ? (
               <div className="composer-picker composer-picker-reasoning" title="思考强度：越高越适合复杂任务，但更慢、更贵">
                 <Select

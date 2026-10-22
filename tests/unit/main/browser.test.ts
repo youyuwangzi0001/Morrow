@@ -359,7 +359,7 @@ describe('浏览器工具权限契约（ask/auto 都必须审批）', () => {
     }
   })
 
-  it('auto：接入 EXTERNAL_ACTION_TOOLS 后也应 ask（Lead 集成接线点，测试内模拟 wiring）', () => {
+  it('auto（完全访问）：接入 EXTERNAL_ACTION_TOOLS 后直接执行', () => {
     const external = EXTERNAL_ACTION_TOOLS as Set<string>
     const added: string[] = []
     try {
@@ -371,7 +371,7 @@ describe('浏览器工具权限契约（ask/auto 都必须审批）', () => {
       }
       for (const name of BROWSER_TOOL_NAMES) {
         const gate = evaluatePermission(permissionTarget(name), policy('auto'))
-        expect(gate.action, name).toBe('ask')
+        expect(gate.action, name).toBe('allow')
       }
     } finally {
       for (const name of added) external.delete(name)

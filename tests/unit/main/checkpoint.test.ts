@@ -279,17 +279,137 @@ describe('checkpoint rewind', () => {
     }
   })
 
-  it('keeps at most 30 checkpoints per session', () => {
+  it('stage checkpoint keeps its boundary message and only undoes later work', () => {
+    const h = setup()
+    try {
+      const session = h.store.get(h.sessionId)!
+      const u1 = message('u1', 'user', '按计划执行')
+      session.messages = [u1]
+      h.store.save(session)
+      const turn = h.checkpoints.create(session, u1, 0)!
+
+      const a1 = message('a1', 'assistant', '第一步完成')
+      session.messages = [u1, a1]
+      h.store.save(session)
+      const stage1 = h.checkpoints.createStage({
+        sessionId: h.sessionId,
+        messageId: 'a1',
+        messageIndex: 1,
+        label: '完成：第一步',
+        todos: [{ id: 'todo_1', text: '第一步', status: 'completed' }],
+        artifactIds: [],
+        plan: null,
+        planMode: false
+      })!
+
+      const notes = join(h.ws.root, 'notes.md')
+      const v2 = 'v2\n'
+      const snap2 = snapshotOf(h, 'call_2', notes)
+      writeFileSync(notes, v2, 'utf8')
+      h.checkpoints.recordToolResult(h.sessionId, stage1.id, metaFor(notes, 'v1\n', v2, snap2))
+
+      const a2 = message('a2', 'assistant', '第二步完成')
+      session.messages = [u1, a1, a2]
+      h.store.save(session)
+      const stage2 = h.checkpoints.createStage({
+        sessionId: h.sessionId,
+        messageId: 'a2',
+        messageIndex: 2,
+        label: '完成：第二步',
+        todos: [
+          { id: 'todo_1', text: '第一步', status: 'completed' },
+          { id: 'todo_2', text: '第二步', status: 'completed' }
+        ],
+        artifactIds: [],
+        plan: null,
+        planMode: false
+      })!
+      const v3 = 'v3\n'
+      const snap3 = snapshotOf(h, 'call_3', notes)
+      writeFileSync(notes, v3, 'utf8')
+      h.checkpoints.recordToolResult(h.sessionId, stage2.id, metaFor(notes, v2, v3, snap3))
+
+      expect(turn.files).toHaveLength(0)
+      const preview = h.checkpoints.preview(session, stage1.id)
+      expect(preview.messageFound).toBe(true)
+      expect(preview.removableMessages).toBe(1)
+
+      const result = h.checkpoints.rewind(session, stage1.id, 'both')
+      expect(result.removedMessages).toBe(1)
+      expect(readFileSync(notes, 'utf8')).toBe('v1\n')
+      const latest = h.store.get(h.sessionId)!
+      expect(latest.messages.map((item) => item.id)).toEqual(['u1', 'a1'])
+      expect(latest.todos).toHaveLength(1)
+    } finally {
+      h.cleanup()
+    }
+  })
+
+  it('删除文件登记到检查点并可恢复；本轮新建后删除视为净零', () => {
+    const h = setup()
+    try {
+      const session = h.store.get(h.sessionId)!
+      const user = message('u1', 'user', '清理文件')
+      session.messages = [user]
+      h.store.save(session)
+      const cp = h.checkpoints.create(session, user, 0)!
+
+      const notes = join(h.ws.root, 'notes.md')
+      const snapshot = snapshotOf(h, 'call_del', notes)
+      rmSync(notes)
+      h.checkpoints.recordToolResult(h.sessionId, cp.id, {
+        absolutePath: notes,
+        created: false,
+        deleted: true,
+        beforeHash: hash('v1\n'),
+        afterHash: null,
+        diffAdded: 0,
+        diffRemoved: 1,
+        snapshotPath: snapshot
+      })
+
+      const created = join(h.ws.root, 'tmp.md')
+      writeFileSync(created, 'temp\n', 'utf8')
+      h.checkpoints.recordToolResult(h.sessionId, cp.id, {
+        absolutePath: created,
+        created: true,
+        afterHash: hash('temp\n'),
+        diffAdded: 1,
+        diffRemoved: 0
+      })
+      rmSync(created)
+      h.checkpoints.recordToolResult(h.sessionId, cp.id, {
+        absolutePath: created,
+        created: false,
+        deleted: true,
+        beforeHash: hash('temp\n'),
+        afterHash: null,
+        diffAdded: 0,
+        diffRemoved: 1
+      })
+
+      const stored = h.checkpoints.get(h.sessionId, cp.id)!
+      expect(stored.files.map((file) => file.path)).toEqual([notes])
+      const result = h.checkpoints.rewind(h.store.get(h.sessionId)!, cp.id, 'code')
+      expect(result.restoredFiles).toBe(1)
+      expect(readFileSync(notes, 'utf8')).toBe('v1\n')
+      expect(existsSync(created)).toBe(false)
+    } finally {
+      h.cleanup()
+    }
+  })
+
+  it('keeps at most 100 checkpoints per session', () => {
     const h = setup()
     try {
       const session = h.store.get(h.sessionId)!
       const user = message('u1', 'user', '重复轮次')
       session.messages = [user]
       h.store.save(session)
-      for (let index = 0; index < 31; index += 1) {
+      for (let index = 0; index < 101; index += 1) {
         h.checkpoints.create(session, user, 0)
       }
-      expect(h.checkpoints.list(h.sessionId)).toHaveLength(30)
+      expect(h.checkpoints.list(h.sessionId)).toHaveLength(100)
     } finally {
       h.cleanup()
     }

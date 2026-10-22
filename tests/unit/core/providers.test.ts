@@ -169,6 +169,35 @@ describe('OpenAI 兼容协议', () => {
     expect(events.filter((event) => event.type === 'tool_call_start')).toHaveLength(1)
   })
 
+  it('旧版 function_call 也能拼成完整工具调用', async () => {
+    const server = await serve(() => ({
+      frames: [
+        { choices: [{ index: 0, delta: { function_call: { name: 'read_file', arguments: '' } } }] },
+        { choices: [{ index: 0, delta: { function_call: { arguments: '{"path":"a.txt"}' } } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'function_call' }] }
+      ]
+    }))
+    const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1] })
+    const events = await collectEvents(provider.stream({ system: '', messages: [userMessage('读文件')], tools: [], signal: new AbortController().signal }))
+    const end = events.find((event) => event.type === 'tool_call_end')
+    expect(end?.type === 'tool_call_end' && end).toMatchObject({ name: 'read_file', input: { path: 'a.txt' } })
+  })
+
+  it('多模态 content 数组与对象参数也能正确归一到文本/工具调用', async () => {
+    const server = await serve(() => ({
+      frames: [
+        { choices: [{ index: 0, delta: { content: [{ type: 'text', text: '看' }, { type: 'text', text: '到了' }] } }] },
+        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'read_file', arguments: { path: 'a.txt' } } }] } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }
+      ]
+    }))
+    const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1] })
+    const events = await collectEvents(provider.stream({ system: '', messages: [userMessage('读文件')], tools: [], signal: new AbortController().signal }))
+    expect(events.filter((event) => event.type === 'text_delta').map((event) => event.text).join('')).toBe('看到了')
+    const end = events.find((event) => event.type === 'tool_call_end')
+    expect(end?.type === 'tool_call_end' && end).toMatchObject({ name: 'read_file', input: { path: 'a.txt' } })
+  })
+
   it('finish_reason=length 时提示回答可能被截断', async () => {
     const server = await serve(() => ({
       frames: [

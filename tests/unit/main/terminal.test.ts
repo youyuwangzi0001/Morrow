@@ -102,6 +102,29 @@ describe('TerminalManager', () => {
     }
   })
 
+  it('one-shot run and background task honor the requested shell', async () => {
+    if (process.platform !== 'win32') return
+    const ws = makeTempWorkspace()
+    try {
+      const manager = makeManager()
+      const ids = manager.profiles().map((profile) => profile.id)
+      if (ids.includes('cmd')) {
+        const run = await manager.runOnce('echo cmd_once_ok', ws.root, 10_000, 'cmd')
+        expect(run.output).toContain('cmd_once_ok')
+        const task = manager.startTask('echo cmd_task_ok', ws.root, 'cmd 任务', 'cmd')
+        expect(task.shellId).toBe('cmd')
+        await waitFor(() => manager.read(task.id).output.includes('cmd_task_ok'))
+        await waitFor(() => manager.get(task.id)?.status === 'exited')
+      }
+      if (ids.includes('gitbash')) {
+        const run = await manager.runOnce("printf 'bash_once_ok\\n'", ws.root, 10_000, 'gitbash')
+        expect(run.output).toContain('bash_once_ok')
+      }
+    } finally {
+      ws.cleanup()
+    }
+  })
+
   it('background task streams logs, exits and can be restarted', async () => {
     const ws = makeTempWorkspace()
     try {

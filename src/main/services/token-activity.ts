@@ -269,7 +269,9 @@ export class TokenActivityService {
       const key = activityDayKey(addDays(today, -offset))
       const bucket = this.store.days[key] ?? emptyBucket()
       const estimated = bucket.estimatedInputTokens + bucket.estimatedOutputTokens
-      const totalTokens = bucket.inputTokens + bucket.outputTokens + bucket.cacheReadTokens + estimated
+      // OpenAI / Anthropic 的 inputTokens 均已包含缓存读取；cacheReadTokens 只是明细，
+      // 再累加会把同一批输入算两遍（见 R12 Token 用量审计）。
+      const totalTokens = bucket.inputTokens + bucket.outputTokens + estimated
       days.push({
         date: key,
         inputTokens: bucket.inputTokens,
@@ -289,7 +291,6 @@ export class TokenActivityService {
     const todayTotal =
       todayBucket.inputTokens +
       todayBucket.outputTokens +
-      todayBucket.cacheReadTokens +
       todayBucket.estimatedInputTokens +
       todayBucket.estimatedOutputTokens
     let total = 0
@@ -297,7 +298,6 @@ export class TokenActivityService {
       total +=
         bucket.inputTokens +
         bucket.outputTokens +
-        bucket.cacheReadTokens +
         bucket.estimatedInputTokens +
         bucket.estimatedOutputTokens
     }

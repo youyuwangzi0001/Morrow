@@ -194,12 +194,12 @@ describe('permission rules in evaluatePermission', () => {
       const npm = target('run_command', 'exec', { command: 'npm test -- --runInBand' })
       expect(permissionRuleMatches(rules[0], npm, ctx)).toBe(true)
       expect(evaluatePermission(npm, ctx).action).toBe('allow')
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm run build' }), ctx).action).toBe('ask')
+      expect(permissionRuleMatches(rules[0], target('run_command', 'exec', { command: 'npm run build' }), ctx)).toBe(false)
       // 前缀必须有 token 边界，不能把「npm test」的授权扩散到「npm testing」或拼接命令
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm testing' }), ctx).action).toBe('ask')
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm test&&npm run build' }), ctx).action).toBe('ask')
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm test\nnpm run build' }), ctx).action).toBe('ask')
-      expect(evaluatePermission(target('run_command', 'exec', { command: 'npm test ; npm run build' }), ctx).action).toBe('ask')
+      expect(permissionRuleMatches(rules[0], target('run_command', 'exec', { command: 'npm testing' }), ctx)).toBe(false)
+      expect(permissionRuleMatches(rules[0], target('run_command', 'exec', { command: 'npm test&&npm run build' }), ctx)).toBe(false)
+      expect(permissionRuleMatches(rules[0], target('run_command', 'exec', { command: 'npm test\nnpm run build' }), ctx)).toBe(false)
+      expect(permissionRuleMatches(rules[0], target('run_command', 'exec', { command: 'npm test ; npm run build' }), ctx)).toBe(false)
       expect(evaluatePermission(target('run_command', 'exec', { command: 'git push origin main' }), ctx).action).toBe('deny')
     } finally {
       ws.cleanup()
@@ -240,7 +240,8 @@ describe('permission rules in evaluatePermission', () => {
       ]
       const ctx = policy(ws.root, rules)
       expect(evaluatePermission(target('write_file', 'write', { path: 'out/a.txt', content: 'x' }), ctx).action).toBe('allow')
-      expect(evaluatePermission(target('write_file', 'write', { path: 'src/a.ts', content: 'x' }), ctx).action).toBe('ask')
+      expect(evaluatePermission(target('write_file', 'write', { path: 'src/a.ts', content: 'x' }), ctx).action).toBe('allow')
+      expect(permissionRuleMatches(rules[0], target('write_file', 'write', { path: 'src/a.ts', content: 'x' }), ctx)).toBe(false)
       expect(evaluatePermission(target('run_command', 'exec', { command: 'rm -rf out' }), ctx).action).toBe('ask')
       expect(evaluatePermission(target('web_fetch', 'exec', { url: 'https://example.com' }), ctx).action).toBe('ask')
     } finally {

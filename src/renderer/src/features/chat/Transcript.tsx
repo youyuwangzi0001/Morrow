@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
 import { userMessageDisplayText } from '@shared/message'
@@ -6,6 +6,7 @@ import { useAppStore } from '../../state/store'
 import { Kbd, HorizonLoader } from '../../ui'
 import { MessageItem } from './MessageItem'
 import { parseGoalContinuation } from './GoalContinuation'
+import { fileDiffEvents } from '../activity/tool-meta'
 import { PermissionCard } from '../activity/PermissionCard'
 import { QuestionCard } from '../activity/QuestionCard'
 import './Transcript.css'
@@ -44,6 +45,54 @@ export function Transcript(): React.JSX.Element {
 
   const messages = session?.messages ?? EMPTY_MESSAGES
   const visibleMessages = messages.filter((message) => !message.hidden)
+  // 每轮用户消息之后的最后一条 assistant 是「轮末回答」：只有它显示分叉/回退，
+  // 中间的模型步骤保持连续、不产生操作节点。
+  const turnFinals = useMemo(() => {
+    const finals = new Map<string, string>()
+    let userId = ''
+    for (const message of messages) {
+      if (message.role === 'user') {
+        userId = message.id
+        continue
+      }
+      if (message.role !== 'assistant') {
+        userId = ''
+        continue
+      }
+      if (userId) finals.set(message.id, userId)
+    }
+    for (let index = 0; index < messages.length - 1; index += 1) {
+      if (messages[index].role === 'assistant' && messages[index + 1].role === 'assistant') {
+        finals.delete(messages[index].id)
+      }
+    }
+    return finals
+  }, [messages])
+  // 新建后又删除的文件在这一轮净变化为零：所有相关消息都不再显示 +N/−N。
+  const diffSuppression = useMemo(() => {
+    const map = new Map<string, ReadonlySet<string>>()
+    let turn: ChatMessage[] = []
+    const flush = (): void => {
+      if (turn.length === 0) return
+      const created = new Set<string>()
+      const lastDeleted = new Map<string, boolean>()
+      for (const message of turn) {
+        for (const event of fileDiffEvents(message)) {
+          if (event.created) created.add(event.path)
+          lastDeleted.set(event.path, event.deleted)
+        }
+      }
+      const suppressed = new Set([...created].filter((path) => lastDeleted.get(path) === true))
+      if (suppressed.size > 0) for (const message of turn) map.set(message.id, suppressed)
+      turn = []
+    }
+    for (const message of messages) {
+      if (message.role === 'user') flush()
+      turn.push(message)
+    }
+    flush()
+    return map
+  }, [messages])
   const lastMessage = messages[messages.length - 1]
   const lastContentSize = lastMessage
     ? lastMessage.content.reduce((size, block) => {
@@ -231,6 +280,9 @@ export function Transcript(): React.JSX.Element {
                 message={message}
                 streaming={streamingMessageId === message.id}
                 isLastAssistant={message.role === 'assistant' && index === visibleMessages.length - 1}
+                isTurnFinal={turnFinals.has(message.id)}
+                rewindTargetUserMessageId={turnFinals.get(message.id) ?? null}
+                suppressedDiffPaths={diffSuppression.get(message.id) ?? null}
               />
             ))
           )}

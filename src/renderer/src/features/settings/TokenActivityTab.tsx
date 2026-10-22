@@ -246,7 +246,7 @@ export function TokenActivityTab(): React.JSX.Element {
               tile.input > 0 || tile.output > 0
                 ? `输入 ${formatExactTokens(tile.input)} · 输出 ${formatExactTokens(tile.output)}`
                 : '',
-              tile.cache > 0 ? `缓存读取 ${formatExactTokens(tile.cache)}` : '',
+              tile.cache > 0 ? `其中缓存读取 ${formatExactTokens(tile.cache)}（已含在输入内）` : '',
               tile.estimated > 0 ? `含约 ${formatExactTokens(tile.estimated)} 个估算` : ''
             ]
               .filter(Boolean)

@@ -35,6 +35,7 @@ describe('src/core/index 公共出口契约', () => {
       'read_file',
       'write_file',
       'edit_file',
+      'delete_file',
       'list_dir',
       'read_pdf',
       'read_docx',

@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Folder, Ghost, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
-import { findModel } from '@shared/models'
 import { useAppStore } from '../../state/store'
 import { IconButton } from '../../ui'
-import {
-  contextSnapshot,
-  contextSourceLabel,
-  formatExactTokens
-} from '../settings/context-format'
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
 import './TitleBar.css'
 
@@ -125,42 +119,6 @@ function WorkspaceChip(): React.JSX.Element {
   )
 }
 
-/** 上下文占用环：tooltip 显示精确数字与「API 精确 / 估算」 */
-function ContextMeter(): React.JSX.Element | null {
-  const showTokenMeter = useAppStore((s) => s.settings.showTokenMeter)
-  const usage = useAppStore((s) => s.session?.usage)
-  const session = useAppStore((s) => s.session)
-  const settings = useAppStore((s) => s.settings)
-  const model = findModel(settings.providers, session?.model ?? settings.defaultModel)
-  const snapshot = contextSnapshot(usage, model?.contextWindow)
-
-  if (!showTokenMeter || snapshot.limit <= 0 || snapshot.used <= 0) return null
-
-  const radius = 6.2
-  const circumference = 2 * Math.PI * radius
-  const tone = snapshot.ratio >= 0.9 ? 'is-danger' : snapshot.ratio >= 0.75 ? 'is-warning' : ''
-  const detail = `上下文：${formatExactTokens(snapshot.used)} / ${formatExactTokens(snapshot.limit)} tokens（${snapshot.percent}%）· ${contextSourceLabel(snapshot.source)}`
-
-  return (
-    <span className={['tb-ctx', tone].filter(Boolean).join(' ')} role="img" aria-label={detail} title={detail}>
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-        <circle cx="8" cy="8" r={radius} fill="none" stroke="var(--line-strong)" strokeWidth="1.5" />
-        <circle
-          cx="8"
-          cy="8"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray={`${Math.max(1, circumference * snapshot.ratio)} ${circumference}`}
-          transform="rotate(-90 8 8)"
-        />
-      </svg>
-    </span>
-  )
-}
-
 /** 目标指示：只在当前对话有 goal 时出现，靠近模型 chip，不挤压窗控 */
 function GoalIndicator(): React.JSX.Element | null {
   const session = useAppStore((s) => s.session)
@@ -275,7 +233,7 @@ function WindowControls(): React.JSX.Element {
 
 /**
  * 无边框标题栏：拖动区 + 当前文件夹 + 居中对话标题（双击重命名）
- * + 目标 / 上下文状态 + 画布开关 + 窗口控制（唯一允许直连 window.morrow 的地方）。
+ * + 目标状态 + 画布开关 + 窗口控制（唯一允许直连 window.morrow 的地方）。
  */
 export function TitleBar(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
@@ -308,7 +266,6 @@ export function TitleBar(): React.JSX.Element {
 
       <div className="tb-right no-drag">
         <GoalIndicator />
-        <ContextMeter />
         <span className="tb-sep" aria-hidden />
         <TerminalToggle />
         <CanvasToggle />

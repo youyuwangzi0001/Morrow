@@ -401,7 +401,7 @@ function securityDeny(ctx: ToolContext): ToolResult | null {
     return errResult('演示模式不能操作电脑。', 'computer-use 只用于用户明确授权的工作会话；演示模式不会控制真实鼠标键盘。')
   }
   if (ctx.permissionMode === 'read-only') {
-    return errResult('当前是「只读模式」，computer-use 已被拒绝。', '需要操作电脑时请把权限切到「询问」，并在每次动作前确认。')
+    return errResult('当前是「只读模式」，computer-use 已被拒绝。', '需要操作电脑时请把权限切到「询问」或「完全访问」。')
   }
   return null
 }

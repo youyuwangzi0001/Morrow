@@ -84,6 +84,7 @@ const logsDir = join(root, 'docs', 'verification', 'logs')
 mkdirSync(logsDir, { recursive: true })
 mkdirSync(releaseDir, { recursive: true })
 
+// 保留 Windows 原生反斜杠：7za 的启动路径含中文/空格时，正斜杠形式会被 spawn 当作 ENOENT。
 const sevenZip = join(root, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe')
 
 /** 签名配置；在主流程 try 内通过 resolveSigningConfig() 赋值。 */
@@ -926,16 +927,19 @@ try {
     // （.morrow-runtime-<ver>），不依赖 %TEMP%；之后直接复用；目录只读时回退 LOCALAPPDATA。
     // 之所以不用 electron-builder 的 NSIS portable：NSIS 自解压把内容写到 %TEMP%，
     // 受限启动环境（%TEMP% 不可写）会直接报 “Error writing temporary file”。
-    const appZip = join(root, 'tmp', 'launcher-app.zip')
+    const appZip = join(root, 'tmp', 'launcher-app.zip').replace(/\\/g, '/')
     const unpackedReady =
       existsSync(join(winUnpacked, 'Morrow-app.exe')) && existsSync(join(winUnpacked, 'resources', 'app.asar'))
-    // win-unpacked 被系统索引/杀毒占用且已整理成 folder 时，直接从 folder 打单文件，避免重复解压
-    const sourceDir = unpackedReady ? winUnpacked : folderDir
-    if (!unpackedReady && !existsSync(join(folderDir, 'Morrow-app.exe'))) {
+    const folderReady = existsSync(join(folderDir, 'Morrow-app.exe'))
+    // win-unpacked 被系统索引/杀毒占用且已整理成 folder 时，直接从 folder 打单文件，避免重复解压。
+    // 刚跑完 electron-builder 时只有 Morrow.exe，需先补启动器；sourceDir 必须在补完后重新判断，
+    // 否则 portable 模式会去 cwd 指向不存在的 folderDir，7za 返回 ENOENT。
+    if (!unpackedReady && !folderReady) {
       steps.push({ name: 'dir', ...(await runBuilder(['--win', '--x64', '--dir', '--publish', 'never', `-c.directories.output=${builderOutputDir}`, ...electronDistArgs], 'dir')) })
       if (steps[steps.length - 1].exitCode !== 0) fail('electron-builder dir 失败（单文件启动器需要 win-unpacked）')
       prepareUnpackedWithLauncher()
     }
+    const sourceDir = unpackedReady || !folderReady ? winUnpacked : folderDir
     if (sourceDir === winUnpacked) {
       prepareUnpackedWithLauncher()
       // 单文件形态没有单独的文件夹交付物，但内嵌 zip 里的 Morrow-app.exe / Morrow.exe 仍然签名，
@@ -951,7 +955,7 @@ try {
     // folder 里的 portable.marker 只适用于文件夹版；带进单文件运行时会改变数据目录位置
     if (sourceDir === folderDir) zipArgs.push('-x!portable.marker')
     const zipResult = spawnSync(sevenZip, zipArgs, { cwd: sourceDir, encoding: 'utf8' })
-    if (zipResult.status !== 0) fail(`内嵌 zip 打包失败：${(zipResult.stderr || '').slice(0, 400)}`)
+    if (zipResult.status !== 0) fail(`内嵌 zip 打包失败：status=${zipResult.status} error=${zipResult.error?.message ?? ''} stdout=${(zipResult.stdout || '').slice(-300)} stderr=${(zipResult.stderr || '').slice(-300)}`)
     logLine(`[dist] [portable] 内嵌 zip ${(statSync(appZip).size / 1024 / 1024).toFixed(2)} MB，编译启动器…`)
     compileLauncher(portableExe, { resourceZip: appZip })
     rmSync(appZip, { force: true })

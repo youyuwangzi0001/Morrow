@@ -45,31 +45,45 @@
 | 项目面板入口收敛 | 左栏改为「全部项目 / 当前文件夹」Segmented 切换，新建按钮与切换同排；移除底部重复的「为当前文件夹新建项目」提示条；新建成功后直接进入项目概览 | `screens/a1-project-scope-current.png`；`a1-projects-home` 3/3；底部 `.pp-cta` 断言为 0 |
 | 数据目录自定义 | 设置 → 关于新增「更改目录」：原生选目录、可选迁移现有对话/设置/项目/记忆/技能、写指针并重启；支持「恢复默认目录」；启动按指针优先。正常便携启动时按钮可用；测试以 `--data-dir` 启动时按钮按设计锁定 | `screens/settings-about-data-dir-enabled.png`（正常启动）、`settings-about-data-dir.png`（参数锁定）；`data-dir` 单测 5/5；`data-dir-settings` E2E 1/1 |
 
+### 2026-10-22 R13 七项修复
+
+| 问题 | 修复 | 证据 |
+|---|---|---|
+| 预览生成内容偶发 `ERR_CONNECTION_REFUSED` | 本地服务端口未就绪时自动等待重试（12×500ms），失败提示引导检查服务与端口；提示词优先用画布预览，必须用浏览器时先确认终端日志 | `r13-browser-retry` E2E（延迟 700ms 启动的本地服务可被成功打开） |
+| 命令失败较多、超长提示溢出 | grep 支持直接搜索单个文件；命令失败按 PowerShell 引号/参数、MODULE_NOT_FOUND、权限占用等输出可执行建议；复杂脚本建议先写文件再执行；长错误自动换行 | `r13-long-error` E2E（400 字符无空格路径，错误块/详情/对话区均无横向溢出）；grep 单文件单测 |
+| 上下文入口 | 删除顶栏圆环与输入框旧提示，改为输入框底部工具条内的圆环；点击向上弹出上下文占用、输入、其中缓存、缓存命中率、输出、累计费用、模型，双主题适配 | `r13-context-meter` E2E；`r13-context-meter-dark/light.png` |
+| 大文件修改误报“内容没有变化” | 大文件 diff 改用公共前后缀裁剪 + 变更片段 LCS；超大文件回退为行多重集增删统计；仅换行符变化单独说明 | `r13-large-diff` E2E（2490 行文件 +2/−1）；diff 单测 |
+| 计划/目标进度只在末尾更新 | 计划可分批续接；连续多步未更新时提醒模型同步；所有工作/目标流程提示边做边更新 | 提示词检查 + `r13-plan-finishing` E2E |
+| 计划已全部完成但仍在优化 | 检测完成后继续改文件时追加真实「收尾完善（进行中）」步骤；托盘在运行中显示「计划完成 · 收尾中」，不再虚报收工 | `r13-plan-finishing` E2E（1/2 + 未完成 + 不再显示计划完成） |
+| 画布页签不能关闭/排序 | 页签支持关闭（选中相邻页签）、拖动排序；关闭后可重新打开；文档页签同样可关闭 | `r13-canvas-tabs` E2E（关闭 A、拖动 C 到 B 前） |
+
+补充修复：单文件启动器在 exe 同级运行目录被占用、回退到 `LOCALAPPDATA` 解压后，仍去旧路径查找 `Morrow-app.exe`，会导致启动失败；已改为使用实际解压目录，并记忆回退位置供后续启动复用。交付目录以该修复后的启动器完成冒烟。
+
 ## 2. 自动化门禁
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
 | 类型 | `npm run typecheck` | 0 error |
-| 单元 | `npm run test:unit` | **768 passed + 5 skipped（75 files）** |
+| 单元 | `npm run test:unit` | **811 passed + 5 skipped（79 files）** |
 | 构建 | `npm run build` | 通过 |
-| 端到端（源码构建，本轮分块） | `npx playwright test`（a–m / n–z 两批） | **151 passed（67 + 84，8.7m）** |
-| 端到端（单文件打包成品，本轮） | `npx playwright test tests/e2e/packaged-terminal.spec.ts tests/e2e/packaged-ui-fixes.spec.ts tests/e2e/r8-packaged-browser.spec.ts tests/e2e/r8-packaged-tools.spec.ts` | **4/4 passed**（15.6s）：从单文件 exe 解压运行时；真实终端、项目范围/数据目录入口、原生浏览器视图、PDF/DOCX 工具 |
-| UI 复审（干净环境） | `npx playwright test tests/e2e/r10-ui-copy-review.spec.ts` | **1/1 passed**（已包含在 151 中） |
-| 打包 | `npm run dist` | 通过：默认只生成单文件便携 exe 并镜像到 `deliver/`；使用本地 Electron 与已缓存 winCodeSign，无外网下载 |
-| 打包冒烟 | `node scripts/smoke-packaged.mjs --exe=...` | 单文件 **通过**（4.9s）：启动、CDP、首屏渲染、preload、截图 |
+| 端到端（本轮源码构建） | R12/R13 定向回归（11 个 spec） | **11/11 passed**（21.8s）：diff、计划同步/收尾、阶段、终端、预览重试、画布页签、上下文入口、长错误 |
+| 打包 | `npm run dist` | 通过：单文件便携 exe 为 `50f5a9af…`；使用本地 Electron 与已缓存 winCodeSign |
+| 打包冒烟（临时副本） | `node scripts/smoke-packaged.mjs --exe=tmp/...` | **通过**（5.2s）：启动、CDP、首屏渲染、preload、截图 |
+| 打包冒烟（交付目录 + 旧运行目录被占用） | `node scripts/smoke-packaged.mjs --exe=deliver/...` | **通过**（7.6s）：启动器自动回退 `LOCALAPPDATA` 后从实际解压目录启动，渲染正常 |
 | 直启 | CreateProcess 直接启动（无快捷方式）+ ShellExecute 模拟下载标记 | 单文件启动到渲染进程，关闭后启动器退出码 0；运行时 `app.asar` SHA-256 与交付包一致 |
 
 打包冒烟摘要（本轮从 `C:/Temp` 的交付副本运行，避免污染 `deliver/`）：
 
-- 单文件：`docs/verification/smoke-packaged.json`
+- 单文件临时副本：`docs/verification/smoke-packaged.json`
+- 交付目录（含旧运行目录被占用场景）：`docs/verification/smoke-delivered.json`
 
 ## 3. 最终产物
 
 | 形态 | 位置 | 大小 | SHA-256 |
 |---|---|---|---|
-| 单文件便携版（唯一交付） | `deliver/Morrow-0.1.0-portable.exe` | 196,774,400 B / 187.66 MB | `04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b` |
+| 单文件便携版（唯一交付） | `deliver/Morrow-0.1.0-portable.exe` | 196,799,488 B / 187.68 MB | `50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f` |
 
-`deliver/` 共 4 files / 196,777,037 B / 187.66 MB，只包含单文件 exe、`使用说明.txt`、`SHA256SUMS.txt`、`LICENSE`；不含文件夹版、zip、`Morrow Data`、`.morrow-runtime-*`、`.morrow-temp`、日志或旧包。完整清单与签名状态见 `docs/verification/packaging.json`。启动器文件版本与单文件运行时缓存目录均为 0.1.0。
+交付物共 4 files / 196,803,948 B / 187.69 MB：单文件 exe、`使用说明.txt`、`SHA256SUMS.txt`、`LICENSE`。`deliver/` 中同时存在的 `Morrow Data` 与 `.morrow-runtime-*` 是本机运行数据/解压缓存，不属于分发文件；正式分发只需复制上述 4 个文件。完整清单与签名状态见 `docs/verification/packaging.json`。启动器文件版本与单文件运行时缓存目录均为 0.1.0。
 
 ## 4. Windows 安全提示诊断（2026-10-22）
 

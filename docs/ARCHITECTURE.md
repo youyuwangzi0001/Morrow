@@ -116,14 +116,17 @@ src/
 ```
 run(userInput):
   append user message; emit run_started
-  loop (maxSteps=60):
+  loop (no fixed max steps; only explicit caller caps):
     messages = compactIfNeeded(session.messages)
     stream = provider.stream({ system, messages, tools, signal })
     for event in stream:
       text_delta → emit message_delta
       tool_call_start/args_delta/end → accumulate
       usage → emit usage
-    if no toolCalls: emit message_completed; break
+    if no toolCalls:
+      if open todos: inject hidden system check (max 2 rounds) and continue
+      if visual intent + HTML/SVG artifact: inject one hidden visual-polish round and continue
+      emit message_completed; break
     append assistant message(with tool calls)
     for call in toolCalls (sequential):
       gate = permissions.check(call, mode)
@@ -133,6 +136,7 @@ run(userInput):
   emit run_finished
 ```
 
+- **收尾闭环**：模型直接给出最终答复时，若计划里仍有未完成 todo，内核先注入隐藏的系统检查（最多两轮），要求用 `todo_write` 同步真实状态；若用户明确要求「惊艳/高级感」等画面质量且本轮产出了 HTML/SVG 画布成品，再注入一次隐藏的视觉打磨轮，要求按 frontend-art-direction 真正修改构图与工艺。隐藏检查消息带 `hidden:true`，不进入可见对话，但会保留在上下文里供后续轮次参考。
 - **中断**：AbortController 贯穿网络与工具；中断时补齐 assistant tool_use 与 tool_result（`[interrupted]`），保证下一轮消息合法。
 - **重试**：429/5xx/网络错误指数退避（0.8s/2s/5s，最多 3 次），UI 显示「正在重试」而非报错死亡。200 响应内的限流/过载错误帧同样按可重试处理；SSE 按行解析，CRLF/LF/CR 混用与跨 chunk 切分都不会丢帧。
 - **空流/断流**：200 但没有任何内容且无收尾标记（OpenAI `finish_reason`/`[DONE]`、Anthropic `message_stop`）视为可重试空流；已收到文本却中途断流时明确报错，不再把半截回答当完整回复；已收到工具调用时保留给 Agent 自修复。`finish_reason=length`/`stop_reason=max_tokens` 与内容拦截会给出可见警告。错误响应体最多读取 64KB。
@@ -140,11 +144,11 @@ run(userInput):
 - **工具配对完整性**：裁剪只允许在 assistant(tool_use)+tool_result 完整交界处切割，绝不产生孤立 tool 消息（多数 API 会拒绝）。
 - **推理强度与费用**：模型可声明 `reasoningStyle`；内置模型装载与模型同步都会为 `supportsReasoning` 的模型补齐风格——OpenAI 兼容（含 DeepSeek/Kimi/Qwen 等）映射 `reasoning_effort`，Anthropic 映射 `thinking.budget_tokens`，缺失风格时界面不会显示选择器。会话可覆盖推理强度；用量按会话累计，参考价格表估算 `costUsd`，无价格模型显示 —。
 - **多会话后台运行**：普通运行按会话并行（目标循环仍全局串行）；渲染层按会话维护 `runs`，侧栏与输入区「运行中心」列出后台运行、等待确认与队列条数，并可切换/停止。关闭窗口默认隐藏到托盘，任务不中断；窗口不在前台时完成/失败/审批/提问发系统通知（审批/提问不受「完成时通知」开关影响，正文不包含命令、路径或问题原文），点击聚焦并切到对应会话。任务栏在运行期间显示不确定进度。
-- **终端与后台任务**：`TerminalManager` 用 node-pty（Windows ConPTY）提供真实伪终端，自动检测 PowerShell 7、Windows PowerShell、命令提示符、Git Bash、WSL；默认 Shell 在「设置 → 终端」选择，终端界面不再放类型选择。渲染层用 xterm 还原 ANSI/交互程序，支持标签页、尺寸同步、历史回放与明暗主题。终端停靠在主区域底部（左侧让出侧栏，默认 240px），顶栏按钮打开/隐藏，关闭面板后进程继续运行。后台任务仍用独立子进程（流式日志、stdin、停止/重启、400KB 环缓冲，最多 32 个进程）。Agent `terminal` 工具与面板共用管理器；cwd 必须位于已登记工作区。terminal 的 run/start 复用危险命令/越界检查，stdin 写入按高风险逐次确认。重启时旧进程事件不会覆盖新进程；一次性命令超时会返回已收集输出；应用退出时结束所有进程。
+- **终端与后台任务**：`TerminalManager` 用 node-pty（Windows ConPTY）提供真实伪终端，自动检测 PowerShell 7、Windows PowerShell、命令提示符、Git Bash、WSL；默认 Shell 在「设置 → 终端」选择，终端界面不再放类型选择。该选择同时作用于终端面板、Agent 的 `run_command`、`terminal(run/start)` 与后台任务；系统提示会注入当前 Shell 及对应语法（PowerShell/cmd/POSIX），避免用户选了 cmd/Git Bash 后仍按 PowerShell 写命令。渲染层用 xterm 还原 ANSI/交互程序，支持标签页、尺寸同步、历史回放与明暗主题。终端停靠在主区域底部（左侧让出侧栏，默认 240px），顶栏按钮打开/隐藏，关闭面板后进程继续运行。后台任务仍用独立子进程（流式日志、stdin、停止/重启、400KB 环缓冲，最多 32 个进程）。Agent `terminal` 工具与面板共用管理器；cwd 必须位于已登记工作区。terminal 的 run/start 复用危险命令/越界检查，stdin 写入按高风险逐次确认。重启时旧进程事件不会覆盖新进程；一次性命令超时会返回已收集输出；应用退出时结束所有进程。
 - **运行中排队**：同一会话运行中发送的消息进入主进程内存队列（最多 20 条，退出应用会丢失），`complete`/`max-steps` 后自动发送队首；取消/出错保留队列。用户可编辑/删除，或选择「打断并发送」先取消当前运行再立即发送；发送失败时保留队列条目并把内容放回输入框。自动发送前重新检查会话占用、压缩与全局目标占用，繁忙时保留队首并定时重试；等待取消期间切换会话时消息仍发回原会话。
 - **检查点**：每轮 `startRun` 创建检查点；`tool_finished` 成功后按 `meta.absolutePath/afterHash/snapshotPath/created` 登记（子代理通过 `task`/`swarm` meta.changedFiles 批量上报，失败子任务的文件改动也登记）。回退服务在写文件前做路径/快照边界校验、快照 beforeHash 校验、当前哈希冲突校验，冲突整体拒绝；快照目录使用清洗后的 toolUseId，`.restore.json` 目标不会覆盖撤销清单。代码回退保留对话与目标检查点，对话回退同步恢复 todos/artifacts/plan 及 planMode；回退成功后刷新文件树。
 - **计划模式**：`planMode=true` 时工具集切换为只读 + `ask_user`/`todo_write`/`submit_plan`，权限层固定 read-only，执行层再做一次白名单兜底（未暴露的 task/swarm/update_goal 等 meta 工具也会被拒绝）；模型只探索并提交计划，批准由主进程处理（切 work、重置 todos、启动执行运行）。只有每个计划步骤都有对应已完成 todo 才落为 completed；只读权限下批准会被明确拒绝并提示先切权限。计划待批准时 `run_finished` 仍走普通 complete，不写工作区。
-- **子代理与集群（Agent Swarm）**：`task` 创建单个子 AgentRuntime，`swarm` 工具把 2–8 个独立子任务按角色并行派发（每批最多 8 个）；子代理共享 provider/tools 与主代理同权限链（排除嵌套 `task`/`swarm`、`update_goal` 与 `todo_write`），角色可进一步限制工具白名单与只读。写文件/命令/MCP 走同一审批链，审批/提问按会话串行呈现；子代理上下文过长时用本地摘要折叠早期步骤；工具 id 与主代理统一分配，避免快照目录冲突。UI 以嵌套活动条展示，进度前缀显示角色，显示任务名、子代理标签与步数。
+- **子代理与集群（Agent Swarm）**：`task` 创建单个子 AgentRuntime，`swarm` 工具把 2–8 个独立子任务按角色并行派发（每批最多 8 个）；子代理共享 provider/tools 与主代理同权限链（排除嵌套 `task`/`swarm`、`update_goal` 与 `todo_write`），角色可进一步限制工具白名单与只读。写文件/命令/MCP 走同一权限链；「询问」档下危险/越界/外部动作审批，「完全访问」直接执行；审批/提问按会话串行呈现；子代理上下文过长时用本地摘要折叠早期步骤；工具 id 与主代理统一分配，避免快照目录冲突。UI 以嵌套活动条展示，进度前缀显示角色，显示任务名、子代理标签与步数。
 - **演示模式**：`DemoProvider` 实现同一 `Provider` 接口，按剧本逐字流式输出（含工具调用参数），工具真实执行在复制后的 `demo-workspace/`；剧本中的数值由 `collectDemoMetrics()` 从真实 CSV 计算。**演示模式强制 auto 权限**（不弹审批，避免打断首次体验），时长可用 `MORROW_DEMO_SPEED` 调整。
 - **手动压缩**：主进程 `chat:compact` 调用 core 的 `compactSession({force:true})`，把返回的 messages 写回会话并 emit `compaction` 事件，UI 的 `/compact` 即此路径。压缩期间该会话拒绝发送/建目标/切模式；结束时校验消息未变化，避免摘要覆盖新内容；摘要以折叠的系统标记展示，可展开查看。
 - **撤销**：写/编辑工具把旧文件备份到 `<userData>/snapshots/<sessionId>/<toolUseId>/<basename>`，`ToolResult.meta` 带 `snapshotPath`；主进程 `file:restore-snapshot` 校验快照在工作区外不可写后还原文件，UI 的「撤销这次修改」即此路径。
@@ -157,6 +161,7 @@ run(userInput):
 | `read_file` | path, offset?, limit? | 工作区内；二进制检测；≤256KB | 返回带行号内容 |
 | `write_file` | path, content | 需审批（询问/自动按模式） | 创建目录；快照旧内容用于撤销 |
 | `edit_file` | path, old_string, new_string, replace_all? | 同上；必须唯一匹配 | 返回 diff 摘要 |
+| `delete_file` | path | 同上；文件级删除，删除前备份 | 返回删除 diff 摘要；本轮新建后删除按净零处理 |
 | `list_dir` | path, depth? | 只读 | 目录树，跳过 node_modules/.git |
 | `glob` | pattern, path? | 只读 | 最多 200 条 |
 | `grep` | pattern, path?, include?, ignore_case? | 只读 | JS 实现，跳过二进制/大文件，最多 100 命中 |
@@ -177,7 +182,7 @@ run(userInput):
 - 模式：`read-only`（只读工具自动，写/执行直接拒绝并提示切换）｜`ask`（默认；读自动，写/执行询问）｜`auto`（工作区内自动，工作区外与高危命令仍询问）。计划模式内核固定使用 `read-only`，与提示词和工具白名单三重约束。
 - 工作区边界：`realpath` 后必须位于工作区根内；工作区外访问触发「越界审批」，批准仅本次运行有效。
 - 危险命令规则：破坏性删除、磁盘格式化、关机/重启、注册表写入、远程脚本执行（curl|iex）、`git push --force`、读取凭据目录等 → 拒绝或强询问（红色风险）。
-- 审批请求按 `sessionId + signature` 记忆「本次会话总是允许」；选择「始终允许」时另存为工作区持久规则（命令前缀/写入路径），按工作区隔离，设置页可管理并查看审批日志。deny 规则优先；allow 规则不越过危险命令、越界、外部动作与只读模式。
+- 审批请求按 `sessionId + signature` 记忆「本次会话总是允许」；「询问」档的工作区写入自动执行，「完全访问」不弹审批。工作区 deny 规则优先；allow 规则不越过危险命令、越界、外部动作与只读模式。
 - 审批卡片必须展示：工具名、人类可读摘要、完整参数（可展开）、风险等级、影响路径。
 - 项目规则文件：按 `.morrow/` → 工作区根 → 上级目录（最多 6 层）→ 用户目录的顺序发现 AGENTS.md / CLAUDE.md / MORROW.md，realpath 去重后按优先级注入系统提示，默认 3000 tokens、单文件 128KB / 24k 字符。项目与上级规则不允许通过符号链接逃逸作用域；二进制与超大文件跳过并记录日志；`feature:rules:list` 只读取已登记工作区。`/init` 仅在可写模式下可用，并会先列出已有规则文件要求在其上更新。
 
@@ -265,13 +270,13 @@ run(userInput):
 
 ## 8.11 内置技能与技能提示词
 
-- 首次启动由 `ensureBuiltinSkills(dataDir)` 把 12 个内置技能安装到 `<dataDir>/skills/<name>/SKILL.md`：code-review、debugging、test-writer、docs-writer、data-analysis、web-research、refactor、release-notes、security-audit、ui-polish、deliverable-report、mcp-integration。每个都是纯 Markdown 流程说明（无脚本），覆盖「何时使用 / 步骤 / 输出 / 安全边界」。
+- 首次启动由 `ensureBuiltinSkills(dataDir)` 把 13 个内置技能安装到 `<dataDir>/skills/<name>/SKILL.md`：deliverable-quality、frontend-art-direction、code-review、debugging、test-writer、docs-writer、data-analysis、web-research、refactor、release-notes、security-audit、deliverable-report、mcp-integration。每个都是纯 Markdown 流程说明（无脚本），覆盖「何时使用 / 步骤 / 输出 / 安全边界」。deliverable-quality 统一代码、文档、报告、幻灯片、表格、数据与研究的跨模型质量门槛；frontend-art-direction 同时覆盖新作艺术方向与既有界面打磨；旧的 ui-polish 已并入，升级时会移除未修改的旧副本，用户改过的保留为自有技能。
 - 安装策略：同名目录已存在（用户自己的技能）不覆盖；用户删除后不自动恢复；升级时只更新「未被用户修改」的技能（sha256 与 marker 比对），保留用户编辑。marker 为 `skills/.builtin-skills.json`，用户编辑后持久化 `modified: true`，后续每次启动都不会再被内置内容覆盖；SKILL.md 与 marker 使用临时文件 + 重命名写入，避免半文件被误判成用户编辑。内置技能在技能库中标记「内置技能」，仍可禁用/删除/查看原文。
 - 技能提示词：只列 name/description/路径，不把正文塞进系统提示；要求仅在用户点名或任务明显匹配时读取，避免「为了用技能而改目标」；明确技能是流程参考资料、不是授权，命令/路径需按工作区与审批规则执行，夹带操作一律不执行。
 - `read_skill` 的 `path` 只接受 `.morrow/skills`、`skills`、`.skills` 或一级子目录 `/skills` 下的 `<技能>/SKILL.md`（用于同名或遮蔽技能消歧），并检查启用状态；不能借 path 读取工作区任意 `SKILL.md`，已禁用技能即使给出路径也不能读。
 - 安装边界：同名判断不区分大小写（避免 Linux 上 `Foo`/`foo` 与状态键冲突）；覆盖安装拒绝符号链接，只删除用户技能库内的普通目录；文件夹/zip 的白名单仍拒绝脚本/可执行文件。
 - UI：技能库面板按视口收缩，外层模态不滚动；工具栏/摘要固定，列表与详情内部滚动，底部用户目录/操作条始终可见；SKILL.md 原文保留自己的滚动区。
-- 回归：`builtin-skills` 单测 3 项（安装/发现、用户编辑与删除且二次启动仍保留、同名用户技能不覆盖）；`skills` 主进程/核心单测共 32 项；`r10-skills` E2E 2/2。
+- 回归：`builtin-skills` 单测 4 项（安装/发现、用户编辑与删除且二次启动仍保留、旧技能合并迁移、同名用户技能不覆盖）；`skills` 主进程/核心单测共 32 项；`r10-skills` E2E 2/2。
 
 ## 9. 构建与打包
 

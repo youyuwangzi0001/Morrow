@@ -1779,7 +1779,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       if (result.restoredFiles > 0 || result.removedFiles > 0) {
         window.dispatchEvent(new CustomEvent('morrow:files-changed'))
       }
-      get().notify('success', parts.length ? `已回到这一轮之前：${parts.join('，')}。` : '已回到这一轮之前。')
+      const target = result.kind === 'stage' ? '这个阶段完成时' : '这一轮之前'
+      get().notify('success', parts.length ? `已回到${target}：${parts.join('，')}。` : `已回到${target}。`)
       return { ok: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : '回到这一轮之前失败'

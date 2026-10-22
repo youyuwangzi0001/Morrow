@@ -242,16 +242,16 @@ describe('R9.1 子代理工具/权限与主代理一致', () => {
         singleTaskRouter((secondRound) =>
           secondRound
             ? { text: '已写入子任务产物。' }
-            : { toolCalls: [{ id: 'child_write_ask', name: 'write_file', input: { path: 'out/child.txt', content: 'child-data' } }] }
+            : { toolCalls: [{ id: 'child_write_ask', name: 'write_file', input: { path: '../once-child.txt', content: 'child-data' } }] }
         )
       )
       const harness = await runParity(ws, provider, { permissionMode: 'ask' })
       expect(harness.result.reason).toBe('complete')
       expect(harness.permissionRequests).toHaveLength(1)
-      expect(harness.permissionRequests[0]).toMatchObject({ toolName: 'write_file', risk: 'medium' })
+      expect(harness.permissionRequests[0]).toMatchObject({ toolName: 'write_file', risk: 'high' })
       expect(harness.permissionRequests[0].toolUseId).toBe('child_write_ask')
       expect(harness.events.some((event) => event.type === 'permission_requested')).toBe(true)
-      expect(readFileSync(join(ws.root, 'out/child.txt'), 'utf8')).toBe('child-data')
+      expect(readFileSync(join(ws.root, '..', 'once-child.txt'), 'utf8')).toBe('child-data')
       expect(taskBlocks(harness.result)[0]?.status).toBe('success')
     } finally {
       ws.cleanup()
@@ -311,7 +311,7 @@ describe('R9.1 同一消息多个 task 真正并发', () => {
                 {
                   id: `child_write_${label}`,
                   name: 'write_file',
-                  input: { path: `out/${label.toLowerCase()}.txt`, content: `child-${label}` }
+                  input: { path: `../auto-${label.toLowerCase()}.txt`, content: `child-${label}` }
                 }
               ]
             }
@@ -319,8 +319,8 @@ describe('R9.1 同一消息多个 task 真正并发', () => {
       const harness = await runParity(ws, provider, { permissionMode: 'auto' })
       expect(harness.result.reason).toBe('complete')
       // 两个子任务产物独立写入
-      expect(readFileSync(join(ws.root, 'out/a.txt'), 'utf8')).toBe('child-A')
-      expect(readFileSync(join(ws.root, 'out/b.txt'), 'utf8')).toBe('child-B')
+      expect(readFileSync(join(ws.root, '..', 'auto-a.txt'), 'utf8')).toBe('child-A')
+      expect(readFileSync(join(ws.root, '..', 'auto-b.txt'), 'utf8')).toBe('child-B')
       const started = harness.events.filter(
         (event): event is Extract<RuntimeEvent, { type: 'tool_started' }> =>
           event.type === 'tool_started' && event.block.name === 'task'
@@ -353,7 +353,7 @@ describe('R9.1 同一消息多个 task 真正并发', () => {
                 {
                   id: `child_write_${label}`,
                   name: 'write_file',
-                  input: { path: `out/${label.toLowerCase()}.txt`, content: `child-${label}` }
+                  input: { path: `../once-${label.toLowerCase()}.txt`, content: `child-${label}` }
                 }
               ]
             }
@@ -373,8 +373,8 @@ describe('R9.1 同一消息多个 task 真正并发', () => {
       expect(harness.result.reason).toBe('complete')
       expect(harness.permissionRequests).toHaveLength(2)
       expect(maxActive).toBe(1)
-      expect(existsSync(join(ws.root, 'out/a.txt'))).toBe(true)
-      expect(existsSync(join(ws.root, 'out/b.txt'))).toBe(true)
+      expect(existsSync(join(ws.root, '..', 'once-a.txt'))).toBe(true)
+      expect(existsSync(join(ws.root, '..', 'once-b.txt'))).toBe(true)
     } finally {
       ws.cleanup()
     }
@@ -386,15 +386,15 @@ describe('R9.1 同一消息多个 task 真正并发', () => {
       const provider = parallelProvider((label, secondRound) =>
         secondRound
           ? { text: `子任务 ${label} 因权限失败。` }
-          : { toolCalls: [{ id: `child_write_${label}`, name: 'write_file', input: { path: `out/${label}.txt`, content: 'x' } }] }
+          : { toolCalls: [{ id: `child_write_${label}`, name: 'write_file', input: { path: `../deny-${label}.txt`, content: 'x' } }] }
       )
       const harness = await runParity(ws, provider, {
         permissionMode: 'ask',
         onPermission: async () => 'deny'
       })
       expect(harness.result.reason).toBe('complete')
-      expect(existsSync(join(ws.root, 'out/A.txt'))).toBe(false)
-      expect(existsSync(join(ws.root, 'out/B.txt'))).toBe(false)
+      expect(existsSync(join(ws.root, '..', 'deny-A.txt'))).toBe(false)
+      expect(existsSync(join(ws.root, '..', 'deny-B.txt'))).toBe(false)
       const blocks = taskBlocks(harness.result)
       for (const block of blocks) {
         const failedTools = block.result?.meta?.failedTools as string[] | undefined

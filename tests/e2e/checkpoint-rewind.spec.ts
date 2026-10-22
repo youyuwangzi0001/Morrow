@@ -84,7 +84,7 @@ test('检查点回退：冲突检测 → 恢复文件与对话', async () => {
 
     // 外部修改一个已登记文件 → 从回答末尾「回退」打开唯一的确认弹窗
     writeFileSync(join(workspace, 'notes.md'), 'external\n', 'utf8')
-    await page.locator('.message-assistant').first().getByRole('button', { name: '回退这一轮' }).click()
+    await page.getByRole('button', { name: '回退这一轮' }).first().click()
     await expect(page.getByRole('dialog', { name: '确认回退' })).toBeVisible()
     await expect(page.locator('.rewind-confirm-list')).toHaveCount(0)
     await expect(page.getByText(/有 1 个文件被改过/)).toBeVisible({ timeout: 15_000 })

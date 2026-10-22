@@ -171,6 +171,11 @@ button.compaction-head:hover {
   animation: fade-in-up var(--dur-base) var(--ease-out) both;
 }
 
+/* 同一轮里的连续模型步骤收紧间距，读起来是一条连续轨迹 */
+.message-assistant + .message-assistant {
+  margin-top: -10px;
+}
+
 /* 全局搜索命中：滚动到原消息后短暂金色呼吸，不改变布局 */
 .message.is-search-hit {
   border-radius: var(--r-md);
@@ -425,7 +430,90 @@ button.compaction-head:hover {
   user-select: text;
 }
 
+/* 阶段节点：只在计划步骤完成处出现，中间模型步骤不重复挂操作 */
+.message-stage-node {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 13px;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+}
+
+.message-stage-line {
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-gold));
+}
+
+.message-stage-dot {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-full);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.message-stage-label {
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.message-stage-title {
+  min-width: 0;
+  color: var(--text-2);
+}
+
 /* 悬停元信息：时间 + 复制 */
+.message-diff-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+}
+
+.message-diff-summary > svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.message-diff-label {
+  color: var(--text-2);
+}
+
+.message-diff-add {
+  color: var(--patina);
+  font-weight: 600;
+}
+
+.message-diff-del {
+  color: var(--rust);
+  font-weight: 600;
+}
+
+.message-diff-paths {
+  min-width: 0;
+  color: var(--text-3);
+}
+
 .message-meta {
   display: flex;
   align-items: center;

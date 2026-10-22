@@ -18,6 +18,8 @@ import type {
   TerminalProcessKind,
   TerminalShellProfile
 } from '../../shared/types'
+import type { CommandShell } from '../../core/types'
+import { buildOneShotInvocation } from '../../core/shell'
 import { sendFeatureEvent } from '../feature-ipc'
 
 const MAX_LOG_CHARS = 400 * 1024
@@ -222,13 +224,6 @@ function posixSpecs(): ShellSpec[] {
   return specs
 }
 
-function shellCommand(command: string): { file: string; args: string[] } {
-  if (process.platform === 'win32') {
-    const init = '[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $OutputEncoding=[Console]::OutputEncoding; '
-    return { file: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `${init}${command}`] }
-  }
-  return { file: '/bin/sh', args: ['-lc', command] }
-}
 
 export class TerminalManager {
   private records = new Map<string, ManagedRecord>()
@@ -268,6 +263,12 @@ export class TerminalManager {
 
   defaultShellId(): string {
     return (this.specs().find((spec) => spec.isDefault) ?? this.specs()[0]).id
+  }
+
+  /** 当前设置对应的终端；Agent 的 run_command 与一次性后台任务共用。 */
+  commandShell(shellId?: string): CommandShell {
+    const spec = this.resolveSpec(shellId)
+    return { id: spec.id, label: spec.label, file: spec.file }
   }
 
   private resolveSpec(shellId?: string): ShellSpec {
@@ -428,18 +429,19 @@ export class TerminalManager {
     return infoCopy(info)
   }
 
-  startTask(command: string, cwd: string, title?: string): TerminalProcessInfo {
+  startTask(command: string, cwd: string, title?: string, shellId?: string): TerminalProcessInfo {
     if (this.records.size >= MAX_PROCESSES) {
       throw new Error(`同时最多保留 ${MAX_PROCESSES} 个终端/后台任务，请先关闭一些进程。`)
     }
     if (!command.trim()) throw new Error('后台任务命令不能为空。')
     if (!isDirectory(cwd)) throw new Error('后台任务工作目录不存在。')
     const id = this.nextId('task')
-    const { file, args } = shellCommand(command)
+    const spec = this.resolveSpec(shellId)
+    const { file, args } = buildOneShotInvocation(this.commandShell(shellId), command)
     const child = spawn(file, args, {
       cwd,
       windowsHide: true,
-      env: { ...process.env, MORROW_TASK: '1' }
+      env: { ...process.env, MORROW_TASK: '1', MORROW_TERMINAL: '1' }
     })
     if (!child.stdout || !child.stderr || !child.stdin) throw new Error('后台任务没有可用的标准输入输出。')
     const info: TerminalProcessInfo = {
@@ -448,6 +450,8 @@ export class TerminalManager {
       cwd,
       kind: 'task',
       command,
+      shellId: spec.id,
+      shellLabel: spec.label,
       status: 'running',
       pid: child.pid,
       createdAt: Date.now()
@@ -608,7 +612,7 @@ export class TerminalManager {
     if (record.info.status === 'running') this.killTree(record.child)
     let child: ChildProcessWithoutNullStreams
     try {
-      const { file, args } = shellCommand(info.command ?? '')
+      const { file, args } = buildOneShotInvocation(this.commandShell(info.shellId), info.command ?? '')
       child = spawn(file, args, {
         cwd: info.cwd,
         windowsHide: true,
@@ -648,11 +652,12 @@ export class TerminalManager {
   async runOnce(
     command: string,
     cwd: string,
-    timeoutMs = 120_000
+    timeoutMs = 120_000,
+    shellId?: string
   ): Promise<{ output: string; exitCode: number | null; timedOut: boolean }> {
     if (!command.trim()) throw new Error('命令不能为空。')
     if (!isDirectory(cwd)) throw new Error('工作目录不存在。')
-    const { file, args } = shellCommand(command)
+    const { file, args } = buildOneShotInvocation(this.commandShell(shellId), command)
     return new Promise((resolve) => {
       const child = spawn(file, args, { cwd, windowsHide: true, env: { ...process.env, MORROW_TERMINAL: '1' } })
       const stdout = new StringDecoder('utf8')

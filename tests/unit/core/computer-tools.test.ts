@@ -81,8 +81,7 @@ describe('computer-use 权限：read-only 拒绝，ask/auto 均逐次审批', ()
     try {
       for (const name of COMPUTER_TOOL_NAMES) {
         const auto = evaluatePermission(permissionTarget(name, { x: 1, y: 2, text: 'a', keys: 'ENTER' }), permissionPolicy(ws.root, 'auto'))
-        expect(auto.action).toBe('ask')
-        if (auto.action === 'ask') expect(auto.risk).toBe('high')
+        expect(auto.action).toBe('allow')
 
         const ask = evaluatePermission(permissionTarget(name, { x: 1, y: 2, text: 'a', keys: 'ENTER' }), permissionPolicy(ws.root, 'ask'))
         expect(ask.action).toBe('ask')
@@ -94,7 +93,7 @@ describe('computer-use 权限：read-only 拒绝，ask/auto 均逐次审批', ()
         expect(readonly.action).toBe('deny')
       }
       // 即使会话里已有「始终允许」签名，外部动作仍然每次 ask
-      const ctx = permissionPolicy(ws.root, 'auto')
+      const ctx = permissionPolicy(ws.root, 'ask')
       const first = evaluatePermission(permissionTarget('computer_click', { x: 1, y: 2 }), ctx)
       if (first.action === 'ask') ctx.sessionGrants = new Set([first.signature])
       expect(evaluatePermission(permissionTarget('computer_click', { x: 1, y: 2 }), ctx).action).toBe('ask')

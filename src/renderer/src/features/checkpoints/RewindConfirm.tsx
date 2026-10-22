@@ -57,11 +57,11 @@ export function RewindConfirm(): React.JSX.Element | null {
       const list = await window.morrow.checkpoints.list(sessionId)
       if (!list.ok) throw new Error(list.error.message)
       const found = targetMessageId
-        ? (list.data.find((item) => item.messageId === targetMessageId) ?? null)
+        ? (list.data.find((item) => item.id === targetMessageId || item.messageId === targetMessageId) ?? null)
         : (list.data[0] ?? null)
       if (!found) {
         throw new Error(
-          targetMessageId ? '这一轮没有可回退的记录，可能还没有产生文件或对话变更。' : '还没有可回退的轮次。'
+          targetMessageId ? '这个阶段没有可回退的记录，可能还没有产生文件或对话变更。' : '还没有可回退的轮次。'
         )
       }
       if (cancelled) return
@@ -94,13 +94,22 @@ export function RewindConfirm(): React.JSX.Element | null {
 
   const summary = useMemo(() => {
     if (!preview) return ''
+    const stage = checkpoint?.kind === 'stage'
     const filePart =
-      preview.fileCount > 0 ? `恢复 ${preview.fileCount} 个文件` : '这一轮没有文件改动'
+      preview.fileCount > 0
+        ? stage
+          ? `把 ${preview.fileCount} 个文件恢复到该阶段完成时`
+          : `恢复 ${preview.fileCount} 个文件`
+        : stage
+          ? '文件保持该阶段完成时的状态'
+          : '这一轮没有文件改动'
     const chatPart = preview.messageFound
-      ? `移除从这一轮开始的 ${preview.removableMessages} 条对话`
+      ? stage
+        ? `保留这个阶段，移除其后的 ${preview.removableMessages} 条对话`
+        : `移除从这一轮开始的 ${preview.removableMessages} 条对话`
       : '对话无法回退'
     return `将${filePart}，并${chatPart}。`
-  }, [preview])
+  }, [preview, checkpoint?.kind])
 
   const confirm = async (): Promise<void> => {
     if (!checkpoint || !canConfirm) return
@@ -120,7 +129,11 @@ export function RewindConfirm(): React.JSX.Element | null {
       open={open}
       onClose={close}
       title="确认回退？"
-      description="对话和文件会一起回到这一轮开始前。这一步不能撤销。"
+      description={
+        checkpoint?.kind === 'stage'
+          ? '对话和文件会一起回到这个阶段完成时。这一步不能撤销。'
+          : '对话和文件会一起回到这一轮开始前。这一步不能撤销。'
+      }
       width={520}
       ariaLabel="确认回退"
       footer={

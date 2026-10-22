@@ -2,7 +2,7 @@
  * 工具调用的展示元信息：图标种类、人话摘要、耗时、diff 提取。
  * 不修改数据，只做「给用户看」的翻译。
  */
-import type { PermissionRequest, ToolResult, ToolUseBlock } from '@shared/types'
+import type { ChatMessage, PermissionRequest, ToolResult, ToolUseBlock } from '@shared/types'
 
 export type ToolVisual = 'read' | 'write' | 'edit' | 'search' | 'command' | 'list' | 'glob' | 'todo' | 'ask' | 'subagent' | 'artifact' | 'web' | 'memory' | 'other'
 
@@ -10,6 +10,7 @@ const BY_NAME: Record<string, ToolVisual> = {
   read_file: 'read',
   write_file: 'write',
   edit_file: 'edit',
+  delete_file: 'write',
   list_dir: 'list',
   glob: 'glob',
   grep: 'search',
@@ -129,6 +130,49 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+export interface FileDiffEvent {
+  path: string
+  created: boolean
+  deleted: boolean
+}
+
+/** 一条消息里所有文件增删事件；用于按「轮」剔除新建后又删除的净零文件。 */
+export function fileDiffEvents(message: ChatMessage): FileDiffEvent[] {
+  const events: FileDiffEvent[] = []
+  for (const block of message.content) {
+    if (block.type !== 'tool_use' || !block.result?.ok) continue
+    const meta = block.result.meta as Record<string, unknown> | undefined
+    if (Array.isArray(meta?.changedFiles)) {
+      for (const entry of meta.changedFiles) {
+        if (!entry || typeof entry !== 'object') continue
+        const file = entry as Record<string, unknown>
+        const path = typeof file.absolutePath === 'string' ? file.absolutePath : ''
+        if (!path) continue
+        events.push({
+          path,
+          created: file.created === true,
+          deleted: file.deleted === true
+        })
+      }
+      continue
+    }
+    const path =
+      typeof meta?.absolutePath === 'string'
+        ? meta.absolutePath
+        : typeof block.input?.path === 'string'
+          ? block.input.path
+          : ''
+    if (!path) continue
+    const created = meta?.created === true
+    const deleted = meta?.deleted === true
+    if (!created && !deleted && typeof meta?.diffAdded !== 'number' && typeof meta?.diffRemoved !== 'number') {
+      continue
+    }
+    events.push({ path, created, deleted })
+  }
+  return events
+}
+
 /** 从工具结果 meta 里提取 diff（兼容 patch 字符串 / DiffResult 对象 / before-after） */
 export function extractDiff(result?: ToolResult, block?: Pick<ToolUseBlock, 'input'>): DiffInfo | null {
   if (!result) return null
@@ -137,7 +181,12 @@ export function extractDiff(result?: ToolResult, block?: Pick<ToolUseBlock, 'inp
   if (!meta) return null
   const raw = meta.diff
   if (typeof raw === 'string' && raw.trim()) {
-    return { patch: raw, filePath: filePath ?? (typeof meta.path === 'string' ? meta.path : undefined) }
+    return {
+      patch: raw,
+      added: typeof meta.diffAdded === 'number' ? meta.diffAdded : undefined,
+      removed: typeof meta.diffRemoved === 'number' ? meta.diffRemoved : undefined,
+      filePath: filePath ?? (typeof meta.path === 'string' ? meta.path : undefined)
+    }
   }
   if (isRecord(raw)) {
     return {

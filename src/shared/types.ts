@@ -18,6 +18,9 @@ export type Platform = 'win32' | 'darwin' | 'linux'
 
 export type PermissionMode = 'read-only' | 'ask' | 'auto'
 
+/** 点击关闭按钮/关闭灵动岛时执行的动作；ask = 首次询问并记住选择 */
+export type CloseAction = 'ask' | 'minimize' | 'quit'
+
 /**
  * 显式会话模式（审计报告第 5 项）：
  * - work（默认）：按权限档位读写文件、执行命令、推进目标；
@@ -100,12 +103,16 @@ export interface CheckpointFile {
 export interface TurnCheckpoint {
   id: string
   sessionId: string
-  /** 对应本轮用户消息 id */
+  /** 对应本轮用户消息 id；阶段检查点对应阶段完成时的最后一条 assistant 消息 */
   messageId: string
   /** 创建时的消息下标（仅在消息未被压缩时有效） */
   messageIndex: number
   /** 用户消息摘录（回退列表展示） */
   label: string
+  /** turn = 每轮开始；stage = 计划步骤完成 */
+  kind?: 'turn' | 'stage'
+  /** 回退时是否保留 messageId 这条消息（阶段检查点保留已完成阶段） */
+  keepMessage?: boolean
   createdAt: number
   files: CheckpointFile[]
   /** 本轮开始前的 todo 快照 */
@@ -147,6 +154,7 @@ export interface RewindPreview {
 
 export interface RewindResult {
   checkpointId: string
+  kind?: 'turn' | 'stage'
   scope: RewindScope
   restoredFiles: number
   removedFiles: number
@@ -360,6 +368,8 @@ export interface ChatMessage {
   interrupted?: boolean
   /** 消息级错误（不打断会话，展示为内联错误） */
   error?: ResultError
+  /** 阶段式检查点：该消息完成了一个计划步骤，UI 在此提供分叉/回退 */
+  stageBoundary?: { checkpointId: string; label: string }
 }
 
 /* ── 目标（Goal 模式：多轮自动续跑） ─────────────────────────── */
@@ -769,8 +779,8 @@ export interface Settings {
   autoTitle: boolean
   /** 联网搜索配置 */
   webSearch: WebSearchSettings
-  /** 关闭窗口时最小化到托盘（任务仍在后台运行） */
-  closeToTray: boolean
+  /** 关闭窗口时：询问并记住 / 最小化到任务栏 / 完全退出 */
+  closeAction: CloseAction
   /** 任务完成/失败时发送系统通知 */
   notifyOnFinish: boolean
   /** 桌面灵动岛：置顶的小伙伴，可拖到桌面任意位置 */

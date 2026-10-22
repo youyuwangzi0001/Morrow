@@ -8,6 +8,7 @@ import { newId } from '../util'
 import { AnthropicProvider } from './anthropic'
 import { DemoProvider } from './demo'
 import { OpenAICompatProvider } from './openai-compat'
+import { ToolProtocolProvider } from './protocol'
 import { toProviderError } from './types'
 
 export { DemoProvider, collectDemoMetrics, renderDemoReportHtml, type DemoMetrics } from './demo'
@@ -18,6 +19,7 @@ export {
   toOpenAIMessages,
   toOpenAITool
 } from './openai-compat'
+export { ToolProtocolProvider } from './protocol'
 export {
   DEFAULT_RETRY,
   ProviderError,
@@ -36,8 +38,12 @@ export { SSEParser, iterateSSEData, iterateSSE, type SSEFrame } from './sse'
  */
 export function createProvider(config: ProviderConfig, apiKey: string | null, modelId?: string): Provider {
   if (config.kind === 'demo' || config.id === 'demo') return new DemoProvider()
-  if (config.kind === 'anthropic') return new AnthropicProvider(config, apiKey, modelId)
-  return new OpenAICompatProvider(config, apiKey, modelId)
+  const provider =
+    config.kind === 'anthropic'
+      ? new AnthropicProvider(config, apiKey, modelId)
+      : new OpenAICompatProvider(config, apiKey, modelId)
+  // 所有真实 provider 统一经过文本工具协议归一化：兼容各厂商的兼容层差异。
+  return new ToolProtocolProvider(provider)
 }
 
 function isLocalUrl(url: string): boolean {

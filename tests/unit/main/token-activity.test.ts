@@ -51,6 +51,27 @@ describe('TokenActivityService', () => {
     }
   })
 
+  it('缓存读取只是输入明细，总量不重复累加', () => {
+    const dir = makeTempDir('token-activity-cache-')
+    try {
+      const now = at(2026, 10, 20)
+      const service = new TokenActivityService(dir, { now: () => now })
+      service.record({ at: now, inputTokens: 1000, outputTokens: 200, cacheReadTokens: 800, sessionId: 's1' })
+      const summary = service.summary(now)
+      const today = summary.days[summary.days.length - 1]
+      expect(today).toMatchObject({
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadTokens: 800,
+        totalTokens: 1200
+      })
+      expect(summary.today).toBe(1200)
+      expect(summary.total).toBe(1200)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('历史会话只回填一次，演示会话不计数', () => {
     const dir = makeTempDir('token-activity-legacy-')
     try {

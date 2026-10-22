@@ -157,6 +157,8 @@ export interface RunAgentOptions {
   compactThreshold?: number
   /** 压缩时保留最近多少条消息（默认 8） */
   keepRecent?: number
+  /** 用户设置的默认终端（run_command 与一次性命令使用；主进程注入） */
+  commandShell?: import('./types').CommandShell
   /** 会话已有的计划/产物（可选；主进程合并会话状态后传入） */
   initialTodos?: TodoItem[]
   initialArtifacts?: Artifact[]
@@ -270,8 +272,11 @@ interface RunContext {
   permissionChain: Promise<void>
 }
 
-const DEFAULT_MAX_STEPS = 60
-const MAX_ALLOWED_STEPS = 200
+/**
+ * 单轮默认不设步数上限：长程任务（搭建页面、跑测试、修复循环）不应因固定步数被截断。
+ * 仍保留显式 maxSteps 支持（计划模式、测试与高级调用方可以设硬上限）。
+ */
+const DEFAULT_MAX_STEPS = Number.POSITIVE_INFINITY
 const SUBAGENT_MAX_STEPS = 12
 const SUBAGENT_MAX_OUTPUT = 4096
 /** 同一轮最多同时推进的子代理数（集群一次最多 8 个） */
@@ -300,8 +305,9 @@ function createEmitter(opts: RunAgentOptions): (payload: EmitPayload) => void {
 }
 
 function clampSteps(value: number | undefined): number {
+  // 不传 = 不限制；显式传入有限值时才作为硬上限。
   if (!value || !Number.isFinite(value)) return DEFAULT_MAX_STEPS
-  return Math.min(MAX_ALLOWED_STEPS, Math.max(1, Math.trunc(value)))
+  return Math.max(1, Math.trunc(value))
 }
 
 function normalizeOptions(options: RunAgentOptions): RunAgentOptions {
@@ -575,6 +581,30 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
   const maxSteps = ctx.opts.maxSteps ?? DEFAULT_MAX_STEPS
   let assistantId = firstAssistantId
   let step = 1
+  let repeatedSignature = ''
+  let repeatedCount = 0
+  let todoCheckRounds = 0
+  let designReviewRounds = 0
+  let qualityReviewRounds = 0
+  let planReminderStep = 1
+  let planReminderRounds = 0
+  let finishTodoAdded = false
+  let lastTodoSignature = JSON.stringify(ctx.todos.map((todo) => `${todo.id}:${todo.status}`))
+  const runStartedAt = Date.now()
+  const userText = ctx.opts.userMessage.content
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+  const visualIntent =
+    ctx.opts.mode !== 'chat' &&
+    ctx.opts.mode !== 'research' &&
+    /(惊艳|高级感|有质感|有氛围|视觉冲击|好看|漂亮|美术|酷炫)/.test(userText)
+  const qualityIntent =
+    ctx.opts.mode !== 'chat' &&
+    ctx.opts.mode !== 'research' &&
+    /(专业|高质量|精致|完美|拿得出手|直接交付|可交付|尽可能好|像作品|打磨|精品|正式|汇报|惊艳|高级感|有质感|有氛围|视觉冲击|好看|漂亮|美术|酷炫)/.test(
+      userText
+    )
   for (;;) {
     if (ctx.opts.signal.aborted) {
       finalizeInterrupted(ctx)
@@ -598,13 +628,256 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
       return { reason: 'error', error: streamed.error }
     }
     if (streamed.toolCalls.length === 0) {
+      // 模型常在工作完成后直接收尾，忘记把计划标记完成，界面上就会停在 0/N。
+      // 结束前给一次（最多两次）纠正机会：只更新计划，不重复最终答复。
+      const openTodos = ctx.todos.filter((todo) => todo.status !== 'completed')
+      const canReconcileTodos =
+        openTodos.length > 0 &&
+        todoCheckRounds < 2 &&
+        step < maxSteps &&
+        ctx.depth === 0 &&
+        !ctx.demo &&
+        !ctx.planMode &&
+        ctx.tools.some((tool) => tool.name === 'todo_write') &&
+        !ctx.opts.signal.aborted
+      if (canReconcileTodos) {
+        todoCheckRounds += 1
+        const list = openTodos
+          .slice(0, 12)
+          .map(
+            (todo, index) =>
+              `${index + 1}. ${todo.text}（${todo.status === 'in_progress' ? '进行中' : '未开始'}）`
+          )
+          .join('\n')
+        const nudge: ChatMessage = {
+          id: newId('msg'),
+          role: 'user',
+          hidden: true,
+          createdAt: Date.now(),
+          content: [
+            {
+              type: 'text',
+              text:
+                `[系统检查] 计划里还有 ${openTodos.length} 项未标记完成：\n${list}\n\n` +
+                '结束本轮前请调用 todo_write 同步真实状态：已完成的标为 completed；仍需做的继续执行；' +
+                '范围变化或不再需要的步骤从完整列表中移除。只更新计划，不要重复最终答复，也不要用正文代替更新。'
+            }
+          ]
+        }
+        ctx.messages.push(nudge)
+        ctx.newMessages.push(nudge)
+        assistantId = newId('msg')
+        step += 1
+        continue
+      }
+
+      // 用户明确要求画面质量时，再强制走一次视觉打磨轮；只触发一次，避免无休止返工。
+      const visualArtifact = ctx.artifacts.some(
+        (artifact) =>
+          artifact.updatedAt >= runStartedAt &&
+          (artifact.kind === 'html' ||
+            artifact.kind === 'svg' ||
+            /\.(?:html?|svg)$/i.test(artifact.path ?? ''))
+      )
+      const canReviewDesign =
+        visualIntent &&
+        visualArtifact &&
+        designReviewRounds < 1 &&
+        step < maxSteps &&
+        ctx.depth === 0 &&
+        !ctx.demo &&
+        !ctx.planMode &&
+        !ctx.opts.signal.aborted
+      if (canReviewDesign) {
+        designReviewRounds += 1
+        const nudge: ChatMessage = {
+          id: newId('msg'),
+          role: 'user',
+          hidden: true,
+          createdAt: Date.now(),
+          content: [
+            {
+              type: 'text',
+              text:
+                '[系统检查] 用户明确要求画面惊艳。请在收尾前完成一次真正的视觉打磨，而不是直接结束：\n' +
+                '- 重新读取最终成品和关键样式，按 frontend-art-direction 自检：艺术方向是否成立、首屏焦点是否够强、信息密度与层级是否像真实系统、字体/颜色/材质/动效是否统一。\n' +
+                '- 直接修改文件中的具体视觉弱点：优先解决画面空、主次平、像模板、细节散的问题；强化标题字标、关键信息区、状态灯、刻度或接缝等能支撑世界观的细节，但不要堆无意义特效。\n' +
+                '- 改完重新验证功能与宽屏/窄屏画面，再简短收尾；不要只回复「已优化」，也不要重复上一段交付说明。'
+            }
+          ]
+        }
+        ctx.messages.push(nudge)
+        ctx.newMessages.push(nudge)
+        assistantId = newId('msg')
+        step += 1
+        continue
+      }
+
+      // 非视觉成品（文档、表格、幻灯片、代码等）也要有交付前质量审查，而不是只打磨前端。
+      const updatedArtifact = ctx.artifacts.some((artifact) => artifact.updatedAt >= runStartedAt)
+      const changedFile = ctx.newMessages.some((message) =>
+        message.content.some(
+          (block) =>
+            block.type === 'tool_use' &&
+            block.result?.ok === true &&
+            typeof block.result.meta?.absolutePath === 'string'
+        )
+      )
+      // PPTX/DOCX/XLSX/PDF 等可能由 python 脚本经 run_command 生成，没有 absolutePath meta；
+      // 只要命令里出现交付物扩展名，也视为产生了可审查的成品。
+      const generatedByCommand = ctx.newMessages.some((message) =>
+        message.content.some((block) => {
+          if (block.type !== 'tool_use' || block.result?.ok !== true) return false
+          if (block.name !== 'run_command' && block.name !== 'terminal') return false
+          const command = typeof block.input.command === 'string' ? block.input.command : ''
+          return /\.(?:md|markdown|html?|svg|pdf|docx?|xlsx?|pptx?|png|jpe?g|csv|zip)\b/i.test(command)
+        })
+      )
+      const canReviewQuality =
+        qualityIntent &&
+        !(visualIntent && visualArtifact) &&
+        (updatedArtifact || changedFile || generatedByCommand) &&
+        qualityReviewRounds < 1 &&
+        step < maxSteps &&
+        ctx.depth === 0 &&
+        !ctx.demo &&
+        !ctx.planMode &&
+        !ctx.opts.signal.aborted
+      if (canReviewQuality) {
+        qualityReviewRounds += 1
+        const nudge: ChatMessage = {
+          id: newId('msg'),
+          role: 'user',
+          hidden: true,
+          createdAt: Date.now(),
+          content: [
+            {
+              type: 'text',
+              text:
+                '[系统检查] 用户明确要求高质量交付。请在收尾前按 deliverable-quality 做一次交付前审查：\n' +
+                '- 根据实际交付物类型核对：结构/完整性、关键数字与证据、边界与失败状态、可打开或可运行性；文档/表格/幻灯片还要检查版式、公式、引用和导出效果。\n' +
+                '- 直接修正发现的具体问题（占位符、缺证据、排版/格式错误、公式或引用错位、测试未跑等），不要只重复总结，也不要重新做一遍整个任务。\n' +
+                '- 改完重新验证成品，再简短收尾。'
+            }
+          ]
+        }
+        ctx.messages.push(nudge)
+        ctx.newMessages.push(nudge)
+        assistantId = newId('msg')
+        step += 1
+        continue
+      }
       return { reason: 'complete' }
     }
 
+    const todoSignatureBefore = JSON.stringify(ctx.todos.map((todo) => `${todo.id}:${todo.status}`))
+    const allTodosDoneBefore = ctx.todos.length > 0 && ctx.todos.every((todo) => todo.status === 'completed')
     const interruptedDuringTools = await executeToolCalls(ctx, streamed.message, streamed.toolCalls)
     if (interruptedDuringTools) {
       finalizeInterrupted(ctx)
       return { reason: 'cancelled' }
+    }
+
+    const planUpdatedThisStep = streamed.toolCalls.some(
+      (call) => call.name === 'todo_write' || call.name === 'update_goal'
+    )
+    const allTodosDoneAfter = ctx.todos.length > 0 && ctx.todos.every((todo) => todo.status === 'completed')
+    const editedAfterDone = streamed.toolCalls.some((call) =>
+      ['write_file', 'edit_file', 'delete_file'].includes(call.name)
+    )
+    // 计划已经全部完成，但模型仍在改文件：追加一个真实的“收尾完善”步骤，避免 UI 显示 6/6 却还在干活。
+    if (
+      !finishTodoAdded &&
+      allTodosDoneBefore &&
+      allTodosDoneAfter &&
+      editedAfterDone &&
+      !planUpdatedThisStep &&
+      ctx.depth === 0 &&
+      !ctx.demo &&
+      !ctx.planMode &&
+      ctx.opts.mode !== 'chat' &&
+      ctx.opts.mode !== 'research'
+    ) {
+      finishTodoAdded = true
+      const finishTodo = { id: newId('todo'), text: '收尾完善', status: 'in_progress' as const }
+      ctx.todos = [...ctx.todos, finishTodo]
+      ctx.emit({ type: 'todos_updated', todos: ctx.todos })
+      ctx.messages.push({
+        id: newId('msg'),
+        role: 'user',
+        hidden: true,
+        createdAt: Date.now(),
+        content: [
+          {
+            type: 'text',
+            text:
+              '[系统检查] 计划已全部标记完成，但本轮仍在修改文件。已在计划末尾追加「收尾完善（进行中）」；' +
+              '如果你还要继续优化，请把它保留为进行中并在真正收尾时标为 completed；如果已经结束，直接停止工具调用并给出最终答复。'
+          }
+        ]
+      })
+    }
+    // 长任务中每几步提醒一次同步计划/目标，避免只在最后一次性更新。
+    if (planUpdatedThisStep || todoSignatureBefore !== lastTodoSignature) {
+      planReminderStep = step
+    }
+    lastTodoSignature = JSON.stringify(ctx.todos.map((todo) => `${todo.id}:${todo.status}`))
+    const openTodoCount = ctx.todos.filter((todo) => todo.status !== 'completed').length
+    const goalActive = ctx.currentGoal?.status === 'active'
+    if (
+      (openTodoCount > 0 || goalActive) &&
+      step - planReminderStep >= 5 &&
+      planReminderRounds < 2 &&
+      ctx.depth === 0 &&
+      !ctx.demo &&
+      !ctx.planMode &&
+      ctx.opts.mode !== 'chat' &&
+      !ctx.opts.signal.aborted
+    ) {
+      planReminderRounds += 1
+      planReminderStep = step
+      ctx.messages.push({
+        id: newId('msg'),
+        role: 'user',
+        hidden: true,
+        createdAt: Date.now(),
+        content: [
+          {
+            type: 'text',
+            text:
+              '[系统检查] 已经连续多步没有更新计划/目标进度。' +
+              (openTodoCount > 0
+                ? `计划里还有 ${openTodoCount} 项未完成：完成一步就立即用 todo_write 更新；长任务可先追加下一段步骤，不必一次列完。`
+                : '') +
+              (goalActive ? '目标模式下每完成一部分就用 update_goal 记录 summary 和 nextStep，不要等到最后。' : '')
+          }
+        ]
+      })
+    }
+
+    // 不设单轮步数上限，但仍要防止模型原地打转：连续 4 次完全相同的一组调用视为死循环。
+    const callSignature = streamed.toolCalls
+      .map((call) => `${call.name}:${JSON.stringify(call.input ?? {})}`)
+      .join('|')
+    if (callSignature === repeatedSignature) repeatedCount += 1
+    else {
+      repeatedSignature = callSignature
+      repeatedCount = 1
+    }
+    if (repeatedCount >= 4) {
+      ctx.emit({
+        type: 'notice',
+        level: 'warn',
+        message: '检测到连续重复的工具调用，已停止以避免死循环。请换一种做法，或把任务拆小后重试。'
+      })
+      return {
+        reason: 'error',
+        error: {
+          code: 'LOOP_DETECTED',
+          message: '检测到连续重复的工具调用，已停止以避免死循环。',
+          hint: '换一种做法，或把任务拆小后重试。'
+        }
+      }
     }
 
     if (step >= maxSteps) {
@@ -948,7 +1221,7 @@ async function runToolCallWithPermissions(
     gate = { action: 'deny', reason: `权限检查失败：${errorMessage(err)}` }
   }
 
-  let escapeApproved = false
+  let escapeApproved = 'escape' in gate && gate.escape === true
   call.startedAt = Date.now()
   call.status = gate.action === 'ask' ? 'waiting' : 'running'
   emitStarted()
@@ -1263,6 +1536,7 @@ function createToolContext(
     ...(opts.webSearch ? { searchWeb: opts.webSearch } : {}),
     ...(opts.ocrPdf ? { ocrPdf: opts.ocrPdf } : {}),
     ...(opts.terminal ? { terminal: opts.terminal } : {}),
+    ...(opts.commandShell ? { commandShell: opts.commandShell } : {}),
     askUser: async (request) => {
       // 与审批共用同一条串行队列：并行子代理一次只弹一张交互卡
       return runSerialized(ctx, async () => {
@@ -1606,16 +1880,34 @@ async function runSubagentLoop(
         failedTools.push(`${call.name}：${call.result.error ?? call.result.output ?? '未知错误'}`)
       }
       const meta = call.result?.ok === true ? (call.result.meta as Record<string, unknown> | undefined) : undefined
-      if (meta && typeof meta.absolutePath === 'string' && typeof meta.afterHash === 'string') {
+      const deleted = meta?.deleted === true
+      if (
+        meta &&
+        typeof meta.absolutePath === 'string' &&
+        (typeof meta.afterHash === 'string' || deleted)
+      ) {
+        const added = typeof meta.diffAdded === 'number' ? meta.diffAdded : 0
+        const removed = typeof meta.diffRemoved === 'number' ? meta.diffRemoved : 0
         const existing = changedFiles.get(meta.absolutePath)
+        // 子代理本轮新建后删除：净零，不把临时文件带回父检查点。
+        if (deleted && existing?.created === true) {
+          changedFiles.delete(meta.absolutePath)
+          continue
+        }
         if (existing) {
-          existing.afterHash = meta.afterHash
+          existing.afterHash = typeof meta.afterHash === 'string' ? meta.afterHash : null
+          existing.deleted = deleted
+          existing.diffAdded = (typeof existing.diffAdded === 'number' ? existing.diffAdded : 0) + added
+          existing.diffRemoved = (typeof existing.diffRemoved === 'number' ? existing.diffRemoved : 0) + removed
         } else {
           changedFiles.set(meta.absolutePath, {
             absolutePath: meta.absolutePath,
             created: meta.created === true,
+            deleted,
             beforeHash: typeof meta.beforeHash === 'string' ? meta.beforeHash : null,
-            afterHash: meta.afterHash,
+            afterHash: typeof meta.afterHash === 'string' ? meta.afterHash : null,
+            diffAdded: added,
+            diffRemoved: removed,
             ...(typeof meta.snapshotPath === 'string' ? { snapshotPath: meta.snapshotPath } : {})
           })
         }

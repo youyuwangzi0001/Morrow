@@ -63,7 +63,8 @@ registerFeatureHandler('feature:terminal:start-task', (payload) => {
   return managerOf().startTask(
     command,
     resolveCwd(input.cwd),
-    text(input.title).trim().slice(0, 120) || undefined
+    text(input.title).trim().slice(0, 120) || undefined,
+    getSettingsStore().get().terminalShell || undefined
   )
 })
 

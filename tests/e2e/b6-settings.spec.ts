@@ -107,7 +107,9 @@ test.describe('B6 设置与状态', () => {
     await expect(settings.locator('.st-provider-state').filter({ hasText: 'Key 已保存' })).toBeVisible()
 
     await settings.getByRole('tab', { name: '关于' }).click()
-    await expect(settings.getByRole('button', { name: /查看模型提供方（B6 测试服务）/ })).toBeVisible()
+    // R12：无交互的「隐私」区块已删除，关于页直接进入快捷键
+    await expect(settings.locator('.st-about-privacy')).toHaveCount(0)
+    await expect(settings.getByText('键盘快捷键')).toBeVisible()
     await expect(settings.getByRole('button', { name: '更改目录' })).toBeVisible()
     await expect(settings.getByRole('button', { name: '更改目录' })).toBeDisabled()
     await expect(settings).toContainText('当前数据目录由启动参数指定')

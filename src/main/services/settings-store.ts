@@ -486,7 +486,7 @@ export class SettingsStore {
       'compactThreshold',
       'canvasWidth',
       'autoTitle',
-      'closeToTray',
+      'closeAction',
       'notifyOnFinish',
       'islandEnabled',
       'islandPosition',
@@ -501,7 +501,7 @@ export class SettingsStore {
       if (!allowed.has(key)) failValidation(`不支持的设置项：${key}`)
     }
     const next: Settings = { ...this.settings }
-    const bool = (key: 'reduceMotion' | 'onboardingDone' | 'sidebarCollapsed' | 'demoSeen' | 'showTokenMeter' | 'autoCompact' | 'autoTitle' | 'closeToTray' | 'notifyOnFinish' | 'islandEnabled'): void => {
+    const bool = (key: 'reduceMotion' | 'onboardingDone' | 'sidebarCollapsed' | 'demoSeen' | 'showTokenMeter' | 'autoCompact' | 'autoTitle' | 'notifyOnFinish' | 'islandEnabled'): void => {
       const value = patch[key]
       if (typeof value !== 'boolean') failValidation(`设置项 ${key} 必须是布尔值。`)
       next[key] = value
@@ -527,8 +527,14 @@ export class SettingsStore {
       if (patch.sendKey !== 'enter' && patch.sendKey !== 'ctrl+enter') failValidation('发送键设置不合法。')
       next.sendKey = patch.sendKey
     }
-    for (const key of ['reduceMotion', 'onboardingDone', 'sidebarCollapsed', 'demoSeen', 'showTokenMeter', 'autoCompact', 'autoTitle', 'closeToTray', 'notifyOnFinish', 'islandEnabled'] as const) {
+    for (const key of ['reduceMotion', 'onboardingDone', 'sidebarCollapsed', 'demoSeen', 'showTokenMeter', 'autoCompact', 'autoTitle', 'notifyOnFinish', 'islandEnabled'] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key)) bool(key)
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'closeAction')) {
+      if (patch.closeAction !== 'ask' && patch.closeAction !== 'minimize' && patch.closeAction !== 'quit') {
+        failValidation('关闭动作不合法。')
+      }
+      next.closeAction = patch.closeAction
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'islandPosition')) {
       const value = patch.islandPosition

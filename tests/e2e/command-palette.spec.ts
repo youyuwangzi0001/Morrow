@@ -132,7 +132,7 @@ test.describe('命令面板与快捷键', () => {
     mkdirSync(WORKSPACE, { recursive: true })
     const mock = await startMockLLM({
       scripts: [
-        { toolCalls: [{ name: 'write_file', arguments: { path: 'palette-approval.txt', content: 'ok' } }] },
+        { toolCalls: [{ name: 'run_command', arguments: { command: 'Remove-Item out -Recurse -Force' } }] },
         { text: '处理完成。' }
       ]
     })

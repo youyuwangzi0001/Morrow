@@ -29,12 +29,20 @@ export function PlanTray(): React.JSX.Element | null {
   const completed = todos.filter((todo) => todo.status === 'completed').length
   const allDone = completed === todos.length
   const active = todos.find((todo) => todo.status === 'in_progress') ?? null
+  // 计划全部完成但运行还没结束：说明模型仍在做最后打磨，不能显示成彻底收工。
+  const finishing = allDone && running
   // 运行结束后仍有 in_progress：保留真实状态，但不要再像「正在推进」那样闪动
   const idle = !running && !allDone && active !== null
 
   return (
     <section
-      className={['plan-tray', expanded ? 'is-expanded' : '', allDone ? 'is-complete' : '', idle ? 'is-idle' : '']
+      className={[
+        'plan-tray',
+        expanded ? 'is-expanded' : '',
+        allDone ? 'is-complete' : '',
+        finishing ? 'is-finishing' : '',
+        idle ? 'is-idle' : ''
+      ]
         .filter(Boolean)
         .join(' ')}
       aria-label="计划"
@@ -47,12 +55,13 @@ export function PlanTray(): React.JSX.Element | null {
         onClick={() => setExpanded(!expanded)}
       >
         <ListChecks size={14} strokeWidth={1.5} className="plan-icon" aria-hidden />
-        <span className="plan-title">{allDone ? '计划完成' : '计划'}</span>
+        <span className="plan-title">{finishing ? '计划完成 · 收尾中' : allDone ? '计划完成' : '计划'}</span>
         <span className="plan-progress mono">
           {completed}/{todos.length}
         </span>
         {!expanded && active ? <span className="plan-current">{active.text}</span> : null}
         {running && !allDone ? <span className="plan-running mono">进行中</span> : null}
+        {finishing ? <span className="plan-running mono">收尾中</span> : null}
         <ChevronDown size={14} strokeWidth={1.6} className="plan-chevron" aria-hidden />
       </button>
 

@@ -17,10 +17,12 @@ import {
 } from 'lucide-react'
 import type { ChatMessage, ContentBlock, MessageAttachment, ToolUseBlock } from '@shared/types'
 import { formatBytes } from '@shared/format'
+import { stripToolProtocol } from '@shared/tool-protocol'
 import { messagePlainText, userMessageDisplayText } from '@shared/message'
 import { useAppStore } from '../../state/store'
 import { Markdown } from '../../components/markdown/Markdown'
 import { ActivitySpine } from '../activity/ActivitySpine'
+import { extractDiff } from '../activity/tool-meta'
 import { ThinkingBlock } from './ThinkingBlock'
 import { GoalContinuation, parseGoalContinuation } from './GoalContinuation'
 import { PlanNotice, parsePlanMessage } from '../activity/PlanCard'
@@ -136,9 +138,22 @@ function AssistantContent({ message, streaming }: { message: ChatMessage; stream
     flushTools()
     if (block.type === 'text') {
       const isLastText = index === lastTextIndex
-      nodes.push(<StreamingMarkdown key={`text-${index}`} text={block.text} streaming={streaming && isLastText} />)
+      nodes.push(
+        <StreamingMarkdown
+          key={`text-${index}`}
+          text={stripToolProtocol(block.text)}
+          streaming={streaming && isLastText}
+        />
+      )
     } else if (block.type === 'thinking') {
-      nodes.push(<ThinkingBlock key={`thinking-${index}`} text={block.text} durationMs={block.durationMs} streaming={streaming} />)
+      nodes.push(
+        <ThinkingBlock
+          key={`thinking-${index}`}
+          text={stripToolProtocol(block.text)}
+          durationMs={block.durationMs}
+          streaming={streaming}
+        />
+      )
     } else if (block.type === 'error') {
       nodes.push(<InlineError key={`error-${index}`} block={block} />)
     }
@@ -210,6 +225,12 @@ export interface MessageItemProps {
   streaming: boolean
   /** 是否最后一条 assistant 消息（仅它可重新生成） */
   isLastAssistant?: boolean
+  /** 是否这一轮用户消息之后的最后一条回答（显示分叉/回退入口，中间模型步骤不显示） */
+  isTurnFinal?: boolean
+  /** 这一轮的用户消息 id：轮末回答用它显示「回退这一轮」 */
+  rewindTargetUserMessageId?: string | null
+  /** 本轮创建后又删除的文件：净变化为零，任何消息都不显示它的 diff */
+  suppressedDiffPaths?: ReadonlySet<string> | null
 }
 
 function AttachmentChip({ attachment }: { attachment: MessageAttachment }): React.JSX.Element {
@@ -237,12 +258,18 @@ function AttachmentChip({ attachment }: { attachment: MessageAttachment }): Reac
   )
 }
 
-export const MessageItem = memo(function MessageItem({ message, streaming, isLastAssistant = false }: MessageItemProps): React.JSX.Element {
+export const MessageItem = memo(function MessageItem({
+  message,
+  streaming,
+  isLastAssistant = false,
+  isTurnFinal = false,
+  rewindTargetUserMessageId = null,
+  suppressedDiffPaths = null
+}: MessageItemProps): React.JSX.Element {
   const time = formatTime(message.createdAt)
   const userText = message.role === 'user' ? userMessageDisplayText(message) : ''
   const copyable = message.role === 'user' ? userText : messagePlainText(message)
   const openRewind = useAppStore((s) => s.openRewind)
-  const sessionMessages = useAppStore((s) => s.session?.messages)
   const branchFromMessage = useAppStore((s) => s.branchFromMessage)
   const deleteMessagesAfter = useAppStore((s) => s.deleteMessagesAfter)
   const editMessageAndResend = useAppStore((s) => s.editMessageAndResend)
@@ -253,16 +280,71 @@ export const MessageItem = memo(function MessageItem({ message, streaming, isLas
   const [draft, setDraft] = useState(userText)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  // 回答末尾的「回退」对应这一轮的用户消息，由检查点按 messageId 定位。
-  const rewindTargetUserMessageId = useMemo(() => {
-    if (message.role !== 'assistant' || !sessionMessages) return null
-    const index = sessionMessages.findIndex((item) => item.id === message.id)
-    if (index < 0) return null
-    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-      if (sessionMessages[cursor].role === 'user') return sessionMessages[cursor].id
+  const diffSummary = useMemo(() => {
+    const perFile = new Map<string, { display: string; added: number; removed: number }>()
+    let anonymousAdded = 0
+    let anonymousRemoved = 0
+    const add = (key: string, display: string, plus: number, minus: number): void => {
+      if (!key) {
+        anonymousAdded += plus
+        anonymousRemoved += minus
+        return
+      }
+      const entry = perFile.get(key) ?? { display, added: 0, removed: 0 }
+      entry.added += plus
+      entry.removed += minus
+      if (!entry.display && display) entry.display = display
+      perFile.set(key, entry)
     }
-    return null
-  }, [message.role, message.id, sessionMessages])
+    for (const block of message.content) {
+      if (block.type !== 'tool_use' || !block.result) continue
+      // 子代理/集群把多次写文件汇总在 changedFiles 里；没有逐文件 diff 时才退回工具自身的 diff。
+      const meta = block.result.meta as Record<string, unknown> | undefined
+      const changed = Array.isArray(meta?.changedFiles) ? meta.changedFiles : null
+      if (changed) {
+        let counted = false
+        for (const entry of changed) {
+          if (!entry || typeof entry !== 'object') continue
+          const file = entry as Record<string, unknown>
+          const plus = typeof file.diffAdded === 'number' ? file.diffAdded : 0
+          const minus = typeof file.diffRemoved === 'number' ? file.diffRemoved : 0
+          if (plus > 0 || minus > 0) counted = true
+          const key = typeof file.absolutePath === 'string' ? file.absolutePath : ''
+          add(key, key, plus, minus)
+        }
+        if (counted) continue
+      }
+      const diff = extractDiff(block.result, block)
+      if (!diff) continue
+      const plus = diff.added ?? 0
+      const minus = diff.removed ?? 0
+      if (plus === 0 && minus === 0) continue
+      const key =
+        typeof meta?.absolutePath === 'string'
+          ? meta.absolutePath
+          : typeof block.input?.path === 'string'
+            ? block.input.path
+            : typeof block.input?.file_path === 'string'
+              ? block.input.file_path
+              : ''
+      const display =
+        diff.filePath || (typeof meta?.path === 'string' ? meta.path : '') || key
+      add(key, display, plus, minus)
+    }
+    let added = anonymousAdded
+    let removed = anonymousRemoved
+    const files = new Set<string>()
+    for (const [key, entry] of perFile) {
+      if (suppressedDiffPaths?.has(key)) continue
+      added += entry.added
+      removed += entry.removed
+      if (entry.display) files.add(entry.display)
+    }
+    return { added, removed, files: [...files] }
+  }, [message.content, suppressedDiffPaths])
+
+  // 阶段节点只挂在创建检查点时的边界消息上；中间的模型步骤不再显示分叉/回退行。
+  const stageInfo = message.role === 'assistant' ? message.stageBoundary ?? null : null
 
   const beginEdit = (): void => {
     if (running) {
@@ -440,6 +522,26 @@ export const MessageItem = memo(function MessageItem({ message, streaming, isLas
   return (
     <article className={['message', 'message-assistant', streaming ? 'is-streaming' : ''].filter(Boolean).join(' ')} data-message-id={message.id}>
       <AssistantContent message={message} streaming={streaming} />
+      {diffSummary.added + diffSummary.removed > 0 ? (
+        <div
+          className="message-diff-summary"
+          role="note"
+          aria-label={`本次改动 ${diffSummary.files.length} 个文件，增加 ${diffSummary.added} 行，减少 ${diffSummary.removed} 行`}
+        >
+          <FileIcon size={12} strokeWidth={1.5} aria-hidden />
+          <span className="message-diff-label">
+            本次改动{diffSummary.files.length > 0 ? ` ${diffSummary.files.length} 个文件` : ''}
+          </span>
+          <span className="message-diff-add mono">+{diffSummary.added}</span>
+          <span className="message-diff-del mono">−{diffSummary.removed}</span>
+          {diffSummary.files.length > 0 ? (
+            <span className="message-diff-paths truncate" title={diffSummary.files.join('\n')}>
+              {diffSummary.files.slice(0, 3).join(' · ')}
+              {diffSummary.files.length > 3 ? ` 等 ${diffSummary.files.length} 个` : ''}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {message.interrupted ? (
         <p className="message-interrupted">
           <Square size={10} strokeWidth={1.8} aria-hidden />
@@ -452,49 +554,67 @@ export const MessageItem = memo(function MessageItem({ message, streaming, isLas
           {message.error.hint ? <p className="message-inline-error-hint">{message.error.hint}</p> : null}
         </div>
       ) : null}
-      <div className="message-meta">
-        <span className="message-time mono">{time}</span>
-        {isLastAssistant && !streaming ? (
-          <button
-            type="button"
-            className="message-copy"
-            aria-label="重新生成回答"
-            title={running ? '当前对话正在运行，先停止后再重新生成' : '丢弃这条回答并重新生成'}
-            disabled={running}
-            onClick={() => void regenerateLast()}
-          >
-            <RefreshCw size={13} strokeWidth={1.6} aria-hidden />
-            <span>重新生成</span>
-          </button>
-        ) : null}
-        {!streaming ? (
-          <button
-            type="button"
-            className="message-copy"
-            aria-label="从这条回答分叉"
-            title={running ? '当前对话正在运行，先停止后再分叉' : '从这条回答分叉出新对话，原对话保持不变'}
-            disabled={running}
-            onClick={() => void branchFromMessage(message.id)}
-          >
-            <GitBranch size={13} strokeWidth={1.6} aria-hidden />
-            <span>分叉</span>
-          </button>
-        ) : null}
-        <CopyButton text={copyable} label="复制这条回答" />
-        {!streaming && rewindTargetUserMessageId ? (
-          <button
-            type="button"
-            className="message-copy"
-            aria-label="回退这一轮"
-            title={running ? '当前对话正在运行，先停止再回退' : '回到这一轮开始前，文件和对话一起恢复'}
-            disabled={running}
-            onClick={() => openRewind(rewindTargetUserMessageId)}
-          >
-            <RotateCcw size={13} strokeWidth={1.6} aria-hidden />
-            <span>回退</span>
-          </button>
-        ) : null}
-      </div>
+      {stageInfo ? (
+        <div className="message-stage-node" role="note" aria-label={`阶段完成：${stageInfo.label}`}>
+          <span className="message-stage-line" aria-hidden />
+          <span className="message-stage-dot" aria-hidden>
+            <Check size={10} strokeWidth={2.2} />
+          </span>
+          <span className="message-stage-label">阶段完成</span>
+          <span className="message-stage-title truncate">{stageInfo.label}</span>
+        </div>
+      ) : null}
+      {isTurnFinal || stageInfo ? (
+        <div className="message-meta">
+          <span className="message-time mono">{time}</span>
+          {isLastAssistant && !streaming ? (
+            <button
+              type="button"
+              className="message-copy"
+              aria-label="重新生成回答"
+              title={running ? '当前对话正在运行，先停止后再重新生成' : '丢弃这条回答并重新生成'}
+              disabled={running}
+              onClick={() => void regenerateLast()}
+            >
+              <RefreshCw size={13} strokeWidth={1.6} aria-hidden />
+              <span>重新生成</span>
+            </button>
+          ) : null}
+          {!streaming ? (
+            <button
+              type="button"
+              className="message-copy"
+              aria-label={stageInfo ? '从这个阶段分叉' : '从这条回答分叉'}
+              title={running ? '当前对话正在运行，先停止后再分叉' : '从这条回答分叉出新对话，原对话保持不变'}
+              disabled={running}
+              onClick={() => void branchFromMessage(message.id)}
+            >
+              <GitBranch size={13} strokeWidth={1.6} aria-hidden />
+              <span>分叉</span>
+            </button>
+          ) : null}
+          <CopyButton text={copyable} label="复制这条回答" />
+          {!streaming && (stageInfo || rewindTargetUserMessageId) ? (
+            <button
+              type="button"
+              className="message-copy"
+              aria-label={stageInfo ? '回退到这个阶段完成时' : '回退这一轮'}
+              title={
+                running
+                  ? '当前对话正在运行，先停止再回退'
+                  : stageInfo
+                    ? '回到这个阶段完成时，之后的对话和文件一起恢复'
+                    : '回到这一轮开始前，文件和对话一起恢复'
+              }
+              disabled={running}
+              onClick={() => openRewind(stageInfo?.checkpointId ?? rewindTargetUserMessageId ?? '')}
+            >
+              <RotateCcw size={13} strokeWidth={1.6} aria-hidden />
+              <span>回退</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   )
 })

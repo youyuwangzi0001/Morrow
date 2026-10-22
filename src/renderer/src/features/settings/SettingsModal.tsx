@@ -40,6 +40,7 @@ import { formatUsd } from '@shared/cost'
 import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/hooks'
 import { RESERVED_COMMAND_NAMES } from '@shared/commands'
 import type {
+  CloseAction,
   CustomCommandInfo,
   HookConfig,
   HookEvent,
@@ -130,36 +131,6 @@ function providerStateText(provider: ProviderConfig): string {
 }
 
 /** 模型服务的一句话说明：让第一次配置的人知道该选哪家。 */
-const PROVIDER_HOMEPAGE: Record<string, string> = {
-  deepseek: 'https://www.deepseek.com/',
-  kimi: 'https://www.moonshot.cn/',
-  qwen: 'https://tongyi.aliyun.com/',
-  glm: 'https://www.bigmodel.cn/',
-  minimax: 'https://www.minimaxi.com/',
-  mimo: 'https://www.mi.com/',
-  anthropic: 'https://www.anthropic.com/',
-  openai: 'https://openai.com/',
-  gemini: 'https://ai.google.dev/',
-  xai: 'https://x.ai/',
-  openrouter: 'https://openrouter.ai/',
-  ollama: 'https://ollama.com/',
-  lmstudio: 'https://lmstudio.ai/'
-}
-
-/** 当前默认模型的提供方官网；自定义服务退回 Base URL 的站点首页。 */
-function providerHomepage(provider: ProviderConfig | null | undefined): string | null {
-  if (!provider || provider.kind === 'demo') return null
-  const known = PROVIDER_HOMEPAGE[provider.id]
-  if (known) return known
-  try {
-    const url = new URL(provider.baseUrl)
-    if (url.protocol === 'http:' || url.protocol === 'https:') return url.origin
-  } catch {
-    // 本地/自定义协议没有可打开官网
-  }
-  return null
-}
-
 const PROVIDER_HINT: Record<string, string> = {
   deepseek: '便宜、长上下文，适合大多数任务',
   kimi: '长文档与代码，国内直连',
@@ -982,7 +953,7 @@ function ContextTab(): React.JSX.Element {
           <span className="st-ctx-stat-value mono">{formatExactTokens(usage?.outputTokens ?? 0)}</span>
         </div>
         <div className="st-ctx-stat">
-          <span className="st-ctx-stat-label">缓存读取</span>
+          <span className="st-ctx-stat-label">其中缓存读取</span>
           <span className="st-ctx-stat-value mono">
             {usage?.cacheReadTokens ? formatExactTokens(usage.cacheReadTokens) : '—'}
           </span>
@@ -1131,17 +1102,17 @@ const PERMISSION_CARDS = [
   {
     mode: 'read-only' as const,
     label: '只读',
-    description: '只能查看文件内容。任何写入、删除、命令执行都会先停下来问你。'
+    description: '只能查看文件内容。任何写入、删除、命令执行都会被直接拒绝。'
   },
   {
     mode: 'ask' as const,
     label: '询问',
-    description: '读取文件自动放行；写文件、跑命令、改配置之前都会弹出一张卡片让你确认。'
+    description: '工作区内的写入与命令自动执行；危险命令、外部动作与工作区外访问仍会先问你。'
   },
   {
     mode: 'auto' as const,
-    label: '自动',
-    description: '不再逐条询问，写入与命令直接执行。只建议在你自己信任的文件夹里使用。'
+    label: '完全访问',
+    description: '无需任何批准：写入、命令、危险操作与工作区外访问都直接执行。只在你完全信任的任务里使用。'
   }
 ]
 
@@ -1165,10 +1136,10 @@ function toolLabel(name: string): string {
 }
 
 const DANGER_RULES = [
-  { title: '删除整个目录', detail: 'rm -rf / del /s 这类命令会被拦下，必须你单独确认' },
-  { title: '格式化磁盘、关机重启', detail: '系统级命令不会自动执行' },
-  { title: '文件夹之外的写入', detail: '只要路径超出当前文件夹，就会先问你' },
-  { title: '联网下载并执行脚本', detail: '会展示完整命令后再请求确认' }
+  { title: '删除整个目录', detail: '「询问」档会拦下 rm -rf / del /s 这类命令，等你单独确认；「完全访问」直接执行' },
+  { title: '格式化磁盘、关机重启', detail: '「询问」档不会自动执行；「完全访问」直接执行' },
+  { title: '文件夹之外的写入', detail: '「询问」档会先问你；「完全访问」直接执行' },
+  { title: '联网下载并执行脚本', detail: '「询问」档会展示完整命令后再请求确认；「完全访问」直接执行' }
 ]
 
 function PermissionTab(): React.JSX.Element {
@@ -1302,7 +1273,7 @@ function PermissionTab(): React.JSX.Element {
       </div>
       {current === 'auto' ? (
         <p className="st-warn">
-          自动模式下 Morrow 不会停下来确认危险动作。跑不熟悉的任务时，建议临时切回「询问」。
+          完全访问下 Morrow 不会停下来确认任何动作，包括删除、越界与联网外发。请只在隔离、可恢复或你完全信任的任务里使用。
         </p>
       ) : null}
       <InlineError message={error} />
@@ -1642,7 +1613,7 @@ function TerminalTab(): React.JSX.Element {
   return (
     <div className="st-search">
       <p className="st-section-title">终端</p>
-      <p className="st-hint">选一个默认终端。新终端会在当前对话的文件夹里打开它。</p>
+      <p className="st-hint">选一个默认终端。终端面板、Agent 的 run_command 与后台任务都会使用它；命令语法请按对应 Shell 写。</p>
 
       {loading ? (
         <p className="st-hint">正在读取可用的终端…</p>
@@ -1779,12 +1750,22 @@ function AppearanceTab(): React.JSX.Element {
         description="用第一条消息给对话起一个短标题"
       />
 
-      <Switch
-        checked={settings.closeToTray}
-        onChange={(next) => void patch({ closeToTray: next })}
-        label="关闭窗口时留在托盘"
-        description="任务仍在后台运行时不会中断；从托盘菜单可重新打开或退出。"
-      />
+      <div className="st-setting-row">
+        <div className="st-setting-copy">
+          <span className="st-setting-label">关闭窗口时</span>
+          <span className="st-setting-desc">点标题栏关闭按钮或灵动岛「关闭 Morrow…」时执行；选定一次后会记住。</span>
+        </div>
+        <Segmented
+          ariaLabel="关闭窗口时"
+          value={settings.closeAction}
+          options={[
+            { value: 'ask', label: '每次询问' },
+            { value: 'minimize', label: '最小化' },
+            { value: 'quit', label: '退出' }
+          ] satisfies Array<{ value: CloseAction; label: string }>}
+          onChange={(next) => void patch({ closeAction: next })}
+        />
+      </div>
 
       <Switch
         checked={settings.notifyOnFinish}
@@ -1803,7 +1784,6 @@ function AppearanceTab(): React.JSX.Element {
 function AboutTab(): React.JSX.Element {
   const appInfo = useAppStore((s) => s.appInfo)
   const settings = useAppStore((s) => s.settings)
-  const openExternal = useAppStore((s) => s.openExternal)
   const copyText = useAppStore((s) => s.copyText)
   const openDataDir = useAppStore((s) => s.openDataDir)
   const openLogs = useAppStore((s) => s.openLogs)
@@ -1815,11 +1795,6 @@ function AboutTab(): React.JSX.Element {
   const customDataDirActive = appInfo?.dataDirSource === 'custom'
   const hasCustomDataDir = Boolean(appInfo?.customDataDir)
   const dataDirBusy = changingDataDir || activeRuns > 0
-  const aboutProvider =
-    settings.providers.find((provider) => provider.id === settings.defaultModel.providerId) ??
-    settings.providers.find((provider) => provider.kind !== 'demo') ??
-    null
-  const aboutProviderHomepage = providerHomepage(aboutProvider)
 
   const handleChangeDataDir = async (): Promise<void> => {
     if (!canChangeDataDir || dataDirBusy) return
@@ -1923,23 +1898,6 @@ function AboutTab(): React.JSX.Element {
         ) : null}
         {customDataDirActive ? (
           <p className="st-hint">默认目录：{appInfo?.defaultDataDir ?? '—'}</p>
-        ) : null}
-      </div>
-
-      <div className="st-about-privacy">
-        <p className="st-section-title">隐私</p>
-        <p className="st-about-text">
-          对话、设置和文件夹数据都保存在本机；API Key 用系统加密存储（Windows DPAPI），界面再也读不到明文。
-          只有你发出的消息和它读到的文件内容会发送给你选择的模型提供方，其余数据不会上传。
-        </p>
-        {aboutProvider && aboutProviderHomepage ? (
-          <button
-            type="button"
-            className="st-link"
-            onClick={() => void openExternal(aboutProviderHomepage)}
-          >
-            查看模型提供方（{aboutProvider.name}）
-          </button>
         ) : null}
       </div>
 

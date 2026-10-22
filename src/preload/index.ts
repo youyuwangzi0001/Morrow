@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/ipc'
+import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_CLOSE_REQUEST_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/ipc'
 import type {
   CompactResult,
   GoalActionResult,
@@ -102,11 +102,17 @@ const api: MorrowApi = {
     minimize: () => invoke<void>(IPC.windowMinimize),
     toggleMaximize: () => invoke<boolean>(IPC.windowToggleMaximize),
     close: () => invoke<void>(IPC.windowClose),
+    resolveClose: (action: 'minimize' | 'quit') => invoke<void>(IPC.windowResolveClose, { action }),
     getState: () => invoke<WindowState>(IPC.windowState),
     onStateChange: (listener: (state: WindowState) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, payload: WindowState): void => listener(payload)
       ipcRenderer.on(WINDOW_STATE_CHANNEL, wrapped)
       return () => ipcRenderer.removeListener(WINDOW_STATE_CHANNEL, wrapped)
+    },
+    onCloseRequested: (listener: () => void) => {
+      const wrapped = (): void => listener()
+      ipcRenderer.on(WINDOW_CLOSE_REQUEST_CHANNEL, wrapped)
+      return () => ipcRenderer.removeListener(WINDOW_CLOSE_REQUEST_CHANNEL, wrapped)
     }
   },
 

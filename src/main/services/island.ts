@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, Menu, screen } from 'electron'
 import { join } from 'node:path'
 import type { IslandSnapshot, RuntimeEvent, TodoItem } from '../../shared/types'
 import {
@@ -44,6 +44,7 @@ let basePosition: { x: number; y: number } | null = null
 let applyingBounds = false
 let moveTimer: NodeJS.Timeout | null = null
 let openMainHandler: (() => void) | null = null
+let requestCloseHandler: (() => void) | null = null
 
 function idleSnapshot(): IslandSnapshot {
   return {
@@ -60,8 +61,9 @@ function idleSnapshot(): IslandSnapshot {
 
 let snapshot: IslandSnapshot = idleSnapshot()
 
-export function configureIsland(options: { openMain: () => void }): void {
+export function configureIsland(options: { openMain: () => void; requestClose?: () => void }): void {
   openMainHandler = options.openMain
+  requestCloseHandler = options.requestClose ?? null
 }
 
 function isEnabled(): boolean {
@@ -143,6 +145,15 @@ function createWindow(): BrowserWindow {
   })
   islandWindow = win
   win.setAlwaysOnTop(true, 'floating')
+  win.webContents.on('context-menu', () => {
+    if (win.isDestroyed()) return
+    Menu.buildFromTemplate([
+      { label: '打开 Morrow', click: () => openMainHandler?.() },
+      { label: '隐藏小伙伴', click: () => hideIsland() },
+      { type: 'separator' },
+      { label: '关闭 Morrow…', click: () => requestCloseHandler?.() }
+    ]).popup({ window: win })
+  })
   try {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   } catch {

@@ -160,7 +160,13 @@ describe('SessionStore 持久化', () => {
     const source = createSession()
     source.messages = [
       { id: 'm1', role: 'user', content: [{ type: 'text', text: '第一问' }], createdAt: 1 },
-      { id: 'm2', role: 'assistant', content: [{ type: 'text', text: '第一答' }], createdAt: 2 },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: [{ type: 'text', text: '第一答' }],
+        createdAt: 2,
+        stageBoundary: { checkpointId: 'cp_source', label: '完成：第一步' }
+      },
       { id: 'm3', role: 'user', content: [{ type: 'text', text: '第二问' }], createdAt: 3 },
       { id: 'm4', role: 'assistant', content: [{ type: 'text', text: '第二答' }], createdAt: 4 }
     ]
@@ -185,6 +191,9 @@ describe('SessionStore 持久化', () => {
     expect(branch.title).toBe('分支标题')
     expect(branch.messages.map((item) => item.id)).toEqual(['m1', 'm2'])
     expect(branch.messages[0]).not.toBe(source.messages[0])
+    // 检查点按会话隔离，分叉后不能把旧会话的阶段标记带进来
+    expect(branch.messages[1].stageBoundary).toBeUndefined()
+    expect(source.messages[1].stageBoundary).toEqual({ checkpointId: 'cp_source', label: '完成：第一步' })
     expect(branch.goal).toBeNull()
     expect(branch.plan).toBeNull()
     expect(branch.planMode).toBe(false)

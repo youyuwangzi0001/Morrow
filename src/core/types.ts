@@ -208,6 +208,13 @@ export interface PdfOcrResult {
 /** 本机 OCR：由主进程注入；核心工具本身不依赖 Electron/Windows API。 */
 export type PdfOcrHandler = (request: PdfOcrRequest) => Promise<PdfOcrResult>
 
+/** 用户选择的终端；id 对应 TerminalManager 的 profile id。 */
+export interface CommandShell {
+  id: string
+  label: string
+  file: string
+}
+
 export interface ToolContext {
   sessionId: string
   runId: string
@@ -258,6 +265,8 @@ export interface ToolContext {
   ocrPdf?: PdfOcrHandler
   /** 终端/后台任务（由主进程注入） */
   terminal?: TerminalToolHandler
+  /** 用户设置的默认终端（run_command 与一次性命令使用） */
+  commandShell?: CommandShell
 }
 
 export interface TerminalToolInput {
@@ -319,6 +328,8 @@ export interface BuildSystemPromptOptions {
   answerStyle?: AnswerStyleId
   /** answerStyle=custom 时使用的用户偏好 */
   answerStyleCustom?: string
+  /** 当前默认终端（注入环境段与命令语法提示） */
+  terminalShell?: { id: string; label: string }
 }
 
 /* ── 其它 ─────────────────────────────────────────────────────── */
