@@ -6,7 +6,7 @@ import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { IPC, WINDOW_STATE_CHANNEL, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/ipc'
 import { DEFAULT_MODEL, findModel } from '../shared/models'
-import { isReasoningEffort } from '../shared/reasoning'
+import { isReasoningEffort } from '../shared/models'
 import type {
   Artifact,
   ArtifactExportFormat,
@@ -66,9 +66,9 @@ import { clearSearchIndex, invalidateSearchSession } from './services/search-inv
 import { clearScheduleSessionReferences } from './services/schedule-runtime'
 import { abortAllSideChats } from './features/sidechat'
 import { getTokenActivityService, initializeTokenActivity } from './services/token-activity-runtime'
-import { revealInFileManager } from './services/reveal'
+import { openPathFromUserShell, openSystemFolder, revealInFileManager } from './services/reveal'
 import { log } from './services/logger'
-import { cleanTargetDataDir, copyUserDataForMigration } from './services/data-dir-migration'
+import { cleanTargetDataDir, copyUserDataForMigration } from './services/paths'
 import {
   canChangeDataDir,
   dataDirInfo,
@@ -422,14 +422,14 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.openDataDir, async (): Promise<Result<void>> => {
-    const error = await shell.openPath(app.getPath('userData'))
+    const error = await openSystemFolder(app.getPath('userData'))
     if (error) return fail('OPEN_DATA_DIR_FAILED', `打开数据目录失败：${error}`)
     return ok(undefined)
   })
 
   ipcMain.handle(IPC.openLogs, async (): Promise<Result<void>> => {
     const dir = join(app.getPath('userData'), 'logs')
-    const error = await shell.openPath(existsSync(dir) ? dir : app.getPath('userData'))
+    const error = await openSystemFolder(existsSync(dir) ? dir : app.getPath('userData'))
     if (error) return fail('OPEN_LOGS_FAILED', `打开日志目录失败：${error}`)
     return ok(undefined)
   })
@@ -1366,7 +1366,7 @@ export function registerIpcHandlers(): void {
     try {
       const target = resolveWorkspacePath(payload?.path, 'file')
       if (!target) return fail('FILE_UNAVAILABLE', '产物不在可访问的工作区内，或已被移动。')
-      const error = await shell.openPath(target)
+      const error = await openPathFromUserShell(target)
       if (error) return fail('OPEN_FAILED', error)
       return ok(undefined)
     } catch (err) {
@@ -1374,11 +1374,12 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.artifactReveal, (_e, payload: { path?: unknown } | undefined): Result<void> => {
+  ipcMain.handle(IPC.artifactReveal, async (_e, payload: { path?: unknown } | undefined): Promise<Result<void>> => {
     try {
       const target = resolveWorkspacePath(payload?.path, 'file')
       if (!target) return fail('FILE_UNAVAILABLE', '产物不在可访问的工作区内，或已被移动。')
-      revealInFileManager(target)
+      const error = await revealInFileManager(target)
+      if (error) return fail('REVEAL_FAILED', error)
       return ok(undefined)
     } catch (err) {
       return fail('REVEAL_FAILED', err instanceof Error ? err.message : '打开文件夹失败')

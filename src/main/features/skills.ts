@@ -30,7 +30,8 @@
  * - feature:skills:pickZip      {} → { path: string | null }（系统文件对话框）
  * - feature:skills:pickFolder   {} → { path: string | null }（系统文件夹对话框）
  */
-import { dialog, shell } from 'electron'
+import { dialog } from 'electron'
+import { openSystemFolder } from '../services/reveal'
 import { resolveDataDir } from '../services/paths'
 import { ensureBuiltinSkills } from '../services/builtin-skills'
 import {
@@ -59,11 +60,11 @@ export const SKILLS_FEATURE_CHANNELS = [
 
 const effects: SkillsFeatureEffects = {
   async revealPath(path: string): Promise<void> {
-    const error = await shell.openPath(path)
+    const error = await openSystemFolder(path)
     if (error) throw new Error(`打开技能目录失败：${error}`)
   },
   async openUserDir(path: string): Promise<void> {
-    const error = await shell.openPath(path)
+    const error = await openSystemFolder(path)
     if (error) throw new Error(`打开技能库目录失败：${error}`)
   },
   async pickZip(): Promise<string | null> {

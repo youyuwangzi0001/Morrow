@@ -36,7 +36,7 @@ import {
   Zap
 } from 'lucide-react'
 import { findModel } from '@shared/models'
-import { formatUsd } from '@shared/cost'
+import { formatUsd } from '@shared/usage'
 import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/hooks'
 import { RESERVED_COMMAND_NAMES } from '@shared/commands'
 import type {
@@ -478,7 +478,6 @@ function ModelsTab(): React.JSX.Element {
     <div className="st-models">
       <div className="st-models-top">
         <div className="st-models-top-copy">
-          <p className="st-section-title">模型服务</p>
           <p className="st-hint">选一家服务，填上 API Key 就能用。密钥只保存在本机，不会显示出来。</p>
         </div>
         {currentModel ? (
@@ -1458,7 +1457,6 @@ function SearchTab(): React.JSX.Element {
 
   return (
     <div className="st-search">
-      <p className="st-section-title">联网搜索</p>
       <p className="st-hint">
         让 Morrow 能查网页：搜索关键词会发送给所选服务商，结果会标出来源。
       </p>
@@ -1612,7 +1610,6 @@ function TerminalTab(): React.JSX.Element {
 
   return (
     <div className="st-search">
-      <p className="st-section-title">终端</p>
       <p className="st-hint">选一个默认终端。终端面板、Agent 的 run_command 与后台任务都会使用它；命令语法请按对应 Shell 写。</p>
 
       {loading ? (
@@ -1677,7 +1674,6 @@ function AppearanceTab(): React.JSX.Element {
 
   return (
     <div className="st-appearance">
-      <p className="st-section-title">外观</p>
       <p className="st-hint">这些选项即时生效，不需要重启。</p>
 
       <div className="st-setting-row">
@@ -1698,11 +1694,11 @@ function AppearanceTab(): React.JSX.Element {
 
       <div className="st-setting-row">
         <div className="st-setting-copy">
-          <span className="st-setting-label">字号</span>
+          <span className="st-setting-label">应用字号</span>
           <span className="st-setting-desc">调整正文与界面的基础字号（13–16）。</span>
         </div>
         <Segmented
-          ariaLabel="字号"
+          ariaLabel="应用字号"
           value={String(settings.fontSize)}
           options={['13', '14', '15', '16'].map((size) => ({ value: size, label: size }))}
           onChange={(next) => void patch({ fontSize: Number(next) })}
@@ -1711,17 +1707,14 @@ function AppearanceTab(): React.JSX.Element {
 
       <div className="st-setting-row">
         <div className="st-setting-copy">
-          <span className="st-setting-label">发送键</span>
-          <span className="st-setting-desc">选择 Enter 还是 Ctrl+Enter 发送消息。</span>
+          <span className="st-setting-label">代码字号</span>
+          <span className="st-setting-desc">只影响代码、终端、diff 与等宽数字；与应用字号分开（12–15）。</span>
         </div>
         <Segmented
-          ariaLabel="发送键"
-          value={settings.sendKey}
-          options={[
-            { value: 'enter', label: 'Enter' },
-            { value: 'ctrl+enter', label: 'Ctrl+Enter' }
-          ]}
-          onChange={(next) => void patch({ sendKey: next })}
+          ariaLabel="代码字号"
+          value={String(settings.codeFontSize || 13)}
+          options={['12', '13', '14', '15'].map((size) => ({ value: size, label: size }))}
+          onChange={(next) => void patch({ codeFontSize: Number(next) })}
         />
       </div>
 
@@ -1735,7 +1728,7 @@ function AppearanceTab(): React.JSX.Element {
         checked={settings.showTokenMeter}
         onChange={(next) => void patch({ showTokenMeter: next })}
         label="显示 token 计量"
-        description="在标题栏显示上下文占用环"
+        description="在输入框显示上下文占用环"
       />
       <Switch
         checked={settings.islandEnabled}
@@ -1743,13 +1736,6 @@ function AppearanceTab(): React.JSX.Element {
         label="桌面小伙伴"
         description="在桌面显示一个置顶的小窗口，随时交代任务、查看进度；Ctrl+Shift+M 可随时唤回。"
       />
-      <Switch
-        checked={settings.autoTitle}
-        onChange={(next) => void patch({ autoTitle: next })}
-        label="自动命名对话"
-        description="用第一条消息给对话起一个短标题"
-      />
-
       <div className="st-setting-row">
         <div className="st-setting-copy">
           <span className="st-setting-label">关闭窗口时</span>
@@ -1766,13 +1752,6 @@ function AppearanceTab(): React.JSX.Element {
           onChange={(next) => void patch({ closeAction: next })}
         />
       </div>
-
-      <Switch
-        checked={settings.notifyOnFinish}
-        onChange={(next) => void patch({ notifyOnFinish: next })}
-        label="任务完成时通知我"
-        description="窗口不在前台时，完成/失败/需要审批会发系统通知。"
-      />
 
       <InlineError message={error} />
     </div>
@@ -1988,7 +1967,6 @@ function ArchiveTab(): React.JSX.Element {
 
   return (
     <div className="st-archive">
-      <p className="st-section-title">对话归档</p>
       <p className="st-hint">
         归档的对话仍保存在本机，但不会出现在侧栏。可以随时恢复到对话列表，或永久删除。
       </p>
@@ -2483,7 +2461,6 @@ const TOOL_GROUPS: { label: string; entries: ToolEntry[] }[] = [
 function ToolsTab(): React.JSX.Element {
   return (
     <div className="st-tools">
-      <p className="st-section-title">功能与工具</p>
       <p className="st-hint">需要的功能都在这里；打开后按 Esc 或关闭按钮即可回到对话。</p>
       {TOOL_GROUPS.map((group) => (
         <section key={group.label} className="st-tool-group">

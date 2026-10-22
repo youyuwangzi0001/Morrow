@@ -318,11 +318,17 @@ export class TerminalManager {
       return spec.args
     }
     const escaped = historyFile.replace(/'/g, "''")
+    // Windows PowerShell 5 默认使用 OEM 代码页，xterm 按 UTF-8 解码会出现菱形乱码。
+    const utf8Setup = [
+      'try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { }',
+      'try { [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { }',
+      'try { $OutputEncoding = [Console]::OutputEncoding } catch { }'
+    ].join('; ')
     return [
       ...spec.args,
       '-NoExit',
       '-Command',
-      `try { Set-PSReadLineOption -HistorySavePath '${escaped}' } catch { }`
+      `${utf8Setup}; try { Set-PSReadLineOption -HistorySavePath '${escaped}' } catch { }`
     ]
   }
 

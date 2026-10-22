@@ -6,7 +6,7 @@ import type { WebSearchResponse } from '../../shared/types'
 import type { ToolContext } from '../types'
 import { errorMessage, isAbortError, truncateText } from '../util'
 import { getNumber, getString } from './args'
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
 export const WEB_SEARCH_MAX_RESULTS = 10

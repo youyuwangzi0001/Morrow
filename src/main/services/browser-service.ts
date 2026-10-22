@@ -33,6 +33,8 @@ import {
   type BrowserScreenshotResult,
   type BrowserState
 } from '../../core/browser-bridge'
+import { MORROW_SCROLLBAR_RULES } from '../../shared/scrollbar'
+import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview, isArtifactPreviewUrl } from './artifact-preview'
 import { dataPath } from './paths'
 import { revealInFileManager } from './reveal'
 import { log } from './logger'
@@ -141,6 +143,7 @@ export class BrowserService {
   private pendingDownloads = new Map<string, PendingDownload>()
   private actionCounts = new Map<string, number>()
   private ownsWebContents = new Set<number>()
+  private scrollbarStyled = new Set<number>()
   private automationTimer: NodeJS.Timeout | null = null
 
   static getInstance(): BrowserService {
@@ -155,6 +158,9 @@ export class BrowserService {
     this.initialized = true
 
     const browserSession = this.browserSession()
+    // 内置浏览器使用独立分区：主进程默认 session 上注册的产物协议在这里也要再注册一份，
+    // 否则画布成品无法在内置浏览器里打开。
+    browserSession.protocol.handle(ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview)
     // 权限：摄像头/麦克风/地理位置/通知/剪贴板/全屏等一律拒绝
     browserSession.setPermissionRequestHandler((webContents, permission, callback) => {
       log.warn('browser permission denied', { permission, url: webContents?.getURL?.() ?? '' })
@@ -255,7 +261,10 @@ export class BrowserService {
     view.setBackgroundColor('#0b0d10')
     const webContentsId = view.webContents.id
     this.ownsWebContents.add(webContentsId)
-    view.webContents.on('destroyed', () => this.ownsWebContents.delete(webContentsId))
+    view.webContents.on('destroyed', () => {
+      this.ownsWebContents.delete(webContentsId)
+      this.scrollbarStyled.delete(webContentsId)
+    })
     this.attachNavigationGuards(view.webContents)
     owner.contentView.addChildView(view)
     return view
@@ -302,6 +311,14 @@ export class BrowserService {
       return { action: 'deny' }
     })
     webContents.on('will-attach-webview', (event) => event.preventDefault())
+    webContents.on('dom-ready', () => {
+      if (webContents.isDestroyed()) return
+      // 远程页面看不到宿主 CSS：用 user origin 注入，确保无边框石墨+香槟金滚动条不被页面样式覆盖。
+      void webContents
+        .insertCSS(MORROW_SCROLLBAR_RULES, { cssOrigin: 'user' })
+        .then(() => this.scrollbarStyled.add(webContents.id))
+        .catch((err: Error) => log.warn('browser scrollbar css injection failed', String(err)))
+    })
     webContents.on('did-start-loading', () => {
       // 新的导航尝试意味着从上一个错误页恢复：清掉错误并重新显示视图
       if (isSurface()) {
@@ -474,7 +491,24 @@ export class BrowserService {
     if (!check.allowed || !check.url) throw new Error(check.reason ?? '网址无效。')
     const owner = this.ownerFromEvent(event) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     if (!owner) throw new Error('找不到主窗口，无法打开内置浏览器。')
+    return this.presentSurface(check.url, owner, bounds)
+  }
 
+  /**
+   * feature:browser:open-preview { url }
+   * 画布 HTML 成品直接在内置浏览器查看：不经过系统默认浏览器，也就不会触发
+   * Edge 的「现有实例正在以提升的权限运行」提示。URL 必须由 artifact-preview 签发。
+   */
+  openPreview(url: string, event: Electron.IpcMainInvokeEvent, bounds?: unknown): BrowserState {
+    if (!isArtifactPreviewUrl(url)) throw new Error('成品预览地址无效或已过期。')
+    const owner = this.ownerFromEvent(event) ?? this.ownerWindow()
+    if (!owner) throw new Error('找不到主窗口，无法打开内置浏览器。')
+    const state = this.presentSurface(url, owner, bounds)
+    this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'artifact' })
+    return state
+  }
+
+  private presentSurface(url: string, owner: BrowserWindow, bounds?: unknown): BrowserState {
     // 已存在且属于同一窗口：直接导航
     if (this.surface && this.surface.owner.id === owner.id) {
       this.clearAutomationIndicator()
@@ -482,12 +516,12 @@ export class BrowserService {
         ...this.state,
         open: true,
         error: null,
-        url: check.url,
+        url,
         loading: true,
         visible: this.surface.visible
       }
       this.updateState({ visible: this.surface.visible })
-      void this.surface.view.webContents.loadURL(check.url).catch((err: Error) => {
+      void this.surface.view.webContents.loadURL(url).catch((err: Error) => {
         this.reportError({ code: 'LOAD_FAILED', message: `页面加载失败：${err.message}` })
       })
       return this.getState()
@@ -505,7 +539,7 @@ export class BrowserService {
     this.state = {
       ...emptyState(),
       open: true,
-      url: check.url,
+      url,
       loading: true,
       visible: true,
       automationActive: false
@@ -515,10 +549,10 @@ export class BrowserService {
     owner.on('resize', this.onOwnerResize)
     owner.on('enter-full-screen', this.onOwnerResize)
     owner.on('leave-full-screen', this.onOwnerResize)
-    void view.webContents.loadURL(check.url).catch((err: Error) => {
+    void view.webContents.loadURL(url).catch((err: Error) => {
       this.reportError({ code: 'LOAD_FAILED', message: `页面加载失败：${err.message}` })
     })
-    log.info('browser surface opened', { url: check.url })
+    log.info('browser surface opened', { url })
     return this.getState()
   }
 
@@ -838,7 +872,7 @@ export class BrowserService {
   }
 
   /** 在资源管理器中定位已批准的下载；只允许 app 数据目录的 downloads 内真实文件 */
-  revealDownload(rawPath: string): void {
+  async revealDownload(rawPath: string): Promise<void> {
     const target = resolve(rawPath)
     let realTarget: string
     try {
@@ -861,7 +895,8 @@ export class BrowserService {
     } catch {
       throw new Error('这个路径不是可定位的文件。')
     }
-    revealInFileManager(realTarget)
+    const error = await revealInFileManager(realTarget)
+    if (error) throw new Error(error)
   }
 
   decideDownload(id: string, allow: boolean): void {
@@ -1280,6 +1315,40 @@ export class BrowserService {
     return this.stateOf(webContents)
   }
 
+  async automationReload(ctx: BrowserCallContext): Promise<BrowserState> {
+    this.checkActionBudget(ctx.runId)
+    const surface = await this.automationSurface()
+    const webContents = surface.view.webContents
+    const timeoutMs = Math.min(ctx.timeoutMs ?? BROWSER_LIMITS.actionTimeoutMs, BROWSER_LIMITS.maxTimeoutMs)
+    webContents.reload()
+    await this.waitForLoad(webContents, timeoutMs).catch(() => undefined)
+    return this.stateOf(webContents)
+  }
+
+  async automationScroll(ctx: BrowserCallContext, deltaY: number): Promise<BrowserActionResult> {
+    this.checkActionBudget(ctx.runId)
+    const surface = await this.automationSurface()
+    const webContents = surface.view.webContents
+    const timeoutMs = Math.min(ctx.timeoutMs ?? BROWSER_LIMITS.actionTimeoutMs, BROWSER_LIMITS.maxTimeoutMs)
+    await this.waitForLoad(webContents, timeoutMs).catch(() => undefined)
+    const result = await this.execute<{ x: number; y: number }>(
+      webContents,
+      `(() => {
+        window.scrollBy({ top: ${Math.round(deltaY)}, left: 0, behavior: 'auto' });
+        return { x: window.scrollX, y: window.scrollY };
+      })()`,
+      timeoutMs,
+      '滚动页面'
+    )
+    return {
+      url: webContents.getURL(),
+      title: webContents.getTitle(),
+      target: `${deltaY >= 0 ? '向下' : '向上'}滚动 ${Math.abs(Math.round(deltaY))}px`,
+      x: typeof result?.x === 'number' ? result.x : undefined,
+      y: typeof result?.y === 'number' ? result.y : undefined
+    }
+  }
+
   async closeAutomation(): Promise<void> {
     const owner = this.surface?.owner ?? this.ownerWindow()
     this.closeSurface()
@@ -1304,6 +1373,8 @@ export class BrowserService {
     automationOpen: boolean
     automationUrl: string
     automationTitle: string
+    /** 已成功向当前页面注入统一滚动条样式 */
+    scrollbarCssApplied: boolean
     pendingDownloads: string[]
   } {
     const surface = this.surface
@@ -1328,6 +1399,7 @@ export class BrowserService {
       automationOpen: Boolean(surface),
       automationUrl: url,
       automationTitle: title,
+      scrollbarCssApplied: surface ? this.scrollbarStyled.has(surface.view.webContents.id) : false,
       pendingDownloads: [...this.pendingDownloads.keys()]
     }
   }

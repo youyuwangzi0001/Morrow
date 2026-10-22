@@ -16,7 +16,7 @@ import { dataPath, ensureDataDirs } from './paths'
 import { log } from './logger'
 import { LEGACY_FALLBACK_PREFIX, decodeSecret, encodeSecret, type SecretCrypto } from './secret-codec'
 import { isHookEvent, MAX_ENABLED_HOOKS_PER_EVENT, MAX_HOOKS } from '../../shared/hooks'
-import { isReasoningEffort } from '../../shared/reasoning'
+import { isReasoningEffort } from '../../shared/models'
 import {
   ANSWER_STYLE_MAX_CUSTOM,
   isAnswerStyleId,
@@ -257,9 +257,15 @@ export class SettingsStore {
     if (!existsSync(file)) return fallback
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<Settings>
+      // 旧版本允许 11–20；范围收敛后把历史值夹到 12–15，避免设置页无选中项。
+      const savedCodeFontSize =
+        typeof parsed.codeFontSize === 'number' && Number.isFinite(parsed.codeFontSize)
+          ? Math.min(15, Math.max(12, Math.round(parsed.codeFontSize)))
+          : fallback.codeFontSize
       return {
         ...fallback,
         ...parsed,
+        codeFontSize: savedCodeFontSize,
         // 显式保留旧配置的 layoutVersion（缺失视为第 1 版），供构造器做一次性布局迁移
         layoutVersion: parsed.layoutVersion ?? 1,
         // provider 列表始终以代码内预设为基准做合并，避免旧版本缺失新 provider
@@ -471,9 +477,11 @@ export class SettingsStore {
     const allowed = new Set([
       'theme',
       'fontSize',
+      'codeFontSize',
       'reduceMotion',
       'permissionMode',
       'sendKey',
+      'runningSendMode',
       'defaultModel',
       'lastWorkspace',
       'recentWorkspaces',
@@ -485,6 +493,7 @@ export class SettingsStore {
       'autoCompact',
       'compactThreshold',
       'canvasWidth',
+      'composerHeight',
       'autoTitle',
       'closeAction',
       'notifyOnFinish',
@@ -517,6 +526,13 @@ export class SettingsStore {
       }
       next.fontSize = value
     }
+    if (Object.prototype.hasOwnProperty.call(patch, 'codeFontSize')) {
+      const value = patch.codeFontSize
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 12 || value > 15) {
+        failValidation('代码字号需在 12–15 之间。')
+      }
+      next.codeFontSize = value
+    }
     if (Object.prototype.hasOwnProperty.call(patch, 'permissionMode')) {
       if (patch.permissionMode !== 'read-only' && patch.permissionMode !== 'ask' && patch.permissionMode !== 'auto') {
         failValidation('权限模式不合法。')
@@ -526,6 +542,12 @@ export class SettingsStore {
     if (Object.prototype.hasOwnProperty.call(patch, 'sendKey')) {
       if (patch.sendKey !== 'enter' && patch.sendKey !== 'ctrl+enter') failValidation('发送键设置不合法。')
       next.sendKey = patch.sendKey
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'runningSendMode')) {
+      if (patch.runningSendMode !== 'steer' && patch.runningSendMode !== 'queue') {
+        failValidation('运行中发送方式不合法。')
+      }
+      next.runningSendMode = patch.runningSendMode
     }
     for (const key of ['reduceMotion', 'onboardingDone', 'sidebarCollapsed', 'demoSeen', 'showTokenMeter', 'autoCompact', 'autoTitle', 'notifyOnFinish', 'islandEnabled'] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key)) bool(key)
@@ -563,6 +585,13 @@ export class SettingsStore {
         failValidation('画布宽度需在 320–960 之间。')
       }
       next.canvasWidth = Math.round(value)
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'composerHeight')) {
+      const value = patch.composerHeight
+      if (typeof value !== 'number' || !Number.isFinite(value) || (value !== 0 && (value < 80 || value > 360))) {
+        failValidation('输入框高度需为 0（自动）或 80–360 之间。')
+      }
+      next.composerHeight = value === 0 ? 0 : Math.round(value)
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'compactThreshold')) {
       const value = patch.compactThreshold

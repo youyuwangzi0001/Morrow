@@ -572,9 +572,11 @@ export function defaultSettings(): Settings {
     version: 1,
     theme: 'dark',
     fontSize: 14,
+    codeFontSize: 13,
     reduceMotion: false,
     permissionMode: 'ask',
     sendKey: 'enter',
+    runningSendMode: 'queue',
     providers: builtinProviders(),
     defaultModel: DEFAULT_MODEL,
     lastWorkspace: null,
@@ -588,6 +590,7 @@ export function defaultSettings(): Settings {
     autoCompact: true,
     compactThreshold: 0.8,
     canvasWidth: 420,
+    composerHeight: 0,
     layoutVersion: 2,
     webSearch: {
       enabled: false,
@@ -625,3 +628,13 @@ export const SUGGESTIONS = [
     prompt: '帮我写一个实用的小工具网页，要求单文件、离线可用、界面简洁。'
   }
 ] as const
+
+import type { ReasoningEffort } from './types'
+
+export const REASONING_EFFORTS = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly ReasoningEffort[]
+
+const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS)
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === 'string' && REASONING_EFFORT_SET.has(value)
+}

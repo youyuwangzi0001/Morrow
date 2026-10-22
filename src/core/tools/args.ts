@@ -2,7 +2,7 @@
  * 工具参数读取与校验。模型输出的参数不可信（类型、缺失、超长都要兜住），
  * 校验失败抛 ToolInputError，由 Agent 回灌给模型自修复。
  */
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 
 export function getString(
   input: Record<string, unknown>,

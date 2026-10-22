@@ -3,8 +3,8 @@ import { ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-re
 import type { PermissionDecision, PermissionRequest } from '@shared/types'
 import { useAppStore } from '../../state/store'
 import { Kbd, hasOpenModal } from '../../ui'
-import { CodeBlock } from '../../components/markdown/CodeBlock'
-import { DiffView } from '../../components/diff/DiffView'
+import { CodeBlock } from '../../components/CodeBlock'
+import { DiffView } from '../../components/DiffView'
 import { permissionExplanation, toolPath } from './tool-meta'
 import './activity.css'
 

@@ -563,10 +563,25 @@ $psi.UseShellExecute = $false
 /** 交付/文件夹内的短说明（UTF-8 BOM + CRLF，Windows 记事本/写字板可直接打开）。 */
 function buildUsageText(singleOnly = false) {
   if (singleOnly) {
+    const highlights = [
+      `本次新版文件：${folderName}.exe（R20 构建）`,
+      '',
+      '本版重点',
+      '- 顶栏左半区恢复拖动；移除顶栏 Morrow 字样，品牌只保留在「设置 → 关于」。',
+      '- 终端改为紧凑行距与左对齐，继续统一 UTF-8，中文与中文路径不再出现菱形乱码。',
+      '- 内置浏览器左上角新增「返回主页面」，页面保持打开；主界面顶栏的地球按钮可随时切回上次页面。',
+      '- /plan 与目标模式对齐：先给出提示并保留输入，发送带任务的 /plan 后才进入计划模式；计划/目标提示词同步完善。',
+      '- 输入框按容器宽度智能收起上下文圆环、推理强度等次要控件，窄区域不再上下错位。',
+      '- 画布「在文件夹中显示」改走系统 Shell 打开所在目录，受限会话不再弹出 Explorer 0xC0000142 错误框。',
+      '- 隐私兜底：运行结束时重新扫描完整消息并遮蔽跨分片的邮箱/用户名/token，界面与落盘保持一致。',
+      '- 保留既有能力：真实终端、集群 ×8、联网搜索、画布成品、检查点回退、Git 面板、记忆/项目/定时任务/连接器等。',
+      ''
+    ]
     return [
       `Morrow ${version} · Windows 10/11 x64 单文件便携版`,
       '================================================',
       '',
+      ...highlights,
       `1. 如果 ${folderName}.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
       `2. 首次会在 exe 同级解压 .morrow-runtime-${version}（约 5–10 秒，带进度小窗），之后启动更快。`,
       '3. 如果 Windows 弹出“Windows 已保护你的电脑”：点“更多信息” → “仍要运行”。',
@@ -671,6 +686,7 @@ function compileLauncher(outPath, options = {}) {
     `-win32manifest:${launcherManifest}`,
     ...(options.defineFolder ? ['-define:FOLDER_MODE'] : []),
     ...(options.resourceZip ? [`-resource:${options.resourceZip},MorrowApp.zip`] : []),
+    '-r:System.Core.dll',
     '-r:System.IO.Compression.dll',
     '-r:System.IO.Compression.FileSystem.dll',
     '-r:System.Windows.Forms.dll',
@@ -719,12 +735,14 @@ function zipFolder() {
 
 /**
  * 把 release/ 里的产物整理到 deliver/：只保留本次三份产物 + 使用说明 + SHA256SUMS + LICENSE。
- * 先清空 deliver/（旧的 runtime 缓存、Morrow Data、日志、旧包一律不进入交付）。
+ * 先清理旧产物（旧的 runtime 缓存、日志、旧包），但保留根目录的 `Morrow Data`——那是用户数据，
+ * 不属于分发文件，也不能在“清理交付目录”时被误删。
  */
 function stageDelivery() {
   const singleOnly = mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
   mkdirSync(deliverDir, { recursive: true })
   for (const entry of readdirSync(deliverDir, { withFileTypes: true })) {
+    if (entry.name === 'Morrow Data') continue
     try {
       rmSync(join(deliverDir, entry.name), { recursive: true, force: true })
     } catch (err) {
@@ -817,9 +835,15 @@ function stageDelivery() {
   }))
 
   const total = dirSize(deliverDir)
-  staged.totalSizeBytes = total.sizeBytes
-  staged.totalSizeMB = Number((total.sizeBytes / 1024 / 1024).toFixed(2))
-  staged.totalFileCount = total.fileCount
+  const localDataDir = join(deliverDir, 'Morrow Data')
+  const localData = existsSync(localDataDir)
+    ? { path: 'deliver/Morrow Data', ...dirSize(localDataDir), preserved: true }
+    : null
+  // 分发文件不包含本机用户数据；目录总大小用于现场检查，交付统计只算分发文件。
+  staged.totalSizeBytes = total.sizeBytes - (localData?.sizeBytes ?? 0)
+  staged.totalSizeMB = Number((staged.totalSizeBytes / 1024 / 1024).toFixed(2))
+  staged.totalFileCount = total.fileCount - (localData?.fileCount ?? 0)
+  staged.localData = localData
   return staged
 }
 
@@ -1020,9 +1044,13 @@ try {
     }
     const singleDelivery = !delivery.folder && !delivery.artifacts.some((item) => item.name === 'portable-zip')
     logLine(
-      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} files（${
+      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${
         singleDelivery ? '单文件 exe + 使用说明 + SHA256SUMS + LICENSE' : '三份产物 + 使用说明 + SHA256SUMS + LICENSE'
-      }）`
+      }）${
+        delivery.localData
+          ? `；另保留本机用户数据 Morrow Data（${delivery.localData.fileCount} 个文件，不计入分发）`
+          : ''
+      }`
     )
   }
 

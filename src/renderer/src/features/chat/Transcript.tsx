@@ -4,8 +4,12 @@ import type { ChatMessage } from '@shared/types'
 import { userMessageDisplayText } from '@shared/message'
 import { useAppStore } from '../../state/store'
 import { Kbd, HorizonLoader } from '../../ui'
+import { EXECUTION_GROUP_MIN_STEPS, ExecutionGroup } from './ExecutionGroup'
 import { MessageItem } from './MessageItem'
+import { DiffSummaryCard } from './DiffSummaryCard'
+import type { DiffSummarySource } from './DiffSummaryCard'
 import { parseGoalContinuation } from './GoalContinuation'
+import { parsePlanMessage } from '../activity/PlanCard'
 import { fileDiffEvents } from '../activity/tool-meta'
 import { PermissionCard } from '../activity/PermissionCard'
 import { QuestionCard } from '../activity/QuestionCard'
@@ -14,6 +18,26 @@ import './Transcript.css'
 const EMPTY_MESSAGES: ChatMessage[] = []
 /** 距底部小于该值视为「在跟随最新」 */
 const FOLLOW_THRESHOLD = 96
+
+type TranscriptUnit =
+  | { kind: 'message'; key: string; message: ChatMessage }
+  | { kind: 'execution'; key: string; messages: ChatMessage[] }
+  | { kind: 'turn-diff'; key: string; sources: DiffSummarySource[] }
+
+interface TurnSegment {
+  key: string
+  /** 整轮全部消息（含隐藏步骤），用于汇总改动 */
+  all: ChatMessage[]
+  /** 对话流真正渲染的消息 */
+  visible: ChatMessage[]
+}
+
+/** 计划续跑、目标续跑等控制消息不切分「本轮」；用户真正发来的新消息才另起一张改动卡。 */
+function startsTurn(message: ChatMessage): boolean {
+  if (message.role !== 'user' || message.hidden) return false
+  const text = userMessageDisplayText(message)
+  return !parseGoalContinuation(text) && !parsePlanMessage(text)
+}
 
 function distanceFromBottom(element: HTMLElement): number {
   return element.scrollHeight - element.scrollTop - element.clientHeight
@@ -44,7 +68,7 @@ export function Transcript(): React.JSX.Element {
   const [hasNew, setHasNew] = useState(false)
 
   const messages = session?.messages ?? EMPTY_MESSAGES
-  const visibleMessages = messages.filter((message) => !message.hidden)
+  const visibleMessages = useMemo(() => messages.filter((message) => !message.hidden), [messages])
   // 每轮用户消息之后的最后一条 assistant 是「轮末回答」：只有它显示分叉/回退，
   // 中间的模型步骤保持连续、不产生操作节点。
   const turnFinals = useMemo(() => {
@@ -68,31 +92,80 @@ export function Transcript(): React.JSX.Element {
     }
     return finals
   }, [messages])
+  // 按用户真正发来的消息划分「本轮」：计划批准、目标续跑等控制消息仍属于同一轮。
+  const turnSegments = useMemo(() => {
+    const segments: TurnSegment[] = []
+    let current: TurnSegment | null = null
+    for (const message of messages) {
+      if (!current || startsTurn(message)) {
+        if (current && current.all.length > 0) segments.push(current)
+        current = { key: message.id, all: [], visible: [] }
+      }
+      current.all.push(message)
+      if (!message.hidden) current.visible.push(message)
+    }
+    if (current && current.all.length > 0) segments.push(current)
+    return segments
+  }, [messages])
   // 新建后又删除的文件在这一轮净变化为零：所有相关消息都不再显示 +N/−N。
   const diffSuppression = useMemo(() => {
     const map = new Map<string, ReadonlySet<string>>()
-    let turn: ChatMessage[] = []
-    const flush = (): void => {
-      if (turn.length === 0) return
+    for (const segment of turnSegments) {
       const created = new Set<string>()
       const lastDeleted = new Map<string, boolean>()
-      for (const message of turn) {
+      for (const message of segment.all) {
         for (const event of fileDiffEvents(message)) {
           if (event.created) created.add(event.path)
           lastDeleted.set(event.path, event.deleted)
         }
       }
       const suppressed = new Set([...created].filter((path) => lastDeleted.get(path) === true))
-      if (suppressed.size > 0) for (const message of turn) map.set(message.id, suppressed)
-      turn = []
+      if (suppressed.size > 0) {
+        for (const message of segment.all) map.set(message.id, suppressed)
+      }
     }
-    for (const message of messages) {
-      if (message.role === 'user') flush()
-      turn.push(message)
-    }
-    flush()
     return map
-  }, [messages])
+  }, [turnSegments])
+  // 同一轮里的多步执行合并成一条摘要；整轮只在最后保留一张改动卡。
+  const renderUnits = useMemo(() => {
+    const units: TranscriptUnit[] = []
+    for (const segment of turnSegments) {
+      let batch: ChatMessage[] = []
+      const flush = (): void => {
+        if (batch.length === 0) return
+        if (batch.length >= EXECUTION_GROUP_MIN_STEPS) {
+          units.push({ kind: 'execution', key: `exec-${batch[0].id}`, messages: batch })
+        } else {
+          for (const message of batch) units.push({ kind: 'message', key: message.id, message })
+        }
+        batch = []
+      }
+      for (const message of segment.visible) {
+        const foldable =
+          message.role === 'assistant' &&
+          !turnFinals.has(message.id) &&
+          !message.stageBoundary
+        if (!foldable) {
+          flush()
+          units.push({ kind: 'message', key: message.id, message })
+          continue
+        }
+        batch.push(message)
+      }
+      flush()
+      if (segment.visible.length > 0) {
+        units.push({
+          kind: 'turn-diff',
+          key: `diff-${segment.key}`,
+          sources: segment.all.map((message) => ({
+            message,
+            suppressed: diffSuppression.get(message.id) ?? null
+          }))
+        })
+      }
+    }
+    return units
+  }, [turnSegments, turnFinals, diffSuppression])
   const lastMessage = messages[messages.length - 1]
   const lastContentSize = lastMessage
     ? lastMessage.content.reduce((size, block) => {
@@ -265,7 +338,7 @@ export function Transcript(): React.JSX.Element {
             <div className="transcript-empty">
               <p className="transcript-empty-title">说清想要的结果，过程我来想办法。</p>
               <p className="transcript-empty-desc">
-                比如「把文件夹里的文件整理成一份清单」——Morrow 会自己读文件、写脚本、把成品放到你面前。
+                比如「把文件夹里的文件整理成一份清单」——Morrow 会读文件、写脚本、把成品交给你。
               </p>
               <p className="transcript-empty-hint">
                 按 <Kbd>Ctrl</Kbd>
@@ -274,17 +347,30 @@ export function Transcript(): React.JSX.Element {
               </p>
             </div>
           ) : (
-            visibleMessages.map((message, index) => (
-              <MessageItem
-                key={message.id}
-                message={message}
-                streaming={streamingMessageId === message.id}
-                isLastAssistant={message.role === 'assistant' && index === visibleMessages.length - 1}
-                isTurnFinal={turnFinals.has(message.id)}
-                rewindTargetUserMessageId={turnFinals.get(message.id) ?? null}
-                suppressedDiffPaths={diffSuppression.get(message.id) ?? null}
-              />
-            ))
+            renderUnits.map((unit) =>
+              unit.kind === 'execution' ? (
+                <ExecutionGroup
+                  key={unit.key}
+                  messages={unit.messages}
+                  streamingMessageId={streamingMessageId}
+                  revealMessageId={focusMessageId}
+                />
+              ) : unit.kind === 'turn-diff' ? (
+                <DiffSummaryCard key={unit.key} sources={unit.sources} className="message-diff-turn" />
+              ) : (
+                <MessageItem
+                  key={unit.key}
+                  message={unit.message}
+                  streaming={streamingMessageId === unit.message.id}
+                  isLastAssistant={
+                    unit.message.role === 'assistant' &&
+                    unit.message.id === visibleMessages[visibleMessages.length - 1]?.id
+                  }
+                  isTurnFinal={turnFinals.has(unit.message.id)}
+                  rewindTargetUserMessageId={turnFinals.get(unit.message.id) ?? null}
+                />
+              )
+            )
           )}
 
           {pendingPermission ? <PermissionCard request={pendingPermission} /> : null}

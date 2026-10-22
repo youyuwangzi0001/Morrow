@@ -1,0 +1,328 @@
+/* Markdown 正文（助手消息）与 Prose 样式 */
+
+.md {
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md-p {
+  margin: 0 0 12px;
+  line-height: 1.75;
+}
+
+/* App.css 里旧的占位规则 `.message-assistant p` 指度更高，这里统一压回 Prose 节奏 */
+.message-assistant .md .md-p {
+  margin: 0 0 12px;
+  line-height: 1.75;
+}
+
+.md-p + .md-p {
+  margin-top: 2px;
+}
+
+/* 标题使用展示字体（Newsreader），保留中文系统字体回退 */
+.md-h1,
+.md-h2,
+.md-h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.md-h1 {
+  margin: 26px 0 12px;
+  font-size: 24px;
+  line-height: 1.3;
+}
+
+.md-h2 {
+  margin: 24px 0 10px;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.md-h3 {
+  margin: 22px 0 8px;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.md-h4,
+.md-h5,
+.md-h6 {
+  margin: 18px 0 8px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.md-h4::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 1px;
+  margin-right: 8px;
+  vertical-align: 4px;
+  background: var(--gold);
+  opacity: 0.7;
+}
+
+/* 列表 */
+.md-list {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  line-height: inherit;
+}
+
+.md-ul {
+  list-style: none;
+}
+
+.md-ul > .md-li::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 0.72em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.md-ol {
+  list-style: decimal;
+  padding-left: 24px;
+}
+
+.md-ol > .md-li::marker {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.md-li {
+  position: relative;
+  margin: 4px 0;
+  padding-left: 2px;
+  line-height: inherit;
+}
+
+.md-li > .md-p {
+  margin: 0;
+}
+
+.md-li > .md-p + .md-p {
+  margin-top: 6px;
+}
+
+.md-li-task {
+  padding-left: 24px;
+}
+
+.md-ul > .md-li.md-li-task::before {
+  display: none;
+}
+
+.md-check {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 -24px;
+  vertical-align: -2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--patina);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* 引用 */
+.md-quote {
+  margin: 14px 0;
+  padding: 2px 0 2px 16px;
+  border-left: 1px solid var(--line-gold);
+  color: var(--text-2);
+}
+
+.md-quote .md-p {
+  margin: 0;
+}
+
+/* 行内代码 chip：明暗两套都保证正文级对比度 */
+.md-inline-code {
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--surface-inset) 72%, var(--surface));
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: calc(var(--fs-code) - 1px);
+  letter-spacing: 0.01em;
+  white-space: break-spaces;
+}
+
+[data-theme='light'] .md-inline-code {
+  background: color-mix(in srgb, var(--surface-inset) 60%, var(--surface));
+  color: var(--text);
+}
+
+/* 链接：外部链接带小箭头 */
+.md-link {
+  color: var(--gold);
+  text-decoration: underline;
+  text-decoration-color: var(--line-gold);
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) ease, text-decoration-color var(--dur-fast) ease;
+}
+
+.md-link:hover {
+  color: var(--gold-bright);
+  text-decoration-color: var(--gold);
+}
+
+.md-link-icon {
+  display: inline-block;
+  margin-left: 3px;
+  vertical-align: -1px;
+  opacity: 0.7;
+}
+
+/* 表格 */
+.md-table-wrap {
+  margin: 14px 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.md-th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.md-td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  vertical-align: top;
+}
+
+.md-table tr:last-child .md-td {
+  border-bottom: 0;
+}
+
+.md-table tbody tr:hover .md-td {
+  background: var(--surface-hover);
+}
+
+/* 分隔线与强调 */
+.md-hr {
+  height: 1px;
+  margin: 22px 0;
+  border: 0;
+  background: linear-gradient(90deg, var(--line-strong), transparent);
+}
+
+.md-strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md-em {
+  font-style: italic;
+}
+
+.md-del {
+  color: var(--text-3);
+}
+
+/* 图片 */
+.md-image-wrap {
+  display: block;
+  margin: 14px 0;
+}
+
+.md-image {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.md-image-caption {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+/* 远程/不可显示图片：不渲染破图，给出域名与安全打开入口 */
+.md-image-unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 4px 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset);
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.6;
+  vertical-align: baseline;
+}
+
+.md-image-unavailable-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-image-unavailable-open {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-decoration-color: var(--line-gold);
+  text-underline-offset: 2px;
+}
+
+.md-image-unavailable-open:hover {
+  color: var(--gold-bright);
+}
+
+/* 流式时：末尾代码块可能未闭合，降低块级间距抖动 */
+.md.is-streaming .md-p:last-child {
+  margin-bottom: 0;
+}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Folder, Ghost, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
+import { ChevronDown, Folder, Ghost, Globe, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
 import { useAppStore } from '../../state/store'
 import { IconButton } from '../../ui'
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
+import { openWorkbench } from '../workbench/events'
 import './TitleBar.css'
 
 /** 当前对话标题：双击（或 F2）就地重命名 */
@@ -150,6 +151,20 @@ function GoalIndicator(): React.JSX.Element | null {
   )
 }
 
+/** 内置浏览器开关：打开或切回上次隐藏的浏览器页面 */
+function BrowserToggle(): React.JSX.Element {
+  return (
+    <IconButton
+      label="打开内置浏览器"
+      size={30}
+      className="tb-browser-toggle"
+      onClick={() => openWorkbench('browser')}
+    >
+      <Globe size={15} strokeWidth={1.5} aria-hidden />
+    </IconButton>
+  )
+}
+
 /** 底部终端开关 */
 function TerminalToggle(): React.JSX.Element {
   const open = useAppStore((s) => s.terminalOpen)
@@ -233,21 +248,19 @@ function WindowControls(): React.JSX.Element {
 
 /**
  * 无边框标题栏：拖动区 + 当前文件夹 + 居中对话标题（双击重命名）
- * + 目标状态 + 画布开关 + 窗口控制（唯一允许直连 window.morrow 的地方）。
+ * + 目标状态 + 浏览器/画布开关 + 窗口控制（唯一允许直连 window.morrow 的地方）。
  */
 export function TitleBar(): React.JSX.Element {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
+  const activeSessionId = useAppStore((s) => s.activeSessionId)
   const bootError = useAppStore((s) => s.bootError)
   const platform = useAppStore((s) => s.appInfo?.platform)
   const isMac = platform === 'darwin'
 
   return (
     <header className={['titlebar', 'tb-root', 'drag-region', isMac ? 'is-mac' : ''].filter(Boolean).join(' ')}>
-      <div className="tb-left no-drag">
-        <span className="tb-app-brand serif" aria-label="Morrow">
-          Morrow
-        </span>
+      <div className="tb-left">
         <IconButton label="收起侧栏 (Ctrl+B)" onClick={toggleSidebar} size={30} active={!sidebarCollapsed}>
           <PanelLeft size={15} strokeWidth={1.5} aria-hidden />
         </IconButton>
@@ -259,14 +272,15 @@ export function TitleBar(): React.JSX.Element {
           <span className="tb-error mono" role="alert">
             启动异常
           </span>
-        ) : (
+        ) : activeSessionId ? (
           <SessionTitle />
-        )}
+        ) : null}
       </div>
 
       <div className="tb-right no-drag">
         <GoalIndicator />
         <span className="tb-sep" aria-hidden />
+        <BrowserToggle />
         <TerminalToggle />
         <CanvasToggle />
         <WindowControls />

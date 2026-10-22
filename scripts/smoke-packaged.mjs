@@ -335,12 +335,13 @@ async function runSmoke(kind) {
       title: document.title,
       bodyText: (document.body.innerText || '').trim().slice(0, 160),
       hasMorrowApi: typeof window.morrow === 'object' && window.morrow !== null,
+      hasTitlebarWordmark: Boolean(document.querySelector('.tb-wordmark')),
       userAgent: navigator.userAgent
     }))
     if (!/Electron/.test(info.userAgent)) throw new Error(`不是 Electron 渲染进程：${info.userAgent}`)
     if (!info.hasMorrowApi) throw new Error('预加载 API window.morrow 未注入')
     if (info.bodyText.length === 0) throw new Error('首屏渲染为空（白屏）')
-    if (!/Morrow/.test(info.bodyText)) throw new Error('首屏没有 Morrow 品牌内容')
+    if (info.hasTitlebarWordmark) throw new Error('顶栏不应再显示 Morrow 字样（品牌只保留在关于页）')
     result.electronVersion = (info.userAgent.match(/Electron\/([\d.]+)/) || [])[1] ?? null
     result.windowTitle = info.title
     result.bodyTextPreview = info.bodyText

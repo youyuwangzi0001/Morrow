@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   AlertTriangle,
   ArrowUp,
@@ -44,7 +44,7 @@ import type {
   ResearchDepth,
   SessionMode
 } from '@shared/types'
-import { isReasoningEffort, REASONING_EFFORTS } from '@shared/reasoning'
+import { isReasoningEffort, REASONING_EFFORTS } from '@shared/models'
 import { RESEARCH_DEPTHS } from '@shared/research'
 import { useAppStore } from '../../state/store'
 import { IconButton, Segmented, Select } from '../../ui'
@@ -384,6 +384,7 @@ export function Composer(): React.JSX.Element {
   const clearGoal = useAppStore((s) => s.clearGoal)
   const compactSession = useAppStore((s) => s.compactSession)
   const notify = useAppStore((s) => s.notify)
+  const updateSettings = useAppStore((s) => s.updateSettings)
   const onboardingOpen = useAppStore((s) => s.onboardingOpen)
   const settingsOpen = useAppStore((s) => s.settingsOpen)
   const paletteOpen = useAppStore((s) => s.paletteOpen)
@@ -404,7 +405,54 @@ export function Composer(): React.JSX.Element {
   const [dragCount, setDragCount] = useState(0)
   const [sweep, setSweep] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [manualHeight, setManualHeight] = useState(settings.composerHeight || 0)
   const goalBusyRef = useRef(false)
+
+  useEffect(() => {
+    setManualHeight(settings.composerHeight || 0)
+  }, [settings.composerHeight])
+
+  const beginComposerResize = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>): void => {
+      event.preventDefault()
+      const startY = event.clientY
+      const startHeight = manualHeight > 0 ? manualHeight : Math.max(26, textareaRef.current?.clientHeight ?? 60)
+      let latest = startHeight
+      let moved = false
+      const onMove = (moveEvent: PointerEvent): void => {
+        moved = true
+        latest = Math.max(80, Math.min(360, Math.round(startHeight + startY - moveEvent.clientY)))
+        setManualHeight(latest)
+      }
+      const onUp = (): void => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        document.body.classList.remove('is-resizing-composer')
+        if (moved) void updateSettings({ composerHeight: latest })
+      }
+      document.body.classList.add('is-resizing-composer')
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [manualHeight, updateSettings]
+  )
+
+  const resetComposerHeight = useCallback((): void => {
+    setManualHeight(0)
+    void updateSettings({ composerHeight: 0 })
+  }, [updateSettings])
+
+  const onComposerResizeKey = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+      event.preventDefault()
+      const current = manualHeight || Math.max(26, textareaRef.current?.clientHeight ?? 80)
+      const next = Math.max(80, Math.min(360, current + (event.key === 'ArrowUp' ? 16 : -16)))
+      setManualHeight(next)
+      void updateSettings({ composerHeight: next })
+    },
+    [manualHeight, updateSettings]
+  )
 
   const modelRef = session?.model ?? settings.defaultModel
   const modelInfo = findModel(settings.providers, modelRef)
@@ -488,6 +536,31 @@ export function Composer(): React.JSX.Element {
     })
     notify('info', '在 /goal 后面写下目标，按 Enter 建立；Morrow 会自动多轮推进。')
   }, [goalUnavailable, notify])
+
+  const armPlanPrefix = useCallback((): void => {
+    const state = useAppStore.getState()
+    if ((state.session?.mode ?? 'work') === 'chat') {
+      notify('warning', '聊天模式不能进入计划模式：先切到工作模式。')
+      return
+    }
+    if (state.session?.mode === 'research') {
+      notify('warning', '深度研究模式不需要计划模式：研究轮次会自动推进。')
+      return
+    }
+    if (state.run) {
+      notify('warning', '当前还有任务在运行，先停止或等它完成后再进入计划模式。')
+      return
+    }
+    setText('/plan ')
+    setPopup(null)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+    notify('info', '在 /plan 后面写下任务，按 Enter 进入计划模式并发送；也可以点计划图标直接切换。')
+  }, [notify])
 
   const openGoalEntry = useCallback(
     (objectiveArg?: string): void => {
@@ -644,7 +717,7 @@ export function Composer(): React.JSX.Element {
             : '先只读探索并给出计划，等你批准后再执行',
         disabled: chatMode || running,
         disabledReason: chatMode ? '聊天模式不能使用计划模式：先切到工作模式。' : '生成过程中不能切换计划模式，先停止再试。',
-        run: () => void setPlanMode(!planMode)
+        run: () => (planMode ? void setPlanMode(false) : armPlanPrefix())
       },
       { name: 'settings', label: '打开设置', description: '模型、权限、外观、功能与工具', run: openSettings },
       {
@@ -774,17 +847,19 @@ export function Composer(): React.JSX.Element {
           run: () => armCustomCommand(command)
         }))
     ]
-  }, [newSession, startDemo, openSettings, armGoalPrefix, compactSession, compacting, running, session, chatMode, planMode, permissionMode, setPlanMode, openRewind, initProjectRules, workspace, exportCurrentSession, customCommands, armCustomCommand])
+  }, [newSession, startDemo, openSettings, armGoalPrefix, armPlanPrefix, compactSession, compacting, running, session, chatMode, planMode, permissionMode, setPlanMode, openRewind, initProjectRules, workspace, exportCurrentSession, customCommands, armCustomCommand])
 
-  /* 自动增高（到 220px 才出现内部滚动条） */
+  /* 自动增高（到 220px 才出现内部滚动条）；手动拖动过高度时以手动值为下限 */
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    const next = Math.min(MAX_INPUT_HEIGHT, Math.max(26, el.scrollHeight))
+    const min = manualHeight > 0 ? manualHeight : 26
+    const max = manualHeight > 0 ? Math.max(MAX_INPUT_HEIGHT, manualHeight) : MAX_INPUT_HEIGHT
+    const next = Math.min(max, Math.max(min, el.scrollHeight))
     el.style.height = `${next}px`
-    el.style.overflowY = el.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
-  }, [text])
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+  }, [text, manualHeight])
 
   /* 运行计时 */
   const runId = run?.runId
@@ -911,7 +986,7 @@ export function Composer(): React.JSX.Element {
     if (draft.trim()) requestAnimationFrame(() => textareaRef.current?.focus())
   }
 
-  const submit = (): void => {
+  const submit = (intent?: 'steer' | 'queue'): void => {
     const value = text.trim()
     if (!ready || interrupting) return
     if (compacting) {
@@ -928,16 +1003,16 @@ export function Composer(): React.JSX.Element {
       openSideChat((btwCommand[1] ?? '').trim() || undefined)
       return
     }
-    // /plan [任务]：切换计划模式；带任务时先进入计划模式再发送
+    // /plan [任务]：给出提示并保留输入；带任务发送时自动进入计划模式
     const planCommand = /^\/plan(?:\s+([\s\S]*))?$/i.exec(value)
     if (planCommand) {
       const request = (planCommand[1] ?? '').trim()
-      setText('')
-      setPopup(null)
       if (!request) {
-        void setPlanMode(!planMode)
+        armPlanPrefix()
         return
       }
+      setText('')
+      setPopup(null)
       if (chatMode) {
         notify('warning', '聊天模式不能进入计划模式：先切到工作模式。')
         return
@@ -1040,6 +1115,10 @@ export function Composer(): React.JSX.Element {
     }
     if (goalActive) {
       notify('warning', '目标进行中，先在目标条暂停或结束，再发送普通消息。')
+      return
+    }
+    if (runningCurrent && (intent ?? settings.runningSendMode) === 'steer') {
+      interruptCurrent()
       return
     }
     const outgoing = attachments
@@ -1175,7 +1254,9 @@ export function Composer(): React.JSX.Element {
       : goalActive
         ? '目标模式进行中。Morrow 会自动继续下一轮，暂停目标后可以自由输入。'
         : runningCurrent
-          ? 'Morrow 正在处理…输入内容会加入队列，本轮结束后自动发送。'
+          ? settings.runningSendMode === 'steer'
+            ? 'Morrow 正在处理…按 Enter 会停止当前任务并立即插话；也可点箭头排队。'
+            : 'Morrow 正在处理…按 Enter 加入队列，本轮结束后自动发送；也可点闪电插话。'
           : chatMode
             ? '聊天模式：只讨论与分析，不会改文件、不跑命令。需要动手时切到「工作」。'
             : '说清想要的结果，Morrow 会自己想办法完成。'
@@ -1204,6 +1285,17 @@ export function Composer(): React.JSX.Element {
 
   return (
     <div className="composer">
+      <button
+        type="button"
+        className="composer-resize"
+        aria-label="拖动调整输入框高度，双击恢复自动高度"
+        title="拖动调整输入框高度 · 双击恢复自动"
+        onPointerDown={beginComposerResize}
+        onDoubleClick={resetComposerHeight}
+        onKeyDown={onComposerResizeKey}
+      >
+        <span className="composer-resize-grip" aria-hidden />
+      </button>
       <div
         className={[
           'composer-shell',
@@ -1531,25 +1623,31 @@ export function Composer(): React.JSX.Element {
             )}
             {runningCurrent ? (
               <>
-                {text.trim() || attachments.length > 0 ? (
-                  <button
-                    type="button"
-                    className="composer-send is-interrupt"
-                    aria-label="打断当前任务并立即发送"
-                    title="打断并发送：停止当前运行，立即发送这条消息"
-                    disabled={!canSend}
-                    onClick={interruptCurrent}
-                  >
-                    <Zap size={14} strokeWidth={1.8} aria-hidden />
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className={['composer-send is-interrupt', canSend ? 'is-ready' : ''].filter(Boolean).join(' ')}
+                  aria-label={canSend ? '打断当前任务并立即发送' : '输入内容后可插话'}
+                  title={
+                    canSend
+                      ? `插话发送：停止当前运行，立即发送这条消息${settings.runningSendMode === 'steer' ? '（当前 Enter 默认）' : ''}`
+                      : '输入内容后可插话'
+                  }
+                  disabled={!canSend}
+                  onClick={interruptCurrent}
+                >
+                  <Zap size={14} strokeWidth={1.8} aria-hidden />
+                </button>
                 <button
                   type="button"
                   className={['composer-send is-queue', canSend ? 'is-ready' : ''].filter(Boolean).join(' ')}
                   aria-label={canSend ? '加入队列，本轮结束后发送' : '输入内容后可加入队列'}
-                  title={canSend ? '加入队列：本轮结束后自动发送' : '输入内容后可加入队列'}
+                  title={
+                    canSend
+                      ? `排队发送：本轮结束后自动发送${settings.runningSendMode === 'queue' ? '（当前 Enter 默认）' : ''}`
+                      : '输入内容后可加入队列'
+                  }
                   disabled={!canSend}
-                  onClick={submit}
+                  onClick={() => submit('queue')}
                 >
                   <ArrowUp size={16} strokeWidth={2} aria-hidden />
                 </button>
@@ -1577,7 +1675,7 @@ export function Composer(): React.JSX.Element {
                       : '输入内容后发送'
                 }
                 disabled={!canSend}
-                onClick={submit}
+                onClick={() => submit()}
               >
                 <ArrowUp size={16} strokeWidth={2} aria-hidden />
               </button>

@@ -305,14 +305,16 @@ export function IslandApp(): ReactElement {
               <div className="island-task" data-status={status}>
                 <div className="island-task-head">
                   <div>
-                    <p className="island-eyebrow mono">当前任务</p>
+                    <p className="island-eyebrow mono">
+                      当前任务
+                      {total > 0 ? (
+                        <span className="island-count-inline mono">
+                          {completed}/{total}
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="island-task-title truncate">{snapshot?.sessionId ? title : '桌面伙伴，随时待命'}</p>
                   </div>
-                  {total > 0 ? (
-                    <span className="island-count mono">
-                      {completed}/{total}
-                    </span>
-                  ) : null}
                 </div>
                 <p className="island-task-detail">{detail}</p>
                 {total > 0 || running ? (

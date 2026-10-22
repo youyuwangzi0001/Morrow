@@ -7,7 +7,7 @@
 import type { TerminalToolResponse } from '../types'
 import { errorMessage } from '../util'
 import { getNumber, getString } from './args'
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
 const ACTIONS = ['list', 'start', 'run', 'read', 'write', 'stop', 'restart'] as const

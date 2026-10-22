@@ -520,14 +520,12 @@ html.island-root[data-theme='light'] {
   color: var(--text);
 }
 
-.island-count {
-  flex: 0 0 auto;
-  font-size: 10px;
+.island-count-inline {
+  margin-left: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
   color: var(--gold);
-  padding: 2px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--island-line-gold);
-  background: var(--gold-ghost);
+  vertical-align: 0.02em;
 }
 
 .island-task-detail {

@@ -10,12 +10,16 @@
  * `feature:browser:set-bounds` 同步给主进程，窗口缩放/全屏时持续同步。
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Globe, Loader2, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, House, Loader2, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
 import './browser.css'
 
 export interface BrowserSurfaceProps {
   /** 面板是否打开（受控） */
   open: boolean
+  /** 原生网页视图是否可见；隐藏时浏览器保持打开，可再次切回 */
+  visible?: boolean
+  /** 返回主页面：隐藏浏览器但保留当前页面与状态 */
+  onHide: () => void
   /** 用户关闭面板/浏览器时回调（由 Lead 更新挂载状态） */
   onClose: () => void
   /** 可选：打开时自动导航到的网址 */
@@ -91,7 +95,7 @@ function formatBytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProps): React.JSX.Element | null {
+export function BrowserSurface({ open, visible = true, onHide, onClose, initialUrl }: BrowserSurfaceProps): React.JSX.Element | null {
   const [state, setState] = useState<BrowserState>(EMPTY_STATE)
   const [address, setAddress] = useState('')
   const [bootError, setBootError] = useState<string | null>(null)
@@ -222,9 +226,9 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
     setAddress(state.url)
   }, [state.url])
 
-  /* ── open/initialUrl 驱动 ───────────────────────────────────── */
+  /* ── open/visible/initialUrl 驱动 ───────────────────────────── */
   useEffect(() => {
-    if (!open) {
+    if (!open || !visible) {
       const api = featureApi()
       if (api?.invoke) void api.invoke('feature:browser:set-visible', { visible: false }).catch(() => undefined)
       return
@@ -265,7 +269,7 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
     return () => {
       cancelled = true
     }
-  }, [open, initialUrl, measureBounds])
+  }, [open, visible, initialUrl, measureBounds])
 
   /* ── 面板卸载时关闭浏览器视图，避免留下孤儿 WebContentsView ─── */
   useEffect(
@@ -340,6 +344,15 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
     }
   }, [savedDownload])
 
+  const hideToApp = useCallback(async () => {
+    try {
+      await invoke('feature:browser:set-visible', { visible: false })
+    } catch {
+      // 即使隐藏失败也先回到主页面；原生视图由后续 onHide 状态兜底
+    }
+    onHide()
+  }, [onHide])
+
   if (!open) return null
 
   const ready = state.open
@@ -349,6 +362,15 @@ export function BrowserSurface({ open, onClose, initialUrl }: BrowserSurfaceProp
   return (
     <section className="browser-surface" aria-label="内置浏览器">
       <header className="browser-toolbar">
+        <button
+          type="button"
+          className="browser-btn browser-home"
+          aria-label="返回主页面"
+          title="返回主页面（浏览器保持打开，可随时切回）"
+          onClick={() => void hideToApp()}
+        >
+          <House size={15} strokeWidth={1.5} />
+        </button>
         <div className="browser-nav">
           <button
             type="button"

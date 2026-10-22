@@ -242,6 +242,62 @@
   border-bottom: 1px solid var(--line);
 }
 
+.git-identity {
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line));
+  border-radius: var(--r-xs);
+  background: var(--amber-dim);
+}
+
+.git-identity-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.git-identity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.git-identity-input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+}
+
+.git-identity-input:focus {
+  border-color: var(--line-gold);
+}
+
+.git-identity-input::placeholder {
+  color: var(--text-3);
+}
+
+.git-identity-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
 .git-commit-input {
   display: block;
   width: 100%;

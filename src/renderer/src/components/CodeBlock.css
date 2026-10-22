@@ -1,0 +1,155 @@
+/* 代码块：石墨底 + 香槟金关键字（主题见 themes.ts） */
+
+.code-block {
+  position: relative;
+  margin: var(--sp-3) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--code-bg);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 6px 0 11px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--code-bg) 55%, var(--surface));
+}
+
+.code-dot {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 4px;
+  background: var(--gold);
+  opacity: 0.55;
+}
+
+.code-lang {
+  color: var(--text-2);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+}
+
+.code-meta {
+  margin-left: 2px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  opacity: 0.85;
+}
+
+.code-copy {
+  display: inline-grid;
+  place-items: center;
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.code-copy:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+.code-copy:focus-visible {
+  color: var(--gold-bright);
+}
+
+.code-scroll {
+  position: relative;
+  overflow: auto;
+  max-width: 100%;
+}
+
+.code-highlight > .shiki,
+.code-plain {
+  margin: 0;
+  padding: 12px 14px;
+  background: transparent;
+  font-family: var(--font-code);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.code-plain {
+  color: var(--text);
+  white-space: pre;
+}
+
+.code-highlight > .shiki:focus-visible {
+  outline: none;
+}
+
+/* Shiki 双主题：默认墨夜，浅色主题切换变量 */
+.code-highlight .shiki span {
+  color: var(--shiki-dark);
+}
+
+[data-theme='light'] .code-highlight .shiki span {
+  color: var(--shiki-light);
+}
+
+/* 行号（Shiki 每个逻辑行是一个 .line span） */
+.code-highlight.with-lines code {
+  counter-reset: shiki-line;
+}
+
+.code-highlight.with-lines .line::before {
+  counter-increment: shiki-line;
+  content: counter(shiki-line);
+  display: inline-block;
+  width: 2.2em;
+  margin-right: 1.1em;
+  color: var(--text-3);
+  text-align: right;
+  user-select: none;
+  opacity: 0.7;
+}
+
+/* 折叠长代码 */
+.code-block.is-collapsed .code-scroll {
+  max-height: 286px;
+  overflow: hidden;
+}
+
+.code-block.is-collapsed .code-scroll::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 72px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--code-bg) 86%);
+}
+
+.code-fold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 10.5px;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+
+.code-fold:hover {
+  color: var(--gold-bright);
+  background: var(--gold-ghost);
+}
+
+.code-fold[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.code-fold svg {
+  transition: transform var(--dur-fast) ease;
+}

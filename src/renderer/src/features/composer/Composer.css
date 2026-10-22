@@ -6,6 +6,47 @@
   container-type: inline-size;
 }
 
+/* 输入框高度拖拽条：贴在输入框上沿，默认只显示一条很淡的抓手 */
+.composer-resize {
+  position: absolute;
+  top: -9px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.composer-resize-grip {
+  width: 44px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.composer:hover .composer-resize-grip,
+.composer-resize:focus-visible .composer-resize-grip,
+body.is-resizing-composer .composer-resize-grip {
+  opacity: 0.8;
+  background: var(--gold);
+}
+
+body.is-resizing-composer {
+  cursor: ns-resize;
+  user-select: none;
+}
+
 .composer-shell {
   position: relative;
   display: flex;
@@ -230,7 +271,7 @@
   display: block;
   width: 100%;
   min-height: 26px;
-  max-height: 220px;
+  max-height: none;
   margin: 0;
   padding: 3px 6px 6px;
   border: 0;
@@ -285,7 +326,7 @@
 
 .composer-bar-right {
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 6px;
   justify-content: flex-end;
 }
@@ -471,7 +512,7 @@
 }
 
 .composer-picker-mode .segmented {
-  height: 26px;
+  height: 28px;
   padding: 1px;
   border-color: transparent;
   border-radius: var(--r-xs);
@@ -487,7 +528,7 @@
 }
 
 .composer-picker-mode .segmented-item {
-  height: 22px;
+  height: 24px;
   padding: 0 8px;
   border-radius: var(--r-xs);
   font-size: 11px;
@@ -508,7 +549,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
+  height: 28px;
   padding: 0 8px;
   flex: 0 0 auto;
   border: 1px solid var(--line);
@@ -540,7 +581,7 @@
 }
 
 .composer-picker .select-trigger {
-  height: 26px;
+  height: 28px;
   padding: 0 7px;
   border-color: transparent;
   border-radius: var(--r-xs);
@@ -588,8 +629,8 @@
 .composer-send {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-strong);
@@ -766,12 +807,21 @@
 }
 
 /* 窄容器（画布打开 / 小窗口）逐级让位，避免工具条溢出 */
-@container (max-width: 760px) {
-  /* 三个模式选项会多占一点宽度：先收起推理强度（仍可在设置里调整），保证底栏一行 */
+@container (max-width: 880px) {
+  /* 先收起推理强度（仍可在设置里调整），避免右栏拥挤 */
   .composer-picker-reasoning {
     display: none;
   }
+}
 
+@container (max-width: 840px) {
+  /* 上下文圆环收起；详情仍可在设置 → 上下文查看 */
+  .composer-ctx {
+    display: none;
+  }
+}
+
+@container (max-width: 760px) {
   .composer-picker-mode .segmented-item {
     padding: 0 6px;
   }
@@ -803,7 +853,7 @@
   }
 }
 
-/* 再窄就先收起推理强度选择（仍可在「设置 → 模型」里调整），保证底栏始终一行 */
+/* 再窄就继续收起次要控件，保证底栏始终一行 */
 @container (max-width: 560px) {
   .composer-picker-reasoning {
     display: none;

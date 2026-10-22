@@ -31,7 +31,7 @@ import type { ToolContext } from '../types'
 import { clampInt, formatBytes, sha256, truncateText } from '../util'
 import { getBoolean, getNumber, getString } from './args'
 import { createUnifiedDiff, diffSummary } from './diff'
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 import { displayPath, resolveWorkspacePath } from './paths'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
@@ -698,4 +698,138 @@ export const listDirTool: ToolImpl = {
   }
 }
 
-export const fsTools: ToolImpl[] = [readFileTool, writeFileTool, editFileTool, deleteFileTool, listDirTool]
+/* ── move_file / copy_file / make_dir ────────────────────────── */
+
+export const moveFileTool: ToolImpl = {
+  definition: {
+    name: 'move_file',
+    description:
+      '把工作区内的一个文件移动或重命名到新路径。目标父目录会自动创建；目标已存在时拒绝覆盖。' +
+      '只移动文件，不移动文件夹；移动前后的内容不变。回退请使用本轮检查点（移动不像写入那样生成逐文件快照）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: '源文件路径（相对工作区根目录）' },
+        to: { type: 'string', description: '目标文件路径（相对工作区根目录）' }
+      },
+      required: ['from', 'to']
+    },
+    category: 'write',
+    risk: 'medium',
+    titleFor: (input) => `移动 ${oneLineInput(input, 'from')} → ${oneLineInput(input, 'to')}`
+  },
+  async execute(input, ctx): Promise<ToolResult> {
+    const rawFrom = getString(input, 'from', { required: true })
+    const rawTo = getString(input, 'to', { required: true })
+    const source = resolveWorkspacePath(rawFrom, ctx.workspace, { escapeApproved: ctx.escapeApproved, requireExist: true })
+    if (source.isDirectory) throw new ToolInputError(`「${rawFrom}」是文件夹，move_file 只移动文件。`, '需要移动目录时请用 run_command，并说明范围。')
+    const target = resolveWorkspacePath(rawTo, ctx.workspace, { escapeApproved: ctx.escapeApproved })
+    if (target.isDirectory) throw new ToolInputError(`目标「${rawTo}」是文件夹。`, '请指定一个文件路径。')
+    if (source.real === target.real) throw new ToolInputError('源路径和目标路径相同，不需要移动。', '请换一个目标路径。')
+    if (existsSync(target.absolute)) {
+      throw new ToolInputError(`目标已存在：${rawTo}`, '为避免覆盖，请换一个不存在的目标路径，或先删除目标文件。')
+    }
+    mkdirSync(dirname(target.real), { recursive: true })
+    renameSync(source.real, target.real)
+    return okResult(
+      `已移动 ${relativeOrAbsolute(source.absolute, ctx)} → ${relativeOrAbsolute(target.absolute, ctx)}。\n如需撤销，请使用本轮检查点或 Git。`,
+      {
+        from: relativeOrAbsolute(source.absolute, ctx),
+        to: relativeOrAbsolute(target.absolute, ctx),
+        absoluteFrom: source.absolute,
+        absoluteTo: target.absolute,
+        moved: true
+      }
+    )
+  }
+}
+
+export const copyFileTool: ToolImpl = {
+  definition: {
+    name: 'copy_file',
+    description:
+      '把工作区内的一个文件复制到新路径。目标父目录会自动创建；目标已存在时拒绝覆盖。' +
+      '适合复制模板/素材后再修改，保留原文件。只复制文件，不复制文件夹。',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: '源文件路径（相对工作区根目录）' },
+        to: { type: 'string', description: '目标文件路径（相对工作区根目录）' }
+      },
+      required: ['from', 'to']
+    },
+    category: 'write',
+    risk: 'medium',
+    titleFor: (input) => `复制 ${oneLineInput(input, 'from')} → ${oneLineInput(input, 'to')}`
+  },
+  async execute(input, ctx): Promise<ToolResult> {
+    const rawFrom = getString(input, 'from', { required: true })
+    const rawTo = getString(input, 'to', { required: true })
+    const source = resolveWorkspacePath(rawFrom, ctx.workspace, { escapeApproved: ctx.escapeApproved, requireExist: true })
+    if (source.isDirectory) throw new ToolInputError(`「${rawFrom}」是文件夹，copy_file 只复制文件。`, '需要复制目录时请用 run_command，并说明范围。')
+    const target = resolveWorkspacePath(rawTo, ctx.workspace, { escapeApproved: ctx.escapeApproved })
+    if (target.isDirectory) throw new ToolInputError(`目标「${rawTo}」是文件夹。`, '请指定一个文件路径。')
+    if (source.real === target.real) throw new ToolInputError('源路径和目标路径相同，不需要复制。', '请换一个目标路径。')
+    if (existsSync(target.absolute)) {
+      throw new ToolInputError(`目标已存在：${rawTo}`, '为避免覆盖，请换一个不存在的目标路径，或先删除目标文件。')
+    }
+    mkdirSync(dirname(target.real), { recursive: true })
+    copyFileSync(source.real, target.real)
+    const afterHash = hashFileSync(target.real)
+    recordRestoreManifest(ctx, target.absolute, null, afterHash)
+    return okResult(
+      `已复制 ${relativeOrAbsolute(source.absolute, ctx)} → ${relativeOrAbsolute(target.absolute, ctx)}（新文件已记录，可撤销）。`,
+      {
+        from: relativeOrAbsolute(source.absolute, ctx),
+        to: relativeOrAbsolute(target.absolute, ctx),
+        absoluteFrom: source.absolute,
+        absoluteTo: target.absolute,
+        afterHash,
+        created: true
+      }
+    )
+  }
+}
+
+export const makeDirTool: ToolImpl = {
+  definition: {
+    name: 'make_dir',
+    description:
+      '在工作区内创建一个文件夹（父目录自动创建）。已存在同名文件夹时返回提示，不报错；' +
+      '不能用来创建文件，也不能越出工作区。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '文件夹路径（相对工作区根目录）' }
+      },
+      required: ['path']
+    },
+    category: 'write',
+    risk: 'low',
+    titleFor: (input) => `新建文件夹 ${oneLineInput(input, 'path')}`
+  },
+  async execute(input, ctx): Promise<ToolResult> {
+    const rawPath = getString(input, 'path', { required: true })
+    const resolved = resolveWorkspacePath(rawPath, ctx.workspace, { escapeApproved: ctx.escapeApproved })
+    if (existsSync(resolved.absolute) && !statSync(resolved.absolute).isDirectory()) {
+      throw new ToolInputError(`「${rawPath}」已存在且是文件。`, '请换一个文件夹名。')
+    }
+    const existed = existsSync(resolved.absolute)
+    mkdirSync(resolved.real, { recursive: true })
+    return okResult(
+      `${existed ? '文件夹已存在' : '已创建文件夹'} ${relativeOrAbsolute(resolved.absolute, ctx)}。`,
+      { path: relativeOrAbsolute(resolved.absolute, ctx), absolutePath: resolved.absolute, created: !existed }
+    )
+  }
+}
+
+export const fsTools: ToolImpl[] = [
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  deleteFileTool,
+  listDirTool,
+  moveFileTool,
+  copyFileTool,
+  makeDirTool
+]

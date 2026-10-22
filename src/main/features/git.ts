@@ -48,6 +48,11 @@ registerFeatureHandler('feature:git:commit', (payload) => {
   return gitService.commit(workspaceOf(payload), text(input.message), input.stageAll === true)
 })
 
+registerFeatureHandler('feature:git:set-identity', (payload) => {
+  const input = payloadOf(payload)
+  return gitService.setIdentity(workspaceOf(payload), input.name, input.email)
+})
+
 registerFeatureHandler('feature:git:branches', (payload) => gitService.branches(workspaceOf(payload)))
 
 registerFeatureHandler('feature:git:checkout', (payload) => {

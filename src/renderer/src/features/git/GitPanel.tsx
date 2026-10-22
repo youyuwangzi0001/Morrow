@@ -123,6 +123,8 @@ export function GitPanel({
   const [diff, setDiff] = useState<GitDiff | null>(null)
   const [message, setMessage] = useState('')
   const [stageAll, setStageAll] = useState(false)
+  const [gitName, setGitName] = useState('')
+  const [gitEmail, setGitEmail] = useState('')
   const [discardTarget, setDiscardTarget] = useState<GitFileStatus | null>(null)
   const [branches, setBranches] = useState<GitBranchInfo[]>([])
   const [branchMenu, setBranchMenu] = useState(false)
@@ -137,7 +139,14 @@ export function GitPanel({
 
   const staged = useMemo(() => status?.files.filter((file) => file.staged) ?? [], [status])
   const changed = useMemo(() => status?.files.filter((file) => file.unstaged) ?? [], [status])
-  const canCommit = Boolean(message.trim()) && (stageAll || (status?.stagedCount ?? 0) > 0) && !busy
+  const identityReady = Boolean(
+    status?.identity.configured || (gitName.trim() && gitEmail.trim())
+  )
+  const canCommit =
+    Boolean(message.trim()) &&
+    (stageAll || (status?.stagedCount ?? 0) > 0) &&
+    identityReady &&
+    !busy
 
   const refresh = useCallback(
     async (silent = false): Promise<void> => {
@@ -174,6 +183,8 @@ export function GitPanel({
     setError(null)
     setMessage('')
     setStageAll(false)
+    setGitName('')
+    setGitEmail('')
     setDiscardTarget(null)
     setBranchMenu(false)
     setCommits(null)
@@ -181,6 +192,12 @@ export function GitPanel({
     void refresh()
     void refreshBranches()
   }, [open, workspace, refresh, refreshBranches])
+
+  useEffect(() => {
+    if (!status?.isRepo) return
+    setGitName((current) => current || status.identity.name || '')
+    setGitEmail((current) => current || status.identity.email || '')
+  }, [status?.isRepo, status?.identity.name, status?.identity.email])
 
   useEffect(() => {
     if (!open) return
@@ -296,9 +313,29 @@ export function GitPanel({
     if (tab === 'history') void loadHistory()
   }
 
+  const saveIdentity = (): Promise<void> =>
+    run(
+      () => call<GitStatus>('feature:git:set-identity', { workspace, name: gitName, email: gitEmail }),
+      (next) => {
+        setStatus(next)
+        setGitName(next.identity.name ?? '')
+        setGitEmail(next.identity.email ?? '')
+        notify('success', 'Git 身份已保存到当前仓库')
+      },
+      '保存 Git 身份失败'
+    )
+
   const commit = (): Promise<void> =>
     run(
-      () => call<GitCommitResult>('feature:git:commit', { workspace, message, stageAll }),
+      async () => {
+        if (status && !status.identity.configured) {
+          const name = gitName.trim()
+          const email = gitEmail.trim()
+          if (!name || !email) throw new Error('先填写 Git 用户名和邮箱，再提交。')
+          await call<GitStatus>('feature:git:set-identity', { workspace, name, email })
+        }
+        return call<GitCommitResult>('feature:git:commit', { workspace, message, stageAll })
+      },
       (result) => {
         setStatus(result.status)
         setMessage('')
@@ -508,6 +545,43 @@ export function GitPanel({
       <div className="git-changes">
         <aside className="git-side" aria-label="Git 变更">
           <div className="git-commit-box">
+            {status.identity.configured ? null : (
+              <div className="git-identity" role="group" aria-label="设置 Git 身份">
+                <div className="git-identity-head">
+                  <AlertTriangle size={12} strokeWidth={1.6} aria-hidden />
+                  <span>首次提交前设置 Git 身份</span>
+                </div>
+                <div className="git-identity-row">
+                  <input
+                    className="git-identity-input"
+                    value={gitName}
+                    maxLength={80}
+                    placeholder="你的名字"
+                    aria-label="Git 用户名"
+                    onChange={(event) => setGitName(event.target.value)}
+                  />
+                  <input
+                    className="git-identity-input"
+                    value={gitEmail}
+                    maxLength={200}
+                    placeholder="you@example.com"
+                    aria-label="Git 邮箱"
+                    onChange={(event) => setGitEmail(event.target.value)}
+                  />
+                </div>
+                <div className="git-identity-foot">
+                  <span>只写入当前仓库，不改全局 Git 设置。</span>
+                  <button
+                    type="button"
+                    className="git-mini"
+                    disabled={busy || !gitName.trim() || !gitEmail.trim()}
+                    onClick={() => void saveIdentity()}
+                  >
+                    保存身份
+                  </button>
+                </div>
+              </div>
+            )}
             <textarea
               className="git-commit-input"
               rows={3}

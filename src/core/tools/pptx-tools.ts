@@ -12,7 +12,7 @@ import type { ToolContext } from '../types'
 import { formatBytes, truncateText } from '../util'
 import { getBoolean, getNumber, getString } from './args'
 import { decodeXmlText } from './docx-tools'
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 import { displayPath, resolveWorkspacePath } from './paths'
 import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 

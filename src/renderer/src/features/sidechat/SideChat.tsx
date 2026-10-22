@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, MessageSquare, Square, X } from 'lucide-react'
 import { useAppStore } from '../../state/store'
 import { Button, ErrorNote, IconButton, ResizeHandle } from '../../ui'
-import { Markdown } from '../../components/markdown/Markdown'
+import { Markdown } from '../../components/Markdown'
 import './sidechat.css'
 
 const SIDECHAT_EVENT = 'feature:sidechat:event'

@@ -4,9 +4,34 @@ import { join } from 'node:path'
 import type { AppInfo, Bootstrap, Project } from '../../shared/types'
 import { getSettingsStore } from './settings-store'
 import { getSessionStore } from './session-store'
-import { recoverGoalsOnStartup } from './goal-recovery'
 import { describeWorkspace } from './workspace'
 import { dataDirInfo, dataPath } from './paths'
+import { log } from './logger'
+
+const APP_RESTART_NOTE =
+  '应用重启前目标正在运行，已自动暂停；轮次与预算计数已保留，可从目标条「继续」接着做。'
+
+let goalsRecoveredThisProcess = false
+
+/** 重启后把 active 目标转为可恢复的 paused；保留轮次、摘要与预算计数。 */
+function recoverGoalsOnStartup(sessionStore: ReturnType<typeof getSessionStore>): number {
+  if (goalsRecoveredThisProcess) return 0
+  goalsRecoveredThisProcess = true
+  let count = 0
+  for (const meta of sessionStore.list()) {
+    const session = sessionStore.get(meta.id)
+    const goal = session?.goal
+    if (!session || !goal || goal.status !== 'active') continue
+    goal.status = 'paused'
+    goal.stopReason = 'app_restarted'
+    goal.updatedAt = Date.now()
+    goal.summary = goal.summary?.trim() ? `${goal.summary.trim()}\n（${APP_RESTART_NOTE}）` : APP_RESTART_NOTE
+    sessionStore.save(session)
+    count += 1
+  }
+  if (count > 0) log.info('active goals recovered as paused after restart', { count })
+  return count
+}
 
 /** 应用关闭时研究轮次无法继续：重启后如实标记为停止，用户可继续发消息。 */
 function recoverResearchOnStartup(sessionStore: ReturnType<typeof getSessionStore>): void {

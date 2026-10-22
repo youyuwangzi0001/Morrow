@@ -12,7 +12,7 @@ import type { ToolResult } from '../../shared/types'
 import type { ToolContext } from '../types'
 import { formatBytes, truncateText } from '../util'
 import { getNumber, getString } from './args'
-import { ToolExecutionError, ToolInputError } from './errors'
+import { ToolExecutionError, ToolInputError } from './types'
 import { displayPath, resolveWorkspacePath } from './paths'
 import { okResult, oneLineInput, type ToolImpl } from './types'
 

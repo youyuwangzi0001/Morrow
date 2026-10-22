@@ -24,7 +24,7 @@ function GoalStatusChip({ goal }: { goal: Goal }): React.JSX.Element {
 }
 
 function GoalProgress({ goal }: { goal: Goal }): React.JSX.Element {
-  // 轮次上限可到 50：进度点最多显示 20 个，避免撑爆目标条
+  // 轮次上限最高 256：进度点最多显示 20 个，避免撑爆目标条
   const total = Math.max(1, Math.min(20, goal.maxRounds))
   const scaledRound = goal.maxRounds > total ? Math.ceil((goal.round / goal.maxRounds) * total) : goal.round
   const current = Math.max(1, Math.min(scaledRound, total))

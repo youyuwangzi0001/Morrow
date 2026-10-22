@@ -5,8 +5,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { TokenActivitySummary } from '@shared/types'
+import { Segmented } from '../../ui'
 import { formatExactTokens, formatUsageTokens } from './context-format'
-import { addDays, buildMonthLabels, dayKey, dayLabel, diffDays, parseDay, startOfWeek } from '@shared/token-heatmap'
+import { addDays, buildMonthLabels, dayKey, dayLabel, diffDays, parseDay, startOfWeek } from '@shared/usage'
 import './TokenActivity.css'
 
 type ViewMode = 'day' | 'week' | 'total'
@@ -271,23 +272,15 @@ export function TokenActivityTab(): React.JSX.Element {
           <p className="token-activity-sub">按天统计真实 token 用量；服务商没有返回时会标成估算。</p>
         </div>
         <div className="token-activity-head-actions">
-          <div className="token-mode-tabs" role="tablist" aria-label="Token 活动视图">
-            {(Object.keys(MODE_LABEL) as ViewMode[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={mode === key}
-                className={['token-mode-tab', mode === key ? 'is-active' : ''].filter(Boolean).join(' ')}
-                onClick={() => {
-                  setMode(key)
-                  setTooltip(null)
-                }}
-              >
-                {MODE_LABEL[key]}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={mode}
+            options={(Object.keys(MODE_LABEL) as ViewMode[]).map((key) => ({ value: key, label: MODE_LABEL[key] }))}
+            onChange={(next) => {
+              setMode(next)
+              setTooltip(null)
+            }}
+            ariaLabel="Token 活动视图"
+          />
           <button type="button" className="token-refresh" aria-label="刷新 Token 活动" title="刷新" onClick={() => void load()}>
             <RefreshCw size={13} strokeWidth={1.5} className={loading ? 'is-spinning' : ''} aria-hidden />
           </button>

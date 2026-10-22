@@ -71,7 +71,7 @@ npm run dist:all     # 内部构建检查：文件夹 + zip + 单文件
 npm run smoke:packaged
 ```
 
-最终验证记录见 [VERIFICATION.md](docs/verification/VERIFICATION.md)。
+测试按领域组织为 10 个单元测试套件与 14 个 E2E 套件（每个原测试文件保留独立 `describe`），完整结果与包体元信息见 [VERIFICATION.md](docs/verification/VERIFICATION.md)。
 
 ## 文档
 

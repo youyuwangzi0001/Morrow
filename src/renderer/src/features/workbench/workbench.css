@@ -5,3 +5,7 @@
   z-index: var(--z-overlay);
   background: var(--bg);
 }
+
+.workbench-browser-overlay.is-hidden {
+  display: none;
+}

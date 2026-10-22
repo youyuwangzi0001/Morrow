@@ -16,7 +16,7 @@ import type {
   Usage
 } from '../../shared/types'
 import { userMessageDisplayText } from '../../shared/message'
-import { isReasoningEffort } from '../../shared/reasoning'
+import { isReasoningEffort } from '../../shared/models'
 import { dataPath, ensureDataDirs } from './paths'
 import { log } from './logger'
 
@@ -468,7 +468,9 @@ export class SessionStore {
 
   /** 首条用户消息自动命名，仅在标题仍是默认值时 */
   autoName(session: Session, text: string): void {
-    if (session.title !== '新对话' || !text.trim()) return
+    const current = (session.title ?? '').trim()
+    // 「临时对话」也是系统默认标题；首次正常发言后仍然应该得到可识别的名字。
+    if (!/^(新对话|临时对话)?$/.test(current) || !text.trim()) return
     session.title = deriveTitle(text)
   }
 

@@ -394,7 +394,7 @@ export interface Goal {
   status: GoalStatus
   /** 当前已开始的轮次（从 1 开始；跨暂停/重启累计，不重置） */
   round: number
-  /** 本目标授权的总轮次预算（按目标复杂度自动估算，默认 5，上限 200；用户主动继续可追加一段） */
+  /** 本目标授权的总轮次预算（按目标复杂度自动估算，默认 5，上限 256；用户主动继续可追加一段） */
   maxRounds: number
   /** true = 轮次预算由系统智能估算（用户没有手动指定） */
   maxRoundsAuto?: boolean
@@ -625,6 +625,13 @@ export interface GitFileStatus {
   conflicted: boolean
 }
 
+export interface GitIdentity {
+  name: string | null
+  email: string | null
+  /** name 与 email 都已在当前仓库/全局配置中设置 */
+  configured: boolean
+}
+
 export interface GitStatus {
   isRepo: boolean
   root: string | null
@@ -637,6 +644,7 @@ export interface GitStatus {
   files: GitFileStatus[]
   stagedCount: number
   changedCount: number
+  identity: GitIdentity
 }
 
 export interface GitDiff {
@@ -747,6 +755,8 @@ export interface WebSearchResponse {
 /* ── 设置 ─────────────────────────────────────────────────────── */
 
 export type SendKey = 'enter' | 'ctrl+enter'
+/** 运行中按发送键：插话（停止当前运行并立即发送）或排队（本轮结束后发送） */
+export type RunningSendMode = 'steer' | 'queue'
 
 export type AnswerStyleId = 'balanced' | 'concise' | 'explanatory' | 'formal' | 'custom'
 
@@ -754,9 +764,13 @@ export interface Settings {
   version: number
   theme: ThemeMode
   fontSize: number
+  /** 代码/等宽内容的独立字号（不影响正文与界面字号） */
+  codeFontSize: number
   reduceMotion: boolean
   permissionMode: PermissionMode
   sendKey: SendKey
+  /** 运行中默认发送方式：插话或排队 */
+  runningSendMode: RunningSendMode
   providers: ProviderConfig[]
   defaultModel: ModelRef
   lastWorkspace: string | null
@@ -773,6 +787,8 @@ export interface Settings {
   compactThreshold: number
   /** 右侧画布宽度（可拖动调整，320–960） */
   canvasWidth: number
+  /** 输入框手动高度（0 = 随内容自动；80–360 为手动高度） */
+  composerHeight: number
   /** 布局版本：用于把旧默认宽度一次性迁移到 R7 新默认（240 / 420） */
   layoutVersion?: number
   /** 会话自动命名（用首条消息） */

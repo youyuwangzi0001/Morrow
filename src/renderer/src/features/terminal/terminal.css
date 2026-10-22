@@ -44,7 +44,7 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
-  height: 40px;
+  height: 34px;
   padding: 0 8px 0 10px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-elev);
@@ -71,7 +71,7 @@
   flex: 0 1 auto;
   min-width: 0;
   max-width: 200px;
-  height: 28px;
+  height: 24px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   color: var(--text-2);
@@ -246,7 +246,7 @@
 .terminal-xterm {
   position: absolute;
   inset: 0;
-  padding: 7px 8px 2px 12px;
+  padding: 4px 6px 0 8px;
 }
 
 .terminal-xterm[hidden] {
@@ -331,11 +331,11 @@
   flex: 1 1 auto;
   min-height: 0;
   margin: 0;
-  padding: 10px 14px;
+  padding: 8px 10px;
   overflow: auto;
   color: var(--text);
   font-size: 11.5px;
-  line-height: 1.55;
+  line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -373,12 +373,12 @@
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
-  height: 23px;
-  padding: 0 12px;
+  height: 20px;
+  padding: 0 10px;
   border-top: 1px solid var(--line);
   background: var(--bg-elev);
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: 9px;
 }
 
 .terminal-status-path {

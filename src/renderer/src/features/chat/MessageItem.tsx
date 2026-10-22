@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Archive,
@@ -20,9 +20,8 @@ import { formatBytes } from '@shared/format'
 import { stripToolProtocol } from '@shared/tool-protocol'
 import { messagePlainText, userMessageDisplayText } from '@shared/message'
 import { useAppStore } from '../../state/store'
-import { Markdown } from '../../components/markdown/Markdown'
-import { ActivitySpine } from '../activity/ActivitySpine'
-import { extractDiff } from '../activity/tool-meta'
+import { Markdown } from '../../components/Markdown'
+import { ActivitySpine } from '../activity/ToolRow'
 import { ThinkingBlock } from './ThinkingBlock'
 import { GoalContinuation, parseGoalContinuation } from './GoalContinuation'
 import { PlanNotice, parsePlanMessage } from '../activity/PlanCard'
@@ -229,8 +228,8 @@ export interface MessageItemProps {
   isTurnFinal?: boolean
   /** 这一轮的用户消息 id：轮末回答用它显示「回退这一轮」 */
   rewindTargetUserMessageId?: string | null
-  /** 本轮创建后又删除的文件：净变化为零，任何消息都不显示它的 diff */
-  suppressedDiffPaths?: ReadonlySet<string> | null
+  /** 折叠组内的步骤：收紧步骤之间的间距 */
+  compact?: boolean
 }
 
 function AttachmentChip({ attachment }: { attachment: MessageAttachment }): React.JSX.Element {
@@ -264,7 +263,7 @@ export const MessageItem = memo(function MessageItem({
   isLastAssistant = false,
   isTurnFinal = false,
   rewindTargetUserMessageId = null,
-  suppressedDiffPaths = null
+  compact = false
 }: MessageItemProps): React.JSX.Element {
   const time = formatTime(message.createdAt)
   const userText = message.role === 'user' ? userMessageDisplayText(message) : ''
@@ -279,69 +278,6 @@ export const MessageItem = memo(function MessageItem({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(userText)
   const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const diffSummary = useMemo(() => {
-    const perFile = new Map<string, { display: string; added: number; removed: number }>()
-    let anonymousAdded = 0
-    let anonymousRemoved = 0
-    const add = (key: string, display: string, plus: number, minus: number): void => {
-      if (!key) {
-        anonymousAdded += plus
-        anonymousRemoved += minus
-        return
-      }
-      const entry = perFile.get(key) ?? { display, added: 0, removed: 0 }
-      entry.added += plus
-      entry.removed += minus
-      if (!entry.display && display) entry.display = display
-      perFile.set(key, entry)
-    }
-    for (const block of message.content) {
-      if (block.type !== 'tool_use' || !block.result) continue
-      // 子代理/集群把多次写文件汇总在 changedFiles 里；没有逐文件 diff 时才退回工具自身的 diff。
-      const meta = block.result.meta as Record<string, unknown> | undefined
-      const changed = Array.isArray(meta?.changedFiles) ? meta.changedFiles : null
-      if (changed) {
-        let counted = false
-        for (const entry of changed) {
-          if (!entry || typeof entry !== 'object') continue
-          const file = entry as Record<string, unknown>
-          const plus = typeof file.diffAdded === 'number' ? file.diffAdded : 0
-          const minus = typeof file.diffRemoved === 'number' ? file.diffRemoved : 0
-          if (plus > 0 || minus > 0) counted = true
-          const key = typeof file.absolutePath === 'string' ? file.absolutePath : ''
-          add(key, key, plus, minus)
-        }
-        if (counted) continue
-      }
-      const diff = extractDiff(block.result, block)
-      if (!diff) continue
-      const plus = diff.added ?? 0
-      const minus = diff.removed ?? 0
-      if (plus === 0 && minus === 0) continue
-      const key =
-        typeof meta?.absolutePath === 'string'
-          ? meta.absolutePath
-          : typeof block.input?.path === 'string'
-            ? block.input.path
-            : typeof block.input?.file_path === 'string'
-              ? block.input.file_path
-              : ''
-      const display =
-        diff.filePath || (typeof meta?.path === 'string' ? meta.path : '') || key
-      add(key, display, plus, minus)
-    }
-    let added = anonymousAdded
-    let removed = anonymousRemoved
-    const files = new Set<string>()
-    for (const [key, entry] of perFile) {
-      if (suppressedDiffPaths?.has(key)) continue
-      added += entry.added
-      removed += entry.removed
-      if (entry.display) files.add(entry.display)
-    }
-    return { added, removed, files: [...files] }
-  }, [message.content, suppressedDiffPaths])
 
   // 阶段节点只挂在创建检查点时的边界消息上；中间的模型步骤不再显示分叉/回退行。
   const stageInfo = message.role === 'assistant' ? message.stageBoundary ?? null : null
@@ -520,28 +456,11 @@ export const MessageItem = memo(function MessageItem({
   }
 
   return (
-    <article className={['message', 'message-assistant', streaming ? 'is-streaming' : ''].filter(Boolean).join(' ')} data-message-id={message.id}>
+    <article
+      className={['message', 'message-assistant', streaming ? 'is-streaming' : '', compact ? 'is-compact' : ''].filter(Boolean).join(' ')}
+      data-message-id={message.id}
+    >
       <AssistantContent message={message} streaming={streaming} />
-      {diffSummary.added + diffSummary.removed > 0 ? (
-        <div
-          className="message-diff-summary"
-          role="note"
-          aria-label={`本次改动 ${diffSummary.files.length} 个文件，增加 ${diffSummary.added} 行，减少 ${diffSummary.removed} 行`}
-        >
-          <FileIcon size={12} strokeWidth={1.5} aria-hidden />
-          <span className="message-diff-label">
-            本次改动{diffSummary.files.length > 0 ? ` ${diffSummary.files.length} 个文件` : ''}
-          </span>
-          <span className="message-diff-add mono">+{diffSummary.added}</span>
-          <span className="message-diff-del mono">−{diffSummary.removed}</span>
-          {diffSummary.files.length > 0 ? (
-            <span className="message-diff-paths truncate" title={diffSummary.files.join('\n')}>
-              {diffSummary.files.slice(0, 3).join(' · ')}
-              {diffSummary.files.length > 3 ? ` 等 ${diffSummary.files.length} 个` : ''}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
       {message.interrupted ? (
         <p className="message-interrupted">
           <Square size={10} strokeWidth={1.8} aria-hidden />

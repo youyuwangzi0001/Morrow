@@ -24,7 +24,7 @@ import type {
   ToolRisk
 } from '../shared/types'
 import { createUnifiedDiff } from './tools/diff'
-import { ToolInputError } from './tools/errors'
+import { ToolInputError } from './tools/types'
 import { displayPath, inspectWorkspacePath, isExplicitlyAttachedPath, normalizeWorkspace } from './tools/paths'
 import { sha256 } from './util'
 import { BROWSER_TOOL_NAMES } from './tools/browser-tools'

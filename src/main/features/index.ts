@@ -2,7 +2,8 @@
  * R10 功能模块注册清单（Lead 统一维护，队友请勿改本文件）。
  *
  * 两类模块：
- * - files / editor-history / connectors / search：import 即注册（无 app ready 依赖）；
+ * - files / editor-history / connectors / search / terminal / git / discovery / sidechat / permissions：
+ *   import 即注册（无 app ready 依赖）；
  * - memory / projects / skills / browser：导出 registerXxx(register, options?)，在 app ready 后调用。
  *
  * 必须由 main/index.ts 在 app.whenReady() 内先 registerFeatureModules() 再 installFeatureIpc()。
@@ -14,10 +15,8 @@ import './connectors'
 import './search'
 import './terminal'
 import './git'
-import './commands'
-import './agents'
+import './discovery'
 import './sidechat'
-import './rules'
 import './permissions'
 import { registerMemoryFeature } from './memory'
 import { registerProjectsFeature } from './projects'

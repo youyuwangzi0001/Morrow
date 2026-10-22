@@ -29,7 +29,7 @@ import {
   type ConnectorCatalogEntry,
   type ConnectorRuntimeStatus
 } from '../../shared/connector-catalog'
-import { buildLocalNpxInvocation } from '../../shared/connector-install'
+import { buildLocalNpxInvocation } from '../../shared/connector-catalog'
 import {
   createMcpConnection,
   mcpConfigHash,

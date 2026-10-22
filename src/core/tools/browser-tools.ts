@@ -3,7 +3,7 @@
  *
  * 工具通过 `core/browser-bridge.ts` 的可注入 bridge 调用主进程浏览器服务：
  * - browser_open / browser_click / browser_type / browser_read / browser_screenshot /
- *   browser_back / browser_forward
+ *   browser_back / browser_forward / browser_reload / browser_scroll / browser_close
  * - 全部是外部动作：category=exec、risk=high（只读模式由权限层直接拒绝；
  *   ask 模式逐次审批；**auto 模式也必须逐次审批**——权限层需把这 7 个工具名加入
  *   `EXTERNAL_ACTION_TOOLS`，见 docs/R10-BROWSER.md 的接线说明）。
@@ -38,7 +38,10 @@ export const BROWSER_TOOL_NAMES = [
   'browser_read',
   'browser_screenshot',
   'browser_back',
-  'browser_forward'
+  'browser_forward',
+  'browser_reload',
+  'browser_scroll',
+  'browser_close'
 ] as const
 
 const MAX_RESULT_CHARS = 12_000
@@ -357,6 +360,98 @@ function historyTool(direction: 'back' | 'forward'): ToolImpl {
   }
 }
 
+/* ── browser_reload / browser_scroll / browser_close ─────────── */
+
+const browserReloadTool: ToolImpl = {
+  definition: {
+    name: 'browser_reload',
+    description:
+      '刷新内置浏览器当前页面，等待加载完成后返回标题与网址。适合页面数据过期或点击无响应时重试；每次调用都需要用户审批。',
+    parameters: {
+      type: 'object',
+      properties: { timeout_ms: { type: 'number', description: '动作超时（毫秒）' } }
+    },
+    category: 'exec',
+    risk: 'high',
+    titleFor: () => '刷新网页'
+  },
+  async execute(input, ctx) {
+    const readonly = requireWritableContext(ctx)
+    if (readonly) return readonly
+    try {
+      const state = await requireBridge().reload(callContext(ctx, input))
+      return okResult(`已刷新：${summarizeState(state)}`, {
+        url: state.url,
+        title: state.title,
+        canGoBack: state.canGoBack,
+        canGoForward: state.canGoForward
+      })
+    } catch (err) {
+      return toolError(err, '如果页面正在跳转，请稍等后再刷新。')
+    }
+  }
+}
+
+const browserScrollTool: ToolImpl = {
+  definition: {
+    name: 'browser_scroll',
+    description:
+      '在内置浏览器中向上或向下滚动当前页面，用于查看首屏之外的内容。direction 为 up/down，amount 为像素（默认 600，最大 4000）；每次调用都需要用户审批。',
+    parameters: {
+      type: 'object',
+      properties: {
+        direction: { type: 'string', enum: ['up', 'down'], description: '滚动方向，默认 down' },
+        amount: { type: 'number', description: '滚动像素，默认 600，范围 100–4000' },
+        timeout_ms: { type: 'number', description: '动作超时（毫秒）' }
+      }
+    },
+    category: 'exec',
+    risk: 'high',
+    titleFor: (input) => `${input.direction === 'up' ? '向上' : '向下'}滚动${typeof input.amount === 'number' ? ` ${input.amount}px` : ''}`
+  },
+  async execute(input, ctx) {
+    const readonly = requireWritableContext(ctx)
+    if (readonly) return readonly
+    const direction = input.direction === 'up' ? 'up' : 'down'
+    const amount =
+      typeof input.amount === 'number' && Number.isFinite(input.amount)
+        ? clampInt(input.amount, 100, 4000)
+        : 600
+    try {
+      const result = await requireBridge().scroll(callContext(ctx, input), direction === 'up' ? -amount : amount)
+      return okResult(
+        `已${direction === 'up' ? '向上' : '向下'}滚动 ${amount}px：${result.title || '(无标题)'} ${result.url}${
+          typeof result.y === 'number' ? `（当前 y=${result.y}）` : ''
+        }`,
+        { url: result.url, title: result.title, direction, amount, scrollY: result.y ?? null }
+      )
+    } catch (err) {
+      return toolError(err, '请确认浏览器里已经打开了页面。')
+    }
+  }
+}
+
+const browserCloseTool: ToolImpl = {
+  definition: {
+    name: 'browser_close',
+    description: '关闭内置浏览器视图并释放页面。用户要求结束网页操作、或任务完成后不再需要浏览器时使用；每次调用都需要用户审批。',
+    parameters: { type: 'object', properties: {} },
+    category: 'exec',
+    risk: 'high',
+    titleFor: () => '关闭内置浏览器'
+  },
+  async execute(_input, ctx) {
+    const readonly = requireWritableContext(ctx)
+    if (readonly) return readonly
+    try {
+      await requireBridge().closeAutomation()
+      return okResult('已关闭内置浏览器。')
+    } catch (err) {
+      return toolError(err)
+    }
+  }
+}
+
 /** 导出给 registry 集成（Lead 在 registry.ts 里 spread；本文件不改 registry） */
 export const browserTools: ToolImpl[] = [
   browserOpenTool,
@@ -365,5 +460,8 @@ export const browserTools: ToolImpl[] = [
   browserReadTool,
   browserScreenshotTool,
   historyTool('back'),
-  historyTool('forward')
+  historyTool('forward'),
+  browserReloadTool,
+  browserScrollTool,
+  browserCloseTool
 ]

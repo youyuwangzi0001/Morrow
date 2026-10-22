@@ -81,6 +81,23 @@ export function registerArtifactHtml(html: unknown): string {
   return `${ARTIFACT_PREVIEW_SCHEME}://preview/${token}`
 }
 
+/**
+ * 内置浏览器只允许打开本服务签发的预览 URL：固定 host + 36 位 token，
+ * 避免把浏览器视图变成任意本地/远程页面的入口。
+ */
+export function isArtifactPreviewUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 200) return false
+  try {
+    const url = new URL(value)
+    if (url.protocol !== `${ARTIFACT_PREVIEW_SCHEME}:` || url.host !== 'preview') return false
+    if (url.search || url.hash) return false
+    const token = url.pathname.replace(/^\//, '')
+    return !token.includes('/') && TOKEN_PATTERN.test(token)
+  } catch {
+    return false
+  }
+}
+
 /** `protocol.handle` 入口；预览 URL 过期/不存在时返回可读的 404 */
 export function handleArtifactPreview(request: Request): Response {
   prune()

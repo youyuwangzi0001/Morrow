@@ -282,6 +282,7 @@ function applyTheme(settings: Settings): void {
   const root = document.documentElement
   root.style.setProperty('--fs-body', `${settings.fontSize}px`)
   root.style.setProperty('--fs-ui', `${Math.max(11, settings.fontSize - 1)}px`)
+  root.style.setProperty('--fs-code', `${settings.codeFontSize || 13}px`)
   root.style.setProperty('--sidebar-w', `${clampSidebarWidth(settings.sidebarWidth)}px`)
 }
 
@@ -1606,7 +1607,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     const sessionId = session.id
     try {
       if (get().run) throw new Error('当前还有任务在运行，先停止或等它完成后再建立目标。')
-      // 不传 maxRounds 时由主进程按目标复杂度自动估算（≤200 轮）；显式传值仅用于高级用法/测试
+      // 不传 maxRounds 时由主进程按目标复杂度自动估算（≤256 轮）；显式传值仅用于高级用法/测试
       const result = await call(
         window.morrow.goal.start({
           sessionId: session.id,

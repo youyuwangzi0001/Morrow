@@ -12,7 +12,7 @@ export interface DiffResult {
 }
 
 const MAX_LINES_FOR_LCS = 1200
-const MAX_PATCH_LINES = 400
+const MAX_PATCH_LINES = 1000
 
 function splitLines(text: string): string[] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -133,7 +133,7 @@ function renderPatch(ops: Array<{ type: 'eq' | 'add' | 'del'; line: string; aInd
       }
     }
     if (truncated) {
-      hunks.push(`…（diff 过长，仅显示前 ${MAX_PATCH_LINES} 行）`)
+      hunks.push(`…（diff 超过 ${MAX_PATCH_LINES} 行，仅显示前 ${MAX_PATCH_LINES} 行；完整内容可在文件中查看）`)
       break
     }
     index = end

@@ -2,7 +2,7 @@
  * Goal 轮次预算智能估算 + 真实进展追踪（R7/R9 审计后补充）。
  *
  * 用户不需要手动选「最多跑几轮」：根据目标描述里的实际工作量信号估算，
- * 上限 200 轮；显式传入 maxRounds 的调用方（高级用法/审计测试）仍然优先。
+ * 上限 256 轮；显式传入 maxRounds 的调用方（高级用法/审计测试）仍然优先。
  *
  * 估算只影响「授权预算」，不代表任务一定要跑满：完成/阻塞/无进展/用户停止都会提前结束。
  * 本模块不 import electron，可在单测/审计脚本中直接验证。
@@ -12,7 +12,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
 export const GOAL_MIN_ROUNDS = 2
-export const GOAL_MAX_ROUNDS = 200
+export const GOAL_MAX_ROUNDS = 256
 
 function clampRounds(value: number): number {
   const rounded = Math.round(Number.isFinite(value) ? value : 5)

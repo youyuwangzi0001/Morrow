@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-10-22T06:58:59.662Z",
+  "startedAt": "2026-10-22T17:22:06.245Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,28 +13,28 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 19941,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r13d"
+      "durationMs": 36963,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output"
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 23317,
+      "durationMs": 19947,
       "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.1.0-portable.exe)"
     }
   ],
   "artifacts": {
     "portableExe": {
       "kind": "portable-exe",
-      "path": "deliver/Morrow-0.1.0-portable.exe",
-      "sizeBytes": 196799488,
-      "sizeMB": 187.68,
-      "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f",
+      "path": "deliver/Morrow-0.1.0-portable-r20.exe",
+      "sizeBytes": 196849152,
+      "sizeMB": 187.73,
+      "sha256": "31010aaf5308128809ce65cc099eaa61f98f6e72a07e5995bcf461ef064a4ebd",
       "signed": false,
       "signature": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\deliver-r13d\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -45,7 +45,7 @@
     }
   },
   "logs": {
-    "combined": "docs/verification/logs/dist-portable-2026-10-22T06-58-59-635Z.log"
+    "combined": "docs/verification/logs/dist-portable-2026-10-22T17-22-06-197Z.log"
   },
   "signing": {
     "enabled": false,
@@ -59,7 +59,7 @@
       "portableExe": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\deliver-r13d\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.1.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -71,29 +71,34 @@
   "delivery": {
     "dir": "deliver",
     "cleaned": true,
-    "createdAt": "2026-10-22T06:59:46.527Z",
+    "createdAt": "2026-10-22T17:23:06.200Z",
     "folder": null,
     "artifacts": [
       {
         "name": "portable-exe",
-        "path": "deliver/Morrow-0.1.0-portable.exe",
-        "sizeBytes": 196799488,
-        "sizeMB": 187.68,
-        "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f"
+        "path": "deliver/Morrow-0.1.0-portable-r20.exe",
+        "sizeBytes": 196849152,
+        "sizeMB": 187.73,
+        "sha256": "31010aaf5308128809ce65cc099eaa61f98f6e72a07e5995bcf461ef064a4ebd"
       }
     ],
-    "usage": "deliver/使用说明.txt",
-    "sha256Sums": "deliver/SHA256SUMS.txt",
+    "usage": "deliver/使用说明-r20.txt",
+    "sha256Sums": "deliver/SHA256SUMS-r20.txt",
     "checksums": [
       {
-        "path": "Morrow-0.1.0-portable.exe",
-        "sizeBytes": 196799488,
-        "sha256": "50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f"
+        "path": "Morrow-0.1.0-portable-r20.exe",
+        "sizeBytes": 196849152,
+        "sha256": "31010aaf5308128809ce65cc099eaa61f98f6e72a07e5995bcf461ef064a4ebd"
       },
       {
-        "path": "使用说明.txt",
-        "sizeBytes": 3390,
-        "sha256": "73fa34bab76c712857bc76db5978f448abf97190d393df5589d6b18c72235adb"
+        "path": "使用说明-r20.txt",
+        "sizeBytes": 2468,
+        "sha256": "7809b8df7af1b96f1c4a3df3a3ac603dd015907e1581d25c0e0f8d447d6a01da"
+      },
+      {
+        "path": "SHA256SUMS-r20.txt",
+        "sizeBytes": 257,
+        "sha256": "ac58e7c7ee434bf7cfdb48e62a495fe4a2d45fed549a6bfe65c7f4dba1aae7da"
       },
       {
         "path": "LICENSE",
@@ -101,13 +106,18 @@
         "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
       }
     ],
-    "totalSizeBytes": 196803948,
-    "totalSizeMB": 187.69,
-    "totalFileCount": 3,
-    "finalizedAt": "2026-10-22T07:00:04.619Z"
+    "totalSizeBytes": 196852947,
+    "totalSizeMB": 187.73,
+    "totalFileCount": 4,
+    "localData": {
+      "path": "deliver/Morrow Data",
+      "sizeBytes": 21665855,
+      "fileCount": 386,
+      "preserved": true
+    }
   },
   "primaryArtifact": "portableExe",
-  "notes": "Morrow 0.1.0 打包完成：启动器嵌入完整 Win32 manifest；未配置代码签名证书，产物 signed:false。 deliver/ 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。",
-  "finishedAt": "2026-10-22T06:59:48.787Z",
-  "durationMs": 49125
+  "notes": "Morrow 0.1.0 R20 打包完成：顶栏/终端/浏览器/计划输入/窄布局/文件夹定位/隐私兜底修复。单文件 exe 未签名，首次运行可能触发 SmartScreen，需「更多信息 → 仍要运行」。",
+  "finishedAt": "2026-10-22T17:23:08.118Z",
+  "durationMs": 61873
 }

@@ -21,15 +21,16 @@ import {
 import type { Artifact, ArtifactKind } from '@shared/types'
 import { useAppStore } from '../../state/store'
 import { Button, ErrorNote, IconButton, Modal, ResizeHandle } from '../../ui'
-import { languageLabel } from '../../components/editor/languages'
+import { languageLabel } from '../../components/languages'
 import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
-import { relativeToWorkspace } from './editor/editor-api'
-import { EditorPane } from './editor/EditorPane'
-import { HistoryDrawer } from './editor/HistoryDrawer'
-import { useEditorDocs, type EditorDocument } from './editor/useEditorDocs'
-import { FilePreviewPane } from './preview/FilePreviewPane'
-import { Markdown } from '../../components/markdown/Markdown'
-import { CodeBlock } from '../../components/markdown/CodeBlock'
+import { withMorrowScrollbar } from '@shared/scrollbar'
+import { relativeToWorkspace } from './editor-api'
+import { EditorPane } from './EditorPane'
+import { HistoryDrawer } from './HistoryDrawer'
+import { useEditorDocs, type EditorDocument } from './useEditorDocs'
+import { FilePreviewPane } from './FilePreviewPane'
+import { Markdown } from '../../components/Markdown'
+import { CodeBlock } from '../../components/CodeBlock'
 import { ArtifactVersionsDialog } from './ArtifactVersionsDialog'
 import { ArtifactExportDialog } from './ArtifactExportDialog'
 import './Canvas.css'
@@ -191,7 +192,6 @@ export function Canvas(): React.JSX.Element | null {
   const canvas = useAppStore((s) => s.canvas)
   const session = useAppStore((s) => s.session)
   const artifacts = useAppStore((s) => s.session?.artifacts ?? EMPTY_ARTIFACTS)
-  const closeCanvas = useAppStore((s) => s.closeCanvas)
   const openCanvas = useAppStore((s) => s.openCanvas)
   const revealArtifact = useAppStore((s) => s.revealArtifact)
   const saveArtifactToWorkspace = useAppStore((s) => s.saveArtifactToWorkspace)
@@ -400,8 +400,26 @@ export function Canvas(): React.JSX.Element | null {
   const ext = extensionOf(active?.path)
   const displayKind = kind ?? 'code'
 
-  const openExternal = (): void => {
-    if (active?.path) void openArtifactExternal(active.path)
+  const openExternal = async (): Promise<void> => {
+    if (!active) return
+    try {
+      // HTML 成品走内置浏览器：外部 Edge 在应用以管理员权限运行时可能弹「现有实例正在以提升的权限运行」。
+      if (displayKind === 'html' && content !== null && !truncated) {
+        const registered = await window.morrow.artifacts.previewHtml(content)
+        if (!registered.ok) {
+          useAppStore.getState().notify('error', registered.error.message)
+          return
+        }
+        const opened = await window.morrow.features.invoke('feature:browser:open-preview', {
+          url: registered.data.url
+        })
+        if (!opened.ok) useAppStore.getState().notify('error', opened.error.message)
+        return
+      }
+      if (active.path) await openArtifactExternal(active.path)
+    } catch (err) {
+      useAppStore.getState().notify('error', err instanceof Error ? err.message : '打开成品失败')
+    }
   }
   const reveal = (): void => {
     if (active?.path) void revealArtifact(active.path)
@@ -452,7 +470,8 @@ export function Canvas(): React.JSX.Element | null {
     if (canvas.artifactId !== id) return
     if (next) openCanvas(next.id)
     else if (orderedDocs[0]) editor.selectDoc(orderedDocs[0].id)
-    else closeCanvas()
+    // 关闭最后一个页签时保留画布，只清空选中；否则画布会整体收起，重新打开时页签又“复活”。
+    else useAppStore.setState({ canvas: { open: true, artifactId: null } })
   }
 
   const dialogTitle = !editor.dialog
@@ -613,7 +632,12 @@ export function Canvas(): React.JSX.Element | null {
                 <IconButton label="导出成品" size={26} onClick={() => setExportOpen(true)}>
                   <Share2 size={13} strokeWidth={1.5} />
                 </IconButton>
-                <IconButton label="在浏览器中打开" size={26} onClick={openExternal} disabled={!canUsePath}>
+                <IconButton
+                  label={displayKind === 'html' ? '在内置浏览器中预览' : '在浏览器中打开'}
+                  size={26}
+                  onClick={() => void openExternal()}
+                  disabled={displayKind === 'html' ? !canUsePath && !content : !canUsePath}
+                >
                   <ExternalLink size={13} strokeWidth={1.5} />
                 </IconButton>
                 <IconButton label="在文件夹中显示" size={26} onClick={reveal} disabled={!canUsePath}>
@@ -903,28 +927,6 @@ export function Canvas(): React.JSX.Element | null {
       </Modal>
     </>
   )
-}
-
-/** 演示/报告 HTML 在 iframe 内渲染时，把滚动条也统一成应用的黑金无边框样式。 */
-const MORROW_SCROLLBAR_CSS = `<style data-morrow-scrollbar>
-html, body, * { scrollbar-width: thin !important; scrollbar-color: #8a6f42 transparent !important; }
-*::-webkit-scrollbar { width: 8px !important; height: 8px !important; background: transparent !important; }
-*::-webkit-scrollbar-track { background: transparent !important; border: 0 !important; }
-*::-webkit-scrollbar-thumb {
-  min-height: 36px; border: 0 !important; border-radius: 2px !important;
-  background: linear-gradient(180deg, rgba(84,67,40,.55) 0%, #8a6f42 42%, #c8ae7d 52%, #5d492b 100%) !important;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(122,96,55,.75) 0%, #b18f58 42%, #e4ce9e 54%, #7a6138 100%) !important;
-}
-*::-webkit-scrollbar-corner { background: transparent !important; }
-</style>`
-
-function withMorrowScrollbar(html: string): string {
-  if (!html || html.includes('data-morrow-scrollbar')) return html
-  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${MORROW_SCROLLBAR_CSS}</head>`)
-  if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, `$&${MORROW_SCROLLBAR_CSS}`)
-  return `${MORROW_SCROLLBAR_CSS}${html}`
 }
 
 /** 成品 iframe 里的外链交给宿主用系统浏览器打开（沙箱内无法直接打开外部窗口） */

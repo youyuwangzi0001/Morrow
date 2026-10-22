@@ -3,7 +3,8 @@
 .tb-root.titlebar {
   position: relative;
   z-index: 5;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   height: var(--titlebar-h);
@@ -22,24 +23,11 @@
 .tb-left {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px;
   flex: 0 0 auto;
   min-width: 0;
-}
-
-/* 应用字标：顶栏最左侧；与 30px 侧栏按钮共用同一条垂直中线 */
-.tb-app-brand {
-  display: inline-flex;
-  align-items: center;
-  height: 30px;
-  flex: 0 0 auto;
-  padding: 0 8px 0 7px;
-  color: var(--gold);
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  user-select: none;
+  -webkit-app-region: drag;
 }
 
 /* 当前工作区 chip */
@@ -86,9 +74,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1 1 auto;
+  justify-self: center;
   min-width: 0;
-  padding: 0 16px;
+  padding: 0 10px;
+  -webkit-app-region: drag;
 }
 
 .tb-title {
@@ -150,6 +139,8 @@
 .tb-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
   gap: 6px;
   flex: 0 0 auto;
   height: 100%;
@@ -212,6 +203,12 @@
     max-width: 96px;
   }
 
+}
+
+@media (max-width: 860px) {
+  .tb-workspace-name {
+    max-width: 72px;
+  }
 }
 
 /* R6：目标指示（有 goal 时才出现，不挤压窗控） */

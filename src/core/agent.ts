@@ -584,7 +584,6 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
   let repeatedSignature = ''
   let repeatedCount = 0
   let todoCheckRounds = 0
-  let designReviewRounds = 0
   let qualityReviewRounds = 0
   let planReminderStep = 1
   let planReminderRounds = 0
@@ -671,7 +670,9 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
         continue
       }
 
-      // 用户明确要求画面质量时，再强制走一次视觉打磨轮；只触发一次，避免无休止返工。
+      // 视觉成品的自检由模型按 frontend-art-direction 在正常工作中完成。
+      // 内核不再因为用户说了「惊艳/好看」就强制追加一轮打磨：多数情况下第二轮
+      // 只增加延迟和 token，用户对细节差异的感知很低。模型认为确有弱点时可自行修。
       const visualArtifact = ctx.artifacts.some(
         (artifact) =>
           artifact.updatedAt >= runStartedAt &&
@@ -679,41 +680,8 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
             artifact.kind === 'svg' ||
             /\.(?:html?|svg)$/i.test(artifact.path ?? ''))
       )
-      const canReviewDesign =
-        visualIntent &&
-        visualArtifact &&
-        designReviewRounds < 1 &&
-        step < maxSteps &&
-        ctx.depth === 0 &&
-        !ctx.demo &&
-        !ctx.planMode &&
-        !ctx.opts.signal.aborted
-      if (canReviewDesign) {
-        designReviewRounds += 1
-        const nudge: ChatMessage = {
-          id: newId('msg'),
-          role: 'user',
-          hidden: true,
-          createdAt: Date.now(),
-          content: [
-            {
-              type: 'text',
-              text:
-                '[系统检查] 用户明确要求画面惊艳。请在收尾前完成一次真正的视觉打磨，而不是直接结束：\n' +
-                '- 重新读取最终成品和关键样式，按 frontend-art-direction 自检：艺术方向是否成立、首屏焦点是否够强、信息密度与层级是否像真实系统、字体/颜色/材质/动效是否统一。\n' +
-                '- 直接修改文件中的具体视觉弱点：优先解决画面空、主次平、像模板、细节散的问题；强化标题字标、关键信息区、状态灯、刻度或接缝等能支撑世界观的细节，但不要堆无意义特效。\n' +
-                '- 改完重新验证功能与宽屏/窄屏画面，再简短收尾；不要只回复「已优化」，也不要重复上一段交付说明。'
-            }
-          ]
-        }
-        ctx.messages.push(nudge)
-        ctx.newMessages.push(nudge)
-        assistantId = newId('msg')
-        step += 1
-        continue
-      }
 
-      // 非视觉成品（文档、表格、幻灯片、代码等）也要有交付前质量审查，而不是只打磨前端。
+      // 非视觉成品（文档、表格、幻灯片、代码等）仍保留一次交付质量审查，而不是只打磨前端。
       const updatedArtifact = ctx.artifacts.some((artifact) => artifact.updatedAt >= runStartedAt)
       const changedFile = ctx.newMessages.some((message) =>
         message.content.some(

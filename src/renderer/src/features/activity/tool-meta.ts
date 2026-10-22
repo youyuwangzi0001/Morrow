@@ -11,6 +11,10 @@ const BY_NAME: Record<string, ToolVisual> = {
   write_file: 'write',
   edit_file: 'edit',
   delete_file: 'write',
+  move_file: 'write',
+  copy_file: 'write',
+  make_dir: 'write',
+  view_image: 'read',
   list_dir: 'list',
   glob: 'glob',
   grep: 'search',
@@ -21,7 +25,16 @@ const BY_NAME: Record<string, ToolVisual> = {
   open_artifact: 'artifact',
   remember: 'memory',
   web_search: 'web',
-  web_fetch: 'web'
+  web_fetch: 'web',
+  browser_open: 'web',
+  browser_click: 'web',
+  browser_type: 'web',
+  browser_read: 'web',
+  browser_screenshot: 'web',
+  browser_back: 'web',
+  browser_forward: 'web',
+  browser_reload: 'web',
+  browser_close: 'web'
 }
 
 export function toolVisual(block: Pick<ToolUseBlock, 'name' | 'category'>): ToolVisual {
@@ -66,6 +79,13 @@ export function toolSummary(block: Pick<ToolUseBlock, 'name' | 'input' | 'catego
       return pickString(input, ['description', 'prompt']) ?? ''
     case 'remember':
       return pickString(input, ['key', 'name']) ?? ''
+    case 'move_file':
+    case 'copy_file':
+      return [pickString(input, ['from']), pickString(input, ['to'])].filter(Boolean).join(' → ')
+    case 'make_dir':
+      return pickString(input, ['path']) ?? ''
+    case 'view_image':
+      return pickString(input, ['path']) ?? ''
     case 'open_artifact':
       return pickString(input, ['title', 'path']) ?? ''
     default:

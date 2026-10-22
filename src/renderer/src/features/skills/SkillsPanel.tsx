@@ -28,8 +28,8 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../state/store'
 import { Badge, Button, ErrorNote, IconButton, Modal, Segmented, Spinner } from '../../ui'
-import { skillsApi } from './api'
-import type { SkillDetail, SkillFilter, SkillsSnapshot, SkillSort, SkillView } from './types'
+import { skillsApi } from './skills-client'
+import type { SkillDetail, SkillFilter, SkillsSnapshot, SkillSort, SkillView } from './skills-client'
 import './SkillsPanel.css'
 
 export interface SkillsPanelProps {

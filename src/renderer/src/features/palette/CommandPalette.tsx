@@ -14,7 +14,7 @@ import {
 import type { FileSearchResult, SessionMeta } from '@shared/types'
 import { useAppStore } from '../../state/store'
 import { dispatchOpenFile } from '../files/files-client'
-import { relativeToWorkspace } from '../artifacts/editor/editor-api'
+import { relativeToWorkspace } from '../artifacts/editor-api'
 import { Kbd, Modal } from '../../ui'
 import './CommandPalette.css'
 

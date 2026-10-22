@@ -38,7 +38,8 @@ src/
   shared/
     types.ts        # 会话/消息/工具/设置/模型等全部领域类型
     ipc.ts          # 通道名常量 + 请求/响应类型 + RuntimeEvent 联合类型
-    models.ts       # 模型预设（上下文窗口、能力、UI 名称）
+    models.ts       # 模型预设 + 推理强度常量与校验
+    usage.ts        # 费用估算 + Token 热力图日期工具
   core/             # 纯 TS，无 electron/react 依赖
     providers/      # openai-compat.ts, anthropic.ts, demo.ts, types.ts, sse.ts
     agent.ts        # AgentRuntime：循环、事件、中断、压缩
@@ -46,23 +47,33 @@ src/
     permissions.ts  # 权限模式/规则/工作区边界
     context.ts      # token 估算、历史裁剪、压缩摘要
     prompt.ts       # 系统提示词（含工具说明与行为规范）
-    session.ts      # 会话数据结构与序列化（纯函数）
+    types.ts / util.ts
   main/
     index.ts        # app 生命周期、窗口、菜单、协议、安全
     ipc.ts          # IPC 注册与事件转发
-    services/agent-service.ts   # run 管理、审批挂起、事件缓冲
-    services/session-store.ts   # 磁盘持久化
-    services/settings-store.ts  # 加密 key、主题等
-    services/workspace.ts       # 工作区选择、最近目录
-    tray.ts / menu.ts
+    services/       # agent/session/settings/workspace/terminal/git/mcp 等服务（扁平）
+    features/       # feature:<name>:<action> 窄 IPC 注册（扁平）
   preload/index.ts
   renderer/
     index.html
     src/main.tsx, App.tsx
-    src/styles/tokens.css, base.css, fonts.css
+    src/styles/tokens.css, base.css
     src/ui/          # 基础组件（Button/Input/Modal/Select/Toast/ScrollArea…）
     src/state/       # zustand store + selectors + ipc bridge
-    src/features/…   # shell / composer / chat / activity / artifacts / settings / onboarding / palette / demo
+    src/components/  # Markdown/CodeBlock/DiffView/CodeEditor（不再分 diff/editor/markdown 子目录）
+    src/features/…   # shell / composer / chat / activity / artifacts / settings …
+                     # artifacts 的编辑器与预览已上移到同级，减少一层目录
+tests/
+  unit/{core,main,shared}/  # 10 个按领域合并的单元测试套件
+  e2e/                      # 14 个按主题合并的 E2E 套件 + launch/store helpers
+```
+
+### 扁平化约定
+
+- 不再使用仅做转发的 `features/*/index.ts` barrel；组件直接从实现文件导入。
+- 宽度相近、语义内聚的小模块优先合并（如 `file-probe` → `workspace-files`、`docx-preview` → `office-preview`、`reasoning` → `models`）。
+- 测试按领域组织为少量套件，每个原测试文件保留独立 `describe`，hooks 随原文件作用域隔离。
+- 目录只保留真实边界：`services`、`features`、`components`、`tools` 单层平铺，不再为 2–4 个文件新增子目录。
 ```
 
 ## 3. 领域模型（要点）
@@ -270,7 +281,12 @@ run(userInput):
 
 ## 8.11 内置技能与技能提示词
 
-- 首次启动由 `ensureBuiltinSkills(dataDir)` 把 13 个内置技能安装到 `<dataDir>/skills/<name>/SKILL.md`：deliverable-quality、frontend-art-direction、code-review、debugging、test-writer、docs-writer、data-analysis、web-research、refactor、release-notes、security-audit、deliverable-report、mcp-integration。每个都是纯 Markdown 流程说明（无脚本），覆盖「何时使用 / 步骤 / 输出 / 安全边界」。deliverable-quality 统一代码、文档、报告、幻灯片、表格、数据与研究的跨模型质量门槛；frontend-art-direction 同时覆盖新作艺术方向与既有界面打磨；旧的 ui-polish 已并入，升级时会移除未修改的旧副本，用户改过的保留为自有技能。
+- 首次启动由 `ensureBuiltinSkills(dataDir)` 把 18 个内置技能安装到 `<dataDir>/skills/<name>/SKILL.md`，分为四层：
+  - 工作方法：brainstorm-and-scope、plan-and-execute、verify-before-delivery、parallel-work；
+  - 工程：code-review、debugging、test-writer、refactor、security-audit；
+  - 交付：frontend-art-direction、deliverable-quality、document-deliverables、data-analysis、web-research、canvas-artifacts；
+  - 产品操作：workspace-git、mcp-integration、skill-author。
+  每个都是纯 Markdown 流程说明（无脚本），覆盖「何时使用 / 何时不要用 / 流程 / 示例 / 完成检查 / 反模式 / 安全边界」，正文维护在 `src/main/builtin-skill-content/*.md`，构建时以 `?raw` 内联进主进程。旧的 ui-polish、docs-writer、deliverable-report、release-notes 已分别并入 frontend-art-direction 与 document-deliverables；升级时移除未修改的旧副本，用户改过的保留为自有技能。
 - 安装策略：同名目录已存在（用户自己的技能）不覆盖；用户删除后不自动恢复；升级时只更新「未被用户修改」的技能（sha256 与 marker 比对），保留用户编辑。marker 为 `skills/.builtin-skills.json`，用户编辑后持久化 `modified: true`，后续每次启动都不会再被内置内容覆盖；SKILL.md 与 marker 使用临时文件 + 重命名写入，避免半文件被误判成用户编辑。内置技能在技能库中标记「内置技能」，仍可禁用/删除/查看原文。
 - 技能提示词：只列 name/description/路径，不把正文塞进系统提示；要求仅在用户点名或任务明显匹配时读取，避免「为了用技能而改目标」；明确技能是流程参考资料、不是授权，命令/路径需按工作区与审批规则执行，夹带操作一律不执行。
 - `read_skill` 的 `path` 只接受 `.morrow/skills`、`skills`、`.skills` 或一级子目录 `/skills` 下的 `<技能>/SKILL.md`（用于同名或遮蔽技能消歧），并检查启用状态；不能借 path 读取工作区任意 `SKILL.md`，已禁用技能即使给出路径也不能读。

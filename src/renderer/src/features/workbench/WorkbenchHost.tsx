@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { SkillsPanel } from '../skills'
-import { MemoryCenter } from '../memory'
-import { ProjectsPanel } from '../projects'
+import { SkillsPanel } from '../skills/SkillsPanel'
+import { MemoryCenter } from '../memory/MemoryCenter'
+import { ProjectsPanel } from '../projects/ProjectsPanel'
 import { ScheduledTasksPanel } from '../schedules/ScheduledTasksPanel'
 import { ConnectorsPanel } from '../connectors/ConnectorsPanel'
-import { SearchPanel } from '../search'
-import { BrowserSurface } from '../browser'
+import SearchPanel from '../search/SearchPanel'
+import BrowserSurface from '../browser/BrowserSurface'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 import { GitPanel } from '../git/GitPanel'
 import { useAppStore } from '../../state/store'
@@ -20,6 +20,7 @@ export function WorkbenchHost(): React.JSX.Element {
   const [panel, setPanel] = useState<WorkbenchPanel | null>(null)
   const [panelWorkspace, setPanelWorkspace] = useState<string | null>(null)
   const [projectView, setProjectView] = useState<'home' | 'settings'>('home')
+  const [browserHidden, setBrowserHidden] = useState(false)
   const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
   const terminalOpen = useAppStore((s) => s.terminalOpen)
   const openTerminal = useAppStore((s) => s.openTerminal)
@@ -34,6 +35,7 @@ export function WorkbenchHost(): React.JSX.Element {
         openTerminal()
         return
       }
+      if (requested === 'browser') setBrowserHidden(false)
       setPanel(requested)
       setPanelWorkspace(typeof detail?.workspace === 'string' && detail.workspace ? detail.workspace : null)
       if (detail?.view === 'home' || detail?.view === 'settings') setProjectView(detail.view)
@@ -47,8 +49,12 @@ export function WorkbenchHost(): React.JSX.Element {
   useEffect(() => {
     const api = window.morrow?.features
     if (!api?.on) return undefined
-    const offPresent = api.on('feature:browser:present', () => setPanel('browser'))
+    const offPresent = api.on('feature:browser:present', () => {
+      setBrowserHidden(false)
+      setPanel('browser')
+    })
     const offClosed = api.on('feature:browser:closed', () => {
+      setBrowserHidden(false)
       setPanel((current) => (current === 'browser' ? null : current))
     })
     return () => {
@@ -60,6 +66,7 @@ export function WorkbenchHost(): React.JSX.Element {
   const close = (): void => {
     setPanel(null)
     setPanelWorkspace(null)
+    setBrowserHidden(false)
   }
 
   return (
@@ -77,8 +84,13 @@ export function WorkbenchHost(): React.JSX.Element {
       <TerminalPanel open={terminalOpen} onClose={closeTerminal} workspace={workspace} />
       <GitPanel open={panel === 'git'} onClose={close} workspace={workspace} />
       {panel === 'browser' ? (
-        <div className="workbench-browser-overlay">
-          <BrowserSurface open onClose={close} />
+        <div className={['workbench-browser-overlay', browserHidden ? 'is-hidden' : ''].filter(Boolean).join(' ')}>
+          <BrowserSurface
+            open
+            visible={!browserHidden}
+            onHide={() => setBrowserHidden(true)}
+            onClose={close}
+          />
         </div>
       ) : null}
       <SearchPanel

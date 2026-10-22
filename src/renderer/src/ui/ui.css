@@ -380,6 +380,7 @@
 /* Segmented */
 .segmented {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 2px;
   padding: 2px;
@@ -394,6 +395,7 @@
   border-radius: var(--r-xs);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
   color: var(--text-2);
   transition:
     background var(--dur-fast) ease,

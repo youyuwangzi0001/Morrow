@@ -18,6 +18,7 @@ import type {
   GitCommitResult,
   GitDiff,
   GitFileStatus,
+  GitIdentity,
   GitStatus
 } from '../../shared/types'
 import { assertInsideWorkspace, isPathInside } from '../features/workspace-roots'
@@ -38,7 +39,8 @@ function emptyStatus(isRepo = false, root: string | null = null): GitStatus {
     hasCommits: false,
     files: [],
     stagedCount: 0,
-    changedCount: 0
+    changedCount: 0,
+    identity: { name: null, email: null, configured: false }
   }
 }
 
@@ -283,16 +285,47 @@ export class GitService {
     return root
   }
 
+  /** user.name / user.email：本地仓库优先，其次全局；缺一即视为未配置。 */
+  private async readIdentity(root: string): Promise<GitIdentity> {
+    const [nameResult, emailResult] = await Promise.all([
+      runGit(root, ['config', '--get', 'user.name']),
+      runGit(root, ['config', '--get', 'user.email'])
+    ])
+    const name = nameResult.code === 0 ? nameResult.stdout.trim() : ''
+    const email = emailResult.code === 0 ? emailResult.stdout.trim() : ''
+    return { name: name || null, email: email || null, configured: Boolean(name && email) }
+  }
+
   async status(workspace: string): Promise<GitStatus> {
     const root = await this.repoRoot(workspace)
     if (!root) return emptyStatus()
-    const [hasCommits, status] = await Promise.all([
+    const [hasCommits, status, identity] = await Promise.all([
       runGit(root, ['rev-parse', '--verify', 'HEAD']),
-      runGit(root, ['--literal-pathspecs', '-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--branch', '--untracked-files=all'])
+      runGit(root, ['--literal-pathspecs', '-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--branch', '--untracked-files=all']),
+      this.readIdentity(root)
     ])
     if (status.code !== 0) throw gitError(status)
     const parsed = parseStatus(status.stdout)
-    return { isRepo: true, root, hasCommits: hasCommits.code === 0, ...parsed }
+    return { isRepo: true, root, hasCommits: hasCommits.code === 0, ...parsed, identity }
+  }
+
+  /** 首次提交前在界面里设置身份：只写当前仓库的 .git/config，不改全局配置。 */
+  async setIdentity(workspace: string, rawName: unknown, rawEmail: unknown): Promise<GitStatus> {
+    const name = typeof rawName === 'string' ? rawName.trim() : ''
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : ''
+    if (!name) throw new Error('Git 用户名不能为空。')
+    if (name.length > 80 || /[\0\r\n]/.test(name) || name.startsWith('-')) throw new Error('Git 用户名不合法。')
+    if (!email || email.length > 200 || /[\0\r\n\s]/.test(email) || email.startsWith('-') || !/^[^\s@]+@[^\s@]+$/.test(email)) {
+      throw new Error('Git 邮箱格式不合法。')
+    }
+    const status = await this.status(workspace)
+    if (!status.isRepo || !status.root) throw new Error('当前工作区不是 Git 仓库。')
+    const root = status.root
+    const nameResult = await runGit(root, ['config', '--local', '--replace-all', 'user.name', name])
+    if (nameResult.code !== 0) throw gitError(nameResult)
+    const emailResult = await runGit(root, ['config', '--local', '--replace-all', 'user.email', email])
+    if (emailResult.code !== 0) throw gitError(emailResult)
+    return this.status(workspace)
   }
 
   async init(workspace: string): Promise<GitStatus> {

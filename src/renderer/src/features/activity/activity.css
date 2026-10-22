@@ -270,12 +270,53 @@
 
 .spine-row.is-error .spine-item,
 .spine-row.is-denied .spine-item {
+  border: 1px solid color-mix(in srgb, var(--rust) 32%, transparent);
   border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--rust) 6%, transparent);
+}
+
+/* 失败详情默认收起：用加粗锈红边框 + 呼吸光提示，不自动展开、不抢阅读节奏 */
+.spine-row.is-error:not(.is-open) .spine-item,
+.spine-row.is-denied:not(.is-open) .spine-item {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--rust) 18%, transparent),
+    0 0 18px -10px color-mix(in srgb, var(--rust) 60%, transparent);
+  animation: spine-error-alert 2.6s ease-in-out infinite;
+}
+
+.spine-row.is-error .spine-title,
+.spine-row.is-denied .spine-title {
+  color: var(--rust);
+  font-weight: 600;
+}
+
+.spine-row.is-error .spine-summary,
+.spine-row.is-denied .spine-summary {
+  color: color-mix(in srgb, var(--rust) 68%, var(--text-2));
+}
+
+.spine-row.is-error .spine-status,
+.spine-row.is-denied .spine-status {
+  box-shadow: 0 0 12px -4px color-mix(in srgb, var(--rust) 65%, transparent);
 }
 
 .spine-row.is-error.is-open .spine-item,
 .spine-row.is-denied.is-open .spine-item {
   background: color-mix(in srgb, var(--rust) 5%, transparent);
+}
+
+@keyframes spine-error-alert {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--rust) 18%, transparent),
+      0 0 14px -10px color-mix(in srgb, var(--rust) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--rust) 30%, transparent),
+      0 0 22px -8px color-mix(in srgb, var(--rust) 72%, transparent);
+  }
 }
 
 /* 展开区：与标题文字对齐，左侧细线承接轨迹 */
@@ -1070,6 +1111,8 @@
 @media (prefers-reduced-motion: reduce) {
   .spine-row.is-running .spine-node,
   .spine-row.is-waiting .spine-node,
+  .spine-row.is-error .spine-item,
+  .spine-row.is-denied .spine-item,
   .plan-item.is-in_progress .plan-dot,
   .plan-running {
     animation: none;

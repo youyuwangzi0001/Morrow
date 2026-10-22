@@ -8,6 +8,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
+  container-type: inline-size;
   background: var(--bg-elev);
   color: var(--text);
   overflow: hidden;
@@ -413,4 +414,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 浏览器区域变窄时先收起标题与 Enter 提示，避免地址栏被挤出工具栏 */
+@container (max-width: 760px) {
+  .browser-title,
+  .browser-address-enter {
+    display: none;
+  }
+}
+
+@container (max-width: 620px) {
+  .browser-agent-chip {
+    display: none;
+  }
 }

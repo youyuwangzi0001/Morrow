@@ -22,7 +22,7 @@ import type { ToolImpl } from './types'
 import type { ToolResult } from '../../shared/types'
 import { abortError, clampInt, errorMessage, formatBytes, isAbortError } from '../util'
 import { getNumber, getString } from './args'
-import { ToolInputError } from './errors'
+import { ToolInputError } from './types'
 import { errResult, okResult, oneLineInput } from './types'
 
 /* ── 常量 ─────────────────────────────────────────────────────── */

@@ -13,6 +13,9 @@ import { useAppStore } from '../../state/store'
 import { Button } from '../../ui'
 import './terminal.css'
 
+const CODE_FONT_FAMILY =
+  "'IBM Plex Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace"
+
 const EVENT_CHANNEL = 'feature:terminal:event'
 const HEIGHT_KEY = 'morrow.terminal.height.v2'
 const MIN_HEIGHT = 190
@@ -90,6 +93,7 @@ function TerminalSurface({
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const codeFontSize = useAppStore((state) => state.settings.codeFontSize || 13)
   const runningRef = useRef(process.status === 'running')
   runningRef.current = process.status === 'running'
 
@@ -97,9 +101,9 @@ function TerminalSurface({
     const host = hostRef.current
     if (!host) return undefined
     const term = new Terminal({
-      fontFamily: "'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace",
-      fontSize: 12.5,
-      lineHeight: 1.3,
+      fontFamily: CODE_FONT_FAMILY,
+      fontSize: codeFontSize,
+      lineHeight: 1.15,
       cursorBlink: true,
       cursorStyle: 'bar',
       scrollback: 6000,
@@ -216,6 +220,20 @@ function TerminalSurface({
   useEffect(() => {
     if (termRef.current) termRef.current.options.theme = xtermTheme(theme)
   }, [theme])
+
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    term.options.fontFamily = CODE_FONT_FAMILY
+    term.options.fontSize = codeFontSize
+    requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit()
+      } catch {
+        // 容器尚未布局完成时忽略
+      }
+    })
+  }, [codeFontSize])
 
   useEffect(() => {
     if (!active || !open) return undefined

@@ -9,7 +9,7 @@
  */
 import { existsSync, lstatSync, realpathSync, statSync, type Stats } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { ToolInputError, WorkspaceEscapeError } from './errors'
+import { ToolInputError, WorkspaceEscapeError } from './types'
 
 export interface ResolvedPath {
   /** 用户/模型给出的路径解析出的绝对路径（未 realpath） */

@@ -131,7 +131,7 @@ button.compaction-head:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 520px;
+  max-width: 640px;
   padding-top: 12vh;
   animation: fade-in var(--dur-base) var(--ease-out) both;
 }
@@ -174,6 +174,181 @@ button.compaction-head:hover {
 /* 同一轮里的连续模型步骤收紧间距，读起来是一条连续轨迹 */
 .message-assistant + .message-assistant {
   margin-top: -10px;
+}
+
+/* ── 多步执行折叠组：默认一条紧凑摘要，展开后保留每一步的真实轨迹 ── */
+.exec-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exec-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--surface-inset) 62%, transparent);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.exec-group-head:hover {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+}
+
+.exec-group.is-running .exec-group-head {
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--line));
+}
+
+.exec-group.is-error .exec-group-head {
+  border-color: color-mix(in srgb, var(--rust) 38%, var(--line));
+}
+
+.exec-group.is-error:not(.is-open) .exec-group-head {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--rust) 16%, transparent);
+  animation: exec-group-alert 2.6s ease-in-out infinite;
+}
+
+@keyframes exec-group-alert {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--rust) 16%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--rust) 30%, transparent),
+      0 0 20px -9px color-mix(in srgb, var(--rust) 65%, transparent);
+  }
+}
+
+.exec-group-caret {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.exec-group.is-open .exec-group-caret {
+  transform: rotate(90deg);
+}
+
+.exec-group-icon {
+  flex: 0 0 auto;
+  color: var(--gold);
+  opacity: 0.82;
+}
+
+.exec-group-title {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.exec-group-right {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.exec-group-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--gold-bright);
+  font-size: 11.5px;
+}
+
+.exec-group-live-title,
+.exec-group-live-summary {
+  min-width: 0;
+}
+
+.exec-group-live-summary {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.exec-group-pulse {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px var(--gold-dim);
+  animation: exec-group-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes exec-group-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.exec-group-failed {
+  flex: 0 0 auto;
+  color: var(--rust);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.exec-group-done {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--patina);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.exec-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 6px 0 0;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid var(--line);
+  animation: fade-in-up var(--dur-base) var(--ease-out) both;
+}
+
+.exec-group-body .message {
+  animation: none;
+}
+
+.exec-group-body .message + .message {
+  margin-top: 0;
+}
+
+.message.is-compact .spine {
+  margin: 6px 0 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exec-group-pulse,
+  .exec-group.is-error:not(.is-open) .exec-group-head {
+    animation: none;
+  }
 }
 
 /* 全局搜索命中：滚动到原消息后短暂金色呼吸，不改变布局 */
@@ -462,6 +637,8 @@ button.compaction-head:hover {
 }
 
 .message-stage-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--gold);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -495,6 +672,16 @@ button.compaction-head:hover {
   color: var(--gold);
 }
 
+/* 本轮改动卡紧贴轮末回答，而不是像普通消息那样留出一整段间距 */
+.transcript-inner > .message-diff-summary.message-diff-turn,
+.transcript-inner > .message-diff-card.message-diff-turn {
+  margin-top: -12px;
+}
+
+.message-diff-card.message-diff-turn .message-diff-summary {
+  margin-top: 0;
+}
+
 .message-diff-label {
   color: var(--text-2);
 }
@@ -512,6 +699,191 @@ button.compaction-head:hover {
 .message-diff-paths {
   min-width: 0;
   color: var(--text-3);
+}
+
+.message-diff-summary.is-expandable {
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.message-diff-summary.is-expandable:hover,
+.message-diff-summary.is-expandable.is-open {
+  border-color: var(--line-gold);
+  background: var(--surface-hover);
+}
+
+.message-diff-summary.is-expandable:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.message-diff-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.message-diff-summary.is-open .message-diff-chevron {
+  transform: rotate(90deg);
+}
+
+.message-diff-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-diff-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-left: 2px;
+}
+
+.message-diff-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.message-diff-detail-hint {
+  color: var(--text-3);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.message-diff-files {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.message-diff-file {
+  overflow: hidden;
+  background: transparent;
+}
+
+.message-diff-file + .message-diff-file {
+  border-top: 1px solid var(--line);
+}
+
+.message-diff-file-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-align: left;
+}
+
+button.message-diff-file-head {
+  cursor: pointer;
+  transition: background var(--dur-fast) ease;
+}
+
+button.message-diff-file-head:hover {
+  background: var(--surface-hover);
+}
+
+button.message-diff-file-head:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}
+
+.message-diff-file.is-open > .message-diff-file-head {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-inset);
+}
+
+.message-diff-file-caret {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.message-diff-file.is-open .message-diff-file-caret {
+  transform: rotate(90deg);
+}
+
+.message-diff-file-caret.is-quiet {
+  opacity: 0;
+}
+
+.message-diff-file-head > svg:not(.message-diff-file-caret) {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.message-diff-file-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.message-diff-file-note {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.message-diff-changes {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-diff-change {
+  min-width: 0;
+}
+
+.message-diff-change + .message-diff-change {
+  border-top: 1px solid var(--line);
+}
+
+.message-diff-change-note {
+  margin: 0;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.message-diff-change-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.message-diff-file .diff-view {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .message-meta {

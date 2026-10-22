@@ -15,7 +15,7 @@ import type {
   TodoStatus,
   ToolResult
 } from '../../shared/types'
-import { WorkspaceEscapeError, ToolInputError } from './errors'
+import { WorkspaceEscapeError, ToolInputError } from './types'
 import type { GoalPatch } from '../types'
 import type { ToolContext } from '../types'
 import { resolveAgentRole } from '../agent-roles'

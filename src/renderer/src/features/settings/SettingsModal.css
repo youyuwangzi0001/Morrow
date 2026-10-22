@@ -533,6 +533,7 @@
 
 .st-setting-copy {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
@@ -541,6 +542,14 @@
 .st-setting-label {
   color: var(--text);
   font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .st-setting-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 
 .st-setting-desc {

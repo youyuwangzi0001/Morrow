@@ -1,4 +1,5 @@
-import { app, dialog, shell } from 'electron'
+import { app, dialog } from 'electron'
+import { revealInFileManager } from './reveal'
 import {
   closeSync,
   existsSync,
@@ -217,11 +218,11 @@ export async function readTextSafe(path: string, maxBytes = 512 * 1024): Promise
 }
 
 export function revealPath(path: string): void {
-  shell.showItemInFolder(path)
+  void revealInFileManager(path)
 }
 
 export function openInFolder(path: string): void {
-  shell.showItemInFolder(path)
+  void revealInFileManager(path)
 }
 
 

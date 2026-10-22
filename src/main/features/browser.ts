@@ -7,6 +7,7 @@
  * 频道清单（渲染层用 window.morrow.features.invoke/on）：
  *   feature:browser:get-state        → BrowserState
  *   feature:browser:open             { url, bounds? } → BrowserState
+ *   feature:browser:open-preview     { url } → BrowserState（画布 HTML 成品，仅接受 morrow-artifact 预览地址）
  *   feature:browser:navigate         { url } → BrowserState
  *   feature:browser:set-bounds       { x,y,width,height } → BrowserBounds | null
  *   feature:browser:set-visible      { visible } → BrowserState
@@ -51,6 +52,8 @@ export const browserAutomationBridge: BrowserBridge = {
   screenshot: (ctx) => browserService.automationScreenshot(ctx),
   back: (ctx) => browserService.automationBack(ctx),
   forward: (ctx) => browserService.automationForward(ctx),
+  reload: (ctx) => browserService.automationReload(ctx),
+  scroll: (ctx, deltaY) => browserService.automationScroll(ctx, deltaY),
   closeAutomation: () => browserService.closeAutomation()
 }
 
@@ -83,6 +86,10 @@ export function installBrowserFeature(service: BrowserService = browserService):
     const data = asRecord(payload)
     return service.openSurface(readString(data, 'url'), event, data.bounds)
   })
+  registerFeatureHandler('feature:browser:open-preview', (payload, event) => {
+    const data = asRecord(payload)
+    return service.openPreview(readString(data, 'url'), event, data.bounds)
+  })
   registerFeatureHandler('feature:browser:navigate', (payload) => {
     const data = asRecord(payload)
     return service.navigate(readString(data, 'url'))
@@ -110,9 +117,9 @@ export function installBrowserFeature(service: BrowserService = browserService):
     service.decideDownload(id, data.allow === true)
     return { decided: true, allow: data.allow === true }
   })
-  registerFeatureHandler('feature:browser:reveal-download', (payload) => {
+  registerFeatureHandler('feature:browser:reveal-download', async (payload) => {
     const data = asRecord(payload)
-    service.revealDownload(readString(data, 'path'))
+    await service.revealDownload(readString(data, 'path'))
     return { revealed: true }
   })
   registerFeatureHandler('feature:browser:debug-info', () => {
@@ -121,7 +128,7 @@ export function installBrowserFeature(service: BrowserService = browserService):
     return service.debugInfo()
   })
 
-  log.info('browser feature installed', { channels: 13 })
+  log.info('browser feature installed', { channels: 14 })
 }
 
 // 由 Lead 的 features/index.ts 在 app ready 后调用 registerFeatureModules()，

@@ -65,7 +65,7 @@ export {
   toolRiskFor,
   toolTitleFor
 } from './tools/registry'
-export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools/errors'
+export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools/types'
 export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools/paths'
 export { createUnifiedDiff, diffSummary } from './tools/diff'
 

@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
+using System.IO.Pipes;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -46,7 +47,7 @@ internal static class MorrowLauncher
     private const bool FolderMode = false;
 #endif
 
-    [STAThread]
+    [MTAThread]
     private static int Main(string[] args)
     {
         string exePath = Assembly.GetExecutingAssembly().Location;
@@ -98,6 +99,11 @@ internal static class MorrowLauncher
             string tempDir = Path.Combine(appDir, ".morrow-temp");
             Directory.CreateDirectory(tempDir);
 
+            // Electron 主进程在某些 Windows 会话/作业对象里无法创建 Explorer 等 GUI 子进程
+            // （0xC0000142）。启动器自己留在应用外部，用主线程（STA）提供文件打开/定位代理。
+            // 不能把代理放在后台线程：部分 Windows 会话会拒绝后台线程创建 Explorer 窗口。
+            string brokerPipe = "morrow-launcher-" + Guid.NewGuid().ToString("N");
+
             ProcessStartInfo startInfo = new ProcessStartInfo(appExe);
             startInfo.WorkingDirectory = appDir;
             startInfo.UseShellExecute = false;
@@ -111,12 +117,32 @@ internal static class MorrowLauncher
             startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_APP_FILENAME"] = AppExeName;
             startInfo.EnvironmentVariables["TEMP"] = tempDir;
             startInfo.EnvironmentVariables["TMP"] = tempDir;
+            startInfo.EnvironmentVariables["MORROW_LAUNCHER_PIPE"] = brokerPipe;
 
-            using (Process process = Process.Start(startInfo))
+            Process appProcess = Process.Start(startInfo);
+            if (appProcess == null)
             {
-                process.WaitForExit();
-                return process.ExitCode;
+                throw new InvalidOperationException("Morrow-app.exe 未能启动。");
             }
+            // 应用退出后由后台监视线程结束启动器；主线程（STA）继续提供代理服务。
+            Thread monitor = new Thread(() =>
+            {
+                try
+                {
+                    appProcess.WaitForExit();
+                    Environment.Exit(appProcess.ExitCode);
+                }
+                catch
+                {
+                    Environment.Exit(1);
+                }
+            });
+            monitor.IsBackground = true;
+            monitor.Name = "MorrowAppMonitor";
+            monitor.Start();
+
+            RunShellBroker(brokerPipe, 0);
+            return 0;
         }
         catch (Exception ex)
         {
@@ -126,6 +152,136 @@ internal static class MorrowLauncher
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return 1;
+        }
+    }
+
+    /// <summary>
+    /// 启动一个仅服务于本次 Morrow 进程的命名管道代理。
+    /// 命令格式：OPEN/REVEAL + 空格 + UTF-8 路径的 Base64。返回 OK 或 ERR\t原因。
+    /// 路径必须是绝对路径且真实存在；命令通过 Process.Start 参数传递，不经过 shell 拼接。
+    /// </summary>
+    private static void RunShellBroker(string pipeName, int parentPid)
+    {
+        // 父启动器退出后代理必须自行结束，避免留下一个永远等待管道的后台进程。
+        if (parentPid > 0)
+        {
+            Thread watchdog = new Thread(() =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(2000);
+                    try
+                    {
+                        Process.GetProcessById(parentPid);
+                    }
+                    catch
+                    {
+                        Environment.Exit(0);
+                    }
+                }
+            });
+            watchdog.IsBackground = true;
+            watchdog.Name = "MorrowBrokerWatchdog";
+            watchdog.Start();
+        }
+
+        while (true)
+        {
+            try
+            {
+                using (NamedPipeServerStream server = new NamedPipeServerStream(
+                    pipeName,
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.None))
+                {
+                    server.WaitForConnection();
+                    using (StreamReader reader = new StreamReader(server, new UTF8Encoding(false), false, 1024, true))
+                    using (StreamWriter writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true))
+                    {
+                        string line = reader.ReadLine();
+                        string response = HandleShellRequest(line);
+                        writer.Write(response + "\n");
+                        writer.Flush();
+                    }
+                }
+            }
+            catch
+            {
+                Thread.Sleep(50);
+            }
+        }
+    }
+
+    private static string HandleShellRequest(string line)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return "ERR\t空请求";
+            }
+            int space = line.IndexOf(' ');
+            string command = (space < 0 ? line : line.Substring(0, space)).Trim().ToUpperInvariant();
+            string encoded = space < 0 ? string.Empty : line.Substring(space + 1).Trim();
+            string target = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+            if (string.IsNullOrEmpty(target) || !Path.IsPathRooted(target))
+            {
+                return "ERR\t路径无效";
+            }
+            bool isFile = File.Exists(target);
+            bool isDirectory = Directory.Exists(target);
+            if (!isFile && !isDirectory)
+            {
+                return "ERR\t文件不存在";
+            }
+
+            if (command == "OPEN")
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+                return "OK";
+            }
+
+            if (command == "REVEAL")
+            {
+                try
+                {
+                    Process explorer = Process.Start(new ProcessStartInfo(
+                        "explorer.exe",
+                        "/select,\"" + target + "\"")
+                    {
+                        UseShellExecute = false
+                    });
+                    if (explorer != null)
+                    {
+                        // Explorer 正常会把请求交给现有 shell 后退出；0xC0000142 表示根本没能初始化。
+                        Thread.Sleep(350);
+                        if (explorer.HasExited && explorer.ExitCode == unchecked((int)0xC0000142))
+                        {
+                            throw new InvalidOperationException("Explorer 无法在当前会话启动（0xC0000142）");
+                        }
+                    }
+                    return "OK";
+                }
+                catch
+                {
+                    // 极少数环境不允许启动 Explorer：退化为打开所在文件夹，至少让用户看到文件。
+                    string folder = isDirectory ? target : Path.GetDirectoryName(target);
+                    if (!string.IsNullOrEmpty(folder))
+                    {
+                        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+                        return "OK";
+                    }
+                    throw;
+                }
+            }
+
+            return "ERR\t未知命令";
+        }
+        catch (Exception ex)
+        {
+            return "ERR\t" + ex.Message.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
         }
     }
 

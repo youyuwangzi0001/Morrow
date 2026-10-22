@@ -135,6 +135,8 @@ export interface BrowserBridge {
   screenshot(ctx: BrowserCallContext): Promise<BrowserScreenshotResult>
   back(ctx: BrowserCallContext): Promise<BrowserState>
   forward(ctx: BrowserCallContext): Promise<BrowserState>
+  reload(ctx: BrowserCallContext): Promise<BrowserState>
+  scroll(ctx: BrowserCallContext, deltaY: number): Promise<BrowserActionResult>
   /** 关闭自动化浏览器（工具/主进程退出时调用） */
   closeAutomation(): Promise<void>
 }

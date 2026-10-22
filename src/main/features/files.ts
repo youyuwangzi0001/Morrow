@@ -25,9 +25,9 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { registerFeatureHandler } from '../feature-ipc'
 import { resolveWorkspaceDir } from './workspace-roots'
 import { describeFilePreview } from '../services/file-preview'
-import { convertDocxToHtml } from '../services/docx-preview'
 import {
   convertDocumentToPreview,
+  convertDocxToHtml,
   convertPptxToPreview,
   convertXlsxToPreview,
   listArchive
@@ -295,11 +295,12 @@ registerFeatureHandler('feature:files:inspect', (payload) => {
   return { ...inspectWorkspaceEntry(workspace, text(input.path)), workspace }
 })
 
-registerFeatureHandler('feature:files:reveal', (payload) => {
+registerFeatureHandler('feature:files:reveal', async (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   const stat = statWorkspaceFile(workspace, text(input.path))
-  revealInFileManager(stat.absolutePath)
+  const error = await revealInFileManager(stat.absolutePath)
+  if (error) throw new Error(`打开文件夹失败：${error}`)
   return { ok: true, path: stat.path }
 })
 

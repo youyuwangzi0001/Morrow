@@ -1,8 +1,63 @@
 # Morrow v0.1.0 验收记录
 
-> 日期：2026-10-22（打包/签名复核；功能验收自 2026-10-21） · 版本：0.1.0 · 平台：Windows 10/11 x64 便携版
+> 日期：2026-10-23（R20 交互收口与最终回归；功能验收自 2026-10-21） · 版本：0.1.0 · 平台：Windows 10/11 x64 便携版
 >
 > 验收截图保留在本地 `docs/verification/screens/`，不纳入 Git；下方 `screens/` 链接仅在本机有效。
+
+## 0. R20 交互收口与隐私兜底（2026-10-23）
+
+本轮针对实际使用中的 7 项问题修复，并补上隐私输出兜底。
+
+| 问题 | 修复 | 证据 |
+|---|---|---|
+| 拖动顶栏左半部分无法移动窗口 | `.tb-left` / `.tb-center` 显式设为 `drag`，按钮、文件夹 chip 保持 `no-drag` | `r16-ui` E2E 校验 `.tb-left` 计算样式为 `drag` |
+| 顶栏 Morrow 字样应移除 | 删除顶栏字标与相关样式；品牌只保留在「设置 → 关于」 | `screens/r16-titlebar-empty.png`；关于页 E2E |
+| 终端文字布局松散 | 行高 1.3 → 1.15，收紧工具条/状态栏/内边距，保持左对齐；中文输出继续 UTF-8 | `screens/terminal-dark.png`（`中文终端_ok`） |
+| 浏览器全窗只能点 X 退出 | 浏览器工具栏新增「返回主页面」（页面保持打开），主界面顶栏新增地球按钮可切回上次页面 | `screens/browser-return-home.png`、`browser-return-restored.png`；新增 E2E |
+| `/plan` 独占输入框、体验与目标模式不一致 | `/plan` 无任务时只提示并保留输入；输入 `/plan 任务` 发送后才进入计划模式；计划/目标底层提示词补充边界、验收与证据要求 | plan-mode E2E：`/plan` 后输入仍为 `/plan `、未进入模式，补任务发送后进入 |
+| 主区域变窄时输入框上下错位 | 所有底栏控件统一 28px 高、右栏不换行；容器 ≤880px 收起推理强度、≤840px 收起上下文圆环；浏览器工具栏也会按容器宽度收起标题/Enter 提示 | `screens/composer-narrow-800.png`；composer-layout E2E 覆盖 800–1400px |
+| 画布「在文件夹中显示」仍弹 Explorer 0xC0000142 | 不再直接 spawn explorer.exe；启动器代理可用时选中文件，否则用系统 Shell 打开所在目录 | reveal 单测：无代理时 `openPath(folder)`、不启动 explorer；失败时回退 `showItemInFolder` |
+| 隐私流式分片漏遮蔽 | 运行结束时重新扫描完整消息（用户输入 + 工具结果）登记敏感值，发生替换则用 `messages_replaced` 同步 UI 与落盘 | M32 真实 DeepSeek E2E 通过，最终回复中的用户名/邮箱/token 均为 `[REDACTED]` |
+
+| 指标 | R19 | R20 |
+|---|---:|---:|
+| 源码文件 | 274 | 274 |
+| 测试文件 | 53 | 53 |
+| 单元测试 | 823 + 5 skipped（10 套件） | 824 + 5 skipped（10 套件） |
+| E2E 用例 | 172（168 + 4 skipped） | 173（169 + 4 skipped） |
+| 代码行数（src/tests/scripts/build） | 140,037 | 140,150 |
+| 项目工作文件（不含构建/缓存/交付） | 707 | 712 |
+| 单文件交付包 | 187.73 MB | 187.73 MB |
+
+## 0.1 R19 代码库扁平化与追加修复（2026-10-22）
+
+本轮不改变功能契约，把历轮堆叠的测试与零碎源码按领域合并，并完成用户追加的 4 项修复。
+
+| 指标 | R18 | R19 | 变化 |
+|---|---:|---:|---:|
+| 源码文件 | 292 | 274 | −18 |
+| 测试文件 | 195 | 53 | −142 |
+| 单元测试文件 / 套件 | 79 | 10 | −69 |
+| E2E spec / 套件 | 87 | 14 | −73 |
+| 源码 + 测试文件 | 487 | 327 | −160 |
+| 代码行数（src/tests/scripts/build） | 140,552 | 140,037 | −515 |
+| `src/` 目录数 / 最大层级 | 48 / 7 | 43 / 6 | −5 / −1 |
+| 单文件交付包 | 187.73 MB | 187.73 MB | 持平 |
+
+主要合并：
+
+- 测试：79 个单元测试文件合并为 10 个领域套件，87 个 E2E spec 合并为 14 个主题套件；每个原文件保留独立 `describe`，hooks 随原作用域隔离，用例数不变。
+- 源码：删除 5 个无人引用的 barrel；`file-probe`→`workspace-files`、`goal-recovery`→`bootstrap`、`docx-preview`→`office-preview`、`reasoning`→`models`、`cost`+`token-heatmap`→`usage`、`connector-install`→`connector-catalog`、`data-dir-migration`→`paths`、工具错误类型→`tools/types`；`components` 与 `artifacts` 的 editor/preview 子目录上移一层。
+- 回归测试加固：侧栏拖拽改为先 hover、确认 `is-dragging` 后再移动，消除满负载下的偶发指针丢失。
+
+追加修复：
+
+| 问题 | 修复 | 证据 |
+|---|---|---|
+| 设置分页重复显示与导航相同的标题 | 删除模型、联网搜索、归档、功能与工具、终端、外观的重复页标题，直接进入选项 | `screens/settings-search-no-duplicate-title.png`；新增 E2E「设置分页直接展示选项，不重复分页标题」 |
+| 终端频繁出现菱形乱码 | Windows PowerShell / PowerShell 7 启动时设置 UTF-8 输入/输出编码；cmd 继续 `chcp 65001`；新增中文输入/输出 E2E 断言 | `screens/terminal-dark.png`（`中文终端_ok` 正常显示）；terminal-panel E2E |
+| 引导文案写“点击闪电插话”，但空输入时闪电按钮不渲染 | 运行中始终渲染闪电按钮，空输入时禁用；标题同步为“输入内容后可插话” | `screens/queue-tray-dark.png`；message-queue E2E 断言空输入时按钮可见且禁用 |
+| 目标模式轮次上限偏低 | `GOAL_MAX_ROUNDS` 200 → 256；自动估算、显式传值、继续追加均按 256 封顶；文档同步 | `goal.test.ts` 单测：100 保留、300 钳制到 256；goal-mode/r6-goal E2E 6/6 |
 
 ## 1. 本轮“小白化”目标对照
 
@@ -59,31 +114,102 @@
 
 补充修复：单文件启动器在 exe 同级运行目录被占用、回退到 `LOCALAPPDATA` 解压后，仍去旧路径查找 `Morrow-app.exe`，会导致启动失败；已改为使用实际解压目录，并记忆回退位置供后续启动复用。交付目录以该修复后的启动器完成冒烟。
 
+### 2026-10-22 R13.1 执行过程折叠与 Git 身份
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| 多步执行太碎、太长 | 同一轮的 4+ 个模型步骤合并为「执行工具 N 次」摘要，默认收起；展开后保留思考、工具、diff，再次点击收起；运行中显示当前工具；失败在摘要上标红并计数，不自动展开 | `r13-execution-group` E2E：8 步默认收起，展开显示 8 条工具记录，再收起；`r13-execution-group-dark/light.png` |
+| 折叠后看不到文件改动 | 折叠摘要下方保留本轮聚合 diff（文件数、+/−、路径），净零删除仍沿用原抑制规则 | `r12-delete-diff` 回归通过；组内每步展开仍显示各自 diff |
+| 阶段节点与回退 | 带 `stageBoundary` 的消息和轮末回答不参与折叠，阶段节点、分叉/回退位置不变 | `r12-stages`、`r12-plan-sync` 回归通过 |
+| Git 首次提交缺身份 | Git 面板内直接填写用户名/邮箱，提交时写入当前仓库 `.git/config` 后真实提交；也可先点「保存身份」 | `git-workbench` E2E：面板内设置身份 → 真实 `git commit` → 本地配置与 `git log` 校验；`git-identity-dark.png` |
+| Git 提交/分支是否真实 | 已验证工作区初始化、暂存、提交、创建并切换分支、在分支提交、切回原分支、历史与差异读取全部调用真实 Git | 同上 E2E；`GitService` 单测 7/7（含身份与提交作者校验） |
+
+### 2026-10-22 R13.2 失败提示、滚动条、插话/排队与改动卡
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| 工具失败默认展开 | 失败行不再自动展开；默认保持收起，行内直接显示错误原因，加粗锈红边框与呼吸光提示，点开才看详细错误 | `r13-long-error` E2E：默认 `aria-expanded=false`、错误块为 0；点击后才出现；`r13-long-error-collapsed(-light).png` |
+| 浏览器滚动条不统一 | 内置浏览器在 `dom-ready` 用 user origin 注入石墨+香槟金无边框滚动条；画布 HTML、Word/Office/HTML 预览等独立 iframe 复用同一套规则；应用宿主继续使用全局 CSS | `r13-browser-retry` E2E 校验 `scrollbarCssApplied` 与页面计算样式 |
+| 运行中插话/排队 | 设置 → 外观新增「运行中发送」：插话（停止当前任务并立即发送）或排队（本轮结束后发送）；Enter 遵循该设置，闪电按钮始终插话、箭头按钮始终排队，占位提示同步说明 | `message-queue` E2E 3/3：默认排队、显式插话、面板设置插话后 Enter 立即引导；提示词与设置单测 |
+| 改动卡无法查看详情 | 本轮聚合 diff 卡在任务结束后可展开，逐文件显示详细 diff；运行中仅显示统计、不渲染详情（R18 起改为整轮只保留一张卡，先列文件、再按需展开单文件） | `r13-diff-card` E2E：运行中无 `.is-expandable`，结束后展开出现 `+第一行/+第二行`，可再收起；`r13-diff-card-expanded(-light).png` |
+
+### 2026-10-22 R14 画布系统集成、字体与回答设置
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| 画布「在浏览器中查看」弹出 Edge 提权提示 | HTML 成品改为在 Morrow 内置浏览器打开：渲染层登记 `morrow-artifact://` 预览，主进程在独立浏览器分区注册同一协议并复用现有 WebContentsView；不再拉起外部 Edge，因此不会触发其提权实例提示。非 HTML 文件仍交给系统默认程序 | `artifact-preview` E2E 新增用例：点击后浏览器 surface 的 URL 为 `morrow-artifact://preview/…`、页面脚本执行成功；`artifact-preview` 单测校验预览 URL 白名单 |
+| 画布「在文件夹中显示」打不开资源管理器 | 两个根因：`windowsHide` 让 Explorer 窗口以 SW_HIDE 启动；`/select,` 与路径分开传参时 Explorer 会丢失目标（打开桌面/文档）。现改为 `/select,"<path>"` 单一 verbatim 参数，并在 Explorer 初始化失败（0xC0000142）时回退 Shell API | `reveal.test.ts` 3/3；本机命令实测中文+空格路径：新窗口定位到目录，UI Automation 读取 `报告 1.txt` 的 `IsSelected=True` |
+| 代码字体与中文回退 | 采用 Qoder 同款 IBM Plex Mono；新增 `--font-code`，中文回退系统 Noto Sans SC / 微软雅黑；CodeMirror、代码块、diff、行内代码、终端统一使用 | `r13-answer-settings`、`smoke` E2E；外观截图 |
+| 应用字号与代码字号分开 | 新增 `codeFontSize`（默认 13；R18 起范围收敛为 12–15），外观页提供独立选择；`--fs-code` 驱动代码/终端/diff，`--fs-body` 只驱动正文界面 | `smoke` E2E：应用字号 15 时 `--fs-body=15px`；R18 选择代码字号 15 时 `--fs-code=15px` |
+| 回答页设置拥挤、插话标签换行 | 回答风格从大卡片改为紧凑 Segmented；发送键、运行中发送、自动命名、完成通知全部移入「回答」；Segmented 标签禁止换行，窄屏整行换行 | `r13-answer-settings` E2E（5 个风格、4 项设置、无旧卡片）；`r13-answer-settings-dark/light.png` |
+| 自动命名从未生效 | 默认标题扩展到「新对话 / 临时对话 / 空标题」；首次普通发送即命名；运行结束时再兜底一次，并支持排队/目标等路径；手动改名不覆盖 | `b6-settings` E2E 通过；`session-store` 单测覆盖普通/临时/手动标题 |
+
+### 2026-10-22 R15 内置浏览器预览与资源管理器定位
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| 画布 HTML 成品不再拉起外部 Edge | 画布按钮改为在内置浏览器打开：渲染层登记 `morrow-artifact://` 预览，主进程在浏览器独立分区注册同一协议并复用现有 WebContentsView；非 HTML 文件仍交给系统默认程序 | `artifact-preview.ts` 单测校验预览 URL 白名单；`artifact-preview.spec.ts` 新增 E2E 4/4 通过；打包产物 CDP 验证 `feature:browser:get-state` 返回 `morrow-artifact://preview/…` 且 `open/visible=true` |
+| 在文件夹中显示仍打不开资源管理器 | 根因是 `/select,` 与路径分开传参会让 Explorer 丢失目标；改为 `/select,"<path>"` 单一 verbatim 参数，并保留 Explorer 初始化失败（0xC0000142）时的 Shell API 兜底 | `reveal.test.ts` 3/3；本机真实命令实测中文+空格路径：Explorer 打开目标目录，UI Automation 读取 `报告 1.txt` 的 `IsSelected=True`。受限会话中的 Electron 无法创建 GUI 子进程（0xC0000142），该项以 OS 级命令验证为准 |
+| 审批测试与新权限语义对齐 | 「自动」档位是完全访问，不再逐次弹审批；`r10-browser` 用例改为 ask 弹 1 次、auto 弹 0 次 | `r10-browser` 8/8 通过 |
+
+### 2026-10-22 R16 切换控件与内置技能体系
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| Token 活动切换按钮样式不一致 | 删除自定义胶囊按钮，复用应用标准 `Segmented`（`--r-sm` 外框、`--r-xs` 选项、28px 高）；深色/浅色同步 | `token-activity` E2E 1/1 通过（含 `.segmented` 断言）；`token-activity-daily.png`、`token-activity-daily-light.png` |
+| 内置技能重写与系统整合 | 调研 Anthropic Agent Skills、OpenAI Codex/Plugins、Qoder 内置技能、Kimi Code 内置技能、DeepSeek Harness 的插件/技能分层后，将内置技能收敛为 18 个、四层：工作方法（4）、工程（5）、交付（6）、产品操作（3）。正文独立维护在 `src/main/builtin-skill-content/*.md`，构建时 `?raw` 内联；每个技能包含触发/不适用场景、流程、示例、完成检查、反模式、安全边界。 | `builtin-skills` 单测 6/6；用现有用户数据副本实测升级：18 个内置、`docs-writer`/`deliverable-report`/`release-notes` 已移除、marker v5；技能库截图显示 18 个内置技能 |
+| 旧技能合并与用户编辑保护 | `ui-polish` → `frontend-art-direction`；`docs-writer`/`deliverable-report`/`release-notes` → `document-deliverables`；升级只更新未修改副本，用户改过的保留为自有技能 | `builtin-skills.test.ts` 覆盖版本升级、退休与用户编辑保留 |
+| 打包不再误删用户数据 | `stageDelivery` 清理旧产物时跳过根目录 `Morrow Data`；交付统计只算 4 个分发文件，并单独记录本机数据 | R16 打包：4 个分发文件 / 187.73 MB，`Morrow Data` 204 个文件保留；`packaging.json` 记录 `localData` |
+
+### 2026-10-22 R17 界面收口、交付节奏与工具补齐
+
+| 项目 | 实现 | 证据 |
+|---|---|---|
+| 首页文案换行、顶栏字标与左侧按钮 | 首页说明改为单行并放宽容器；顶栏不再显示 Morrow 字样（品牌只保留在「设置 → 关于」）；收起侧栏与选择文件夹移到最左 | `r16-ui` E2E：顶栏无字标、`.tb-left` 可拖动、关于页显示 Morrow；说明 `scrollWidth <= clientWidth`；`r16-titlebar-empty.png`、`r16-titlebar-title.png` |
+| 输入框高度固定、不能拖动 | 新增 `composerHeight` 设置（0=自动，80–360）与输入框上沿拖拽条；支持键盘方向键和双击恢复自动 | `r16-ui` E2E：拖动后设置写入且输入框增高；`r16-composer-height.png` |
+| 执行摘要显示「N 步」 | 简要视图只保留「执行工具 N 次」，删除步数 chip | `r13-execution-group` E2E：`.exec-group-meta` 为 0 |
+| 灵动岛计划步数外框重叠 | 步数移入「当前任务」右侧，去掉边框/背景，只保留金色数字 | 岛内 DOM/CSS 检查；`island-count-inline` |
+| 关闭最后一个画布页签却收起画布 | 关闭最后页签只清空选中，画布保留空态；已关闭页签不会在重新打开时复活 | `r13-canvas-tabs` E2E：关闭全部页签后 `.canvas-root` 可见、`.canvas-empty` 可见、页签为 0 |
+| 「阶段完成」被长标题压成竖排 | 标签 `flex:0 0 auto; white-space:nowrap`，长标题自己截断/换行 | `r12-stages` E2E 校验 `white-space=nowrap` |
+| 强制精修轮浪费时间与 token | 删除内核在用户说「惊艳/好看」时强制追加的视觉打磨轮；由模型按 frontend-art-direction 自检，发现真实弱点才继续，达到验收线直接交付 | `agent.test.ts`：视觉任务不再注入强制打磨消息；提示词改为「按需视觉打磨」 |
+| 系统应用打开 / 在文件夹中显示失效 | 应用启动器现在在应用外部提供命名管道代理（OPEN/REVEAL），用普通 Win32 主线程执行 ShellExecute；应用先走代理，回退 Shell/Explorer。zip 用系统应用打开已真实拉起 WinRAR | 启动器 C# 编译通过；打包冒烟通过；打包产物中 `artifacts.openExternal(zip)` 成功且 WinRAR 进程出现。文件夹定位在受限自动化宿主中仍无法创建 Explorer，代理需在普通桌面复验 |
+| 工具套组缺口 | 对照 Claude Code、Codex、Qoder、Kimi Code、DeepSeek Harness：Morrow 原有读/写/改/删/搜索/命令/网页/Office/MCP/计划/子代理；新增 `move_file`、`copy_file`、`make_dir` 与 `browser_reload`、`browser_scroll`、`browser_close`。Kimi 的媒体读取依赖模型视觉能力，定时任务已有产品入口，本轮不重复造工具 | `tools.test.ts`：移动/复制/建目录、拒绝覆盖与越界；`browser.test.ts`：10 个浏览器工具、滚动范围夹取、刷新/关闭转发 |
+
+### 2026-10-22 R18 Diff 汇总与代码字号
+
+| 问题 | 实现 | 证据 |
+|---|---|---|
+| 每个步骤都有可展开的 diff 卡，展开后铺开全部文件 | 移除消息级与执行组级 diff 卡；按用户真正发来的消息划分轮次，计划批准、目标续跑不切轮。整轮只在交付内容后保留一张「本轮改动」卡：展开先列修改文件，点开单个文件才挂载 `DiffView`；文件行与卡片总计都使用整轮累计值。运行中只显示统计，不能展开 | `r13-diff-card` E2E：运行中仅 1 张且不可展开；结束后展开为文件列表、逐行 diff 默认收起，点开文件才出现 `+第一行/+第二行`；`r12-stages`：两步修改只保留 1 张卡，卡片与文件行均为 +3/−1；`r13-diff-card-expanded(-light).png` |
+| 单文件 diff 最多显示 400 行 | 生成上限 400 → 1000；超过时在 patch 末尾写明原因，`DiffView` 在差异底部显示提示，完整内容仍可在文件中查看 | `tools.test.ts`：600 行全改返回 `truncated=true` 且包含「仅显示前 1000 行」；`r13-large-diff` 新增 1100 行重写用例，文件详情出现截断提示；`r18-large-diff-notice.png` |
+| 代码字号可选 11–20 | 主进程校验、外观页选项与说明文字统一收敛为 12–15，默认 13 不变 | `settings-store.test.ts`：12/15 通过，11/16/9 拒绝；`smoke`：选择 15 后 `--fs-code=15px`，应用字号保持独立 |
+
 ## 2. 自动化门禁
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
 | 类型 | `npm run typecheck` | 0 error |
-| 单元 | `npm run test:unit` | **811 passed + 5 skipped（79 files）** |
+| 单元 | `npm run test:unit` | **824 passed + 5 skipped（10 suites）** |
 | 构建 | `npm run build` | 通过 |
-| 端到端（本轮源码构建） | R12/R13 定向回归（11 个 spec） | **11/11 passed**（21.8s）：diff、计划同步/收尾、阶段、终端、预览重试、画布页签、上下文入口、长错误 |
-| 打包 | `npm run dist` | 通过：单文件便携 exe 为 `50f5a9af…`；使用本地 Electron 与已缓存 winCodeSign |
-| 打包冒烟（临时副本） | `node scripts/smoke-packaged.mjs --exe=tmp/...` | **通过**（5.2s）：启动、CDP、首屏渲染、preload、截图 |
-| 打包冒烟（交付目录 + 旧运行目录被占用） | `node scripts/smoke-packaged.mjs --exe=deliver/...` | **通过**（7.6s）：启动器自动回退 `LOCALAPPDATA` 后从实际解压目录启动，渲染正常 |
-| 直启 | CreateProcess 直接启动（无快捷方式）+ ShellExecute 模拟下载标记 | 单文件启动到渲染进程，关闭后启动器退出码 0；运行时 `app.asar` SHA-256 与交付包一致 |
+| 端到端（全量） | `npm run test:e2e`（14 suites） | **169 passed + 4 skipped（173 tests，10.2m）** |
+| 端到端（Diff/设置子集） | `r13-diff-card`、`r12-stages`、`r12-delete-diff`、`r12-protocol-diff`、`r13-large-diff`、`smoke` | **9/9 passed（历史子集）** |
+| 端到端（对话/计划/目标/回退） | 聊天转录、执行分组、目标、计划同步、计划收尾、分支、检查点回退、顶栏 | **通过**；计划/目标提示词与 `/plan` 输入体验已对齐，目标模式 6/6（含真实 DeepSeek） |
+| 打包 | `node scripts/dist-portable.mjs --portable` | 通过：R20 单文件 exe `31010aaf…`（196,849,152 B / 187.73 MB），未签名 |
+| 打包冒烟 | `node scripts/smoke-packaged.mjs --exe=tmp/r20-smoke/...` | **通过**（1.6s） |
+| 用户数据 | 打包与交付整理 | `deliver/Morrow Data` 保留；R19 旧包移至 `tmp/deliver-archive-r19/` |
 
-打包冒烟摘要（本轮从 `C:/Temp` 的交付副本运行，避免污染 `deliver/`）：
+打包冒烟摘要（本轮从 `tmp/r20-smoke` 的交付副本运行，避免污染 `deliver/`）：
 
 - 单文件临时副本：`docs/verification/smoke-packaged.json`
-- 交付目录（含旧运行目录被占用场景）：`docs/verification/smoke-delivered.json`
+- 构建摘要：`docs/verification/packaging.json`
+- 交付目录历史冒烟：`docs/verification/smoke-delivered.json`（历史）
 
 ## 3. 最终产物
 
 | 形态 | 位置 | 大小 | SHA-256 |
 |---|---|---|---|
-| 单文件便携版（唯一交付） | `deliver/Morrow-0.1.0-portable.exe` | 196,799,488 B / 187.68 MB | `50f5a9af3aa551b0dd43c119219e78623cff6eb02c5f8a7daf9c2f9089658f2f` |
+| 单文件便携版（R20，当前） | `deliver/Morrow-0.1.0-portable-r20.exe` | 196,849,152 B / 187.73 MB | `31010aaf5308128809ce65cc099eaa61f98f6e72a07e5995bcf461ef064a4ebd` |
 
-交付物共 4 files / 196,803,948 B / 187.69 MB：单文件 exe、`使用说明.txt`、`SHA256SUMS.txt`、`LICENSE`。`deliver/` 中同时存在的 `Morrow Data` 与 `.morrow-runtime-*` 是本机运行数据/解压缓存，不属于分发文件；正式分发只需复制上述 4 个文件。完整清单与签名状态见 `docs/verification/packaging.json`。启动器文件版本与单文件运行时缓存目录均为 0.1.0。
+R20 分发文件共 4 个 / 196,852,947 B / 187.73 MB：`Morrow-0.1.0-portable-r20.exe`、`使用说明-r20.txt`、`SHA256SUMS-r20.txt`、`LICENSE`。`deliver/Morrow Data` 是本机用户数据，打包流程未删除，不计入分发；R19 旧包已归档至 `tmp/deliver-archive-r19/`，不再占用交付目录。
 
 ## 4. Windows 安全提示诊断（2026-10-22）
 
@@ -126,19 +252,25 @@
 
 | 文件 | 状态 | 签名者 |
 |---|---|---|
-| `deliver/Morrow-0.1.0-portable.exe` | `NotSigned` | — |
+| `deliver/Morrow-0.1.0-portable-r20.exe` | `NotSigned` | — |
 | 单文件运行时 `resources/.../node-pty/.../OpenConsole.exe` | `Valid` | Microsoft Corporation |
 | 单文件运行时 `resources/.../node-pty/.../winpty-agent.exe` | `NotSigned` | — |
 
 ### 4.5 直启验证
 
 - 单文件 exe：直启 → 首次解压 `.morrow-runtime-0.1.0` → 加载渲染进程，关闭后启动器退出码 0。
-- 最终包复验：单文件副本写入 `Zone.Identifier`（模拟浏览器下载）后经 ShellExecute 启动，窗口标题 `Morrow`，运行时 `app.asar` SHA-256 与交付包一致（`c9cabf7b…`）。
+- R20 冒烟：单文件 exe 启动、渲染、截图全部通过；解压运行时 `app.asar` SHA-256 = `263e21ed3c09a65fb2c319e104f4d447b7c1587c852ef82a7fc6fb868ed08a97`。
+- R19 冒烟（历史）：单文件 exe 启动、渲染、截图全部通过；解压运行时 `app.asar` SHA-256 = `2e4df99d4a90677d7c901d44418f9578b691510aff0033bb3ea5e0cc99472490`。
+- R18 复验（历史）：单文件副本写入 `Zone.Identifier`（模拟浏览器下载）后经 ShellExecute 启动，窗口标题 `Morrow`，运行时 `app.asar` SHA-256 与交付包一致（`c9cabf7b…`）。
 - 本机 SmartScreen 策略被禁用（`EnableSmartScreen=0`），以上不能证明默认 Windows 上双击无信誉提示；彻底消除需要受信任的代码签名证书。
 
 ## 5. 关键界面截图
 
 - 主界面：`screens/v0.1.0-default-dark.png`
+- 本轮改动卡（R18）：`screens/r13-diff-card-collapsed.png`、`r13-diff-card-expanded.png`、`r13-diff-card-expanded-light.png`
+- 同一文件多次修改（R18）：`screens/r18-turn-diff-multi-change.png`
+- 1000 行 diff 截断提示（R18）：`screens/r18-large-diff-notice.png`
+- 外观设置与代码字号 12–15（R18）：`screens/settings-appearance-dark.png`、`settings-appearance-light.png`
 - Token 热力图：`screens/token-activity-heatmap-dark.png`、`token-activity-daily-light.png`
 - 文件树 / 编辑器：`screens/r10-files-tree-light.png`、`r10-editor-readonly-mode.png`、`r10-editor-tab-isolation.png`
 - 内置浏览器下载：`screens/browser-download-saved.png`

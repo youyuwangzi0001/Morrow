@@ -21,9 +21,10 @@ import {
 import type { SwarmTaskProgress, ToolUseBlock } from '@shared/types'
 import { swarmTasksFromMeta } from '@shared/swarm'
 import { useAppStore } from '../../state/store'
-import { CodeBlock } from '../../components/markdown/CodeBlock'
-import { DiffView } from '../../components/diff/DiffView'
+import { CodeBlock } from '../../components/CodeBlock'
+import { DiffView } from '../../components/DiffView'
 import { formatDuration, extractDiff, toolDuration, toolStatusLabel, toolSummary, toolVisual, type ToolVisual } from './tool-meta'
+import './activity.css'
 
 const SWARM_STATUS_LABEL: Record<SwarmTaskProgress['status'], string> = {
   queued: '等待',
@@ -185,7 +186,7 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
     ['failed', 'cancelled', 'exhausted'].includes(task.status)
   ).length
   const swarmGoal = isSwarm && typeof block.input?.goal === 'string' ? block.input.goal.trim() : ''
-  const summary = isSwarm
+  const baseSummary = isSwarm
     ? [
         `${swarmCompleted}/${swarmTasks.length} 完成`,
         swarmRunning > 0 ? `${swarmRunning} 个进行中` : '',
@@ -198,6 +199,8 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
         ? `${subagent.stepCount} 步`
         : ''
       : toolSummary(block)
+  // 失败详情默认收起后，行内摘要直接显示错误原因，便于不展开也能定位。
+  const summary = !isSwarm && failed && block.result?.error ? block.result.error : baseSummary
   const snapshotPath = typeof resultMeta.snapshotPath === 'string' && resultMeta.snapshotPath ? resultMeta.snapshotPath : null
   const undoTarget =
     typeof resultMeta.absolutePath === 'string'
@@ -225,10 +228,6 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
       setUndoing(false)
     }
   }
-
-  useEffect(() => {
-    if (failed && !userToggled.current) setOpen(true)
-  }, [failed])
 
   // 并行任务重要的是过程可见：开始运行时自动展开，用户手动收起后不再打扰。
   useEffect(() => {
@@ -451,6 +450,18 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** 执行过程（Spine）：同一条助手消息内的工具调用按顺序串成一条竖线。 */
+export function ActivitySpine({ blocks }: { blocks: ToolUseBlock[] }): React.JSX.Element | null {
+  if (blocks.length === 0) return null
+  return (
+    <div className="spine" role="group" aria-label="执行过程">
+      {blocks.map((block, index) => (
+        <ToolRow key={block.id} block={block} last={index === blocks.length - 1} />
+      ))}
     </div>
   )
 }

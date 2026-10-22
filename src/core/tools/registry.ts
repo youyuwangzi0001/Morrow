@@ -8,7 +8,7 @@ import { detectDangerousCommand, isResearchModeToolAllowed } from '../permission
 import { errorMessage, isAbortError } from '../util'
 import { runCommandTool } from './command-tool'
 import { docxTools } from './docx-tools'
-import { ToolExecutionError, ToolInputError, WorkspaceEscapeError } from './errors'
+import { ToolExecutionError, ToolInputError, WorkspaceEscapeError } from './types'
 import { fsTools } from './fs-tools'
 import { mcpCallTool, mcpListTool, mcpPromptTool, mcpResourcesTool } from './mcp-tools'
 import { metaTools, updateGoalTool } from './meta-tools'

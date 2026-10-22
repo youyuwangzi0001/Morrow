@@ -25,7 +25,7 @@ import type {
   ToolUseBlock
 } from '../../shared/types'
 import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL } from '../../shared/ipc'
-import { estimateUsageCost } from '../../shared/cost'
+import { estimateUsageCost } from '../../shared/usage'
 import { dataPath } from './paths'
 import { log } from './logger'
 import { SensitiveGuard } from './output-guard'
@@ -44,7 +44,7 @@ import { getProjectPrompt } from './project-service'
 import { getAgentRulesPrompt } from './agent-rules'
 import { getPermissionRulesService } from './permission-rules'
 import { buildUserMessage, collectAttachedFilePaths } from './attachments'
-import { replaceUserMessageText } from '../../shared/message'
+import { replaceUserMessageText, userMessageDisplayText } from '../../shared/message'
 import { mergeSwarmTask, swarmTasksFromMeta } from '../../shared/swarm'
 import { planStepsCompleted, todosFromPlan } from '../../shared/plan'
 import { getCheckpointService } from './checkpoint-service'
@@ -2110,7 +2110,7 @@ export class AgentService {
     if (otherBusy) throw new Error(otherBusy)
     if (this.isSessionRunning(sessionId)) throw new Error('这个对话正在运行，等它完成或先停止。')
     if (this.compactingSessions.has(sessionId)) throw new Error('正在压缩上下文，完成后再建立目标。')
-    // R7 审计：默认由系统按目标复杂度智能估算轮次（最高 200 轮），用户不需要手动设置；
+    // R7 审计：默认由系统按目标复杂度智能估算轮次（最高 256 轮），用户不需要手动设置；
     // 显式传入 maxRounds 的调用方（高级用法 / 审计测试）仍然优先。
     const explicitRounds = typeof maxRounds === 'number' && Number.isFinite(maxRounds) && maxRounds > 0
     const rounds = explicitRounds ? clampRounds(maxRounds) : inferGoalRounds(text)
@@ -2522,8 +2522,22 @@ export class AgentService {
     for (const message of active.liveMessages.values()) {
       if (message.stageBoundary) stageBoundaries.set(message.id, message.stageBoundary)
     }
-    const safeMessages = (compactedMessages ?? result.messages).map((message) => {
+    const sourceMessages = compactedMessages ?? result.messages
+    // 运行结束兜底：从完整消息（用户输入 + 工具结果）重新登记敏感值，
+    // 防止流式分片把邮箱/用户名拆开后漏遮蔽；发生替换时同步刷新 UI。
+    for (const message of sourceMessages) {
+      try {
+        guard.observe(JSON.stringify(message))
+      } catch {
+        // 忽略不可序列化结果
+      }
+    }
+    let redactionChanged = false
+    const safeMessages = sourceMessages.map((message) => {
       const redacted = guard.redactMessage(message)
+      if (message.role === 'assistant' && JSON.stringify(redacted.content) !== JSON.stringify(message.content)) {
+        redactionChanged = true
+      }
       const boundary = stageBoundaries.get(message.id)
       return boundary ? { ...redacted, stageBoundary: boundary } : redacted
     })
@@ -2608,10 +2622,11 @@ export class AgentService {
       )
       this.emitPlan(saved, active.window)
     }
+    this.ensureAutoTitle(saved)
     const meta = deriveMeta(saved)
-    if (compactedMessages) {
-      // 自动压缩发生在运行中，结束时把压缩后的历史一次性同步给当前视图，
-      // 避免 UI 继续显示旧消息、重启后才突然变成摘要。
+    if (compactedMessages || redactionChanged) {
+      // 自动压缩或在结束时补做了敏感值遮蔽：把最终历史一次性同步给当前视图，
+      // 避免 UI 继续显示旧消息、重启后才突然变成摘要/脱敏后的内容。
       this.forward(
         {
           seq: 0,
@@ -2666,6 +2681,16 @@ export class AgentService {
       messages: result.messages.length,
       durationMs: Date.now() - active.startedAt
     })
+  }
+
+  /** 首次运行结束时兜底命名：覆盖排队、目标/计划等未能走普通发送路径的会话。 */
+  private ensureAutoTitle(session: Session): void {
+    if (!this.settingsStore.get().autoTitle) return
+    const first = session.messages.find((message) => message.role === 'user' && !message.hidden)
+    if (!first) return
+    const before = session.title
+    this.sessionStore.autoName(session, userMessageDisplayText(first))
+    if (session.title !== before) this.sessionStore.save(session)
   }
 
   private updateTaskbar(): void {
