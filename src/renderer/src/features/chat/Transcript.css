@@ -676,7 +676,7 @@ button.compaction-head:hover {
 .message-diff-summary {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 7px;
   width: fit-content;
   max-width: 100%;
@@ -706,22 +706,32 @@ button.compaction-head:hover {
 }
 
 .message-diff-label {
+  flex: 0 0 auto;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 .message-diff-add {
+  flex: 0 0 auto;
   color: var(--patina);
   font-weight: var(--fw-semibold);
+  white-space: nowrap;
 }
 
 .message-diff-del {
+  flex: 0 0 auto;
   color: var(--rust);
   font-weight: var(--fw-semibold);
+  white-space: nowrap;
 }
 
 .message-diff-paths {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message-diff-summary.is-expandable {

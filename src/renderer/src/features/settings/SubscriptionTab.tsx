@@ -69,6 +69,7 @@ const EMPTY_FORM: CustomSubscriptionInput = {
 }
 
 const CODEX_LOGIN_BUSY = '等待浏览器完成 ChatGPT 登录…'
+const QODER_LOGIN_BUSY = '等待浏览器完成 Qoder 登录（5 分钟内）…'
 
 function protocolLabel(protocol: SubscriptionProtocol): string {
   return protocol === 'anthropic' ? 'Anthropic Messages' : 'OpenAI Chat Completions'
@@ -460,7 +461,7 @@ export function SubscriptionTab(): React.JSX.Element {
   const loginQoderDevice = async (): Promise<void> => {
     const ok = await act(
       { action: 'login-qoder-device' },
-      { done: '等待浏览器完成 Qoder 登录（5 分钟内）…', keepView: true }
+      { done: QODER_LOGIN_BUSY, keepView: true }
     )
     if (ok) notify('success', 'Qoder 已连接。')
   }
@@ -526,6 +527,8 @@ export function SubscriptionTab(): React.JSX.Element {
   const selectedCustom = view.kind === 'custom' && view.id ? custom.find((item) => item.record.id === view.id) : undefined
   const codexQuota = codex?.quota
   const codexLoginWaiting = busy === CODEX_LOGIN_BUSY
+  const qoderLoginWaiting = busy === QODER_LOGIN_BUSY
+  const loginWaiting = codexLoginWaiting || qoderLoginWaiting
 
   if (view.kind === 'codex' && codex) {
     return (
@@ -542,7 +545,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={codex.connected ? 'success' : 'neutral'}>{codex.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {codex.connected ? (
           <>
@@ -651,7 +654,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={selectedAgent.connected ? 'success' : 'neutral'}>{selectedAgent.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {selectedAgent.connected ? (
           <>
@@ -831,7 +834,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={qoder.connected ? 'success' : 'neutral'}>{qoder.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {qoder.connected ? (
           <>
@@ -881,7 +884,7 @@ export function SubscriptionTab(): React.JSX.Element {
               />
               <div className="st-sub-panel-actions">
                 <Button size="sm" variant="secondary" icon={<Gauge size={12} />} disabled={!!busy} onClick={() => void act({ action: 'test-qoder' }, { done: '测试连接…', keepView: true })}>测试连接</Button>
-                <Button size="sm" variant="ghost" icon={<LogIn size={12} />} disabled={!!busy} onClick={() => void loginQoderDevice()}>浏览器重新登录</Button>
+                <Button size="sm" variant="ghost" icon={<LogIn size={12} />} disabled={!!busy && !qoderLoginWaiting} onClick={() => void loginQoderDevice()}>{qoderLoginWaiting ? '重新打开登录页面' : '浏览器重新登录'}</Button>
                 {qoder.localImport?.available ? (
                   <Button size="sm" variant="ghost" icon={<Download size={12} />} disabled={!!busy} onClick={() => void importQoderLocal()}>重新导入本机登录</Button>
                 ) : null}
@@ -938,7 +941,7 @@ export function SubscriptionTab(): React.JSX.Element {
                   <strong>浏览器登录</strong>
                   <span>打开 Qoder 授权页完成设备登录，仅全球区可用。</span>
                 </div>
-                <Button variant="primary" icon={<LogIn size={13} />} disabled={!!busy} onClick={() => void loginQoderDevice()}>浏览器登录（全球区）</Button>
+                <Button variant="primary" icon={<LogIn size={13} />} disabled={!!busy && !qoderLoginWaiting} onClick={() => void loginQoderDevice()}>{qoderLoginWaiting ? '重新打开登录页面' : '浏览器登录（全球区）'}</Button>
               </div>
               <div className="st-sub-connect-item is-stacked">
                 <div>

@@ -15,7 +15,7 @@ import type {
 import { getSettingsStore } from './settings-store'
 import { dataPath } from './paths'
 import { startSubscriptionRelay, type SubscriptionRelayHandle } from './subscription-relay'
-import { openExternalUrl } from './external-open'
+import { openLoginUrl } from './external-open'
 import { KIMI_MODELS, parseKimiQuota, rewriteKimiBody } from './kimi-protocol'
 import { testProviderConnection } from '../../core/providers'
 import { log } from './logger'
@@ -351,7 +351,7 @@ export class KimiSubscriptionService {
     const deviceCode = text(payload.device_code)
     const verification = text(payload.verification_uri_complete) ?? text(payload.verification_uri)
     if (!deviceCode || !verification) throw new Error('Kimi 设备授权响应缺少 device_code 或授权地址。')
-    const opened = await openExternalUrl(verification)
+    const opened = await openLoginUrl(verification)
     if (!opened.opened) throw new Error(`无法打开浏览器；授权链接已复制：${verification}`)
     let interval = Math.max(1, number(payload.interval) ?? 5) * 1000
     const expiresIn = Math.max(30, number(payload.expires_in) ?? 600) * 1000

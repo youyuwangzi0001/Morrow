@@ -331,8 +331,9 @@ body.is-resizing-composer {
   justify-content: flex-end;
 }
 
-/* 上下文入口：输入框内的圆环；详情向上弹出，避免遮挡输入 */
+/* 上下文入口：输入框内的圆环；详情紧贴按钮向上弹出，避免遮挡已输入内容 */
 .composer-ctx {
+  position: relative;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -373,11 +374,14 @@ body.is-resizing-composer {
 
 .composer-ctx-pop {
   position: absolute;
-  bottom: calc(100% + 10px);
-  z-index: 40;
-  width: 292px;
-  max-width: calc(100% - 24px);
-  padding: 13px 14px 12px;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: var(--z-modal);
+  width: 288px;
+  max-width: min(288px, calc(100vw - 24px));
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--glass);
@@ -391,18 +395,22 @@ body.is-resizing-composer {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  font-size: var(--fs-ui);
-  font-weight: var(--fw-semibold);
+  gap: 10px;
+  padding: 8px 9px 6px;
+  color: var(--text);
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
 }
 
 .composer-ctx-pop-percent {
   color: var(--gold);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
 }
 
 .composer-ctx-pop-bar {
   height: 4px;
-  margin: 8px 0 7px;
+  margin: 0 9px 8px;
   overflow: hidden;
   border-radius: var(--r-full);
   background: var(--surface-inset);
@@ -416,35 +424,39 @@ body.is-resizing-composer {
 }
 
 .composer-ctx-pop-sub {
+  padding: 0 9px 8px;
   color: var(--text-3);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-sm);
   line-height: var(--lh-copy);
 }
 
 .composer-ctx-pop-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 14px;
-  margin: 12px 0 0;
-  padding-top: 11px;
+  gap: 2px 6px;
+  margin: 4px 0 0;
+  padding-top: 4px;
   border-top: 1px solid var(--line);
 }
 
 .composer-ctx-pop-grid > div {
   min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--r-xs);
 }
 
 .composer-ctx-pop-grid dt {
-  margin: 0 0 2px;
+  margin: 0 0 1px;
   color: var(--text-3);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-sm);
 }
 
 .composer-ctx-pop-grid dd {
   margin: 0;
   overflow: hidden;
-  color: var(--text);
-  font-size: var(--fs-ui);
+  color: var(--text-2);
+  font-size: var(--fs-base-plus);
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

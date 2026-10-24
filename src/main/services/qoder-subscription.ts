@@ -9,7 +9,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { safeStorage, net } from 'electron'
 import type { ModelInfo, ProviderConfig } from '../../shared/types'
 import type { QoderSubscriptionAccount, QoderSubscriptionQuota, QoderSubscriptionState } from '../../shared/subscriptions'
-import { openExternalQuiet } from './external-open'
+import { openLoginQuiet } from './external-open'
 import {
   QODER_MODELS_CN,
   QODER_MODELS_GLOBAL,
@@ -128,6 +128,7 @@ export class QoderSubscriptionService {
   private quotaCache: QoderSubscriptionQuota | null = null
   private lastError: string | null = null
   private refreshing: Promise<QoderCredential> | null = null
+  private deviceLogin: { url: string; promise: Promise<QoderSubscriptionState> } | null = null
 
   constructor() {
     this.file = this.loadFile()
@@ -406,6 +407,10 @@ export class QoderSubscriptionService {
   }
 
   async loginDevice(): Promise<QoderSubscriptionState> {
+    if (this.deviceLogin) {
+      openLoginQuiet(this.deviceLogin.url)
+      return this.deviceLogin.promise
+    }
     const verifier = randomBytes(32).toString('base64url')
     const challenge = createHash('sha256').update(verifier).digest('base64url')
     const nonce = randomUUID()
@@ -416,8 +421,20 @@ export class QoderSubscriptionService {
     url.searchParams.set('nonce', nonce)
     url.searchParams.set('machine_id', machineId)
     url.searchParams.set('client_id', DEVICE_CLIENT_ID)
-    openExternalQuiet(url.toString())
+    const login = {
+      url: url.toString(),
+      promise: this.runDeviceLogin(url.toString(), verifier, nonce, machineId)
+    }
+    this.deviceLogin = login
+    try {
+      return await login.promise
+    } finally {
+      if (this.deviceLogin === login) this.deviceLogin = null
+    }
+  }
 
+  private async runDeviceLogin(url: string, verifier: string, nonce: string, machineId: string): Promise<QoderSubscriptionState> {
+    openLoginQuiet(url)
     const deadline = Date.now() + 5 * 60_000
     let ready: Record<string, unknown> | null = null
     while (Date.now() < deadline) {

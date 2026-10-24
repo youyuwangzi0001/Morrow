@@ -15,7 +15,7 @@ import { dataPath } from './paths'
 import { getSettingsStore } from './settings-store'
 import { testProviderConnection } from '../../core/providers'
 import { asRecord, asString } from './agent-protocol-utils'
-import { openExternalUrl } from './external-open'
+import { openLoginUrl } from './external-open'
 
 export {
   asRecord,
@@ -44,7 +44,7 @@ export function homePath(...segments: string[]): string {
 
 /** 用系统浏览器打开授权页。 */
 export function openExternal(url: string): void {
-  void openExternalUrl(url).catch(() => undefined)
+  void openLoginUrl(url).catch(() => undefined)
 }
 
 export function getProvider(id: string): ProviderConfig | undefined {

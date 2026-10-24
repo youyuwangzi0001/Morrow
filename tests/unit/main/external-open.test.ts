@@ -1,9 +1,13 @@
+import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   openExternal: vi.fn(),
   writeText: vi.fn(),
-  execFile: vi.fn()
+  execFile: vi.fn(),
+  execFileSync: vi.fn(),
+  spawn: vi.fn(),
+  existsSync: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -11,12 +15,22 @@ vi.mock('electron', () => ({
   clipboard: { writeText: mocks.writeText }
 }))
 
-vi.mock('node:child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:child_process')>()
-  return { ...actual, execFile: mocks.execFile }
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, existsSync: mocks.existsSync }
 })
 
-import { openExternalUrl } from '../../../src/main/services/external-open'
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execFile: mocks.execFile,
+    execFileSync: mocks.execFileSync,
+    spawn: mocks.spawn
+  }
+})
+
+import { openExternalUrl, openLoginUrl } from '../../../src/main/services/external-open'
 
 describe('openExternalUrl', () => {
   beforeEach(() => {
@@ -47,5 +61,22 @@ describe('openExternalUrl', () => {
       expect(options).toEqual(expect.objectContaining({ windowsHide: true }))
     }
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/login?x=1')
+  })
+
+  it.skipIf(process.platform !== 'win32')('登录时直接拉起默认浏览器，不依赖系统 URL 关联', async () => {
+    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
+    mocks.existsSync.mockReturnValue(true)
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void }
+      child.unref = vi.fn()
+      process.nextTick(() => child.emit('spawn'))
+      return child
+    })
+    const result = await openLoginUrl('https://example.com/auth?x=1')
+    expect(result).toEqual({ opened: true, copied: false })
+    expect(mocks.openExternal).not.toHaveBeenCalled()
+    const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
+    expect(exe.toLowerCase()).toContain('msedge.exe')
+    expect(args).toEqual(['https://example.com/auth?x=1'])
   })
 })

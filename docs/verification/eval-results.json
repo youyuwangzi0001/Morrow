@@ -2,7 +2,7 @@
   "version": 1,
   "suite": "morrow-agent-quality",
   "mode": "offline-deterministic",
-  "generatedAt": "2026-10-24T22:52:43.599Z",
+  "generatedAt": "2026-10-24T23:32:43.553Z",
   "metrics": {
     "tool": {
       "tasks": 8,

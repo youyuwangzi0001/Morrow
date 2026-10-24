@@ -38,7 +38,7 @@ import {
 } from './agent-subscription-common'
 import { getSettingsStore } from './settings-store'
 import { log } from './logger'
-import { openExternalUrl } from './external-open'
+import { openLoginUrl } from './external-open'
 
 const PROVIDER_ID = 'antigravity-subscription'
 const QUOTA_CACHE_MS = 2 * 60_000
@@ -491,7 +491,7 @@ export class AntigravitySubscriptionService {
     }).toString()}`
     let result: { code: string; state: string }
     try {
-      const opened = await openExternalUrl(authUrl)
+      const opened = await openLoginUrl(authUrl)
       if (!opened.opened) throw new Error(`无法打开浏览器；Google 授权链接已复制：${authUrl}`)
       result = await code
     } finally {

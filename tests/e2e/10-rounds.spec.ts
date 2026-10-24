@@ -605,7 +605,10 @@ test('上下文入口在输入框内，顶栏已移除，点击后展示上下�
     await expect(popover).toBeVisible()
     const popBox = await popover.boundingBox()
     expect(popBox).not.toBeNull()
-    expect(popBox!.y + popBox!.height).toBeLessThanOrEqual(inputBox!.y - 4)
+    // 弹窗紧贴圆环按钮上沿，并覆盖在输入框上方，而不是固定到输入框顶部。
+    expect(popBox!.y + popBox!.height).toBeLessThanOrEqual(meterBox!.y + 4)
+    expect(popBox!.y + popBox!.height).toBeGreaterThanOrEqual(meterBox!.y - 20)
+    expect(popBox!.y).toBeLessThan(inputBox!.y + inputBox!.height)
     expect(Math.abs(popBox!.x - meterBox!.x)).toBeLessThanOrEqual(16)
     const topmost = await page.evaluate(() => {
       const el = document.querySelector('.composer-ctx-pop')
@@ -707,6 +710,57 @@ test('改动卡运行中不可展开，结束后可展开查看详细 diff', asy
 
     await expandable.click()
     await expect(page.locator('.message-diff-detail')).toHaveCount(0)
+  } finally {
+    await morrow.close()
+    await mock.close()
+  }
+})
+
+test('超长文件路径不会把展开箭头挤到第二行', async () => {
+  test.setTimeout(120_000)
+  const workspace = join(root, 'tmp', `e2e-r13-diff-long-${Date.now()}`)
+  mkdirSync(workspace, { recursive: true })
+  const longPath =
+    'very-long-directory-name/another-very-long-directory/third-long-directory/ultra-long-file-name-for-diff-card-layout-check-with-many-words.ts'
+  const mock = await startMockLLM({
+    scripts: [
+      {
+        text: '先写一版。',
+        toolCalls: [{ name: 'write_file', arguments: { path: longPath, content: 'export const value = 1\n' } }]
+      },
+      { text: '写好了。' }
+    ]
+  })
+  const morrow = await launchMorrow({ name: 'r13-diff-long', timeoutMs: 90_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+    await createSession(page, {
+      workspace,
+      ...provider,
+      permissionMode: 'auto',
+      title: '超长路径改动卡'
+    })
+    await installEventCollector(page)
+    await sendMessageViaStore(page, '写一个层级很深的文件。')
+    await waitForRunFinished(page, 60_000)
+    const summary = page.locator('.message-diff-summary').first()
+    await expect(summary).toContainText('ultra-long-file-name')
+    const boxes = await page.evaluate(() => {
+      const summaryEl = document.querySelector('.message-diff-summary')
+      const chevron = document.querySelector('.message-diff-summary .message-diff-chevron')
+      if (!summaryEl || !chevron) return null
+      return {
+        summary: summaryEl.getBoundingClientRect().toJSON(),
+        chevron: chevron.getBoundingClientRect().toJSON()
+      }
+    })
+    expect(boxes).not.toBeNull()
+    expect(boxes!.summary.height).toBeLessThan(44)
+    expect(boxes!.chevron.y).toBeLessThan(boxes!.summary.y + 26)
+    expect(boxes!.chevron.x).toBeGreaterThan(boxes!.summary.x + boxes!.summary.width / 2)
   } finally {
     await morrow.close()
     await mock.close()

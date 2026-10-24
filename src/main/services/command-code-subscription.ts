@@ -38,7 +38,7 @@ import {
   testSubscriptionProvider
 } from './agent-subscription-common'
 import { getSettingsStore } from './settings-store'
-import { openExternalUrl } from './external-open'
+import { openLoginUrl } from './external-open'
 import { log } from './logger'
 
 const PROVIDER_ID = 'command-code-subscription'
@@ -184,7 +184,7 @@ export class CommandCodeSubscriptionService {
     const state = randomBytes(24).toString('base64url')
     const received = await this.listenForCallback(state)
     const authUrl = `${COMMAND_CODE_STUDIO_AUTH}?callback=${encodeURIComponent(`http://127.0.0.1:${received.port}/callback`)}&state=${encodeURIComponent(state)}&mode=redirect`
-    const opened = await openExternalUrl(authUrl)
+    const opened = await openLoginUrl(authUrl)
     if (!opened.opened) {
       received.close()
       throw new Error(`无法打开浏览器；Command Code 领取链接已复制：${authUrl}`)

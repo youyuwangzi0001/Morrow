@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { findModel } from '@shared/models'
 import { useAppStore } from '../../store'
 import { useClickOutside } from '../../ui'
@@ -17,7 +17,6 @@ export function ContextMeter(): React.JSX.Element | null {
   const model = findModel(settings.providers, session?.model ?? settings.defaultModel)
   const snapshot = contextSnapshot(usage, model?.contextWindow)
   const [open, setOpen] = useState(false)
-  const [left, setLeft] = useState(12)
   const close = useCallback(() => setOpen(false), [])
   const wrapRef = useClickOutside(close, open)
 
@@ -29,18 +28,6 @@ export function ContextMeter(): React.JSX.Element | null {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
-
-  // 弹窗相对输入框外壳定位：水平对齐圆环，垂直整体浮在输入框上方，避免盖住已输入内容。
-  useLayoutEffect(() => {
-    if (!open) return
-    const wrap = wrapRef.current
-    const shell = wrap?.closest('.composer-shell') as HTMLElement | null
-    if (!wrap || !shell) return
-    const button = wrap.getBoundingClientRect()
-    const frame = shell.getBoundingClientRect()
-    const width = Math.min(292, frame.width - 24)
-    setLeft(Math.min(Math.max(12, button.left - frame.left), frame.width - width - 12))
-  }, [open, wrapRef])
 
   useEffect(() => {
     setOpen(false)
@@ -85,41 +72,41 @@ export function ContextMeter(): React.JSX.Element | null {
         </svg>
       </button>
       {open ? (
-        <div className="composer-ctx-pop" role="dialog" aria-label="上下文与 Token 使用" style={{ left }}>
+        <div className="composer-ctx-pop" role="dialog" aria-label="上下文与 Token 使用">
           <div className="composer-ctx-pop-head">
             <span>上下文</span>
-            <span className="composer-ctx-pop-percent mono">{snapshot.percent}%</span>
+            <span className="composer-ctx-pop-percent">{snapshot.percent}%</span>
           </div>
           <div className="composer-ctx-pop-bar" aria-hidden>
             <span style={{ width: `${Math.min(100, Math.round(snapshot.ratio * 100))}%` }} />
           </div>
-          <div className="composer-ctx-pop-sub mono">
+          <div className="composer-ctx-pop-sub">
             {formatExactTokens(snapshot.used)} / {formatExactTokens(snapshot.limit)} tokens · {contextSourceLabel(snapshot.source)}
           </div>
           <dl className="composer-ctx-pop-grid">
             <div>
               <dt>输入</dt>
-              <dd className="mono">{formatExactTokens(input)}</dd>
+              <dd>{formatExactTokens(input)}</dd>
             </div>
             <div>
               <dt>其中缓存</dt>
-              <dd className="mono">{formatExactTokens(cache)}</dd>
+              <dd>{formatExactTokens(cache)}</dd>
             </div>
             <div>
               <dt>缓存命中率</dt>
-              <dd className="mono">{hitRate}%</dd>
+              <dd>{hitRate}%</dd>
             </div>
             <div>
               <dt>输出</dt>
-              <dd className="mono">{formatExactTokens(output)}</dd>
+              <dd>{formatExactTokens(output)}</dd>
             </div>
             <div>
               <dt>累计费用</dt>
-              <dd className="mono">{cost}</dd>
+              <dd>{cost}</dd>
             </div>
             <div>
               <dt>模型</dt>
-              <dd className="mono">{model?.label ?? '—'}</dd>
+              <dd>{model?.label ?? '—'}</dd>
             </div>
           </dl>
         </div>

@@ -33,7 +33,7 @@ import { log } from './logger'
 import { testProviderConnection } from '../../core/providers'
 import { getQoderSubscriptionService } from './qoder-subscription'
 import { AGENT_ORDER, getAgentService } from './agent-subscriptions'
-import { openExternalQuiet } from './external-open'
+import { openLoginQuiet } from './external-open'
 
 const CODEX_PROVIDER_ID = 'codex-subscription'
 const OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
@@ -379,7 +379,7 @@ export class SubscriptionService {
     // 用户第一次点击后浏览器可能被系统/安全软件拦下；第二次点击应重新打开同一个授权页，
     // 而不是再次 listen(1455) 导致 EADDRINUSE。
     if (this.codexLogin) {
-      openExternalQuiet(this.codexLogin.url)
+      openLoginQuiet(this.codexLogin.url)
       return this.codexLogin.promise
     }
     const verifier = randomBytes(48).toString('base64url')
@@ -455,7 +455,7 @@ export class SubscriptionService {
             reject(err)
           }
         })
-        openExternalQuiet(url.toString())
+        openLoginQuiet(url.toString())
       })
       const response = await this.fetchImpl(OAUTH_TOKEN_URL, {
         method: 'POST',

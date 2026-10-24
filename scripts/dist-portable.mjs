@@ -583,9 +583,10 @@ function buildUsageText(_singleOnly = false) {
     '- 应用字号 12–15（默认 14），代码字号 11–14（默认 12）；代码字体默认 JetBrains Mono。',
     '- 本机/局域网模型服务可留空 API Key；多媒体「添加本机模型」支持 llama.cpp、Ollama、LM Studio 与 ComfyUI API 工作流。',
     '- 修复 ChatGPT 订阅工具参数丢失、登录端口复用、灵动岛跟随当前会话、审看媒体优先当前模型视觉四个断点。',
-    '- 修复订阅登录等待时无法再次拉起浏览器，以及多轮对话中 assistant 历史内容被上游 400 拒绝的问题。',
+    '- 修复 Windows 系统浏览器关联失效时登录页无法拉起（浏览器直连 + 可重试），以及多轮对话中 assistant 历史内容被上游 400 拒绝的问题。',
+    '- 改动卡长路径改为单行省略，展开箭头不再被挤到第二行；上下文详情紧贴圆环上浮，并与模型菜单统一排版。',
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
-    '- 扁平化：13 个单元套件 / 942 用例，17 个 E2E 套件 / 206 用例；源码与构建脚本已在 GitHub 开源。',
+    '- 扁平化：14 个单元套件 / 943 用例，17 个 E2E 套件 / 208 用例；源码与构建脚本已在 GitHub 开源。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
