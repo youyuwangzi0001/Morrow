@@ -102,8 +102,8 @@ npm ci
 npm run dev          # 开发模式（Electron + Vite HMR）
 npm run typecheck    # 主进程 / 渲染层类型检查
 npm run audit:ui     # UI 令牌审计
-npm run test:unit    # 13 个单元套件 / 939 个用例
-npm run test:e2e     # 17 个 E2E 套件 / 206 个用例（真实 Electron；真实登录/本地模型按环境跳过）
+npm run test:unit    # 14 个单元套件 / 942 个用例
+npm run test:e2e     # 17 个 E2E 套件 / 207 个用例（真实 Electron；真实登录/本地模型按环境跳过）
 npm run build        # 类型检查 + 生产构建
 npm run dist         # 生成单文件便携 exe + NSIS 安装包
 ```
@@ -135,8 +135,8 @@ MORROW_AGENT_EVAL=1 npx playwright test tests/e2e/15-local-model.spec.ts -g "Mor
 
 - **类型**：`npm run typecheck`，TypeScript 严格模式，主进程与渲染层分开检查。
 - **UI 令牌**：`npm run audit:ui` 扫描渲染层 CSS/TSX，字号/字重/行高/字距必须走顶层 token；设置域 E2E 校验页面标题、提示、正文、按钮高度、权限卡与订阅详情排版。
-- **单元**：`npm run test:unit` → **13 个套件、939 个用例（931 passed + 8 skipped）**（含按环境跳过的真实引擎/本地模型集成）。覆盖 Agent 循环、双协议 Provider、工具、权限、上下文压缩、会话持久化、媒体目录/工具、输出隐私守卫、评测指标与 8 条订阅渠道的协议规则。
-- **端到端**：`npm run test:e2e` → **17 个套件、206 个用例**，使用真实 Electron + 真实主进程；默认用 Mock LLM/ComfyUI，可选真实本地模型、引擎与 Codex 订阅登录。
+- **单元**：`npm run test:unit` → **14 个套件、942 个用例（934 passed + 8 skipped）**（含按环境跳过的真实引擎/本地模型集成）。覆盖 Agent 循环、双协议 Provider、工具、权限、上下文压缩、会话持久化、媒体目录/工具、输出隐私守卫、评测指标与 8 条订阅渠道的协议规则。
+- **端到端**：`npm run test:e2e` → **17 个套件、207 个用例**，使用真实 Electron + 真实主进程；默认用 Mock LLM/ComfyUI，可选真实本地模型、引擎与 Codex 订阅登录。
 - **质量评测**：四项离线确定性指标（工具成功率、60 轮漂移、压缩保留、Token 曲线）见 [EVALUATION.md](docs/EVALUATION.md)。
 - **打包冒烟**：`npm run smoke:packaged` 启动便携 exe，检查渲染、预加载 API 与截图。
 - **证据与包体**：最新验收记录、双主题截图、文件数与包体哈希见 [VERIFICATION.md](docs/verification/VERIFICATION.md) 与 [artifacts.json](docs/verification/artifacts.json)。

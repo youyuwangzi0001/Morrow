@@ -68,6 +68,8 @@ const EMPTY_FORM: CustomSubscriptionInput = {
   models: []
 }
 
+const CODEX_LOGIN_BUSY = '等待浏览器完成 ChatGPT 登录…'
+
 function protocolLabel(protocol: SubscriptionProtocol): string {
   return protocol === 'anthropic' ? 'Anthropic Messages' : 'OpenAI Chat Completions'
 }
@@ -441,7 +443,7 @@ export function SubscriptionTab(): React.JSX.Element {
   }
 
   const loginBrowser = async (): Promise<void> => {
-    setBusy('等待浏览器完成 ChatGPT 登录…')
+    setBusy(CODEX_LOGIN_BUSY)
     setError(null)
     try {
       const result = (await window.morrow.features.invoke('feature:subscriptions:action', { action: 'login-codex' })) as Result<SubscriptionStatus>
@@ -523,6 +525,7 @@ export function SubscriptionTab(): React.JSX.Element {
   const selectedAgent = view.kind === 'agent' ? agents.find((item) => item.id === view.id) : undefined
   const selectedCustom = view.kind === 'custom' && view.id ? custom.find((item) => item.record.id === view.id) : undefined
   const codexQuota = codex?.quota
+  const codexLoginWaiting = busy === CODEX_LOGIN_BUSY
 
   if (view.kind === 'codex' && codex) {
     return (
@@ -539,7 +542,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={codex.connected ? 'success' : 'neutral'}>{codex.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {codex.connected ? (
           <>
@@ -599,7 +602,7 @@ export function SubscriptionTab(): React.JSX.Element {
               <div className="st-sub-panel-actions">
                 <Button size="sm" variant="secondary" icon={<Gauge size={12} />} disabled={!!busy} onClick={() => void act({ action: 'test-codex' }, { done: '测试连接…', keepView: true })}>测试连接</Button>
                 <Button size="sm" variant="ghost" icon={<Upload size={12} />} disabled={!!busy} onClick={() => void importDefault()}>重新导入本机登录</Button>
-                <Button size="sm" variant="ghost" icon={<LogIn size={12} />} disabled={!!busy} onClick={() => void loginBrowser()}>重新浏览器登录</Button>
+                <Button size="sm" variant="ghost" icon={<LogIn size={12} />} disabled={!!busy && !codexLoginWaiting} onClick={() => void loginBrowser()}>{codexLoginWaiting ? '重新打开登录页面' : '重新浏览器登录'}</Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -621,7 +624,7 @@ export function SubscriptionTab(): React.JSX.Element {
             <p>Codex 订阅使用 ChatGPT 账号的 OAuth 登录态。Morrow 不读取密码，也不发送账号到自己的服务器。</p>
             <div className="st-sub-connect-actions">
               <Button variant="primary" icon={<Upload size={13} />} disabled={!!busy} onClick={() => void importDefault()}>导入本机 Codex CLI 登录</Button>
-              <Button variant="secondary" icon={<LogIn size={13} />} disabled={!!busy} onClick={() => void loginBrowser()}>浏览器登录 ChatGPT</Button>
+              <Button variant="secondary" icon={<LogIn size={13} />} disabled={!!busy && !codexLoginWaiting} onClick={() => void loginBrowser()}>{codexLoginWaiting ? '重新打开登录页面' : '浏览器登录 ChatGPT'}</Button>
               <Button variant="ghost" disabled={!!busy} onClick={() => void importFile()}>选择 auth.json</Button>
             </div>
             <p className="st-sub-note">默认读取 <span className="mono">~/.codex/auth.json</span>（或 <span className="mono">CODEX_HOME</span>），只读，不会修改 Codex CLI 的文件。浏览器登录会打开本机 1455 回调。</p>
@@ -648,7 +651,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={selectedAgent.connected ? 'success' : 'neutral'}>{selectedAgent.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {selectedAgent.connected ? (
           <>
@@ -828,7 +831,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={qoder.connected ? 'success' : 'neutral'}>{qoder.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}</p> : null}
+        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{codexLoginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
 
         {qoder.connected ? (
           <>

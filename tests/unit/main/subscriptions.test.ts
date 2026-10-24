@@ -61,6 +61,21 @@ describe('Codex 订阅代理', () => {
     expect(input.some((item) => item.type === 'function_call_output' && item.call_id === 'call_1')).toBe(true)
   })
 
+  it('assistant 历史内容使用 output_text，避免上游拒绝 input_text', () => {
+    const payload = toResponsesPayload({
+      model: 'gpt-6-sol',
+      messages: [
+        { role: 'user', content: '画一只鹅' },
+        { role: 'assistant', content: '已经画好了。' },
+        { role: 'assistant', content: [{ type: 'text', text: '补充说明。' }] }
+      ]
+    })
+    const input = payload.input as Array<Record<string, unknown>>
+    expect(input[0]).toEqual({ role: 'user', content: [{ type: 'input_text', text: '画一只鹅' }] })
+    expect(input[1]).toEqual({ role: 'assistant', content: [{ type: 'output_text', text: '已经画好了。' }] })
+    expect(input[2]).toEqual({ role: 'assistant', content: [{ type: 'output_text', text: '补充说明。' }] })
+  })
+
   it('启动回环代理并把 Responses 文本/工具事件转成 OpenAI 流', async () => {
     const localToken = 'local-token'
     let upstreamHeaders: Record<string, string> = {}

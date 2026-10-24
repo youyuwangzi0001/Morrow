@@ -1,33 +1,33 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
-  "builtAt": "2026-10-24T16:26:55.742Z",
+  "builtAt": "2026-10-24T22:58:22.392Z",
   "platform": "win32-x64",
   "source": {
     "files": 313,
     "codeFiles": 292,
     "loc": {
-      "ts": 70589,
-      "tsx": 29133,
+      "ts": 70610,
+      "tsx": 29136,
       "css": 24947,
-      "total": 124669
+      "total": 124693
     }
   },
   "tests": {
     "unit": {
-      "suites": 13,
-      "cases": 939,
-      "passed": 931,
+      "suites": 14,
+      "cases": 942,
+      "passed": 934,
       "skipped": 8
     },
     "e2e": {
       "suites": 17,
-      "cases": 206,
-      "passed": 195,
+      "cases": 207,
+      "passed": 196,
       "skipped": 11,
       "nonPackaged": {
-        "cases": 201,
-        "passed": 190,
+        "cases": 202,
+        "passed": 191,
         "skipped": 11
       },
       "packaged": {
@@ -45,7 +45,7 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362591414,
+    "bytes": 362589289,
     "mib": 345.79
   },
   "artifacts": [
@@ -57,29 +57,29 @@
     },
     {
       "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205944832,
+      "bytes": 205943808,
       "mib": 196.4,
-      "sha256": "df74fcc4c68ef08f44aef2be15f3d8064942a2485f059a8e3bf6f779d4985db9"
+      "sha256": "33c79e3da76cba299de5cf8db607f2202d99109857677b2ef8198ac82635675c"
     },
     {
       "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156641717,
-      "mib": 149.39,
-      "sha256": "e7dc0edebfce6401ee4bd2a2f5914e99604a12ae00bf268aa622247deccd3f5f"
+      "bytes": 156641131,
+      "mib": 149.38,
+      "sha256": "284010e0cd2b365860dbf8fb00a3ba077ea5a5252dcc88b426eac8a6b5cab34a"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "0dc1e3caad1cb2cf53d6dcefb9a368e1ed1aa7423e204481d135f00052005e30"
+      "sha256": "974adfc398ce08769508d7d2063e60e36789fbfa4b23d7952fd1c2c929b30931"
     },
     {
       "name": "使用说明.txt",
-      "bytes": 3457,
+      "bytes": 2942,
       "mib": 0,
-      "sha256": "47d33876b77ade130001a732385558a88d73c1f4972f89230431d790c317f6fa"
+      "sha256": "2c15a4c311b37aa0c83c31707ded1323ea27ca7c1d3febf22534c94a0082b89e"
     }
   ],
   "runtimeCache": ".morrow-runtime-0.1.0-r010",
-  "generatedAt": "2026-10-24T16:32:49.974Z"
+  "generatedAt": "2026-10-24T23:01:38.881Z"
 }

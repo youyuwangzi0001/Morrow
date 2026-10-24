@@ -15,6 +15,12 @@ export async function openExternalUrl(url: string): Promise<{ opened: boolean; c
   }
   if (process.platform === 'win32') {
     try {
+      await shell.openExternal(url)
+      return { opened: true, copied: false }
+    } catch {
+      // 交给系统 URL 处理器兜底
+    }
+    try {
       await promisify(execFile)('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
         windowsHide: true,
         timeout: 8_000

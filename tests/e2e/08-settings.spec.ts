@@ -1219,3 +1219,28 @@ test.describe('订阅分页排版统一', () => {
     }
   })
 })
+
+test.describe('ChatGPT 登录交互', () => {
+  test('等待浏览器登录时仍可再次点击，不会卡在禁用状态', async () => {
+    test.setTimeout(90_000)
+    const morrow = await launchMorrow({ name: 'codex-login-retry', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await page.keyboard.press('Control+,')
+      const settings = page.getByRole('dialog', { name: '设置' })
+      await settings.getByRole('tab', { name: '订阅', exact: true }).click()
+      const card = settings.locator('.st-sub-card').filter({ hasText: 'ChatGPT / Codex 订阅' })
+      await card.getByRole('button', { name: /连接账号|管理订阅/ }).click()
+      await settings.getByRole('button', { name: /浏览器登录 ChatGPT|重新浏览器登录/ }).click()
+      const retry = settings.getByRole('button', { name: '重新打开登录页面' })
+      await expect(retry).toBeVisible()
+      await expect(retry).toBeEnabled()
+      await expect(settings.locator('.st-sub-busy')).toContainText('浏览器没有打开')
+    } finally {
+      await morrow.close()
+    }
+  })
+})
+

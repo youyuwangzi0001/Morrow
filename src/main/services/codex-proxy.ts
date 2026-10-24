@@ -72,16 +72,23 @@ function codexHeaders(credential: CodexCredential, sessionId: string): Record<st
   }
 }
 
-function contentToInput(content: OpenAIMessage['content']): Array<Record<string, unknown>> {
-  if (typeof content === 'string') return content ? [{ type: 'input_text', text: content }] : []
+function contentToInput(
+  content: OpenAIMessage['content'],
+  role: 'user' | 'assistant' = 'user'
+): Array<Record<string, unknown>> {
+  const textType = role === 'assistant' ? 'output_text' : 'input_text'
+  if (typeof content === 'string') return content ? [{ type: textType, text: content }] : []
   if (!Array.isArray(content)) return []
   const out: Array<Record<string, unknown>> = []
   for (const raw of content) {
     const type = String(raw.type ?? '')
-    if (type === 'text' || type === 'input_text') {
+    if (type === 'text' || type === 'input_text' || type === 'output_text') {
       const text = String(raw.text ?? '')
-      if (text) out.push({ type: 'input_text', text })
-    } else if (type === 'image_url') {
+      if (text) out.push({ type: textType, text })
+    } else if (type === 'refusal' && role === 'assistant') {
+      const refusal = String(raw.refusal ?? raw.text ?? '')
+      if (refusal) out.push({ type: 'refusal', refusal })
+    } else if (type === 'image_url' && role === 'user') {
       const url = (raw.image_url as { url?: string } | undefined)?.url
       if (typeof url === 'string' && /^data:image\//i.test(url)) {
         out.push({ type: 'input_image', image_url: url })
@@ -114,7 +121,7 @@ export function toResponsesPayload(body: ChatBody): Record<string, unknown> {
       continue
     }
     if (role === 'assistant') {
-      const content = contentToInput(message.content)
+      const content = contentToInput(message.content, 'assistant')
       if (content.length > 0) input.push({ role: 'assistant', content })
       for (const call of message.tool_calls ?? []) {
         const name = call.function?.name
