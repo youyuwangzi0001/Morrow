@@ -83,9 +83,9 @@
 | `npm run audit:ui` | 50 CSS + 66 TSX，0 裸排版值 |
 | `npm run test:unit` | 14 文件；943 用例；**935 passed + 8 skipped** |
 | `npx playwright test`（全量） | 17 文件；208 用例；**197 passed + 11 skipped + 0 failed**（11.1m） |
-| 打包版 E2E | 5 用例；**5/5 passed**（17.8s） |
+| 打包版 E2E | 5 用例；**5/5 passed**（17.5s） |
 | `scripts/smoke-packaged.mjs` | 便携版 **4.7s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
-| 单元/打包耗时 | 单元 14.3s；全量 E2E 11.1m；打包 E2E 17.8s；打包 smoke 4.7s |
+| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 17.5s；打包 smoke 4.7s |
 
 ## 7. 交付物
 
