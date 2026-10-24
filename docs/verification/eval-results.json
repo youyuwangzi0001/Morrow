@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "suite": "morrow-agent-quality",
+  "mode": "offline-deterministic",
+  "generatedAt": "2026-10-24T16:32:19.067Z",
+  "metrics": {
+    "tool": {
+      "tasks": 8,
+      "firstSuccess": 8,
+      "tsr1": 1,
+      "retryTasks": 3,
+      "retrySuccess": 3,
+      "tsrRetry": 1
+    },
+    "drift": {
+      "turns": 60,
+      "compactions": 3,
+      "factsChecked": 24,
+      "violations": 0,
+      "rate": 0,
+      "hardConstraintMissing": 0
+    },
+    "retention": {
+      "scenarios": 2,
+      "expected": 10,
+      "retained": 10,
+      "rate": 1,
+      "hardConstraintMissing": 0,
+      "fallbackCompacted": true,
+      "modelCompacted": true
+    },
+    "token": {
+      "turns": 80,
+      "contextLimit": 10000,
+      "compactions": 12,
+      "baselineSlope": 494,
+      "managedSlope": -0.04,
+      "slopeRatio": 0,
+      "baselinePeak": 39806,
+      "managedPeak": 7994,
+      "managedFinal": 7500,
+      "compactionEvents": 12
+    }
+  },
+  "score": {
+    "total": 100,
+    "breakdown": {
+      "tool": 25,
+      "drift": 25,
+      "retention": 25,
+      "token": 25
+    },
+    "gates": {
+      "toolFirst": true,
+      "toolRetry": true,
+      "drift": true,
+      "retention": true,
+      "token": true
+    },
+    "pass": true
+  }
+}

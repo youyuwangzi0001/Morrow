@@ -14,14 +14,17 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "build": "npm run typecheck && electron-vite build",
     "test:unit": "vitest run",
+    "test:eval": "vitest run tests/unit/core/agent.test.ts -t \"agent-quality\"",
     "test:e2e": "playwright test",
     "probe:live": "node scripts/probe-live.mjs",
     "dist": "npm run build && node scripts/dist-portable.mjs --portable",
     "dist:all": "npm run build && node scripts/dist-portable.mjs",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "verify": "npm run typecheck && npm run test:unit && npm run test:e2e",
-    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs"
+    "pack:source": "node scripts/pack-source.mjs",
+    "verify": "npm run typecheck && npm run audit:ui && npm run test:unit && npm run test:e2e",
+    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs",
+    "audit:ui": "node scripts/ui-token-audit.mjs"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -78,7 +81,13 @@
       "!node_modules/pdf-parse/lib/pdf.js/v1.9.426/**",
       "!node_modules/pdf-parse/lib/pdf.js/v1.10.88/**",
       "!node_modules/pdf-parse/lib/pdf.js/v2.0.550/**",
-      "package.json"
+      "package.json",
+      "build/icon-dark.png",
+      "build/icon-light.png",
+      "build/icon-dark-256.png",
+      "build/icon-light-256.png",
+      "build/tray-dark.png",
+      "build/tray-light.png"
     ],
     "asar": true,
     "npmRebuild": false,
@@ -90,6 +99,22 @@
       {
         "from": "resources/pdf-ocr.ps1",
         "to": "pdf-ocr.ps1"
+      },
+      {
+        "from": "build/icon-dark.png",
+        "to": "icon-dark.png"
+      },
+      {
+        "from": "build/icon-light.png",
+        "to": "icon-light.png"
+      },
+      {
+        "from": "build/tray-dark.png",
+        "to": "tray-dark.png"
+      },
+      {
+        "from": "build/tray-light.png",
+        "to": "tray-light.png"
       }
     ],
     "compression": "maximum",
@@ -108,9 +133,21 @@
     "portable": {
       "artifactName": "Morrow-${version}-portable.${ext}",
       "requestExecutionLevel": "user"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Morrow",
+      "artifactName": "Morrow-${version}-setup.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
     }
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "jszip": "^3.10.1",

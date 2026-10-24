@@ -13,8 +13,8 @@ import type {
   Provider,
   ProviderStreamRequest,
   ToolDefinition,
-  SubagentRequest,
-  SubagentResult,
+  SwarmMemberRequest,
+  SwarmMemberResult,
   ToolContext,
 } from '../../../src/core/types'
 import {
@@ -42,6 +42,7 @@ import { resetAllPermissionGrants, runAgent } from '../../../src/core/agent'
 import {
   deniedMessage,
   detectDangerousCommand,
+  detectExternalCommandSideEffect,
   detectOutsidePathInCommand,
   evaluatePermission,
   permissionSignature,
@@ -50,7 +51,7 @@ import {
 } from '../../../src/core/permissions'
 import { buildOneShotInvocation, commandFailureHint, shellSyntaxHint } from '../../../src/core/shell'
 import { BUILTIN_AGENT_ROLES } from '../../../src/core/agent-roles'
-import { swarmTool, taskTool } from '../../../src/core/tools/meta-tools'
+import { swarmTool } from '../../../src/core/tools/meta-tools'
 import {
   createSafeLookup,
   createWebFetchTool,
@@ -703,6 +704,40 @@ describe('sse.test.ts', () => {
       for await (const frame of iterateSSE(streamFrom(['data: a\n\ndata: b']))) frames.push(frame.data)
       expect(frames).toEqual(['a', 'b'])
     })
+
+    it('流长时间没有新数据时按空闲超时中断，并释放底层迭代器', async () => {
+      let returned = 0
+      const stalled: AsyncIterable<string> = {
+        [Symbol.asyncIterator]: () => ({
+          next: () => new Promise<IteratorResult<string>>(() => undefined),
+          return: async () => {
+            returned += 1
+            return { done: true as const, value: undefined }
+          }
+        })
+      }
+      const consume = async (): Promise<number> => {
+        let count = 0
+        for await (const _frame of iterateSSE(stalled, 20)) count += 1
+        return count
+      }
+      await expect(consume()).rejects.toThrow(/没有数据，已中断/)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(returned).toBe(1)
+    })
+
+    it('期间有数据到达时不会误触发空闲超时', async () => {
+      async function* paced(): AsyncGenerator<string> {
+        yield 'data: a\n\n'
+        await new Promise((resolve) => setTimeout(resolve, 15))
+        yield 'data: b\n\n'
+        await new Promise((resolve) => setTimeout(resolve, 15))
+        yield 'data: c\n\n'
+      }
+      const frames: string[] = []
+      for await (const frame of iterateSSE(paced(), 40)) frames.push(frame.data)
+      expect(frames).toEqual(['a', 'b', 'c'])
+    })
   })
 })
 
@@ -761,7 +796,6 @@ describe('index.test.ts', () => {
         'todo_write',
         'ask_user',
         'remember',
-        'task',
         'swarm',
         'open_artifact',
         'web_search',
@@ -784,7 +818,19 @@ describe('index.test.ts', () => {
         'computer_screenshot',
         'computer_click',
         'computer_type',
-        'computer_key'
+        'computer_key',
+        'generate_image',
+        'generate_video',
+        'generate_film',
+        'render_animation',
+        'edit_media',
+        'inspect_media',
+        'describe_media',
+        'media_status',
+        'list_local_models',
+        'manage_local_model',
+        'manage_local_engine',
+        'run_local_model'
       ])
       for (const tool of core.TOOL_DEFINITIONS) {
         expect(tool.description.length).toBeGreaterThan(10)
@@ -798,7 +844,7 @@ describe('index.test.ts', () => {
       expect(writeFileDef?.parameters).toMatchObject({ type: 'object', properties: { append: { type: 'boolean' } } })
       expect(writeFileDef?.titleFor({ path: 'a.html', append: true })).toContain('追加')
 
-      // 子代理只读工具集
+      // 集群成员只读工具集
       expect(core.READ_ONLY_TOOL_DEFINITIONS.every((tool) => tool.category === 'read')).toBe(true)
       expect(core.READ_ONLY_TOOL_DEFINITIONS.map((tool) => tool.name)).toEqual([
         'read_file',
@@ -810,11 +856,15 @@ describe('index.test.ts', () => {
         'glob',
         'grep',
         'list_skills',
-        'read_skill'
+        'read_skill',
+        'inspect_media',
+        'describe_media',
+        'media_status',
+        'list_local_models'
       ])
     })
 
-    it('系统提示词包含中文规范、权限说明与只读子代理提示', () => {
+    it('系统提示词包含中文规范、权限说明与集群成员同权限提示', () => {
       const prompt = core.buildSystemPrompt({
         workspace: 'C:\\demo',
         permissionMode: 'ask',
@@ -827,9 +877,72 @@ describe('index.test.ts', () => {
       expect(prompt).toContain('询问模式')
       expect(prompt).toContain('用户喜欢表格')
       expect(prompt).toContain('C:\\demo')
-      // 子代理与主代理同权限，主提示词不能再声称子代理只读
-      expect(prompt).toContain('与主代理同权限')
-      expect(prompt).not.toContain('它只能只读')
+      // 集群成员与主代理同工作区权限，主提示词不能再声称成员只读
+      expect(prompt).toContain('集群成员与主代理同工作区权限')
+      expect(prompt).not.toContain('只读角色')
+      // 技能只决定方法，不决定分工
+      expect(prompt).toContain('技能只决定做法，不决定分工')
+      expect(prompt).toContain('自动联网')
+      expect(prompt).toContain('先自动用 web_search')
+
+      // 完整成员类型注入时，主提示词要写清「角色管分工、技能管方法」
+      const withAgents = core.buildSystemPrompt({
+        workspace: 'C:\\demo',
+        permissionMode: 'ask',
+        tools: core.TOOL_DEFINITIONS,
+        agents: BUILTIN_AGENT_ROLES,
+        date: new Date('2026-10-19T00:00:00+08:00')
+      })
+      expect(withAgents).toContain('角色与技能分工')
+      expect(withAgents).toContain('不要把技能名当角色')
+      expect(withAgents).toContain('architect（架构设计）')
+      expect(withAgents).toContain('specialist（任务定制）')
+    })
+
+    it('动态工作区与日期只追加在尾部，静态前缀保持缓存稳定', () => {
+      const base = {
+        tools: core.TOOL_DEFINITIONS,
+        permissionMode: 'ask' as const,
+        date: new Date('2026-10-19T00:00:00+08:00')
+      }
+      const first = core.buildSystemPrompt({ ...base, workspace: 'C:/one' })
+      const second = core.buildSystemPrompt({
+        ...base,
+        workspace: 'D:/two',
+        date: new Date('2026-10-24T00:00:00+08:00')
+      })
+      const marker = '## 项目上下文与环境'
+      const firstIndex = first.indexOf(marker)
+      const secondIndex = second.indexOf(marker)
+      expect(firstIndex).toBeGreaterThan(0)
+      expect(secondIndex).toBe(firstIndex)
+      expect(first.slice(0, firstIndex)).toBe(second.slice(0, secondIndex))
+    })
+
+    it('工具失败回传移除栈帧并附带下一步建议', async () => {
+      const { toolResultTextForModel } = await import('../../../src/core/providers/tool-result-text')
+      const block = {
+        type: 'tool_use' as const,
+        id: 't1',
+        name: 'run_command',
+        title: '运行命令',
+        category: 'exec' as const,
+        input: {},
+        status: 'error' as const,
+        result: {
+          ok: false as const,
+          error: 'Error: boom\n    at foo (C:/secret/file.ts:1:2)\nnode:internal/process/task_queues:1',
+          hint: '检查路径后重试',
+          output: 'command detail'
+        }
+      }
+      const text = toolResultTextForModel(block)
+      expect(text).toContain('[工具执行失败] Error: boom')
+      expect(text).toContain('提示：检查路径后重试')
+      expect(text).toContain('下一步：')
+      expect(text).toContain('command detail')
+      expect(text).not.toContain('at foo')
+      expect(text).not.toContain('node:internal')
     })
 
     it('权限与工具元信息可用于主进程 UI', () => {
@@ -953,8 +1066,10 @@ describe('demo.test.ts', () => {
         expect(result.reason).toBe('complete')
         // 演示步骤事件
         const demoSteps = events.filter((event) => event.type === 'demo_step')
-        expect(demoSteps).toHaveLength(9)
-        expect(demoSteps.map((event) => (event.type === 'demo_step' ? event.index : 0))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        // 写代码/跑命令时会在同一步内更新子标题，产生额外 demo_step（index 不变）
+        const stepIndices = [...new Set(demoSteps.map((event) => (event.type === 'demo_step' ? event.index : 0)))]
+        expect(stepIndices).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        expect(demoSteps.some((event) => event.type === 'demo_step' && event.caption.startsWith('编写 '))).toBe(true)
         // 演示模式不弹审批
         expect(events.some((event) => event.type === 'permission_requested')).toBe(false)
         // 工具调用全部真实执行
@@ -1116,7 +1231,7 @@ describe('permissions.test.ts', () => {
         expect(gate.action).toBe('ask')
         if (gate.action === 'ask') {
           expect(gate.risk).toBe('high')
-          expect(gate.summary).toContain('工作区外')
+          expect(gate.summary).toContain('当前文件夹以外')
         }
       })
 
@@ -1211,12 +1326,14 @@ describe('permissions.test.ts', () => {
       expect(evaluatePermission(target('mcp_call', 'exec', { server: 's', tool: 't', arguments: {} }), policy(ws.root, 'read-only')).action).toBe('deny')
     })
 
-    it('询问模式逐次审批，且不提供「始终允许」', () => {
+    it('询问模式逐次审批：web_fetch 可按站点记住，MCP 不提供「始终允许」', () => {
       const web = target('web_fetch', 'exec', { url: 'https://example.com/a' })
       const list = target('mcp_list', 'exec', { server: 's' })
       const mcp = target('mcp_call', 'exec', { server: 's', tool: 't', arguments: { x: 1 } })
+      const webGate = evaluatePermission(web, policy(ws.root, 'ask'))
+      expect(webGate.action).toBe('ask')
+      if (webGate.action === 'ask') expect(webGate.allowAlways).toBe(true)
       for (const gate of [
-        evaluatePermission(web, policy(ws.root, 'ask')),
         evaluatePermission(list, policy(ws.root, 'ask')),
         evaluatePermission(mcp, policy(ws.root, 'ask'))
       ]) {
@@ -1234,10 +1351,47 @@ describe('permissions.test.ts', () => {
       })
     })
 
-    it('询问模式下即使有相同签名的会话授权也要再次询问', () => {
+    it('web_fetch 的会话授权按站点生效；MCP 仍然逐次询问', () => {
       const web = target('web_fetch', 'exec', { url: 'https://example.com/a' })
-      const signature = permissionSignature(web, { mode: 'ask', workspace: ws.root, isDemo: false, sessionGrants: new Set() })
-      expect(evaluatePermission(web, policy(ws.root, 'ask', [signature])).action).toBe('ask')
+      const other = target('web_fetch', 'exec', { url: 'https://other.example.org/b' })
+      const grants = new Set([
+        permissionSignature(web, { mode: 'ask', workspace: ws.root, isDemo: false, sessionGrants: new Set() })
+      ])
+      expect(evaluatePermission(web, policy(ws.root, 'ask', [...grants])).action).toBe('allow')
+      expect(evaluatePermission(other, policy(ws.root, 'ask', [...grants])).action).toBe('ask')
+      const mcp = target('mcp_call', 'exec', { server: 's', tool: 't', arguments: {} })
+      const mcpSignature = permissionSignature(mcp, { mode: 'ask', workspace: ws.root, isDemo: false, sessionGrants: new Set() })
+      expect(evaluatePermission(mcp, policy(ws.root, 'ask', [mcpSignature])).action).toBe('ask')
+    })
+
+    it('内置浏览器的被动动作在询问档直接放行，交互动作仍需审批', () => {
+      for (const name of ['browser_open', 'browser_read', 'browser_screenshot', 'browser_reload', 'browser_scroll', 'browser_close']) {
+        expect(evaluatePermission(target(name, 'exec', { url: 'https://example.com' }), policy(ws.root, 'ask')).action, name).toBe('allow')
+      }
+      for (const name of ['browser_click', 'browser_type']) {
+        const gate = evaluatePermission(target(name, 'exec', { selector: '#ok' }), policy(ws.root, 'ask'))
+        expect(gate.action, name).toBe('ask')
+        if (gate.action === 'ask') expect(gate.allowAlways).toBe(false)
+      }
+      expect(evaluatePermission(target('browser_open', 'exec', { url: 'https://example.com' }), policy(ws.root, 'read-only')).action).toBe('deny')
+    })
+
+    it('外部副作用命令在询问档触发审批，完全访问放行', () => {
+      for (const command of ['git push origin main', 'npm publish', 'scp a.txt user@host:/tmp/', 'curl -X POST https://example.com/api']) {
+        expect(detectExternalCommandSideEffect(command), command).not.toBeNull()
+        const gate = evaluatePermission(
+          target('run_command', 'exec', { command, cwd: '.' }),
+          policy(ws.root, 'ask')
+        )
+        expect(gate.action, command).toBe('ask')
+        if (gate.action === 'ask') expect(gate.summary).toContain('外部动作')
+      }
+      for (const command of ['git status', 'git push --dry-run', 'npm test', 'curl https://example.com']) {
+        expect(detectExternalCommandSideEffect(command), command).toBeNull()
+      }
+      expect(
+        evaluatePermission(target('run_command', 'exec', { command: 'git push origin main', cwd: '.' }), policy(ws.root, 'auto')).action
+      ).toBe('allow')
     })
   })
 
@@ -1329,7 +1483,7 @@ describe('permissions.test.ts', () => {
         expect(evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), ctx)).toEqual({ action: 'allow' })
       })
 
-      it('子代理与主代理走同一权限链：工作区写入自动执行，危险命令仍需审批', () => {
+      it('集群成员与主代理走同一权限链：工作区写入自动执行，危险命令仍需审批', () => {
         const ctx = policy(ws.root, 'ask')
         expect(evaluatePermission(target('write_file', 'write', { path: 'a.txt', content: 'x' }), ctx).action).toBe('allow')
         expect(evaluatePermission(target('run_command', 'exec', { command: 'shutdown /s' }), ctx).action).toBe('ask')
@@ -1482,7 +1636,7 @@ describe('permissions.test.ts', () => {
           policy(ws.root, 'ask')
         )
         expect(dangerRun.action).toBe('ask')
-        if (dangerRun.action === 'ask') expect(dangerRun.summary).toContain('工作区外')
+        if (dangerRun.action === 'ask') expect(dangerRun.summary).toContain('当前文件夹以外')
 
         const stop = evaluatePermission(
           target('terminal', 'exec', { action: 'stop', id: 'task_1' }),
@@ -1667,7 +1821,7 @@ describe('swarm.test.ts', () => {
    * 验证角色解析、并行派发、部分失败不伪装完成、task 单任务角色。
    */
 
-  function makeCtx(runSubagent: (request: SubagentRequest) => Promise<SubagentResult>): ToolContext {
+  function makeCtx(runSwarmMember: (request: SwarmMemberRequest) => Promise<SwarmMemberResult>): ToolContext {
     return {
       sessionId: 's',
       runId: 'r',
@@ -1693,7 +1847,7 @@ describe('swarm.test.ts', () => {
       addArtifact: () => undefined,
       askUser: async () => ({ value: 'A', label: 'A' }),
       progress: () => undefined,
-      runSubagent,
+      runSwarmMember,
       agents: BUILTIN_AGENT_ROLES
     }
   }
@@ -1702,7 +1856,7 @@ describe('swarm.test.ts', () => {
 
   describe('swarm', () => {
     it('并行派发不同角色，返回每个子任务摘要', async () => {
-      const seen: SubagentRequest[] = []
+      const seen: SwarmMemberRequest[] = []
       const ctx = makeCtx(async (request) => {
         seen.push(request)
         return { status: 'completed', summary: `${request.role?.name}:${request.description}`, steps: 2, usage }
@@ -1751,7 +1905,7 @@ describe('swarm.test.ts', () => {
     })
 
     it('把编排、实时状态和结果身份送到界面', async () => {
-      const seen: SubagentRequest[] = []
+      const seen: SwarmMemberRequest[] = []
       const progress: Array<{ note: string; swarmTask?: { index: number; status: string } }> = []
       const ctx = makeCtx(async (request) => {
         seen.push(request)
@@ -1785,7 +1939,7 @@ describe('swarm.test.ts', () => {
       )
     })
 
-    it('最多接受 8 个子任务，并让 8 个同时推进', async () => {
+    it('最多接受 10 个子任务，并让 10 个同时推进', async () => {
       let active = 0
       let peak = 0
       const ctx = makeCtx(async (request) => {
@@ -1795,53 +1949,42 @@ describe('swarm.test.ts', () => {
         active -= 1
         return { status: 'completed', summary: `${request.description} 完成`, steps: 1, usage }
       })
-      const tasks = Array.from({ length: 8 }, (_, index) => ({
+      const tasks = Array.from({ length: 10 }, (_, index) => ({
         title: `任务 ${index + 1}`,
         prompt: `处理第 ${index + 1} 部分`,
         agent: 'general'
       }))
-      const result = await swarmTool.execute({ goal: '八路并行', tasks }, ctx)
+      const result = await swarmTool.execute({ goal: '十路并行', tasks }, ctx)
       expect(result.ok).toBe(true)
-      expect(peak).toBe(8)
-      expect(result.meta).toMatchObject({ completed: 8, failed: 0 })
-      const nine = await swarmTool.execute(
-        { goal: '超出上限', tasks: [...tasks, { title: '任务 9', prompt: '多余任务' }] },
+      expect(peak).toBe(10)
+      expect(result.meta).toMatchObject({ completed: 10, failed: 0 })
+      const eleven = await swarmTool.execute(
+        { goal: '超出上限', tasks: [...tasks, { title: '任务 11', prompt: '多余任务' }] },
         ctx
       )
-      expect(nine.ok).toBe(false)
-      expect(nine.error).toContain('2–8')
+      expect(eleven.ok).toBe(false)
+      expect(eleven.error).toContain('1–10')
     })
 
-    it('未知角色与数量越界直接报错且不派发', async () => {
-      const run = vi.fn(async () => ({ status: 'completed' as const, summary: 'x', steps: 1, usage }))
+    it('未知成员类型直接报错；单个成员也可以派发', async () => {
+      const run = vi.fn(async (_request: SwarmMemberRequest) => ({ status: 'completed' as const, summary: 'x', steps: 1, usage }))
       const ctx = makeCtx(run)
       const unknown = await swarmTool.execute(
-        { goal: 'g', tasks: [{ title: 'A', prompt: 'a', agent: 'nope' }, { title: 'B', prompt: 'b' }] },
+        { goal: 'g', tasks: [{ title: 'A', prompt: 'a', agent: 'nope' }] },
         ctx
       )
       expect(unknown.ok).toBe(false)
       expect(unknown.error).toContain('nope')
-      const single = await swarmTool.execute({ goal: 'g', tasks: [{ title: 'A', prompt: 'a' }] }, ctx)
-      expect(single.ok).toBe(false)
       expect(run).not.toHaveBeenCalled()
-    })
 
-    it('task 工具把角色传给子代理，并在进度里标注角色', async () => {
-      const seen: SubagentRequest[] = []
-      const notes: string[] = []
-      const ctx = makeCtx(async (request) => {
-        seen.push(request)
-        return { status: 'completed', summary: 'ok', steps: 1, usage }
-      })
-      ctx.progress = (note) => notes.push(note)
-      const result = await taskTool.execute(
-        { description: '检查代码', prompt: '检查 src', agent: 'review' },
+      const single = await swarmTool.execute(
+        { goal: 'g', tasks: [{ title: 'A', prompt: 'a', agent: 'review' }] },
         ctx
       )
-      expect(result.ok).toBe(true)
-      expect(seen[0]?.role?.name).toBe('review')
-      expect(notes[0]).toContain('审查者')
-      expect(result.meta).toMatchObject({ role: 'review' })
+      expect(single.ok).toBe(true)
+      expect(run).toHaveBeenCalledTimes(1)
+      expect((run.mock.calls[0]?.[0] as SwarmMemberRequest).role?.name).toBe('review')
+      expect(single.meta).toMatchObject({ completed: 1, failed: 0 })
     })
   })
 })
@@ -2002,7 +2145,7 @@ describe('web-tools.test.ts', () => {
       addArtifact: () => undefined,
       askUser: async () => ({ value: 'A', label: 'A' }),
       progress: () => undefined,
-      runSubagent: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
+      runSwarmMember: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
       ...overrides
     }
   }

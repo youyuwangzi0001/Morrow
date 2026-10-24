@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Check, Copy, LayoutGrid, Loader2, Plus, RefreshCw, Server, ShieldCheck, Terminal, Trash2 } from 'lucide-react'
 import { Badge, Button, EmptyHint, ErrorNote, IconButton, Modal, Segmented, Switch, TextArea, TextInput } from '../../ui'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import {
   connectorsApi,
   CONNECTOR_CHANNELS,
@@ -28,6 +28,7 @@ import {
   type SecretStorageMode
 } from './connectors-api'
 import { ConnectorDirectory } from './ConnectorDirectory'
+import { errorText } from '../../lib'
 import './ConnectorsPanel.css'
 
 export interface ConnectorsPanelProps {
@@ -122,9 +123,7 @@ function transportIcon(transport: ConnectorTransport): React.JSX.Element {
   return transport === 'stdio' ? <Terminal size={14} strokeWidth={1.5} aria-hidden /> : <Server size={14} strokeWidth={1.5} aria-hidden />
 }
 
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
+
 
 function SecretRows({
   label,
@@ -1138,5 +1137,3 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
   )
 }
 
-/** 供 Lead 挂载/调试用：频道清单（与主进程一致） */
-export const CONNECTOR_FEATURE_CHANNELS = CONNECTOR_CHANNELS

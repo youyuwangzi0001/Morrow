@@ -32,7 +32,7 @@ import {
   isPreviewImageFileName,
   isVideoFileName
 } from '@shared/file-types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, IconButton, Modal, TextInput } from '../../ui'
 import {
   FileApiError,
@@ -44,6 +44,7 @@ import {
   toAbsolutePath,
   type FileEntry
 } from './files-client'
+import { errorText } from '../../lib'
 import './FileTree.css'
 
 /* ── 工具 ─────────────────────────────────────────────────────── */
@@ -88,10 +89,7 @@ function ancestorDirs(path: string): string[] {
   return dirs
 }
 
-function messageOf(err: unknown): string {
-  if (err instanceof FileApiError) return err.message
-  return err instanceof Error ? err.message : '操作失败，请重试。'
-}
+
 
 function validName(name: string): string | null {
   const value = name.trim()
@@ -183,7 +181,7 @@ export function FileTree(): React.JSX.Element {
         return true
       } catch (err) {
         if (generation !== treeGeneration.current) return false
-        const message = messageOf(err)
+        const message = errorText(err)
         if (dir === '') setTreeError(message)
         else notify('error', message)
         return false
@@ -521,7 +519,7 @@ export function FileTree(): React.JSX.Element {
         if (dialog.entryKind === 'file' && dialog.parent === parentOf(activePath ?? '')) setActivePath(target)
       }
     } catch (err) {
-      setDialogError(messageOf(err))
+      setDialogError(errorText(err))
     } finally {
       setDialogBusy(false)
     }
@@ -619,7 +617,7 @@ export function FileTree(): React.JSX.Element {
     }
     // 原生拖拽：Composer 现有 dataTransfer.files 处理逻辑可直接接收附件
     event.preventDefault()
-    void filesApi.startDrag(entry.path, workspace).catch((err) => notify('error', messageOf(err)))
+    void filesApi.startDrag(entry.path, workspace).catch((err) => notify('error', errorText(err)))
   }
 
   const copyAbsolutePath = async (entry: FileEntry): Promise<void> => {
@@ -638,7 +636,7 @@ export function FileTree(): React.JSX.Element {
     try {
       await filesApi.reveal(entry.path, workspace)
     } catch (err) {
-      notify('error', messageOf(err))
+      notify('error', errorText(err))
     }
   }
 

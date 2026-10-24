@@ -14,7 +14,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import type { HookEvent } from '../../shared/types'
-import { MAX_ENABLED_HOOKS_PER_EVENT } from '../../shared/hooks'
+import { MAX_ENABLED_HOOKS_PER_EVENT } from '../../shared/types'
 import { getSettingsStore } from './settings-store'
 import { log } from './logger'
 

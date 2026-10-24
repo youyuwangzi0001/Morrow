@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronLeft, Eye, EyeOff, Folder, FolderOpen, KeyRound, Sparkles } from 'lucide-react'
 import type { CompleteOnboardingInput } from '@shared/ipc'
 import type { ProviderTestResult, WorkspaceInfo } from '@shared/types'
-import { useAppStore } from '../../state/store'
-import brandMarkUrl from '../../assets/brand-mark.svg'
+import { useAppStore } from '../../store'
+import { BrandMark } from '../../components/BrandMark'
 import { Button, IconButton, Select } from '../../ui'
+import { errorText } from '../../lib'
 import './Onboarding.css'
 
 type StepId = 1 | 2 | 3
@@ -15,9 +16,7 @@ const STEPS: { id: StepId; label: string; caption: string }[] = [
   { id: 3, label: '选择文件夹', caption: '它可以在哪里动手' }
 ]
 
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
+
 
 export function Onboarding(): React.JSX.Element | null {
   const open = useAppStore((s) => s.onboardingOpen)
@@ -246,7 +245,7 @@ export function Onboarding(): React.JSX.Element | null {
       <header className="onb-top">
         <div className="onb-brand">
           <span className="onb-brand-mark" aria-hidden>
-            <img className="onb-brand-icon" src={brandMarkUrl} alt="" width={30} height={30} draggable={false} />
+            <BrandMark size={30} className="onb-brand-icon" />
             <span className="onb-brand-horizon" aria-hidden />
           </span>
           <span className="onb-brand-word serif">Morrow</span>
@@ -277,7 +276,8 @@ export function Onboarding(): React.JSX.Element | null {
 
         <section className="onb-body">
           {step === 1 ? (
-            <div className="onb-content">
+            <div className="onb-content">
+
               <h1 className="onb-title serif">你好，我是 Morrow。</h1>
               <p className="onb-lead">
                 住在你电脑里的 AI 工作伙伴。你说清想要的结果，它自己读文件、写代码、跑命令，
@@ -325,7 +325,8 @@ export function Onboarding(): React.JSX.Element | null {
           ) : null}
 
           {step === 2 ? (
-            <div className="onb-content">
+            <div className="onb-content">
+
               <h1 className="onb-title serif">把你的模型接进来。</h1>
               <p className="onb-lead">
                 用你自己的 API Key 调用模型。Key 只保存在这台电脑上，由系统加密，界面里再也看不到明文。
@@ -424,7 +425,8 @@ export function Onboarding(): React.JSX.Element | null {
           ) : null}
 
           {step === 3 ? (
-            <div className="onb-content">
+            <div className="onb-content">
+
               <h1 className="onb-title serif">选一个文件夹当文件夹。</h1>
               <p className="onb-lead">
                 Morrow 只会在这个文件夹里读写文件、运行命令。重要操作仍会先问你，随时可以换一个文件夹。

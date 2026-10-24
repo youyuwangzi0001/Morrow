@@ -142,17 +142,17 @@ html.island-root[data-theme='light'] {
 
 .island-title {
   min-width: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.008em;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-ui);
   color: var(--text);
 }
 
 .island-detail {
   margin: 0;
   min-width: 0;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
   color: var(--text-2);
 }
 
@@ -420,8 +420,8 @@ html.island-root[data-theme='light'] {
 
 .island-panel-name {
   font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-title-sm);
+  letter-spacing: var(--ls-ui);
   color: var(--text);
 }
 
@@ -429,10 +429,10 @@ html.island-root[data-theme='light'] {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
-  line-height: 1;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-none);
   color: var(--text-2);
-  letter-spacing: 0.03em;
+  letter-spacing: var(--ls-label);
 }
 
 .island-status-chip i {
@@ -446,7 +446,7 @@ html.island-root[data-theme='light'] {
 .island-status-chip em {
   font-style: normal;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
   margin-left: 2px;
 }
@@ -507,31 +507,31 @@ html.island-root[data-theme='light'] {
 
 .island-eyebrow {
   margin: 0 0 3px;
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-display);
   text-transform: uppercase;
   color: var(--text-3);
 }
 
 .island-task-title {
   margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-semibold);
   color: var(--text);
 }
 
 .island-count-inline {
   margin-left: 6px;
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
   color: var(--gold);
   vertical-align: 0.02em;
 }
 
 .island-task-detail {
   margin: 5px 0 0;
-  font-size: 11.5px;
-  line-height: 1.55;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
   color: var(--text-2);
   word-break: break-word;
 }
@@ -579,8 +579,8 @@ html.island-root[data-theme='light'] {
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
   color: var(--text-2);
 }
 
@@ -629,7 +629,7 @@ html.island-root[data-theme='light'] {
   align-items: center;
   gap: 6px;
   margin: 8px 0 0;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   color: var(--text-3);
 }
 
@@ -665,8 +665,8 @@ html.island-root[data-theme='light'] {
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-copy);
   caret-color: var(--gold-bright);
   user-select: text;
   -webkit-app-region: no-drag;
@@ -685,9 +685,9 @@ html.island-root[data-theme='light'] {
 }
 
 .island-compose-hint {
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-label);
 }
 
 .island-send {
@@ -721,7 +721,7 @@ html.island-root[data-theme='light'] {
 
 .island-error {
   margin: 5px 1px 0;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   color: var(--rust);
 }
 
@@ -750,7 +750,7 @@ html.island-root[data-theme='light'] {
   background: transparent;
   color: var(--text-2);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) linear, color var(--dur-fast) linear;
@@ -784,7 +784,7 @@ html.island-root[data-theme='light'] {
 
 .island-recent-time {
   flex: 0 0 auto;
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
@@ -794,8 +794,8 @@ html.island-root[data-theme='light'] {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9.5px;
-  line-height: 1.4;
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-ui);
   color: var(--text-3);
 }
 
@@ -837,7 +837,7 @@ html.island-root[data-theme='light'] {
   background: transparent;
   color: var(--text-2);
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   cursor: pointer;
   transition: color var(--dur-fast) linear, background var(--dur-fast) linear;
 }

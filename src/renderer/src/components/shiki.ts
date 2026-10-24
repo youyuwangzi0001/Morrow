@@ -102,14 +102,3 @@ export async function highlightToHtml(code: string, language?: string | null): P
   }
 }
 
-/** 预热 highlighter（空闲时调用，减少首次代码块的等待） */
-export function warmUpHighlighter(): void {
-  const schedule = (): void => {
-    void getHighlighter().catch(() => undefined)
-  }
-  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-    window.requestIdleCallback(schedule, { timeout: 2_000 })
-  } else {
-    setTimeout(schedule, 400)
-  }
-}

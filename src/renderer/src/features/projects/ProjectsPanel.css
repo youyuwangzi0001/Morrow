@@ -33,7 +33,7 @@
 
 .pp-side-head .segmented-item {
   padding: 0 8px;
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-side-head > .btn {
@@ -50,7 +50,7 @@
   gap: 8px;
   padding: 14px 2px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-side-note {
@@ -59,8 +59,8 @@
   border: 1px dashed var(--line);
   border-radius: var(--r-xs);
   color: var(--text-3);
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
 }
 
 .pp-project-list {
@@ -106,8 +106,8 @@
   align-items: center;
   gap: 5px;
   width: 100%;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
 }
 
 .pp-pin {
@@ -119,7 +119,7 @@
   display: block;
   width: 100%;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -164,22 +164,22 @@
 .pp-form-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: 500;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-medium);
   color: var(--text);
-  letter-spacing: 0.01em;
+  letter-spacing: var(--ls-ui);
 }
 
 .pp-form-sub {
   margin: 3px 0 0;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .pp-form-updated {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   white-space: nowrap;
 }
 
@@ -194,7 +194,7 @@
   gap: 6px;
   margin: 0;
   color: var(--patina);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-fields {
@@ -229,14 +229,14 @@
   align-items: center;
   gap: 6px;
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-knowledge-count {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 9px;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-label);
 }
 
 .pp-knowledge-list {
@@ -263,19 +263,19 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text-2);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .pp-knowledge-size {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
 }
 
 .pp-knowledge-error {
   flex: 0 1 auto;
   color: var(--rust);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .pp-knowledge-item.is-invalid .pp-knowledge-path {
@@ -305,14 +305,14 @@
   align-items: center;
   gap: 6px;
   color: var(--gold-bright);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   margin-bottom: 6px;
 }
 
 .pp-preview-head .mono {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
 }
 
 .pp-preview-warn {
@@ -321,7 +321,7 @@
   gap: 5px;
   margin: 0 0 6px;
   color: var(--rust);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .pp-preview-text {
@@ -334,8 +334,8 @@
   border: 1px solid var(--line);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-readable);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -362,7 +362,7 @@
   border-radius: var(--r-sm);
   background: var(--rust-dim);
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-confirm-actions {
@@ -384,7 +384,7 @@
   align-items: center;
   gap: 5px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .pp-foot > .btn:last-child {
@@ -404,8 +404,8 @@
 
 .pp-project-stats {
   margin-top: 1px;
-  font-size: 8.5px;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-label);
   color: var(--text-3);
   opacity: 0.72;
 }
@@ -413,46 +413,41 @@
 .pp-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--tab-gap);
+  height: 34px;
   flex: 0 0 auto;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
 }
 
 .pp-tabs button {
   position: relative;
-  height: 30px;
+  height: var(--tab-height);
   padding: 0 10px;
-  border: 0;
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
   background: transparent;
-  color: var(--text-3);
+  color: var(--tab-color);
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--tab-font-size);
   cursor: pointer;
-  transition: color var(--dur-fast) linear;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 
 .pp-tabs button:hover {
-  color: var(--text-2);
+  color: var(--tab-hover-color);
+  background: var(--tab-hover-bg);
 }
 
 .pp-tabs button.is-active {
-  color: var(--text);
-}
-
-.pp-tabs button.is-active::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 1.5px;
-  background: var(--gold);
-  box-shadow: 0 0 8px rgba(200, 174, 125, 0.55);
+  border-color: var(--tab-active-border);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-color);
 }
 
 .pp-tabs-hint {
   margin-left: auto;
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
   opacity: 0.75;
 }
@@ -483,7 +478,7 @@
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 
@@ -512,18 +507,18 @@
 
 .pp-home-title {
   margin: 0;
-  font-size: 26px;
-  font-weight: 500;
-  line-height: 1.22;
-  letter-spacing: 0.005em;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-title);
+  letter-spacing: var(--ls-ui);
   color: var(--text);
 }
 
 .pp-home-desc {
   margin: 0;
   max-width: 620px;
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
   color: var(--text-2);
 }
 
@@ -532,7 +527,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 14px;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
 }
 
@@ -557,7 +552,7 @@
 
 .pp-home-actions .btn {
   min-height: 29px;
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .pp-home-warn {
@@ -570,8 +565,8 @@
   border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--rust) 7%, transparent);
   color: var(--rust);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
 }
 
 .pp-home-warn svg {
@@ -598,8 +593,8 @@
 
 .pp-home-start-label {
   margin: 0;
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
   color: var(--text-3);
 }
 
@@ -607,7 +602,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 
@@ -641,8 +636,8 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12.5px;
-  line-height: 1.6;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-readable);
   caret-color: var(--gold-bright);
 }
 
@@ -659,7 +654,7 @@
 }
 
 .pp-home-composer-foot .mono {
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
@@ -698,7 +693,7 @@
 
 .pp-home-error {
   margin: 6px 2px 0;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   color: var(--rust);
 }
 
@@ -725,16 +720,16 @@
 
 .pp-home-card-head h4 {
   margin: 0;
-  font-size: 10px;
-  font-weight: 550;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-mid);
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--text-2);
 }
 
 .pp-home-card-head h4 span {
   margin-left: 3px;
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--gold);
 }
 
@@ -744,7 +739,7 @@
   background: none;
   padding: 0;
   font-family: var(--font-ui);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--gold);
   opacity: 0.8;
   cursor: pointer;
@@ -760,8 +755,8 @@
   margin: 0;
   max-height: 90px;
   overflow-y: auto;
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
   color: var(--text-2);
   white-space: pre-wrap;
   scrollbar-width: thin;
@@ -769,8 +764,8 @@
 
 .pp-home-empty {
   margin: 0;
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
   color: var(--text-3);
 }
 
@@ -791,7 +786,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-2);
 }
 
@@ -812,12 +807,12 @@
 .pp-home-file-size {
   margin-left: auto;
   flex: 0 0 auto;
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
 .pp-home-knowledge-more {
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
@@ -836,22 +831,22 @@
 
 .pp-home-recent-head h4 {
   margin: 0;
-  font-size: 10px;
-  font-weight: 550;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-mid);
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--text-2);
 }
 
 .pp-home-recent-head h4 span {
   margin-left: 3px;
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--gold);
 }
 
 .pp-home-recent-hint {
   margin-left: auto;
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
@@ -924,18 +919,18 @@
 }
 
 .pp-home-session-title {
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   color: var(--text);
 }
 
 .pp-home-session-preview {
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 
 .pp-home-session-time {
   flex: 0 0 auto;
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 

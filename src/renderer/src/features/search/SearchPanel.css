@@ -46,7 +46,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 15px;
+  font-size: var(--fs-body-lg);
 }
 
 .search-input::placeholder {
@@ -100,8 +100,8 @@
   border-radius: var(--r-full);
   background: transparent;
   color: var(--text-3);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-xs-plus);
+  letter-spacing: var(--ls-label);
   transition:
     border-color var(--dur-fast) ease,
     background var(--dur-fast) ease,
@@ -139,14 +139,14 @@
   margin: 0 0 6px;
   color: var(--text);
   font-size: var(--fs-ui);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-label);
 }
 
 .search-empty-hint {
   margin: 0;
   font-size: var(--fs-micro);
   color: var(--text-3);
-  line-height: 1.6;
+  line-height: var(--lh-readable);
 }
 
 .search-error .search-empty-title {
@@ -164,8 +164,8 @@
   margin: 8px 6px 4px;
   color: var(--text-3);
   font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
 }
 
@@ -173,7 +173,7 @@
   margin-left: auto;
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
 }
 
 .search-group-items {
@@ -223,7 +223,7 @@
   margin-left: auto;
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -233,8 +233,8 @@
 .search-hit-snippet {
   margin-top: 3px;
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--fs-base);
+  line-height: var(--lh-copy);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -257,7 +257,7 @@
   border-top: 1px solid var(--line);
   background: var(--surface);
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .search-hints {
@@ -274,7 +274,7 @@
   background: var(--surface-inset);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .search-meta {

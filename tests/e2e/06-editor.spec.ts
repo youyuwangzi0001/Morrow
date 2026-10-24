@@ -3,7 +3,7 @@
  * 每个原 spec 整体包在独立 test.describe 中，hooks 与局部变量互不污染。
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { launchMorrow, root, screensDir, screenshotPath } from './launch'
@@ -53,6 +53,11 @@ async function openFile(page: Awaited<ReturnType<typeof launchMorrow>>['page'], 
   await page.evaluate((path: string) => {
     window.dispatchEvent(new CustomEvent('morrow:open-file', { detail: { path } }))
   }, relativePath)
+  // 切换标签时编辑器本身已经可见：必须等目标文件成为活动标签，避免读到上一个文件的内容
+  await page
+    .locator('.canvas-doc-tab.is-active')
+    .filter({ hasText: basename(relativePath) })
+    .waitFor({ state: 'visible', timeout: TIMEOUT })
   await page.locator('.canvas-root .cm-editor').first().waitFor({ state: 'visible', timeout: TIMEOUT })
 }
 
@@ -86,6 +91,12 @@ test.describe('R10 画布编辑器与版本历史', () => {
         Array.from(document.querySelectorAll('.cm-line span')).slice(0, 20).map((el) => getComputedStyle(el).color)
       )
       expect(new Set(tokenColors).size).toBeGreaterThan(1)
+      const editorFont = await page.locator('.cm-scroller').evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { weight: style.fontWeight, family: style.fontFamily }
+      })
+      expect(editorFont.weight).toBe('400')
+      expect(editorFont.family).toContain('JetBrains Mono')
       await page.screenshot({ path: screenshotPath('r10-editor-open.png') })
       await setThemeViaStore(page, 'light')
       await page.waitForTimeout(350)
@@ -918,14 +929,22 @@ test('自定义命令展开参数，钩子可阻断并持久化', async () => {
 
     await waitUntil(async () => (await readStore(page)).run === null, 60_000, '自定义命令运行结束')
     await expect(page.locator('.message-user')).toContainText('请审查 src/a.ts，重点 性能。')
-    expect(mock.requests[0]?.lastUserMessageText).toBe('请审查 src/a.ts，重点 性能。')
+    // 自动命名等后台请求可能先到；只检查真正带用户消息的对话请求
+    const commandRequests = mock.requests.filter(
+      (request: { lastUserMessageText?: string }) => typeof request.lastUserMessageText === 'string'
+    )
+    expect(commandRequests[0]?.lastUserMessageText).toBe('请审查 src/a.ts，重点 性能。')
 
     // 未知命令给出提示而不是把 /nope 当普通消息发给模型
     await input.fill('/nope')
     await page.keyboard.press('Enter')
     await expect(page.getByText('没有名为 /nope 的命令')).toBeVisible()
     await expect(input).toHaveValue('/nope')
-    expect(mock.requests).toHaveLength(1)
+    expect(
+      mock.requests.filter(
+        (request: { lastUserMessageText?: string }) => typeof request.lastUserMessageText === 'string'
+      )
+    ).toHaveLength(1)
     await input.fill('')
 
     // 与内置命令重名时，菜单只保留内置项，不出现重复条目
@@ -943,9 +962,11 @@ test('自定义命令展开参数，钩子可阻断并持久化', async () => {
     await expect(page.locator('.st-command-name').filter({ hasText: '/review' })).toBeVisible()
     await expect(page.locator('.st-command-list li').filter({ hasText: '/swarm' })).toContainText('重名')
     await expect(page.getByText(/个命令与内置命令重名/)).toBeVisible()
-    await expect(page.getByText('小助手角色')).toBeVisible()
-    await expect(page.getByText('探索者', { exact: true })).toBeVisible()
-    await expect(page.getByText('审查者', { exact: true })).toBeVisible()
+    await expect(page.getByText('集群成员类型')).toBeVisible()
+    await page.getByRole('button', { name: '查看全部成员类型' }).click()
+    await expect(page.getByText('代码侦察', { exact: true })).toBeVisible()
+    await expect(page.getByText('代码审查', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '收起', exact: true }).click()
 
     // 设置面板只保留右侧内容区一条滚动条，模态正文不再套一层滚动
     const settingsOverflow = await page

@@ -34,7 +34,7 @@ import workspaceGitBody from '@builtin-skills/workspace-git.md?raw'
 import mcpIntegrationBody from '@builtin-skills/mcp-integration.md?raw'
 import skillAuthorBody from '@builtin-skills/skill-author.md?raw'
 
-export const BUILTIN_SKILLS_VERSION = 5
+export const BUILTIN_SKILLS_VERSION = 9
 
 /**
  * 已并入其它技能的内置技能：升级时删除未修改的旧副本，用户改过的保留为自有技能。
@@ -77,7 +77,7 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   ),
   skill(
     'parallel-work',
-    '拆分并派发独立子任务给 task / swarm 集群，合并结果并做集成验证。当任务可拆成互不依赖的探索、审查、测试或文档工作，或用户要求并行/集群时使用；共享文件或强顺序任务不要并行。',
+    '用 swarm 拆分并派发 1–10 个独立任务给集群成员，成员与主代理拥有相同的工作区权限；合并结果并做集成验证。当任务可拆成互不依赖的实现、审查、测试或文档工作，或用户要求并行/集群时使用；共享文件或强顺序任务不要并行。',
     parallelWorkBody
   ),
   skill(

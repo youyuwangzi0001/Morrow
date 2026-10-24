@@ -16,11 +16,12 @@ import {
   Trash2
 } from 'lucide-react'
 import type { ChatMessage, ContentBlock, MessageAttachment, ToolUseBlock } from '@shared/types'
-import { formatBytes } from '@shared/format'
+import { formatBytes } from '@shared/usage'
 import { stripToolProtocol } from '@shared/tool-protocol'
 import { messagePlainText, userMessageDisplayText } from '@shared/message'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Markdown } from '../../components/Markdown'
+import { BrandMark } from '../../components/BrandMark'
 import { ActivitySpine } from '../activity/ToolRow'
 import { ThinkingBlock } from './ThinkingBlock'
 import { GoalContinuation, parseGoalContinuation } from './GoalContinuation'
@@ -71,7 +72,15 @@ function CopyButton({ text, label }: { text: string; label: string }): React.JSX
 
 /* ── 流式 Markdown（节流渲染，避免每个 delta 都重排整段） ─────── */
 
-function StreamingMarkdown({ text, streaming }: { text: string; streaming: boolean }): React.JSX.Element {
+function StreamingMarkdown({
+  text,
+  streaming,
+  lead
+}: {
+  text: string
+  streaming: boolean
+  lead?: React.ReactNode
+}): React.JSX.Element {
   const [visible, setVisible] = useState(text)
   const latest = useRef(text)
   latest.current = text
@@ -100,7 +109,8 @@ function StreamingMarkdown({ text, streaming }: { text: string; streaming: boole
   )
 
   return (
-    <div className={['stream-text', streaming ? 'is-streaming' : ''].filter(Boolean).join(' ')}>
+    <div className={['stream-text', streaming ? 'is-streaming' : '', lead ? 'has-lead' : ''].filter(Boolean).join(' ')}>
+      {lead}
       <Markdown text={visible} streaming={streaming} />
     </div>
   )
@@ -117,11 +127,22 @@ function InlineError({ block }: { block: Extract<ContentBlock, { type: 'error' }
   )
 }
 
-function AssistantContent({ message, streaming }: { message: ChatMessage; streaming: boolean }): React.JSX.Element {
+function AssistantContent({
+  message,
+  streaming,
+  showBrand
+}: {
+  message: ChatMessage
+  streaming: boolean
+  showBrand: boolean
+}): React.JSX.Element {
   const nodes: React.ReactNode[] = []
   let tools: ToolUseBlock[] = []
 
   const lastTextIndex = message.content.reduce((last, block, index) => (block.type === 'text' ? index : last), -1)
+  const firstTextIndex = message.content.findIndex(
+    (block) => block.type === 'text' && stripToolProtocol(block.text).trim().length > 0
+  )
 
   const flushTools = (): void => {
     if (tools.length === 0) return
@@ -142,6 +163,7 @@ function AssistantContent({ message, streaming }: { message: ChatMessage; stream
           key={`text-${index}`}
           text={stripToolProtocol(block.text)}
           streaming={streaming && isLastText}
+          lead={showBrand && index === firstTextIndex ? <BrandMark size={18} className="message-agent-mark" /> : null}
         />
       )
     } else if (block.type === 'thinking') {
@@ -182,12 +204,16 @@ function CompactionNotice({ message }: { message: ChatMessage }): React.JSX.Elem
     .join('\n')
     .trim()
   const summary = raw.replace(/^\[历史对话摘要[^\]]*\]\s*/, '').trim()
+  const savedMatch = /已压缩\s*([\d,]+)\s*tokens/.exec(raw)
+  const savedTokens = savedMatch ? Number(savedMatch[1].replace(/,/g, '')) : 0
+  const savedLabel = savedTokens >= 1000 ? `${(savedTokens / 1000).toFixed(1)}k` : String(savedTokens)
   const bodyId = `compaction-${message.id}`
   const head = (
     <>
       <Archive size={12} strokeWidth={1.5} aria-hidden />
       <span>上下文已压缩</span>
-      {summary ? <span className="compaction-hint">{open ? '收起摘要' : '查看摘要'}</span> : null}
+      {savedTokens > 0 ? <span className="compaction-saved mono">节省 {savedLabel} tokens</span> : null}
+      <span className="compaction-hint">任务继续{summary ? (open ? ' · 收起摘要' : ' · 查看摘要') : ''}</span>
       {summary ? <ChevronDown size={12} strokeWidth={1.6} className={['compaction-chevron', open ? 'is-open' : ''].filter(Boolean).join(' ')} aria-hidden /> : null}
     </>
   )
@@ -228,6 +254,8 @@ export interface MessageItemProps {
   isTurnFinal?: boolean
   /** 这一轮的用户消息 id：轮末回答用它显示「回退这一轮」 */
   rewindTargetUserMessageId?: string | null
+  /** 用户真实发起的一轮：供右侧轮次导航定位 */
+  turnIndex?: number
   /** 折叠组内的步骤：收紧步骤之间的间距 */
   compact?: boolean
 }
@@ -263,6 +291,7 @@ export const MessageItem = memo(function MessageItem({
   isLastAssistant = false,
   isTurnFinal = false,
   rewindTargetUserMessageId = null,
+  turnIndex,
   compact = false
 }: MessageItemProps): React.JSX.Element {
   const time = formatTime(message.createdAt)
@@ -334,7 +363,7 @@ export const MessageItem = memo(function MessageItem({
       (attachment) => attachment.kind !== 'image' || !attachment.name || !sentImageNames.has(attachment.name)
     )
     return (
-      <article className="message message-user" data-message-id={message.id}>
+      <article className="message message-user" data-message-id={message.id} data-turn-index={turnIndex}>
         <div className={['message-user-bubble', 'selectable', editing ? 'is-editing' : ''].filter(Boolean).join(' ')}>
           {editing ? (
             <textarea
@@ -460,7 +489,7 @@ export const MessageItem = memo(function MessageItem({
       className={['message', 'message-assistant', streaming ? 'is-streaming' : '', compact ? 'is-compact' : ''].filter(Boolean).join(' ')}
       data-message-id={message.id}
     >
-      <AssistantContent message={message} streaming={streaming} />
+      <AssistantContent message={message} streaming={streaming} showBrand={isTurnFinal} />
       {message.interrupted ? (
         <p className="message-interrupted">
           <Square size={10} strokeWidth={1.8} aria-hidden />

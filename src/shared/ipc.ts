@@ -35,6 +35,7 @@ export const IPC = {
   openExternal: 'app:open-external',
   openDataDir: 'app:open-data-dir',
   openLogs: 'app:open-logs',
+  appTheme: 'app:theme',
   changeDataDir: 'app:change-data-dir',
   resetDataDir: 'app:reset-data-dir',
 
@@ -125,6 +126,7 @@ export const IPC = {
   islandHide: 'island:hide',
   islandOpenMain: 'island:open-main',
   islandQuickSend: 'island:quick-send',
+  islandSyncSession: 'island:sync-session',
   fileRestoreSnapshot: 'file:restore-snapshot'
 } as const
 
@@ -256,6 +258,8 @@ export interface MorrowApi {
     openMain(input?: IslandOpenMainInput): Promise<Result<void>>
     /** 把一句话交给主窗口发送；主窗口会显示并开始运行 */
     quickSend(input: IslandQuickSendInput): Promise<Result<void>>
+    /** 主窗口切到哪个会话，灵动岛就跟随哪个会话（含计划、进度与运行耗时） */
+    syncSession(sessionId: string | null): Promise<Result<void>>
     onState(listener: (snapshot: import('./types').IslandSnapshot) => void): () => void
     /** 仅主窗口使用：接收灵动岛转来的消息 */
     onQuickSend(listener: (input: IslandQuickSendInput) => void): () => void
@@ -420,6 +424,8 @@ export interface MorrowApi {
   }
   app: {
     openExternal(url: string): Promise<Result<void>>
+    /** 主题变化时同步窗口/托盘图标（深色/浅色两套品牌资产） */
+    setTheme(theme: 'dark' | 'light'): Promise<Result<void>>
     openDataDir(): Promise<Result<void>>
     openLogs(): Promise<Result<void>>
     /** 选择并应用新的数据目录；迁移现有数据后重启 */

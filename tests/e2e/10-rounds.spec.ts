@@ -536,6 +536,11 @@ test('画布成品页签支持关闭和拖动排序', async () => {
 
     const titles = page.locator('.canvas-tab-title')
     await expect(titles).toHaveCount(3)
+    // 画布页签与终端/浏览器同款：24px 高、5px 微圆角、金色选中边框
+    const activeCanvasTab = page.locator('.canvas-doc-tab.is-active').first()
+    await expect(activeCanvasTab).toHaveCSS('height', '24px')
+    await expect(activeCanvasTab).toHaveCSS('border-radius', '5px')
+    await expect(activeCanvasTab).toHaveCSS('border-top-color', 'rgba(200, 174, 125, 0.32)')
     const tabA = page.locator('.canvas-doc-tab').filter({ hasText: '成品 A' })
     await tabA.locator('.canvas-tab-close').click()
     await expect(page.locator('.canvas-doc-tab').filter({ hasText: '成品 A' })).toHaveCount(0)
@@ -1096,6 +1101,48 @@ test('顶栏不显示 Morrow 字样、首页文案不换行、输入框可拖高
     expect(overflow.scroll, '首页说明不应产生第二行').toBeLessThanOrEqual(overflow.client + 1)
     await page.waitForTimeout(450)
     await page.screenshot({ path: screenshotPath('r16-titlebar-title.png') })
+  } finally {
+    await morrow.close()
+  }
+})
+
+test('输入框双击不再折叠，高度固定为 80px 到窗口 1/3', async () => {
+  const morrow = await launchMorrow({ name: 'composer-height-limits', waitForSelector: '.sidebar' })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const input = page.locator('.composer-input')
+    const handle = page.locator('.composer-resize')
+    await expect(input).toBeVisible()
+    const inputHeight = (): Promise<number> => input.evaluate((el) => el.getBoundingClientRect().height)
+
+    expect(await inputHeight()).toBeGreaterThanOrEqual(80)
+    await handle.dblclick()
+    await page.waitForTimeout(200)
+    expect(await inputHeight(), '双击不应折叠输入框').toBeGreaterThanOrEqual(80)
+
+    const grip = await handle.boundingBox()
+    expect(grip).not.toBeNull()
+    const x = (grip?.x ?? 0) + (grip?.width ?? 0) / 2
+    await page.mouse.move(x, (grip?.y ?? 0) + 5)
+    await page.mouse.down()
+    await page.mouse.move(x, 10, { steps: 10 })
+    await page.mouse.up()
+    const maxAllowed = await page.evaluate(() => Math.floor(window.innerHeight / 3))
+    expect(await inputHeight()).toBeLessThanOrEqual(maxAllowed + 1)
+    expect(await inputHeight()).toBeGreaterThan(150)
+
+    const grip2 = await handle.boundingBox()
+    expect(grip2).not.toBeNull()
+    const x2 = (grip2?.x ?? 0) + (grip2?.width ?? 0) / 2
+    await page.mouse.move(x2, (grip2?.y ?? 0) + 5)
+    await page.mouse.down()
+    await page.mouse.move(x2, 1200, { steps: 10 })
+    await page.mouse.up()
+    expect(await inputHeight()).toBeGreaterThanOrEqual(79)
+    const settings = await page.evaluate(() => window.morrow.settings.get())
+    if (settings.ok) expect(settings.data.composerHeight).toBeGreaterThanOrEqual(80)
   } finally {
     await morrow.close()
   }

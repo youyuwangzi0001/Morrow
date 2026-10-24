@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import type { DataDirSource } from '../../shared/types'
 
@@ -232,4 +232,13 @@ export function cleanTargetDataDir(dir: string): void {
   for (const entry of readdirSync(target)) {
     rmSync(join(target, entry), { recursive: true, force: true })
   }
+}
+
+/** 路径是否位于根目录内；Windows 下大小写不敏感，比较解析后的绝对路径。 */
+export function isPathInside(root: string, target: string): boolean {
+  const fold = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
+  const base = fold(resolve(root))
+  const candidate = fold(resolve(target))
+  const prefix = base.endsWith(sep) ? base : `${base}${sep}`
+  return candidate === base || candidate.startsWith(prefix)
 }

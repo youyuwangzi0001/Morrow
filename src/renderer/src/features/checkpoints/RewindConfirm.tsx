@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { RewindPreview, TurnCheckpoint } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Modal } from '../../ui'
 import './RewindConfirm.css'
 

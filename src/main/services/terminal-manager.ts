@@ -719,6 +719,3 @@ export function getTerminalManager(): TerminalManager {
   return instance
 }
 
-export function terminalCwdExists(path: string): boolean {
-  return existsSync(path) && isDirectory(path)
-}

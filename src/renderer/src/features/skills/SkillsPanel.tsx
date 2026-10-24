@@ -26,10 +26,12 @@ import {
   Trash2,
   Upload
 } from 'lucide-react'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
+import { formatBytes } from '@shared/usage'
 import { Badge, Button, ErrorNote, IconButton, Modal, Segmented, Spinner } from '../../ui'
 import { skillsApi } from './skills-client'
 import type { SkillDetail, SkillFilter, SkillsSnapshot, SkillSort, SkillView } from './skills-client'
+import { errorText } from '../../lib'
 import './SkillsPanel.css'
 
 export interface SkillsPanelProps {
@@ -48,17 +50,7 @@ const SORT_OPTIONS: Array<{ value: SkillSort; label: string }> = [
   { value: 'updated', label: '按更新时间' }
 ]
 
-function errorText(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message
-  return '操作失败，请重试。'
-}
 
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
-}
 
 function formatTime(timestamp: number | null): string {
   if (!timestamp) return '未知'
@@ -296,7 +288,13 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
       setSnapshot(result.snapshot)
       setSelectedId(result.installed.id)
       setInstallOpen(false)
-      notify('success', `已安装技能「${result.installed.name}」`)
+      const skipped = result.skipped?.length ?? 0
+      notify(
+        'success',
+        skipped > 0
+          ? `已安装技能「${result.installed.name}」，跳过 ${skipped} 个脚本/不支持文件（不会执行）`
+          : `已安装技能「${result.installed.name}」`
+      )
     } catch (err) {
       setInstallError(errorText(err))
     } finally {
@@ -685,8 +683,8 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
 
           {installError ? <ErrorNote title={installError} /> : null}
           <p className="skills-install-hint">
-            安装要求：技能根目录必须有 <code>SKILL.md</code>；只允许 Markdown 与资源文件（.txt / .json / .yaml /
-            .csv / 图片），单个文件 ≤5MB、总计 ≤20MB、文件数 ≤300；已存在同名技能时会拒绝安装（可先删除）。
+            安装要求：技能根目录必须有 <code>SKILL.md</code>；单个文件 ≤5MB、总计 ≤20MB、文件数 ≤300。
+            脚本与可执行文件会被跳过并在安装后提示，Morrow 不会执行它们；已存在同名技能时会拒绝安装（可先删除）。
           </p>
         </div>
       </Modal>

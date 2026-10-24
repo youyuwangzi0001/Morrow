@@ -1,5 +1,5 @@
 /**
- * 元信息类工具：todo_write / ask_user / remember / task / open_artifact。
+ * 元信息类工具：todo_write / ask_user / remember / swarm / open_artifact。
  * 它们不直接操作文件系统（remember 除外），而是通过 ToolContext 回调影响会话状态。
  */
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
@@ -181,21 +181,43 @@ export const rememberTool: ToolImpl = {
   definition: {
     name: 'remember',
     description:
-      '把关于这个项目的重要信息记到 .morrow/MEMORY.md（例如用户的偏好、业务口径、约定）。' +
-      '下次对话会自动带上这些记忆。只记长期有用的信息，不要记一次性的临时内容。',
+      '把长期有用的信息写入记忆中心：用户稳定偏好、业务口径或项目约定。' +
+      'scope=project 跟随当前文件夹，scope=global 跨项目生效。只记长期有用的信息，不要记一次性内容、文件路径或临时状态。',
     parameters: {
       type: 'object',
       properties: {
-        text: { type: 'string', description: '要记住的信息（一句话，具体、可复用）' }
+        text: { type: 'string', description: '要记住的信息（一句话，具体、可复用）' },
+        scope: { type: 'string', enum: ['project', 'global'], description: 'project（默认）或 global' },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选标签，最多 8 个'
+        }
       },
       required: ['text']
     },
     category: 'meta',
     risk: 'low',
-    titleFor: () => '记录项目记忆'
+    titleFor: () => '记录记忆'
   },
   async execute(input, ctx): Promise<ToolResult> {
     const text = getString(input, 'text', { required: true, maxLength: 4000 })
+    const scope = input.scope === 'global' ? 'global' : 'project'
+    const tags = Array.isArray(input.tags)
+      ? input.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 8)
+      : []
+    if (ctx.remember) {
+      const saved = await ctx.remember({ text, scope, tags })
+      const label = saved.scope === 'global' ? '全局记忆' : '项目记忆'
+      return okResult(`已记入${label}：${truncateText(saved.text, 120)}\n可在「设置 → 功能与工具 → 记忆」中查看。`, {
+        memoryScope: saved.scope,
+        memoryText: saved.text
+      })
+    }
+    if (scope === 'global') {
+      return errResult('当前没有连接记忆中心，不能写入全局记忆。', '请在设置 → 功能与工具 → 记忆中手动添加。')
+    }
+    // 兼容无主进程回调的内核单测/旧集成：仍写项目 MEMORY.md，记忆中心会迁移。
     const workspace = getWorkspaceOrThrow(ctx.workspace)
     const memoryDir = join(workspace, '.morrow')
     const memoryPath = join(memoryDir, 'MEMORY.md')
@@ -215,114 +237,39 @@ export const rememberTool: ToolImpl = {
   }
 }
 
-/* ── task（子代理） ───────────────────────────────────────────── */
+/* ── swarm（集群成员并行协作） ────────────────────────────────── */
 
-export const taskTool: ToolImpl = {
-  definition: {
-    name: 'task',
-    description:
-      '把一个独立的小任务交给子代理去完成。可用 agent 指定角色（explore/plan/review/test/docs/general，' +
-      '见系统提示中的「可用子代理角色」）；角色只限制工具与提示词，权限与主代理一致（写文件/命令/MCP 仍逐次审批）。' +
-      '同一轮多条 task 调用会真正并行（最多 8 个同时推进）。子代理不能再创建子代理，也不能更新父目标或修改主任务计划。' +
-      '子代理看不到当前对话，必须在 prompt 里写清背景、目标、输入/输出路径和期望输出。返回子代理的结论摘要与真实产物路径。' +
-      '子代理失败、被取消或耗尽步数时本工具会返回错误（ok=false），不会把中间文字伪装成完成。',
-    parameters: {
-      type: 'object',
-      properties: {
-        description: { type: 'string', description: '一句话说明这个子任务（展示用）' },
-        prompt: { type: 'string', description: '完整任务说明：背景、要做什么、看哪些文件、输出什么' },
-        context: { type: 'string', description: '可选的上下文摘要（当前任务进展等）' },
-        agent: { type: 'string', description: '子代理角色名（缺省 general）：explore/plan/review/test/docs 或自定义角色' }
-      },
-      required: ['description', 'prompt']
-    },
-    category: 'meta',
-    risk: 'low',
-    titleFor: (input) => {
-      const title = oneLineInput(input, 'description', 48) || '子代理'
-      const role = oneLineInput(input, 'agent', 24)
-      return role ? `${title} · ${role}` : title
-    }
-  },
-  async execute(input, ctx): Promise<ToolResult> {
-    if (ctx.depth > 0) {
-      return errResult('子代理不能再启动子代理。', '请直接使用现有工具完成这个任务，或把任务交回主代理。')
-    }
-    if (ctx.readOnly) {
-      return errResult('当前是只读上下文，不能启动子代理。', '请把任务交回主代理，或切换到有权限的工作模式。')
-    }
-    const description = getString(input, 'description', { required: true, maxLength: 200 })
-    const prompt = getString(input, 'prompt', { required: true, maxLength: 20_000 })
-    const context = typeof input.context === 'string' ? input.context.slice(0, 4000) : undefined
-    const agentName =
-      typeof input.agent === 'string' && input.agent.trim()
-        ? input.agent.trim().toLowerCase().slice(0, 80)
-        : undefined
-    const role = resolveAgentRole(ctx.agents ?? [], agentName)
-    if (!role) {
-      const available = (ctx.agents ?? []).map((item) => item.name).join('、') || '（无）'
-      return errResult(`没有名为「${agentName}」的子代理角色。可用角色：${available}。`, '使用系统提示中列出的角色名，或省略 agent 使用 general。')
-    }
-    ctx.progress(`开始：${description}（${role.title}）`)
-    const result = await ctx.runSubagent({ description, prompt, context, role })
-    const meta = {
-      status: result.status,
-      role: role.name,
-      steps: result.steps,
-      usage: result.usage,
-      error: result.error ?? null,
-      failedTools: result.failedTools ?? [],
-      changedFiles: result.changedFiles ?? []
-    }
-    // R2-B/C：失败/取消/步数耗尽绝不能返回 ok=true（旧实现在 summary 有占位文字时恒成功）
-    if (result.status !== 'completed') {
-      const label =
-        result.status === 'exhausted'
-          ? '未完成（达到子代理步数上限）'
-          : result.status === 'cancelled'
-            ? '已取消'
-            : '执行失败'
-      return errResult(
-        `子代理${label}${result.error ? `：${result.error}` : ''}`,
-        '子代理没有给出可采用的最终结论，不能把它当成已完成。可以拆小任务后重试，或由主代理自己完成；父任务/Goal 不得据此标记成功。',
-        meta
-      )
-    }
-    const lines = [`【子代理摘要】${result.summary || '（子代理没有返回文本结论）'}`]
-    if (result.failedTools?.length) {
-      lines.push(`⚠ 子代理执行期间有工具失败（结论可能不完整，请自行核实）：${result.failedTools.join('；')}`)
-    }
-    return okResult(lines.join('\n'), meta)
-  }
-}
-
-/* ── swarm（多角色并行） ──────────────────────────────────────── */
-
-const MAX_SWARM_TASKS = 8
-const MAX_SWARM_PARALLEL = 8
+const MAX_SWARM_TASKS = 10
+const MAX_SWARM_PARALLEL = 10
 
 export const swarmTool: ToolImpl = {
   definition: {
     name: 'swarm',
     description:
-      '把一个大任务拆成 2–8 个相互独立的子任务，并行交给不同角色的子代理（explore/plan/review/test/docs/general 或自定义角色）。' +
-      '每个子任务独立运行、互不共享上下文；同一批最多 8 个同时推进。适合「分别核查多个模块/资料再汇总」这类可以并行的任务；' +
-      '有先后依赖的任务请用 task 或自己按顺序完成。写文件/命令/MCP 仍按权限逐次审批。返回每个子任务的摘要与失败信息；有任一子任务未完成时本工具返回错误，不能当作全部完成。',
+      '把一个任务拆成 1–10 个相互独立的子任务，一次派发给集群成员并行完成（缺省 general，可用 agent 指定分工角色）。' +
+      '每个成员与主代理拥有相同的工作区访问权限和工具：可以读写文件、运行命令、调用 MCP；写文件/命令/MCP 是否审批只由当前权限档位决定，角色不限制工具。' +
+      'agent 只决定分工（负责什么、边界、交付），不代表技能；成员会按需自己 list_skills/read_skill，不要把技能名当角色或把技能正文塞进任务。' +
+      '每个子任务独立运行、互不共享上下文；同一批最多 10 个同时推进。适合「分别核查/实现多个模块再汇总」这类可以并行的任务；' +
+      '有先后依赖的任务请按顺序自己完成，或分成多批 swarm。返回每个成员的摘要与失败信息；有任一成员未完成时本工具返回错误，不能当作全部完成。',
     parameters: {
       type: 'object',
       properties: {
         goal: { type: 'string', description: '这次拆分要达成的总目标（一句话）' },
         tasks: {
           type: 'array',
-          minItems: 2,
+          minItems: 1,
           maxItems: MAX_SWARM_TASKS,
-          description: '相互独立的子任务（2–8 个）',
+          description: '相互独立的子任务（1–10 个）',
           items: {
             type: 'object',
             properties: {
               title: { type: 'string', description: '子任务标题（展示用）' },
               prompt: { type: 'string', description: '子任务完整说明：背景、要做什么、看哪些文件、输出什么' },
-              agent: { type: 'string', description: '子代理角色名（缺省 general）' },
+              agent: {
+                type: 'string',
+                description:
+                  '成员分工角色名（见系统提示的可用成员类型，缺省 general）；只决定工作重点与交付边界，不限制权限或工具，也不代表要加载某个技能'
+              },
               context: { type: 'string', description: '可选上下文摘要' }
             },
             required: ['title', 'prompt']
@@ -341,15 +288,15 @@ export const swarmTool: ToolImpl = {
   },
   async execute(input, ctx): Promise<ToolResult> {
     if (ctx.depth > 0) {
-      return errResult('子代理不能再启动集群。', '请直接完成你负责的子任务，把结论返回给主代理。')
+      return errResult('集群成员不能再启动集群。', '请直接完成你负责的子任务，把结论返回给主代理。')
     }
-    if (ctx.readOnly) {
-      return errResult('当前是只读上下文，不能启动集群。', '请把任务交回主代理，或切换到工作模式。')
+    if (ctx.readOnly || ctx.permissionMode === 'read-only') {
+      return errResult('当前是只读上下文，不能启动集群。', '请把任务交回主代理，或切换到有权限的工作模式。')
     }
     const goal = getString(input, 'goal', { required: true, maxLength: 2000 })
-    if (!Array.isArray(input.tasks)) return errResult('参数「tasks」必须是数组。', '提供 2–8 个互相独立的子任务。')
-    if (input.tasks.length < 2 || input.tasks.length > MAX_SWARM_TASKS) {
-      return errResult(`集群需要 2–${MAX_SWARM_TASKS} 个子任务。`, '单个子任务请直接用 task；有依赖关系的任务请按顺序执行。')
+    if (!Array.isArray(input.tasks)) return errResult('参数「tasks」必须是数组。', '提供 1–10 个互相独立的子任务。')
+    if (input.tasks.length < 1 || input.tasks.length > MAX_SWARM_TASKS) {
+      return errResult(`集群需要 1–${MAX_SWARM_TASKS} 个子任务。`, '只有一个独立子任务也可以派给一个成员；有依赖关系的任务请按顺序执行或分成多批。')
     }
     const prepared: Array<{
       index: number
@@ -398,6 +345,7 @@ export const swarmTool: ToolImpl = {
           index: item.index,
           title: item.title,
           agent: item.role.name,
+          agentTitle: item.role.title,
           status: 'queued'
         }
       })
@@ -408,6 +356,7 @@ export const swarmTool: ToolImpl = {
       title: string
       agent: string
       role: string
+      agentTitle: string
       status: string
       summary: string
       steps: number
@@ -423,10 +372,11 @@ export const swarmTool: ToolImpl = {
               index: item.index,
               title: item.title,
               agent: item.role.name,
+              agentTitle: item.role.title,
               status: 'running'
             }
           })
-          const result = await ctx.runSubagent({
+          const result = await ctx.runSwarmMember({
             description: item.title,
             prompt: `【总目标】${goal}\n\n${item.prompt}`,
             ...(item.context ? { context: item.context } : {}),
@@ -438,10 +388,12 @@ export const swarmTool: ToolImpl = {
               index: item.index,
               title: item.title,
               agent: item.role.name,
+              agentTitle: item.role.title,
               status: result.status,
               stepCount: result.steps,
               summary: result.summary,
-              ...(result.error ? { error: result.error } : {})
+              ...(result.error ? { error: result.error } : {}),
+              ...(result.operations && result.operations.length > 0 ? { operations: result.operations } : {})
             }
           })
           return result
@@ -454,10 +406,12 @@ export const swarmTool: ToolImpl = {
           title: item.title,
           agent: item.role.name,
           role: item.role.title,
+          agentTitle: item.role.title,
           status: result.status,
           summary: result.summary,
           steps: result.steps,
-          ...(result.error ? { error: result.error } : {})
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.operations && result.operations.length > 0 ? { operations: result.operations } : {})
         })
         // 失败的子任务也可能已经改过文件；检查点必须登记，回退才不会漏文件
         for (const file of result.changedFiles ?? []) {
@@ -611,8 +565,8 @@ export const openArtifactTool: ToolImpl = {
     const kind = normalizeKind(rawKind) ?? inferKindFromPath(rawPath)
     if (content === undefined && resolvedReal && kind !== 'file') {
       const buffer = readFileSync(resolvedReal)
-      if (buffer.length > 2 * 1024 * 1024) {
-        throw new ToolInputError(`产物文件过大（${(buffer.length / 1024 / 1024).toFixed(1)}MB），画布只支持 2MB 以内的文本产物。`, '请精简内容后重试。')
+      if (buffer.length > 8 * 1024 * 1024) {
+        throw new ToolInputError(`产物文件过大（${(buffer.length / 1024 / 1024).toFixed(1)}MB），画布只支持 8MB 以内的文本产物。`, '请精简内容后重试。')
       }
       const decoded = decodeTextBuffer(buffer)
       if (!decoded.binary) content = decoded.text
@@ -835,4 +789,4 @@ export const updateGoalTool: ToolImpl = {
   }
 }
 
-export const metaTools: ToolImpl[] = [todoWriteTool, askUserTool, rememberTool, taskTool, swarmTool, openArtifactTool]
+export const metaTools: ToolImpl[] = [todoWriteTool, askUserTool, rememberTool, swarmTool, openArtifactTool]

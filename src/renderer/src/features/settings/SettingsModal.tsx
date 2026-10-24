@@ -8,6 +8,7 @@ import {
   Brain,
   Check,
   ChevronRight,
+  Clapperboard,
   Copy,
   Eye,
   EyeOff,
@@ -22,6 +23,7 @@ import {
   Globe2,
   Info,
   KeyRound,
+  Keyboard,
   Layers,
   MessageSquareText,
   Palette,
@@ -35,9 +37,9 @@ import {
   Trash2,
   Zap
 } from 'lucide-react'
-import { findModel } from '@shared/models'
+import { findModel, isLocalServiceUrl } from '@shared/models'
 import { formatUsd } from '@shared/usage'
-import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/hooks'
+import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/types'
 import { RESERVED_COMMAND_NAMES } from '@shared/commands'
 import type {
   CloseAction,
@@ -50,13 +52,14 @@ import type {
   PermissionRuleDecision,
   PermissionRuleKind,
   ProviderCategory,
+  CodeFontId,
   ProviderConfig,
   ProviderTestResult,
   Result,
   SessionMeta,
   TerminalShellProfile
 } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import {
   Badge,
   Button,
@@ -76,14 +79,20 @@ import {
   formatUsageTokens
 } from './context-format'
 import { consumeRequestedTab, onSettingsTabRequest, type SettingsTabId } from './settings-tab'
+import { SHORTCUT_GROUPS } from '@shared/commands'
 import { TokenActivityTab } from './TokenActivityTab'
 import { AnswerStyleTab } from './AnswerStyleTab'
+import { MediaTab } from './MediaTab'
+import { SubscriptionTab } from './SubscriptionTab'
 import { openWorkbench, type WorkbenchPanel } from '../workbench/events'
-import brandMarkUrl from '../../assets/brand-mark.svg'
+import brandMarkUrl from '../../assets/brand-mark-dark.png'
+import { errorText } from '../../lib'
 import './SettingsModal.css'
 
 const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'models', label: '模型', icon: <Plug size={15} strokeWidth={1.5} /> },
+  { id: 'subscriptions', label: '订阅', icon: <BadgeCheck size={15} strokeWidth={1.5} /> },
+  { id: 'media', label: '多媒体', icon: <Clapperboard size={15} strokeWidth={1.5} /> },
   { id: 'search', label: '联网搜索', icon: <Globe size={15} strokeWidth={1.5} /> },
   { id: 'context', label: '上下文', icon: <Gauge size={15} strokeWidth={1.5} /> },
   { id: 'style', label: '回答', icon: <MessageSquareText size={15} strokeWidth={1.5} /> },
@@ -94,12 +103,29 @@ const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'tools', label: '功能与工具', icon: <Layers size={15} strokeWidth={1.5} /> },
   { id: 'terminal', label: '终端', icon: <SquareTerminal size={15} strokeWidth={1.5} /> },
   { id: 'appearance', label: '外观', icon: <Palette size={15} strokeWidth={1.5} /> },
+  { id: 'shortcuts', label: '快捷键', icon: <Keyboard size={15} strokeWidth={1.5} /> },
   { id: 'about', label: '关于', icon: <Info size={15} strokeWidth={1.5} /> }
 ]
 
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
+const PAGE_META: Record<SettingsTabId, { title: string; description: string }> = {
+  models: { title: '模型', description: '选一家服务，填上 API Key 就能用。密钥只保存在本机，不会显示出来。' },
+  subscriptions: { title: '模型订阅', description: '把已经在用的官方 Agent 账号或第三方 coding plan 接入 Morrow，按订阅额度调用；登录态只保存在本机。' },
+  media: { title: '多媒体', description: '连接电脑上的 ComfyUI、llama.cpp 等引擎，让 Morrow 可以生成和剪辑图片、视频与音频。' },
+  search: { title: '联网搜索', description: '遇到最新信息、事实核查或资料查询时，自动搜索网页并总结关键来源。' },
+  context: { title: '上下文占用', description: '当前对话的上下文用量，以及自动压缩和项目规则。' },
+  style: { title: '回答', description: '调整回答风格、发送方式与对话偏好。' },
+  usage: { title: 'Token 活动', description: '按天统计真实 token 用量；服务商没有返回时会标成估算。' },
+  archive: { title: '归档', description: '归档的对话仍保存在本机，可以随时恢复或永久删除。' },
+  permission: { title: '权限', description: '决定 Morrow 能做什么，以及哪些动作需要先问你。' },
+  automation: { title: '自动化', description: '自定义命令、集群成员与自动动作。' },
+  tools: { title: '功能与工具', description: '记忆、项目、技能、外部工具等入口都在这里。' },
+  terminal: { title: '终端', description: '选择默认终端；终端面板、命令和后台任务都会使用它。' },
+  appearance: { title: '外观', description: '主题、字号与字体，改动即时生效。' },
+  shortcuts: { title: '快捷键', description: '现在能用的快捷键，以及它们的生效范围。' },
+  about: { title: '关于', description: '版本、运行环境与数据目录。' }
 }
+
+
 
 function InlineError({ message }: { message: string | null }): React.JSX.Element | null {
   if (!message) return null
@@ -115,7 +141,6 @@ function InlineError({ message }: { message: string | null }): React.JSX.Element
 const CATEGORY_ORDER: { id: ProviderCategory; label: string; hint: string }[] = [
   { id: 'cn', label: '国内', hint: '国内直连，充值方便' },
   { id: 'global', label: '国际', hint: '海外服务商，可能需要网络代理' },
-  { id: 'aggregator', label: '聚合平台', hint: '一个 Key 调多家模型' },
   { id: 'local', label: '本地', hint: '跑在自己的电脑上，不需要联网' },
   { id: 'custom', label: '自定义', hint: '你自己添加的 OpenAI 兼容服务' }
 ]
@@ -141,21 +166,10 @@ const PROVIDER_HINT: Record<string, string> = {
   anthropic: 'Claude，写代码与长任务',
   openai: 'OpenAI GPT 系列',
   gemini: 'Google Gemini，超长上下文',
-  xai: 'xAI Grok',
+  xai: 'xAI Grok（Grok 4.6 / 4.7）',
   meta: 'Meta 的长任务与编程模型',
-  openrouter: '一个 Key 调多家模型',
   ollama: '本机运行，不需要联网',
   lmstudio: '本机运行，不需要联网'
-}
-
-/** 与主进程 model-sync 保持一致：本地回环地址允许无 Key 同步 */
-function isLocalBaseUrl(value: string): boolean {
-  try {
-    const host = new URL(value).hostname.toLowerCase()
-    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
-  } catch {
-    return false
-  }
 }
 
 function ModelsTab(): React.JSX.Element {
@@ -221,8 +235,6 @@ function ModelsTab(): React.JSX.Element {
       description: `${state} · ${PROVIDER_HINT[item.id] ?? itemCategoryMeta?.hint ?? 'OpenAI 兼容服务'}`
     }
   })
-
-  const currentModel = findModel(settings.providers, settings.defaultModel)
 
   useEffect(() => {
     if (!provider) return
@@ -337,12 +349,13 @@ function ModelsTab(): React.JSX.Element {
       return
     }
     if (baseUrl.trim() && baseUrl.trim() !== provider.baseUrl) {
-      setSyncNote({ ok: false, text: '检测到还没保存的 Base URL：先点「保存连接」，再同步。' })
+      setSyncNote({ ok: false, text: '检测到还没保存的服务地址：先点「保存连接」，再同步。' })
       return
     }
-    const localService = category === 'local' || isLocalBaseUrl(baseUrl.trim() || provider.baseUrl)
+    const localService =
+      category === 'local' || isLocalServiceUrl(baseUrl.trim() || provider.baseUrl, { allowPrivate: true })
     if (!localService && !provider.apiKeyStored) {
-      setSyncNote({ ok: false, text: '先保存 API Key，再刷新可用模型。' })
+      setSyncNote({ ok: false, text: '先保存 API Key（本机或局域网服务可留空），再刷新可用模型。' })
       return
     }
     const { seq, targetId } = beginAction()
@@ -476,21 +489,6 @@ function ModelsTab(): React.JSX.Element {
 
   return (
     <div className="st-models">
-      <div className="st-models-top">
-        <div className="st-models-top-copy">
-          <p className="st-hint">选一家服务，填上 API Key 就能用。密钥只保存在本机，不会显示出来。</p>
-        </div>
-        {currentModel ? (
-          <div className="st-current-model">
-            <span className="st-current-label mono">当前默认模型</span>
-            <span className="st-current-name">{currentModel.label}</span>
-            <span className="st-current-meta mono">
-              可处理约 {formatModelWindow(currentModel.contextWindow)} 内容 · 回复最多 {formatModelWindow(currentModel.maxOutput)}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
       <div className="st-provider-picker">
         <div className="st-provider-picker-copy">
           <span className="st-field-label">服务</span>
@@ -818,7 +816,7 @@ function ModelsTab(): React.JSX.Element {
       ) : null}
 
       <p className="st-note">
-        演示引擎（Morrow Demo）离线可用，不需要 API Key；用「看一场演示」可以直接体验完整流程。
+        演示模式离线可用，不需要 API Key；点「看一场演示」就能体验完整流程。
       </p>
     </div>
   )
@@ -904,7 +902,7 @@ function ContextTab(): React.JSX.Element {
       {session ? (
         <div className={['st-ctx-card', tone].filter(Boolean).join(' ')}>
           <div className="st-ctx-head">
-            <span className="st-section-title">上下文占用</span>
+            <span className="st-section-title">当前对话</span>
             <span className={['st-ctx-source', snapshot.source].join(' ')}>{contextSourceLabel(snapshot.source)}</span>
           </div>
           <div className="st-ctx-numbers">
@@ -926,8 +924,8 @@ function ContextTab(): React.JSX.Element {
             />
           </div>
           <p className="st-ctx-exact mono">
-            精确值 {formatExactTokens(snapshot.used)} / {formatExactTokens(snapshot.limit)} tokens
-            {snapshot.source === 'api' ? ' · 来自服务商返回的 usage' : ' · 服务商暂未返回 usage，当前为字符估算'}
+            精确用量 {formatExactTokens(snapshot.used)} / {formatExactTokens(snapshot.limit)} tokens
+            {snapshot.source === 'api' ? ' · 按服务商返回的用量统计' : ' · 服务商暂未返回用量，当前按文字长度估算'}
           </p>
         </div>
       ) : (
@@ -1106,12 +1104,12 @@ const PERMISSION_CARDS = [
   {
     mode: 'ask' as const,
     label: '询问',
-    description: '工作区内的写入与命令自动执行；危险命令、外部动作与工作区外访问仍会先问你。'
+    description: '当前文件夹内的写入和命令自动执行；危险命令、外部操作或访问文件夹外时仍会先问你。'
   },
   {
     mode: 'auto' as const,
     label: '完全访问',
-    description: '无需任何批准：写入、命令、危险操作与工作区外访问都直接执行。只在你完全信任的任务里使用。'
+    description: '不再询问：写入、命令、危险操作和访问文件夹外都直接执行。只在你完全信任的任务里使用。'
   }
 ]
 
@@ -1418,6 +1416,7 @@ function SearchTab(): React.JSX.Element {
   const saved = settings.webSearch
   const [enabled, setEnabled] = useState(saved.enabled)
   const [provider, setProvider] = useState(saved.provider)
+  const [advanced, setAdvanced] = useState(saved.provider !== 'builtin')
   const [baseUrl, setBaseUrl] = useState(saved.baseUrl ?? '')
   const [maxResults, setMaxResults] = useState(String(saved.maxResults))
   const [apiKey, setApiKey] = useState('')
@@ -1438,12 +1437,13 @@ function SearchTab(): React.JSX.Element {
     setError(null)
     setBusy(true)
     try {
+      const effectiveProvider = advanced ? provider : 'builtin'
       const ok = await saveWebSearch({
         enabled,
-        provider,
-        ...(provider === 'searxng' ? { baseUrl } : {}),
+        provider: effectiveProvider,
+        ...(advanced && provider === 'searxng' ? { baseUrl } : {}),
         maxResults: Number(maxResults),
-        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {})
+        ...(advanced && apiKey.trim() ? { apiKey: apiKey.trim() } : {})
       })
       if (!ok) return
       setApiKey('')
@@ -1457,65 +1457,82 @@ function SearchTab(): React.JSX.Element {
 
   return (
     <div className="st-search">
-      <p className="st-hint">
-        让 Morrow 能查网页：搜索关键词会发送给所选服务商，结果会标出来源。
-      </p>
-
       <Switch
         checked={enabled}
         onChange={setEnabled}
-        label="启用联网搜索"
-        description="关闭后 Morrow 不会搜索网页；已保存的 Key 会保留。"
+        label="自动联网搜索"
+        description="遇到最新信息、事实核查或资料查询时，Morrow 会自动搜索、阅读关键来源并总结。无需配置。"
       />
 
-      <div className="st-setting-row">
-        <div className="st-setting-copy">
-          <span className="st-setting-label">搜索服务商</span>
-          <span className="st-setting-desc">{meta.description}</span>
-        </div>
-        <div style={{ width: 190 }}>
-          <Select
-            ariaLabel="搜索服务商"
-            value={provider}
-            options={SEARCH_PROVIDERS.map((item) => ({
-              value: item.value,
-              label: item.label,
-              description: item.description
-            }))}
-            onChange={(next) => {
-              setProvider(next)
-              setTest(null)
-            }}
-          />
-        </div>
+      <div className="st-search-advanced">
+        <button
+          type="button"
+          className="st-search-advanced-toggle"
+          aria-expanded={advanced}
+          onClick={() => setAdvanced((value) => !value)}
+        >
+          {advanced ? '收起自定义搜索服务' : '自定义搜索服务（可选）'}
+        </button>
+        {advanced ? (
+          <>
+            <p className="st-hint">
+              只有在你希望使用专用索引（Tavily / Brave / Serper）或自建 SearXNG 时才需要配置；留空则继续使用内置搜索。
+            </p>
+            <div className="st-setting-row">
+              <div className="st-setting-copy">
+                <span className="st-setting-label">搜索服务商</span>
+                <span className="st-setting-desc">{meta.description}</span>
+              </div>
+              <div style={{ width: 190 }}>
+                <Select
+                  ariaLabel="搜索服务商"
+                  value={provider}
+                  options={SEARCH_PROVIDERS.map((item) => ({
+                    value: item.value,
+                    label: item.label,
+                    description: item.description
+                  }))}
+                  onChange={(next) => {
+                    setProvider(next)
+                    setTest(null)
+                  }}
+                />
+              </div>
+            </div>
+
+            {provider === 'searxng' ? (
+              <TextInput
+                label="SearXNG 实例地址"
+                mono
+                value={baseUrl}
+                placeholder="http://127.0.0.1:8888"
+                hint="实例需要开启 JSON 输出（format=json），本机或内网地址都行。"
+                onChange={(event) => setBaseUrl(event.target.value)}
+              />
+            ) : null}
+
+            <TextInput
+              label={provider === 'searxng' ? '访问令牌（可选）' : 'API Key'}
+              mono
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              placeholder={saved.apiKeyStored && provider === saved.provider ? '已保存；留空表示不修改' : '粘贴 API Key'}
+              hint={meta.needsKey ? 'Key 由系统加密保存，不会显示在界面或日志里。' : '私有实例需要鉴权时填写。'}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </>
+        ) : (
+          <p className="st-hint">
+            当前使用内置多引擎搜索（Bing / 百度 / DuckDuckGo / Mojeek 自动回退），结果会标出来源；需要正文时 Morrow 会再打开关键页面核对。
+          </p>
+        )}
       </div>
 
-      {provider === 'searxng' ? (
-        <TextInput
-          label="SearXNG 实例地址"
-          mono
-          value={baseUrl}
-          placeholder="http://127.0.0.1:8888"
-          hint="实例需要开启 JSON 输出（format=json），本机或内网地址都行。"
-          onChange={(event) => setBaseUrl(event.target.value)}
-        />
-      ) : null}
-
-      <TextInput
-        label={provider === 'searxng' ? '访问令牌（可选）' : 'API Key'}
-        mono
-        type="password"
-        autoComplete="off"
-        value={apiKey}
-        placeholder={saved.apiKeyStored && provider === saved.provider ? '已保存；留空表示不修改' : '粘贴 API Key'}
-        hint={meta.needsKey ? 'Key 由系统加密保存，不会显示在界面或日志里。' : '私有实例需要鉴权时填写。'}
-        onChange={(event) => setApiKey(event.target.value)}
-      />
-
       <div className="st-setting-row">
         <div className="st-setting-copy">
-          <span className="st-setting-label">每次返回结果数</span>
-          <span className="st-setting-desc">模型也可以按需要少要或多要（最多 10 条）。</span>
+          <span className="st-setting-label">默认来源数</span>
+          <span className="st-setting-desc">模型可以按任务需要少要或多要（最多 10 条）。</span>
         </div>
         <div style={{ width: 120 }}>
           <Select
@@ -1554,13 +1571,32 @@ function SearchTab(): React.JSX.Element {
         </Button>
       </div>
       <p className="st-hint">
-        网页内容只当参考资料，不会当成指令；需要正文时 Morrow 会再打开页面。
+        网页内容只当参考资料，不会当成指令；搜索服务只从本机发出请求。
       </p>
     </div>
   )
 }
 
-/* ── 终端 ─────────────────────────────────────────────────────── */
+/* ── 自动化：自定义命令与运行钩子（P1-12） ───────────────────── */
+
+const HOOK_EVENT_OPTIONS: { value: HookEvent; label: string }[] = [
+  { value: 'user_prompt_submit', label: '发送消息前' },
+  { value: 'post_tool_use', label: '每次工具完成后' },
+  { value: 'run_finished', label: '每轮结束后' }
+]
+
+interface AgentRoleSummary {
+  name: string
+  title: string
+  description: string
+  source: 'builtin' | 'project' | 'user'
+}
+
+const HOOK_EVENT_HINT: Record<HookEvent, string> = {
+  user_prompt_submit: '返回码 2 会阻止这条消息；其它失败只记录。',
+  post_tool_use: '可以读取工具名、参数和结果，不会阻止工具。',
+  run_finished: '每轮结束（包括目标续跑轮）后运行一次。'
+}
 
 function TerminalTab(): React.JSX.Element {
   const savedShell = useAppStore((s) => s.settings.terminalShell)
@@ -1610,7 +1646,7 @@ function TerminalTab(): React.JSX.Element {
 
   return (
     <div className="st-search">
-      <p className="st-hint">选一个默认终端。终端面板、Agent 的 run_command 与后台任务都会使用它；命令语法请按对应 Shell 写。</p>
+      <p className="st-hint">选一个默认终端。终端面板、Morrow 运行命令和后台任务都会使用它；命令语法请按对应的终端类型写。</p>
 
       {loading ? (
         <p className="st-hint">正在读取可用的终端…</p>
@@ -1663,6 +1699,12 @@ function AppearanceTab(): React.JSX.Element {
   const updateSettings = useAppStore((s) => s.updateSettings)
   const [error, setError] = useState<string | null>(null)
 
+  const codeFontOptions: Array<{ value: CodeFontId; label: string; description: string }> = [
+    { value: 'jetbrains', label: 'JetBrains Mono', description: '默认；更宽、适合长时间阅读' },
+    { value: 'ibm-plex', label: 'IBM Plex Mono', description: '细窄、安静' },
+    { value: 'system', label: '系统等宽', description: '使用 Cascadia Mono / Consolas' }
+  ]
+
   const patch = async (value: Parameters<typeof updateSettings>[0]): Promise<void> => {
     setError(null)
     try {
@@ -1695,12 +1737,12 @@ function AppearanceTab(): React.JSX.Element {
       <div className="st-setting-row">
         <div className="st-setting-copy">
           <span className="st-setting-label">应用字号</span>
-          <span className="st-setting-desc">调整正文与界面的基础字号（13–16）。</span>
+          <span className="st-setting-desc">调整正文与界面的基础字号（12–15）。</span>
         </div>
         <Segmented
           ariaLabel="应用字号"
           value={String(settings.fontSize)}
-          options={['13', '14', '15', '16'].map((size) => ({ value: size, label: size }))}
+          options={['12', '13', '14', '15'].map((size) => ({ value: size, label: size }))}
           onChange={(next) => void patch({ fontSize: Number(next) })}
         />
       </div>
@@ -1708,15 +1750,38 @@ function AppearanceTab(): React.JSX.Element {
       <div className="st-setting-row">
         <div className="st-setting-copy">
           <span className="st-setting-label">代码字号</span>
-          <span className="st-setting-desc">只影响代码、终端、diff 与等宽数字；与应用字号分开（12–15）。</span>
+          <span className="st-setting-desc">只影响代码、终端、diff 与等宽数字；与应用字号分开（11–14）。</span>
         </div>
         <Segmented
           ariaLabel="代码字号"
-          value={String(settings.codeFontSize || 13)}
-          options={['12', '13', '14', '15'].map((size) => ({ value: size, label: size }))}
+          value={String(settings.codeFontSize || 12)}
+          options={['11', '12', '13', '14'].map((size) => ({ value: size, label: size }))}
           onChange={(next) => void patch({ codeFontSize: Number(next) })}
         />
       </div>
+
+      <div className="st-setting-row">
+        <div className="st-setting-copy">
+          <span className="st-setting-label">代码字体</span>
+          <span className="st-setting-desc">编辑器、diff、代码块和终端都会使用。</span>
+        </div>
+        <div style={{ width: 210 }}>
+          <Select
+            ariaLabel="代码字体"
+            value={settings.codeFont}
+            options={codeFontOptions}
+            onChange={(next) => void patch({ codeFont: next })}
+          />
+        </div>
+      </div>
+
+      <div className="st-code-preview" aria-label="代码字体预览">
+        <div>
+          <span className="st-code-preview-key">const</span> morrow = <span className="st-code-preview-str">'明天见'</span>
+        </div>
+        <div className="st-code-preview-comment">// 代码、diff 与终端使用同一套字体</div>
+      </div>
+      <p className="st-hint">代码字重固定为常规 400，编辑器、diff 与终端保持一致。</p>
 
       <Switch
         checked={settings.reduceMotion}
@@ -1739,7 +1804,7 @@ function AppearanceTab(): React.JSX.Element {
       <div className="st-setting-row">
         <div className="st-setting-copy">
           <span className="st-setting-label">关闭窗口时</span>
-          <span className="st-setting-desc">点标题栏关闭按钮或灵动岛「关闭 Morrow…」时执行；选定一次后会记住。</span>
+          <span className="st-setting-desc">点标题栏关闭按钮或桌面伙伴「关闭 Morrow…」时执行；选定一次后会记住。</span>
         </div>
         <Segmented
           ariaLabel="关闭窗口时"
@@ -1880,20 +1945,52 @@ function AboutTab(): React.JSX.Element {
         ) : null}
       </div>
 
-      <div className="st-about-shortcuts">
-        <p className="st-section-title">键盘快捷键</p>
-        <div className="st-shortcut-grid">
-          <Shortcut keys="Ctrl+K" label="打开命令面板" />
-          <Shortcut keys="Ctrl+B" label="收起或展开侧栏" />
-          <Shortcut keys="Ctrl+N" label="新建对话" />
-          <Shortcut keys="Ctrl+," label="打开设置" />
-          <Shortcut keys="Esc" label="停止生成或关闭浮层" />
-          <Shortcut keys={settings.sendKey === 'enter' ? 'Enter' : 'Ctrl+Enter'} label="发送消息" />
-          <Shortcut keys="Shift+Enter" label="换行" />
-          <Shortcut keys="@" label="引用文件夹文件" />
-          <Shortcut keys="/" label="运行命令" />
-        </div>
-      </div>
+    </div>
+  )
+}
+
+/* ── 快捷键 ───────────────────────────────────────────────────── */
+
+function ShortcutsTab(): React.JSX.Element {
+  const settings = useAppStore((state) => state.settings)
+  const groups = SHORTCUT_GROUPS.map((group) => ({
+    ...group,
+    entries: group.entries
+      .filter((entry) => entry.requires !== 'islandEnabled' || settings.islandEnabled)
+      .map((entry) =>
+        entry.dynamic === 'sendKey'
+          ? {
+              ...entry,
+              keys: settings.sendKey === 'enter' ? 'Enter' : 'Ctrl+Enter',
+              hint:
+                settings.sendKey === 'enter'
+                  ? '当前设置；可在「设置 → 回答」切换为 Ctrl+Enter'
+                  : '当前设置；可在「设置 → 回答」切换为 Enter'
+            }
+          : entry
+      )
+  }))
+  return (
+    <div className="st-shortcuts">
+      <p className="st-hint">
+        下面是现在能用的快捷键。带「聚焦时」或「面板显示时」的条目只在对应区域生效；如果被系统或输入法占用，可能不起作用。
+      </p>
+      {groups.map((group) => (
+        <section key={group.id} className="st-shortcut-group" aria-label={group.label}>
+          <div className="st-shortcut-group-head">
+            <p className="st-section-title">{group.label}</p>
+            {group.description ? <p className="st-shortcut-group-desc">{group.description}</p> : null}
+          </div>
+          <div className="st-shortcut-grid">
+            {group.entries.map((entry) => (
+              <div key={entry.id} className="st-shortcut-cell">
+                <Shortcut keys={entry.keys} label={entry.label} />
+                {entry.hint ? <p className="st-shortcut-hint">{entry.hint}</p> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }
@@ -2048,7 +2145,7 @@ function ArchiveTab(): React.JSX.Element {
             setClearOpen(true)
           }}
         >
-          清除全部对话…
+          清除全部
         </Button>
       </div>
 
@@ -2113,29 +2210,6 @@ function ArchiveTab(): React.JSX.Element {
   )
 }
 
-/* ── 自动化：自定义命令与运行钩子（P1-12） ───────────────────── */
-
-const HOOK_EVENT_OPTIONS: { value: HookEvent; label: string }[] = [
-  { value: 'user_prompt_submit', label: '发送消息前' },
-  { value: 'post_tool_use', label: '每次工具完成后' },
-  { value: 'run_finished', label: '每轮结束后' }
-]
-
-interface AgentRoleSummary {
-  name: string
-  title: string
-  description: string
-  readOnly: boolean
-  tools?: string[]
-  source: 'builtin' | 'project' | 'user'
-}
-
-const HOOK_EVENT_HINT: Record<HookEvent, string> = {
-  user_prompt_submit: '返回码 2 会阻止这条消息；其它失败只记录。',
-  post_tool_use: '可以读取工具名、参数和结果，不会阻止工具。',
-  run_finished: '每轮结束（包括目标续跑轮）后运行一次。'
-}
-
 function AutomationTab(): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const updateSettings = useAppStore((s) => s.updateSettings)
@@ -2149,6 +2223,7 @@ function AutomationTab(): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const [loadingCommands, setLoadingCommands] = useState(false)
   const [agents, setAgents] = useState<AgentRoleSummary[]>([])
+  const [agentsOpen, setAgentsOpen] = useState(false)
 
   const loadCommands = async (): Promise<void> => {
     setLoadingCommands(true)
@@ -2259,10 +2334,7 @@ function AutomationTab(): React.JSX.Element {
           </IconButton>
         </div>
         <p className="st-hint">
-          在 <code className="mono">.morrow/commands/</code>（当前项目）或
-          <code className="mono"> ~/.morrow/commands/</code>（所有对话）放一个 Markdown 文件，
-          就能在输入框用 <code className="mono">/名字 参数</code> 调用；正文里的
-          <code className="mono"> $ARGUMENTS</code> 会替换成参数。
+          在项目文件夹的 <code className="mono">.morrow/commands/</code> 里放一个 Markdown 文件，就能在输入框输入 <code className="mono">/名字</code> 调用；文件里的 <code className="mono">$ARGUMENTS</code> 会换成你输入的参数。所有对话都能用的命令放到 <code className="mono">~/.morrow/commands/</code>。
         </p>
         {commands.length === 0 ? (
           <p className="st-auto-empty">{loadingCommands ? '正在读取…' : '还没有自定义命令。'}</p>
@@ -2296,25 +2368,34 @@ function AutomationTab(): React.JSX.Element {
       </section>
 
       <section className="st-auto-section">
-        <p className="st-section-title">小助手角色</p>
+        <div className="st-auto-head">
+          <p className="st-section-title">集群成员类型</p>
+          <Button size="sm" variant="ghost" onClick={() => setAgentsOpen((value) => !value)}>
+            {agentsOpen ? '收起' : '查看全部成员类型'}
+          </Button>
+        </div>
         <p className="st-hint">
-          集群里每个小助手可以按不同角色工作。内置角色覆盖探索、规划、审查、验证和文档；
-          自定义角色放到 <code className="mono">.morrow/agents/</code>。角色不会降低权限边界。
+          集群成员会继承当前权限：能读文件、改文件、运行命令和调用外部工具；敏感操作仍按权限设置审批。类型只决定工作重点，不会扩大权限，通常不需要手动设置。
         </p>
-        <ul className="st-agent-list">
-          {agents.map((role) => (
-            <li key={role.name}>
-              <span className="st-agent-title">{role.title}</span>
-              <span className="st-agent-name mono">/{role.name}</span>
-              <span className="st-agent-desc truncate">{role.description}</span>
-              {role.readOnly ? <Badge tone="neutral">只读</Badge> : null}
-              <Badge tone={role.source === 'builtin' ? 'gold' : 'success'}>
-                {role.source === 'builtin' ? '内置' : role.source === 'project' ? '项目' : '用户'}
-              </Badge>
-            </li>
-          ))}
-          {agents.length === 0 ? <li className="st-auto-empty">正在读取角色…</li> : null}
-        </ul>
+        {agentsOpen ? (
+          <>
+            <p className="st-hint">
+              自定义成员可以放在 <code className="mono">.morrow/agents/</code>，写清名称、说明和提示词即可。
+            </p>
+            <ul className="st-agent-list">
+              {agents.map((role) => (
+                <li key={role.name}>
+                  <span className="st-agent-title">{role.title}</span>
+                  <span className="st-agent-desc truncate">{role.description}</span>
+                  <Badge tone={role.source === 'builtin' ? 'gold' : 'success'}>
+                    {role.source === 'builtin' ? '内置' : role.source === 'project' ? '项目' : '用户'}
+                  </Badge>
+                </li>
+              ))}
+              {agents.length === 0 ? <li className="st-auto-empty">正在读取角色…</li> : null}
+            </ul>
+          </>
+        ) : null}
       </section>
 
       <section className="st-auto-section">
@@ -2324,7 +2405,7 @@ function AutomationTab(): React.JSX.Element {
           只添加你信任的命令。
         </p>
         <p className="st-hint">
-          每条最多运行 15 秒；每个时点最多启用 {MAX_ENABLED_HOOKS_PER_EVENT} 个。
+          每条最多运行 15 秒；每个触发时机最多启用 {MAX_ENABLED_HOOKS_PER_EVENT} 个。
         </p>
         {hooks.length === 0 ? <p className="st-auto-empty">还没有自动动作。</p> : null}
         <div className="st-hook-list">
@@ -2394,7 +2475,7 @@ const TOOL_GROUPS: { label: string; entries: ToolEntry[] }[] = [
       {
         id: 'memory',
         title: '记忆',
-        description: '让 Morrow 记住你的偏好、习惯和项目里的事。',
+        description: '记住你的偏好、习惯和项目里的事，并查看 Morrow 的建议。',
         icon: <Brain size={16} strokeWidth={1.5} />
       },
       {
@@ -2459,6 +2540,29 @@ const TOOL_GROUPS: { label: string; entries: ToolEntry[] }[] = [
 ]
 
 function ToolsTab(): React.JSX.Element {
+  const [evolutionPending, setEvolutionPending] = useState(0)
+  const evolutionWorkspace = useAppStore(
+    (state) => state.session?.workspace ?? state.settings.lastWorkspace ?? null
+  )
+  useEffect(() => {
+    let active = true
+    const load = async (): Promise<void> => {
+      try {
+        const result = await window.morrow.features.invoke<{ pending: number }>('feature:evolution:list', {
+          workspace: evolutionWorkspace
+        })
+        if (active && result.ok) setEvolutionPending(result.data.pending)
+      } catch {
+        // 自进化建议不可用不影响功能入口
+      }
+    }
+    void load()
+    const off = window.morrow.features.on?.('feature:evolution:changed', () => void load())
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [evolutionWorkspace])
   return (
     <div className="st-tools">
       <p className="st-hint">需要的功能都在这里；打开后按 Esc 或关闭按钮即可回到对话。</p>
@@ -2480,7 +2584,18 @@ function ToolsTab(): React.JSX.Element {
                   {entry.icon}
                 </span>
                 <span className="st-tool-copy">
-                  <span className="st-tool-title">{entry.title}</span>
+                  <span className="st-tool-heading">
+                    <span className="st-tool-title">{entry.title}</span>
+                    {entry.id === 'memory' && evolutionPending > 0 ? (
+                      <span
+                        className="st-tool-badge mono"
+                        title={`${evolutionPending} 条建议待处理`}
+                        aria-label={`${evolutionPending} 条建议待处理`}
+                      >
+                        {evolutionPending}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="st-tool-desc">{entry.description}</span>
                 </span>
                 <span className="st-tool-open">
@@ -2492,6 +2607,22 @@ function ToolsTab(): React.JSX.Element {
           </div>
         </section>
       ))}
+    </div>
+  )
+}
+
+/** 默认模型卡：放在页面标题右侧，与说明文字同一行顶部对齐。 */
+function CurrentModelCard(): React.JSX.Element | null {
+  const settings = useAppStore((s) => s.settings)
+  const currentModel = findModel(settings.providers, settings.defaultModel)
+  if (!currentModel) return null
+  return (
+    <div className="st-current-model">
+      <span className="st-current-label mono">当前默认模型</span>
+      <span className="st-current-name">{currentModel.label}</span>
+      <span className="st-current-meta mono">
+        可处理约 {formatModelWindow(currentModel.contextWindow)} 内容 · 回复最多 {formatModelWindow(currentModel.maxOutput)}
+      </span>
     </div>
   )
 }
@@ -2557,7 +2688,7 @@ export function SettingsModal(): React.JSX.Element | null {
       width={880}
       footer={
         <>
-          <span className="st-foot-hint mono">外观、权限、回答与终端即时保存；模型与联网搜索需点保存</span>
+          <span className="st-foot-hint mono">外观、权限、回答与终端即时保存；模型、联网搜索与多媒体需点保存</span>
           <Button variant="secondary" onClick={closeSettings}>
             完成
           </Button>
@@ -2600,7 +2731,16 @@ export function SettingsModal(): React.JSX.Element | null {
           aria-labelledby={`st-tab-${tab}`}
           tabIndex={0}
         >
+          <header className={['st-page-head', tab === 'models' ? 'has-aside' : ''].filter(Boolean).join(' ')}>
+            <div className="st-page-head-copy">
+              <h2 className="st-page-title">{PAGE_META[tab].title}</h2>
+              <p className="st-page-desc">{PAGE_META[tab].description}</p>
+            </div>
+            {tab === 'models' ? <CurrentModelCard /> : null}
+          </header>
           {tab === 'models' ? <ModelsTab /> : null}
+          {tab === 'subscriptions' ? <SubscriptionTab /> : null}
+          {tab === 'media' ? <MediaTab /> : null}
           {tab === 'search' ? <SearchTab /> : null}
           {tab === 'context' ? <ContextTab /> : null}
           {tab === 'style' ? <AnswerStyleTab /> : null}
@@ -2611,6 +2751,7 @@ export function SettingsModal(): React.JSX.Element | null {
           {tab === 'tools' ? <ToolsTab /> : null}
           {tab === 'terminal' ? <TerminalTab /> : null}
           {tab === 'appearance' ? <AppearanceTab /> : null}
+          {tab === 'shortcuts' ? <ShortcutsTab /> : null}
           {tab === 'about' ? <AboutTab /> : null}
         </div>
       </div>

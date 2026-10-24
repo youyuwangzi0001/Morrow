@@ -46,10 +46,6 @@ export function isAbortError(err: unknown): boolean {
   return name === 'AbortError' || name === 'AbortException'
 }
 
-export function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw abortError()
-}
-
 /** 让 promise 与 AbortSignal 竞争：中断时立即 reject，避免审批/提问把整个 run 挂死 */
 export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {  if (!signal) return promise
   if (signal.aborted) {
@@ -197,11 +193,7 @@ export function formatDuration(ms: number): string {
   return `${minutes} 分 ${seconds} 秒`
 }
 
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
-}
+export { formatBytes } from '../shared/usage'
 
 /** 把任意异常归一化为可读文本 */
 export function errorMessage(err: unknown): string {

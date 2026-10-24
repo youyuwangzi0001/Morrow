@@ -24,6 +24,7 @@ const CACHE_TTL_MS = 5 * 60_000
 const CACHE_MAX = 40
 
 const PROVIDER_LABEL: Record<WebSearchProvider, string> = {
+  builtin: '内置搜索（多引擎）',
   tavily: 'Tavily',
   brave: 'Brave Search',
   serper: 'Serper',
@@ -85,6 +86,113 @@ function toSources(
   return sources
 }
 
+function decodeHtml(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Bing 结果页解析（纯函数，便于离线单测；只保留 http(s) 外部链接）。 */
+export function parseBingResults(html: string, maxResults: number): WebSearchSource[] {
+  if (!html) return []
+  const blocks = html.split(/<li class="b_algo"/i).slice(1)
+  const sources: WebSearchSource[] = []
+  for (const block of blocks) {
+    if (sources.length >= maxResults) break
+    const titleMatch = /<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
+    if (!titleMatch) continue
+    const url = sanitizeUrl(titleMatch[1])
+    if (!url || /(^|\.)bing\.com$/i.test(new URL(url).hostname)) continue
+    const title = sanitizeText(decodeHtml(titleMatch[2]), 300) || url
+    const snippetMatch =
+      /<p[^>]*(?:class="[^"]*b_lineclamp[^"]*"|class="[^"]*b_algoSlug[^"]*")[^>]*>([\s\S]*?)<\/p>/i.exec(block) ??
+      /<p[^>]*>([\s\S]*?)<\/p>/i.exec(block)
+    const snippet = snippetMatch ? sanitizeText(decodeHtml(snippetMatch[1]), 1200) : ''
+    sources.push({ rank: sources.length + 1, title, url, snippet })
+  }
+  return sources
+}
+
+export function parseDuckDuckGoResults(html: string, maxResults: number): WebSearchSource[] {
+  if (!html) return []
+  const blocks = html.split(/<div class="result results_links/i).slice(1)
+  const sources: WebSearchSource[] = []
+  for (const block of blocks) {
+    if (sources.length >= maxResults) break
+    const link = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
+    if (!link) continue
+    let href = link[1].replace(/&amp;/gi, '&')
+    try {
+      const parsed = new URL(href, 'https://duckduckgo.com')
+      href = parsed.searchParams.get('uddg') ?? parsed.toString()
+    } catch {
+      continue
+    }
+    const url = sanitizeUrl(decodeURIComponent(href))
+    if (!url) continue
+    const snippet = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
+    sources.push({
+      rank: sources.length + 1,
+      title: sanitizeText(decodeHtml(link[2]), 300) || url,
+      url,
+      snippet: snippet ? sanitizeText(decodeHtml(snippet[1]), 1200) : ''
+    })
+  }
+  return sources
+}
+
+export function parseMojeekResults(html: string, maxResults: number): WebSearchSource[] {
+  if (!html) return []
+  const blocks = html.split(/<li[^>]*class="[^"]*result/i).slice(1)
+  const sources: WebSearchSource[] = []
+  for (const block of blocks) {
+    if (sources.length >= maxResults) break
+    const link = /<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
+    if (!link) continue
+    const url = sanitizeUrl(link[1])
+    if (!url) continue
+    const snippet = /<p[^>]*class="[^"]*s[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(block)
+    sources.push({
+      rank: sources.length + 1,
+      title: sanitizeText(decodeHtml(link[2]), 300) || url,
+      url,
+      snippet: snippet ? sanitizeText(decodeHtml(snippet[1]), 1200) : ''
+    })
+  }
+  return sources
+}
+
+export function parseBaiduResults(html: string, maxResults: number): WebSearchSource[] {
+  if (!html) return []
+  const blocks = html.split(/<div[^>]*class="[^"]*result[^"]*c-container/i).slice(1)
+  const sources: WebSearchSource[] = []
+  for (const block of blocks) {
+    if (sources.length >= maxResults) break
+    const link = /<h3[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block)
+    if (!link) continue
+    const url = sanitizeUrl(link[1].replace(/&amp;/gi, '&'))
+    if (!url) continue
+    const snippet =
+      /<span[^>]*class="[^"]*(?:content-right|c-abstract)[^"]*"[^>]*>([\s\S]*?)<\/span>/i.exec(block) ??
+      /<div[^>]*class="[^"]*c-abstract[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block)
+    sources.push({
+      rank: sources.length + 1,
+      title: sanitizeText(decodeHtml(link[2]), 300) || url,
+      url,
+      snippet: snippet ? sanitizeText(decodeHtml(snippet[1]), 1200) : ''
+    })
+  }
+  return sources
+}
+
 export class WebSearchService {
   private cache = new Map<string, CachedEntry>()
   private requests: number[] = []
@@ -98,6 +206,7 @@ export class WebSearchService {
   isConfigured(): boolean {
     const settings = this.getSettings()
     if (!settings.enabled) return false
+    if (settings.provider === 'builtin') return true
     if (settings.provider === 'searxng') return Boolean(settings.baseUrl)
     return Boolean(this.settingsStore.getWebSearchKey())
   }
@@ -148,7 +257,7 @@ export class WebSearchService {
     const startedAt = Date.now()
     const provider = settings.provider
     const key = this.settingsStore.getWebSearchKey()
-    if (provider !== 'searxng' && !key) {
+    if (provider !== 'searxng' && provider !== 'builtin' && !key) {
       throw new WebSearchError('搜索服务的 API Key 不存在。', '请到设置 → 搜索重新填写并保存 Key。')
     }
 
@@ -159,7 +268,8 @@ export class WebSearchService {
     try {
       if (options.signal?.aborted) throw new Error('aborted')
       let response: WebSearchResponse
-      if (provider === 'tavily') response = await this.searchTavily(query, maxResults, key!, controller.signal)
+      if (provider === 'builtin') response = await this.searchBuiltin(query, maxResults, controller.signal)
+      else if (provider === 'tavily') response = await this.searchTavily(query, maxResults, key!, controller.signal)
       else if (provider === 'brave') response = await this.searchBrave(query, maxResults, key!, controller.signal)
       else if (provider === 'serper') response = await this.searchSerper(query, maxResults, key!, controller.signal)
       else response = await this.searchSearxng(query, maxResults, key, settings.baseUrl!, controller.signal)
@@ -241,6 +351,175 @@ export class WebSearchService {
       offset += chunk.byteLength
     }
     return new TextDecoder('utf-8').decode(merged)
+  }
+
+  /** 内置多引擎：Bing → 百度 → DuckDuckGo → Mojeek，任一返回来源即采用。 */
+  private async searchBuiltin(
+    query: string,
+    maxResults: number,
+    signal: AbortSignal
+  ): Promise<WebSearchResponse> {
+    const engines: Array<{ name: string; run: () => Promise<WebSearchResponse> }> = [
+      { name: 'Bing', run: () => this.searchBing(query, maxResults, signal) },
+      { name: '百度', run: () => this.searchBaidu(query, maxResults, signal) },
+      { name: 'DuckDuckGo', run: () => this.searchDuckDuckGo(query, maxResults, signal) },
+      { name: 'Mojeek', run: () => this.searchMojeek(query, maxResults, signal) }
+    ]
+    const errors: string[] = []
+    for (const engine of engines) {
+      if (signal.aborted) throw new Error('aborted')
+      try {
+        const response = await engine.run()
+        if (response.sources.length > 0) return response
+      } catch (err) {
+        errors.push(`${engine.name}：${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    throw new WebSearchError(
+      `内置搜索暂不可用（${errors.slice(0, 3).join('；') || '无结果'}）。`,
+      '检查网络连接；也可以在设置 → 搜索配置 Tavily / Brave / Serper / SearXNG 作为补充。'
+    )
+  }
+
+  private async searchBing(
+    query: string,
+    maxResults: number,
+    signal: AbortSignal
+  ): Promise<WebSearchResponse> {
+    const url = new URL('https://www.bing.com/search')
+    url.searchParams.set('q', query)
+    url.searchParams.set('count', String(Math.min(20, maxResults + 3)))
+    url.searchParams.set('setlang', 'zh-Hans')
+    url.searchParams.set('mkt', 'zh-CN')
+    let response: Response
+    try {
+      response = await fetch(url, {
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'accept-language': 'zh-CN,zh;q=0.9,en;q=0.7',
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+        },
+        signal
+      })
+    } catch (err) {
+      throw new WebSearchError(
+        `无法连接内置搜索：${err instanceof Error ? err.message : String(err)}`,
+        '检查网络连接；也可以在设置 → 搜索配置备用搜索服务。'
+      )
+    }
+    if (!response.ok) {
+      throw new WebSearchError(`内置搜索返回 HTTP ${response.status}。`, '稍后重试，或在设置 → 搜索配置备用服务。')
+    }
+    const html = await this.readBodyCapped(response, 'Bing')
+    const sources = parseBingResults(html, maxResults)
+    if (sources.length === 0) {
+      throw new WebSearchError(
+        '内置搜索没有返回结果。',
+        '换一个更具体的关键词，或在设置 → 搜索配置 Tavily / Brave / Serper / SearXNG 作为补充。'
+      )
+    }
+    return { query, provider: PROVIDER_LABEL.builtin, sources, elapsedMs: 0 }
+  }
+
+  private async searchBaidu(
+    query: string,
+    maxResults: number,
+    signal: AbortSignal
+  ): Promise<WebSearchResponse> {
+    const url = new URL('https://www.baidu.com/s')
+    url.searchParams.set('wd', query)
+    url.searchParams.set('rn', String(Math.min(20, maxResults + 2)))
+    const response = await this.fetchSearchPage(url, 'Baidu', signal, {
+      'accept-language': 'zh-CN,zh;q=0.9'
+    })
+    const parsed = parseBaiduResults(await this.readBodyCapped(response, 'Baidu'), maxResults)
+    const sources = await this.resolveBaiduLinks(parsed, signal)
+    if (sources.length === 0) throw new WebSearchError('百度没有返回可用结果。')
+    return { query, provider: '百度（内置）', sources, elapsedMs: 0 }
+  }
+
+  private async searchDuckDuckGo(
+    query: string,
+    maxResults: number,
+    signal: AbortSignal
+  ): Promise<WebSearchResponse> {
+    const url = new URL('https://html.duckduckgo.com/html/')
+    url.searchParams.set('q', query)
+    const response = await this.fetchSearchPage(url, 'DuckDuckGo', signal)
+    const sources = parseDuckDuckGoResults(await this.readBodyCapped(response, 'DuckDuckGo'), maxResults)
+    if (sources.length === 0) throw new WebSearchError('DuckDuckGo 没有返回可用结果。')
+    return { query, provider: 'DuckDuckGo（内置）', sources, elapsedMs: 0 }
+  }
+
+  private async searchMojeek(
+    query: string,
+    maxResults: number,
+    signal: AbortSignal
+  ): Promise<WebSearchResponse> {
+    const url = new URL('https://www.mojeek.com/search')
+    url.searchParams.set('q', query)
+    const response = await this.fetchSearchPage(url, 'Mojeek', signal)
+    const sources = parseMojeekResults(await this.readBodyCapped(response, 'Mojeek'), maxResults)
+    if (sources.length === 0) throw new WebSearchError('Mojeek 没有返回可用结果。')
+    return { query, provider: 'Mojeek（内置）', sources, elapsedMs: 0 }
+  }
+
+  private async fetchSearchPage(
+    url: URL,
+    engine: string,
+    signal: AbortSignal,
+    extraHeaders: Record<string, string> = {}
+  ): Promise<Response> {
+    let response: Response
+    try {
+      response = await fetch(url, {
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'accept-language': 'zh-CN,zh;q=0.9,en;q=0.7',
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          ...extraHeaders
+        },
+        signal
+      })
+    } catch (err) {
+      throw new WebSearchError(
+        `无法连接 ${engine}：${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+    if (!response.ok) throw new WebSearchError(`${engine} 返回 HTTP ${response.status}。`)
+    return response
+  }
+
+  /** 百度结果是 /link?url= 跳转，解析出真实来源后再返回。 */
+  private async resolveBaiduLinks(
+    sources: WebSearchSource[],
+    signal: AbortSignal
+  ): Promise<WebSearchSource[]> {
+    const resolved: WebSearchSource[] = []
+    for (const source of sources) {
+      if (!/^https?:\/\/www\.baidu\.com\/link\?/i.test(source.url)) {
+        resolved.push(source)
+        continue
+      }
+      try {
+        const response = await fetch(source.url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          signal
+        })
+        const location = response.headers.get('location') ?? ''
+        const url = sanitizeUrl(location)
+        if (url && !/(^|\.)baidu\.com$/i.test(new URL(url).hostname)) {
+          resolved.push({ ...source, url })
+        }
+      } catch {
+        // 跳转解析失败时丢弃，不把百度站内链接当成来源
+      }
+    }
+    return resolved.map((source, index) => ({ ...source, rank: index + 1 }))
   }
 
   private async searchTavily(

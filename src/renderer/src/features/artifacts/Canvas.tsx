@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react'
 import type { Artifact, ArtifactKind } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, ErrorNote, IconButton, Modal, ResizeHandle } from '../../ui'
 import { languageLabel } from '../../components/languages'
 import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
@@ -846,7 +846,7 @@ export function Canvas(): React.JSX.Element | null {
             <>
               {truncated ? (
                 <div className="canvas-truncated-note" role="status">
-                  文件较大，画布只显示了前 {displayKind === 'html' ? '8' : '2'}MB；完整内容可在系统中打开。
+                  文件较大，画布只显示了前 8MB；完整内容可在系统中打开。
                 </div>
               ) : null}
               <CanvasContent

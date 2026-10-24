@@ -1,10 +1,10 @@
 /**
- * 合并后的 reveal 组：Agent 规则、内置技能、自定义命令/子代理、权限规则、技能库、会话导出、文件管理器定位。
+ * 合并后的 reveal 组：Agent 规则、内置技能、自定义命令/集群成员、权限规则、技能库、会话导出、文件管理器定位。
  * 每个原文件各自包在 describe('<原文件名>') 中；本文件 mock 子进程，因此不包含依赖真实命令的用例。
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, rmSync, symlinkSync, writeFileSync, existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { discoverAgentRules } from '../../../src/main/services/agent-rules'
 import { makeTempDir, makeTempWorkspace } from '../core/helpers/workspace'
 import { createHash } from 'node:crypto'
@@ -22,7 +22,7 @@ import { createSkillsFeatureHandlers, createSkillsService, installSkillsRuntimeE
 import { sessionExportContent, sessionToMarkdown } from '../../../src/main/services/session-export'
 import { type Session } from '../../../src/shared/types'
 import { createServer, type Server } from 'node:net'
-import { explorerSelectArgs, openPathFromUserShell, revealInFileManager } from '../../../src/main/services/reveal'
+import { openPathFromUserShell, revealInFileManager } from '../../../src/main/services/reveal'
 
 const electronState = vi.hoisted(() => ({ dataDir: '' }))
 const spawnMock = vi.hoisted(() => vi.fn())
@@ -190,6 +190,8 @@ describe('内置技能安装', () => {
       expect(content).toContain(`name: ${skill.name}`)
       expect(content).toContain('## 何时使用')
       expect(content.length).toBeGreaterThan(1500)
+      expect(content).not.toMatch(/\b(?:1080p|1440|1920|2560|3840)\b/)
+      expect(content).not.toMatch(/\b\d{3,4}\s*px\b/)
     }
     const discovered = scanUserSkills(join(dataDir, 'skills'))
     expect(discovered.map((skill) => skill.name).sort()).toEqual(BUILTIN_SKILLS.map((skill) => skill.name).sort())
@@ -203,6 +205,12 @@ describe('内置技能安装', () => {
     for (const name of ['brainstorm-and-scope', 'plan-and-execute', 'verify-before-delivery', 'parallel-work', 'canvas-artifacts', 'workspace-git', 'skill-author']) {
       expect(discovered.some((skill) => skill.name === name), name).toBe(true)
     }
+    // parallel-work 只讲协作方法，成员分工以角色为准，二者不互相改写
+    const parallel = readFileSync(join(dataDir, 'skills', 'parallel-work', 'SKILL.md'), 'utf8')
+    expect(parallel).toContain('角色与技能：分工和方法分开')
+    expect(parallel).toContain('技能不能改变分工、权限、交付对象或验收标准')
+    expect(parallel).toContain('architect')
+    expect(parallel).not.toContain('general/explore/plan/review/test/docs 或自定义类型')
   })
 
   it('旧版未修改的内置技能会随版本升级更新，用户改过的保留', () => {
@@ -442,8 +450,8 @@ afterEach(() => {
   }
 })
 
-describe('自定义子代理角色', () => {
-  it('解析 frontmatter：标题、工具白名单与只读标记', () => {
+describe('自定义集群成员类型', () => {
+  it('解析 frontmatter：标题与提示；工具/只读字段不再限制权限', () => {
     const role = parseAgentFile(
       `---
 title: 安全审计
@@ -460,20 +468,15 @@ read-only: true
       name: 'security',
       title: '安全审计',
       description: '只读审计安全边界',
-      tools: ['read_file', 'grep', 'glob'],
-      readOnly: true,
       source: 'project'
     })
     expect(role?.systemPrompt).toContain('只检查安全问题')
     expect(parseAgentFile('---\ntitle: 空\n---\n', 'empty', 'user', 'x.md')).toBeNull()
 
-    // 工具名统一小写去重；显式空 tools 表示不允许任何工具，而不是退化成全部工具
-    const normalized = parseAgentFile('---\ntools: Read_File, read_file, GREP\n---\n只分析。', 'readonly-role', 'user', 'x.md')
-    expect(normalized?.tools).toEqual(['read_file', 'grep'])
-    const noTools = parseAgentFile('---\ntools:\n---\n只分析。', 'no-tools', 'user', 'x.md')
-    expect(noTools?.tools).toEqual([])
-    const readOnly = parseAgentFile('---\nreadonly: TRUE\n---\n只读。', 'ro', 'user', 'x.md')
-    expect(readOnly?.readOnly).toBe(true)
+    // 旧 frontmatter 的 tools/read-only 字段被忽略：成员始终拥有与主代理相同的完整权限
+    const legacy = parseAgentFile('---\ntools: Read_File, read_file, GREP\nread-only: true\n---\n只分析。', 'legacy-role', 'user', 'x.md')
+    expect(legacy).not.toHaveProperty('tools')
+    expect(legacy).not.toHaveProperty('readOnly')
   })
 
   it('达到 32 个角色上限后，项目角色仍可覆盖同名用户角色', () => {
@@ -527,7 +530,7 @@ read-only: true
     expect(review?.title).toBe(BUILTIN_AGENT_ROLES.find((role) => role.name === 'review')?.title)
 
     const summary = summarizeAgentRoles(roles)
-    expect(summary.find((role) => role.name === 'audit')).toMatchObject({ source: 'project', readOnly: false })
+    expect(summary.find((role) => role.name === 'audit')).toMatchObject({ source: 'project' })
     expect(summary.map((role) => role.name)).toEqual(expect.arrayContaining(['general', 'explore', 'plan', 'review', 'test', 'docs', 'audit']))
   })
 })
@@ -1063,23 +1066,29 @@ describe('从本地文件夹安装', () => {
 
     const empty = join(root, 'downloads', 'empty')
     mkdirSync(empty, { recursive: true })
-    await expect(service.install(empty, workspace)).rejects.toThrow(/空的/)
+    await expect(service.install(empty, workspace)).rejects.toThrow(/没有可安装的文件/)
 
     await expect(service.install('relative/folder', workspace)).rejects.toThrow(/绝对路径/)
     await expect(service.install(join(root, 'nope'), workspace)).rejects.toThrow(/路径不存在/)
   })
 
-  it('文件夹里的可执行/脚本文件与符号链接被拒绝，不落盘', async () => {
+  it('文件夹里的可执行/脚本文件被跳过并报告，资源正常安装', async () => {
     const { root, workspace, service } = makeHarness()
-    const withScript = writeSkill(join(root, 'downloads'), 'scripted', '# Scripted\n步骤。')
+    const withScript = writeSkill(join(root, 'downloads'), 'scripted', '# Scripted\n步骤。', {
+      'notes/guide.md': '指南'
+    })
     writeFileSync(join(withScript, 'run.js'), 'console.log(1)')
-    await expect(service.install(withScript, workspace)).rejects.toThrow(/可执行/)
-    expect(existsSync(join(service.userDir, 'scripted'))).toBe(false)
+    const result = await service.install(withScript, workspace)
+    expect(result.skipped).toEqual(['run.js'])
+    expect(existsSync(join(service.userDir, 'scripted', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(service.userDir, 'scripted', 'notes', 'guide.md'))).toBe(true)
+    expect(existsSync(join(service.userDir, 'scripted', 'run.js'))).toBe(false)
 
     const withExe = writeSkill(join(root, 'downloads'), 'exe', '# Exe\n步骤。')
     writeFileSync(join(withExe, 'tool.exe'), 'MZ')
-    await expect(service.install(withExe, workspace)).rejects.toThrow(/可执行/)
-    expect(existsSync(join(service.userDir, 'exe'))).toBe(false)
+    const exeResult = await service.install(withExe, workspace)
+    expect(exeResult.skipped).toEqual(['tool.exe'])
+    expect(existsSync(join(service.userDir, 'exe', 'tool.exe'))).toBe(false)
   })
 
   it('同名技能默认拒绝安装，overwrite=true 时覆盖', async () => {
@@ -1133,13 +1142,17 @@ describe('从 .zip 安装', () => {
     expect(existsSync(join(root, 'evil2.txt'))).toBe(false)
   })
 
-  it('zip 内可执行文件、超大文件、文件数超限都拒绝', async () => {
+  it('zip 内可执行文件被跳过；超大文件、文件数超限仍拒绝', async () => {
     const { root, workspace, service } = makeHarness()
     const withExe = await makeZip(join(root, 'exe.zip'), {
       'SKILL.md': '# Exe\nx',
-      'bin/payload.exe': 'MZ'
+      'bin/payload.exe': 'MZ',
+      'notes.md': '正常资源'
     })
-    await expect(service.install(withExe, workspace)).rejects.toThrow(/可执行/)
+    const exeResult = await service.install(withExe, workspace)
+    expect(exeResult.skipped).toEqual(['bin/payload.exe'])
+    expect(existsSync(join(service.userDir, 'exe', 'bin', 'payload.exe'))).toBe(false)
+    expect(existsSync(join(service.userDir, 'exe', 'notes.md'))).toBe(true)
 
     const huge = await makeZip(join(root, 'huge.zip'), {
       'SKILL.md': '# Huge\nx',
@@ -1368,13 +1381,14 @@ function tempFile(name = '报告 1.html'): string {
   return path
 }
 
-function fakeChild(autoExit = true): Record<string, unknown> {
+function fakeChild(autoExit = true, exitCode = 0): Record<string, unknown> {
   const child: Record<string, unknown> = {}
-  child.on = vi.fn((event: string, callback: () => void) => {
-    if (autoExit && event === 'exit') queueMicrotask(() => callback())
+  child.on = vi.fn((event: string, callback: (code?: number) => void) => {
+    if (autoExit && event === 'exit') queueMicrotask(() => callback(exitCode))
     return child
   })
   child.unref = vi.fn(() => child)
+  child.kill = vi.fn()
   return child
 }
 
@@ -1395,26 +1409,29 @@ afterEach(async () => {
 })
 
 describe('reveal in file manager', () => {
-  it('passes /select,"path" as one verbatim argument so spaces and Chinese survive', () => {
-    // 分开传参时 Explorer 会打开「桌面/文档」而不是目标文件；
-    // 合成参数但让 Node 自动加引号同样会失败，必须自己给出带引号的最终形态。
-    const path = 'C:\交付成品\Morrow 工作区\报告 1.html'
-    expect(explorerSelectArgs(path)).toEqual([`/select,"${path}"`])
+  it('没有启动器代理时用现有 Shell 定位，不创建 Explorer 子进程', async () => {
+    const path = tempFile()
+    spawnMock.mockReturnValue(fakeChild())
+    await expect(revealInFileManager(path)).resolves.toBeNull()
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    const [command, args, options] = spawnMock.mock.calls[0] ?? []
+    expect(command).toBe('powershell.exe')
+    expect(args).toContain('-EncodedCommand')
+    expect(options).toMatchObject({ windowsHide: true })
+    expect((options as { env: Record<string, string> }).env).toMatchObject({
+      MORROW_SHELL_MODE: 'REVEAL',
+      MORROW_SHELL_TARGET: path
+    })
+    expect(openPathMock).not.toHaveBeenCalled()
+    expect(showItemMock).not.toHaveBeenCalled()
   })
 
-  it('没有启动器代理时打开所在文件夹，不启动 Explorer 子进程', async () => {
+  it('Shell 辅助进程失败时返回真实原因，不弹 Explorer 错误框', async () => {
     const path = tempFile()
-    await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(openPathMock).toHaveBeenCalledWith(dirname(path))
-    expect(spawnMock).not.toHaveBeenCalled()
-  })
-
-  it('打开文件夹失败时仍优先用 Shell 选中文件，不弹出 Explorer 0xC0000142 对话框', async () => {
-    const path = tempFile()
-    openPathMock.mockResolvedValueOnce('open failed')
-    await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(showItemMock).toHaveBeenCalledWith(path)
-    expect(spawnMock).not.toHaveBeenCalled()
+    spawnMock.mockReturnValue(fakeChild(true, 1))
+    await expect(revealInFileManager(path)).resolves.toContain('退出码 1')
+    expect(openPathMock).not.toHaveBeenCalled()
+    expect(showItemMock).not.toHaveBeenCalled()
   })
 
   it('启动器代理存在时通过命名管道执行，不依赖 Electron 的 GUI 子进程', async () => {
@@ -1437,21 +1454,25 @@ describe('reveal in file manager', () => {
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
-  it('系统应用打开优先走 ShellExecute；不可用时回退 Explorer 转发', async () => {
+  it('系统应用打开文件优先走 ShellExecute，不启动 Explorer 转发', async () => {
     const path = tempFile()
     await expect(openPathFromUserShell(path)).resolves.toBeNull()
     expect(openPathMock).toHaveBeenCalledWith(path)
     expect(spawnMock).not.toHaveBeenCalled()
+  })
 
-    openPathMock.mockResolvedValueOnce('open failed')
+  it('目录交给现有 Shell 打开，即使 ShellExecute 失败也不创建 Explorer 进程', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'morrow-reveal-'))
+    tempDirs.push(dir)
     spawnMock.mockReturnValue(fakeChild())
-    await expect(openPathFromUserShell(path)).resolves.toBeNull()
-    expect(spawnMock).toHaveBeenCalledWith(
-      'explorer.exe',
-      [path],
-      expect.objectContaining({ detached: true, stdio: 'ignore', windowsVerbatimArguments: false })
-    )
-    expect(spawnMock.mock.calls[0]?.[2]).not.toHaveProperty('windowsHide')
+    await expect(openPathFromUserShell(dir)).resolves.toBeNull()
+    const [command, , options] = spawnMock.mock.calls[0] ?? []
+    expect(command).toBe('powershell.exe')
+    expect((options as { env: Record<string, string> }).env).toMatchObject({
+      MORROW_SHELL_MODE: 'EXPLORE',
+      MORROW_SHELL_TARGET: dir
+    })
+    expect(openPathMock).not.toHaveBeenCalled()
   })
 })
 })

@@ -5,7 +5,7 @@ import {
   useRef,
   type ForwardedRef
 } from 'react'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, Transaction, type Extension } from '@codemirror/state'
 import {
   EditorView,
   crosshairCursor,
@@ -38,6 +38,8 @@ export interface CodeEditorHandle {
 
 export interface CodeEditorProps {
   value: string
+  /** 文件/文档身份：切换时重置撤销历史，不同文件不共享 undo 栈 */
+  documentKey?: string
   language: EditorLanguage
   readOnly?: boolean
   theme: 'dark' | 'light'
@@ -54,11 +56,12 @@ export interface CodeEditorProps {
 const baseTheme = EditorView.theme({
   '&': {
     height: '100%',
-    fontSize: 'var(--fs-code, 13px)',
+    fontSize: 'var(--fs-code, 12px)',
     color: 'var(--text)'
   },
   '.cm-scroller': {
     fontFamily: 'var(--font-code)',
+    fontWeight: 'var(--code-font-weight, 400)',
     lineHeight: '1.7',
     overflow: 'auto'
   },
@@ -120,21 +123,21 @@ const baseTheme = EditorView.theme({
   '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--line)' },
   '.cm-search': {
     fontFamily: 'var(--font-ui)',
-    fontSize: '12px',
+    fontSize: 'var(--fs-base)',
     padding: '6px 8px',
     display: 'flex',
     flexWrap: 'wrap',
     gap: '6px',
     alignItems: 'center'
   },
-  '.cm-search label': { color: 'var(--text-2)', fontSize: '11.5px' },
+  '.cm-search label': { color: 'var(--text-2)', fontSize: 'var(--fs-sm-plus)' },
   '.cm-search .cm-textfield': {
     backgroundColor: 'var(--surface-inset)',
     border: '1px solid var(--line-strong)',
     borderRadius: 'var(--r-xs)',
     color: 'var(--text)',
     padding: '3px 7px',
-    fontSize: '12px',
+    fontSize: 'var(--fs-base)',
     outline: 'none'
   },
   '.cm-search .cm-textfield:focus': { borderColor: 'var(--line-gold)' },
@@ -144,7 +147,7 @@ const baseTheme = EditorView.theme({
     border: '1px solid var(--line-strong)',
     borderRadius: 'var(--r-xs)',
     color: 'var(--text-2)',
-    fontSize: '11.5px',
+    fontSize: 'var(--fs-sm-plus)',
     padding: '3px 9px'
   },
   '.cm-search .cm-button:hover': { backgroundColor: 'var(--surface-hover)', color: 'var(--text)' },
@@ -185,6 +188,7 @@ const lightEditorTheme = EditorView.theme(
 export const CodeEditor = forwardRef(function CodeEditor(
   {
     value,
+    documentKey,
     language,
     readOnly = false,
     theme,
@@ -199,6 +203,8 @@ export const CodeEditor = forwardRef(function CodeEditor(
 ): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const extensionsRef = useRef<Extension[]>([])
+  const documentKeyRef = useRef(documentKey)
   const onChangeRef = useRef(onChange)
   const onSaveRef = useRef(onSave)
   const onCursorRef = useRef(onCursor)
@@ -266,6 +272,7 @@ export const CodeEditor = forwardRef(function CodeEditor(
       }),
       EditorView.contentAttributes.of({ 'aria-label': ariaLabel ?? '代码编辑器', spellcheck: 'false' })
     ]
+    extensionsRef.current = extensions
     const view = new EditorView({
       state: EditorState.create({ doc: value, extensions }),
       parent: host
@@ -280,7 +287,18 @@ export const CodeEditor = forwardRef(function CodeEditor(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* 外部 value 同步（历史恢复 / 预览切换 / 重新加载） */
+  /* 切换文件：重建 state，彻底隔离撤销历史 */
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || documentKeyRef.current === documentKey) return
+    documentKeyRef.current = documentKey
+    view.setState(EditorState.create({ doc: value, extensions: extensionsRef.current }))
+    if (autoFocus) view.focus()
+    // 只在文档身份变化时重置；value 变化走下面的非历史同步
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentKey])
+
+  /* 外部 value 同步（历史恢复 / 预览切换 / 重新加载）：不得进入撤销栈 */
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
@@ -290,7 +308,8 @@ export const CodeEditor = forwardRef(function CodeEditor(
     const head = Math.min(selection.head, value.length)
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
-      selection: { anchor: head }
+      selection: { anchor: head },
+      annotations: Transaction.addToHistory.of(false)
     })
   }, [value])
 

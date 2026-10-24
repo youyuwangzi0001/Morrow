@@ -59,14 +59,14 @@
 
 .close-choice-copy strong {
   font-size: var(--fs-body);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-ui);
 }
 
 .close-choice-copy span {
   color: var(--text-2);
   font-size: var(--fs-micro);
-  line-height: 1.55;
+  line-height: var(--lh-copy);
 }
 
 .close-choice.is-danger:hover:not(:disabled) {

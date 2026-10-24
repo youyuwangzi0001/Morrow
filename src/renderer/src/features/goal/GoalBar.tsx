@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, CirclePause, CirclePlay, Target } from 'lucide-react'
 import type { Goal } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, Modal } from '../../ui'
 import {
   GOAL_STATUS_LABEL,

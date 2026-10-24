@@ -15,6 +15,7 @@ import { basename, dirname, join, sep } from 'node:path'
 import { estimateTokens } from '@core/context'
 import { decodeTextBytes } from '../../shared/text-decode'
 import { log } from './logger'
+import { isPathInside } from './paths'
 
 export type AgentRuleScope = 'project' | 'parent' | 'user'
 
@@ -66,14 +67,6 @@ function readRule(path: string): { content: string; bytes: number; truncated: bo
     log.warn('agent rule read failed', { path, error: String(err) })
     return null
   }
-}
-
-function isPathInside(root: string, target: string): boolean {
-  const fold = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
-  const base = fold(root)
-  const candidate = fold(target)
-  const prefix = base.endsWith(sep) ? base : `${base}${sep}`
-  return candidate === base || candidate.startsWith(prefix)
 }
 
 function userRuleCandidates(homeOverride?: string): Array<{ path: string; name: string }> {

@@ -86,6 +86,8 @@ test.describe('A1 项目主页', () => {
     // 打开同一个工作台项目面板（概览是默认视图）
     await page.getByRole('button', { name: '打开项目主页' }).click()
     await expect(page.locator('.pp-root')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.pp-tabs button.is-active')).toHaveCSS('height', '24px')
+    await expect(page.locator('.pp-tabs button.is-active')).toHaveCSS('border-radius', '5px')
     await expect(page.locator('.pp-home-title')).toHaveText('A1 项目主页测试')
     await expect(page.locator('.pp-home-desc')).toContainText('验证项目概览')
     await expect(page.locator('.pp-home-meta')).toContainText('1 份资料')
@@ -827,15 +829,12 @@ test.describe('A4 深度研究模式', () => {
       title: '深度研究测试'
     })
 
-    // 切到研究模式，选快速深度
-    await page.locator('.composer-picker-mode').getByRole('radio', { name: '研究' }).click()
-    await expect(page.locator('.composer-perm-lock.is-research')).toContainText('联网查证')
-    await page.getByLabel('研究深度').click()
-    await page.getByRole('option', { name: /研究·快速/ }).click()
-    await expect(page.locator('.composer-picker-research')).toContainText('研究·快速')
-
-    await page.locator('.composer-input').fill('研究一下 Morrow 的深度研究能力，并给出可核对的报告。')
+    // 输入框只保留聊天/工作；研究工作流通过 /research 调取
+    await expect(page.locator('.composer-picker-mode').getByRole('radio')).toHaveCount(2)
+    await page.locator('.composer-input').fill('/research quick 研究一下 Morrow 的深度研究能力，并给出可核对的报告。')
     await page.locator('.composer-input').press('Enter')
+    await expect(page.locator('.composer-perm-lock.is-research')).toContainText('联网查证')
+    await expect(page.locator('.composer-picker-research')).toContainText('研究·快速')
 
     // ChatGPT Deep Research 式流程：先拿到可编辑计划，确认后才开始检索
     const ready = await waitUntil(async () => {
@@ -994,7 +993,7 @@ test.describe('A4 深度研究模式', () => {
     expect(search.queries.length).toBeGreaterThanOrEqual(2)
   })
 
-  test('未配置联网搜索时拒绝开始深度研究', async () => {
+  test('关闭联网搜索时拒绝开始深度研究', async () => {
     test.setTimeout(90_000)
     mock = await startMockLLM({ scripts: [{ text: '不应该运行到这里。' }] })
     morrow = await launchMorrow({ name: 'a4-research-no-search', timeoutMs: 90_000 })
@@ -1002,14 +1001,17 @@ test.describe('A4 深度研究模式', () => {
     await waitForStoreReady(page)
     await dismissOnboarding(page)
     const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+    await page.evaluate(async () => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      await store.getState().saveWebSearch({ enabled: false, provider: 'builtin', maxResults: 3 })
+    })
     await createSession(page, {
       workspace: workspaceAt('a4-research-no-search-ws'),
       ...provider,
       permissionMode: 'auto',
       title: '研究缺少联网'
     })
-    await page.locator('.composer-picker-mode').getByRole('radio', { name: '研究' }).click()
-    await page.locator('.composer-input').fill('研究一个需要联网的问题。')
+    await page.locator('.composer-input').fill('/research 研究一个需要联网的问题。')
     await page.locator('.composer-input').press('Enter')
     await expect(page.locator('.toast-item.toast-error')).toContainText('配置联网搜索', { timeout: 15_000 })
     const state = await page.evaluate(() => {
@@ -1830,9 +1832,9 @@ test.describe('R10-D/E 记忆中心与 Projects', () => {
       const addedEntry = page.locator('.mc-entry').filter({ hasText: 'UI 添加的记忆' })
       await addedEntry.getByRole('switch', { name: '停用这条记忆' }).click()
       await expect(addedEntry).toContainText('已停用，不会参考')
-      await page.getByLabel('搜索记忆').fill('UI 添加')
+      await page.getByLabel('搜索长期记忆').fill('UI 添加')
       await expect(page.locator('.mc-entry')).toHaveCount(1)
-      await page.getByLabel('搜索记忆').fill('')
+      await page.getByLabel('搜索长期记忆').fill('')
 
       // 切范围时必须清掉旧范围的清空确认，不能把「清空项目记忆」执行成「清空全局记忆」
       await page.getByRole('radio', { name: '全局记忆' }).click()
@@ -2201,9 +2203,15 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
         'SKILL.md': '# Bad\nx',
         'run.js': 'console.log(1)'
       })
-      const exeRejected = await invoke(morrow.page, 'feature:skills:install', { sourcePath: exeZip, workspace: null })
-      expect(exeRejected.ok).toBe(false)
-      if (!exeRejected.ok) expect(exeRejected.error.message).toContain('可执行')
+      const exeInstalled = await invoke<{ installed: SkillView; skipped: string[] }>(morrow.page, 'feature:skills:install', {
+        sourcePath: exeZip,
+        workspace: null
+      })
+      expect(exeInstalled.ok).toBe(true)
+      if (!exeInstalled.ok) throw new Error(exeInstalled.error.message)
+      expect(exeInstalled.data.skipped).toContain('run.js')
+      expect(existsSync(join(userDir, 'exe-skill', 'run.js'))).toBe(false)
+      await invoke(morrow.page, 'feature:skills:remove', { id: exeInstalled.data.installed.id, workspace: null })
 
       const evilZip = writeZip(join(fixtureDir, 'evil-skill.zip'), {
         'SKILL.md': '# Evil\nx',

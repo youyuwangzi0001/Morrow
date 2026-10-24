@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, FileText, LoaderCircle, PencilLine, Play, Telescope, Square } from 'lucide-react'
 import { RESEARCH_DEPTHS } from '@shared/research'
 import type { ResearchStatus } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button } from '../../ui'
 import './ResearchBar.css'
 
@@ -44,6 +44,7 @@ export function ResearchBar(): React.JSX.Element | null {
   const stopRun = useAppStore((s) => s.stopRun)
   const startResearch = useAppStore((s) => s.startResearch)
   const steerResearch = useAppStore((s) => s.steerResearch)
+  const setSessionMode = useAppStore((s) => s.setSessionMode)
   const [expanded, setExpanded] = useState(false)
   const [planDraft, setPlanDraft] = useState('')
   const [starting, setStarting] = useState(false)
@@ -77,9 +78,9 @@ export function ResearchBar(): React.JSX.Element | null {
     return () => window.clearInterval(timer)
   }, [researchStatus, research?.startedAt])
 
-  if (!research || research.status === 'idle' || session?.mode !== 'research') return null
+  if (!session || !research || research.status === 'idle' || session.mode === 'chat') return null
   const active = research.status === 'planning' || research.status === 'searching'
-  const running = active && !!run && run.sessionId === session?.id
+  const running = active && !!run && run.sessionId === session.id
   const depth = RESEARCH_DEPTHS[research.depth]
   const sourceReady = research.sourceCount >= research.minSources
   const artifactId = research.artifactId
@@ -162,6 +163,16 @@ export function ResearchBar(): React.JSX.Element | null {
             title="停止当前研究运行"
           >
             停止
+          </Button>
+        ) : null}
+        {session?.mode === 'research' ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void setSessionMode('work')}
+            title="退出研究子流程，回到普通工作；报告仍保留"
+          >
+            退出研究
           </Button>
         ) : null}
       </div>
@@ -285,10 +296,10 @@ export function ResearchBar(): React.JSX.Element | null {
                     打开研究报告
                   </Button>
                 ) : research.status === 'completed' ? (
-                  <span className="research-hint">研究报告已被删除或移动，可以继续输入问题重新研究。</span>
+                  <span className="research-hint">研究报告已被删除或移动；用 /research 问题 重新研究。</span>
                 ) : null}
                 {research.status === 'stopped' || research.status === 'error' ? (
-                  <span className="research-hint">在下方继续输入问题，会重新制定计划并研究。</span>
+                  <span className="research-hint">用 /research 问题 重新研究；也可以继续普通工作。</span>
                 ) : null}
                 {research.status === 'searching' && !running ? (
                   <span className="research-hint">正在准备下一轮检索…</span>

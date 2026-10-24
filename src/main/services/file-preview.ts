@@ -19,7 +19,7 @@ import {
   isTextFileName,
   mimeTypeForFileName
 } from '../../shared/file-types'
-import { formatBytes } from '../../shared/format'
+import { formatBytes } from '../../shared/usage'
 import { statWorkspaceFile } from './workspace-files'
 
 const TOKEN_TTL_MS = 6 * 60 * 60 * 1000

@@ -21,6 +21,10 @@
  * - feature:memory:clear              { scope, workspace? } → { removed }
  * - feature:memory:export             { scope, workspace? } → { fileName, markdown, json, count, exportedAt }
  * - feature:memory:injection          { workspace?, maxTokens? } → MemoryInjection（注入预览）
+ * - feature:memory:episodes / episodeToggle / episodeRemove / episodeClear / episodeInjection
+ *
+ * 自进化建议（feature:evolution:list / review / apply / ignore）与记忆同属一个 feature 域，
+ * 故在本模块一并注册；自动复盘由 AgentService 在任务结束后触发，不经过渲染层。
  */
 import { resolveDataDir } from '../services/paths'
 import {
@@ -30,6 +34,16 @@ import {
   type MemoryScope
 } from '../services/memory-service'
 import { log } from '../services/logger'
+import { sendFeatureEvent } from '../feature-ipc'
+import {
+  EPISODE_CHANGED_EVENT,
+  EVOLUTION_CHANGED_EVENT,
+  MEMORY_CHANGED_EVENT
+} from '../../shared/memory'
+import { configureEvolutionRuntime, getEvolutionService } from '../services/evolution-service'
+import { getAgentService } from '../services/agent-service'
+import { getSettingsStore } from '../services/settings-store'
+import { getSessionStore } from '../services/session-store'
 import { resolveWorkspaceDir } from './workspace-roots'
 
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 兼容；模块不直接依赖 feature-ipc） */
@@ -47,7 +61,12 @@ export const MEMORY_FEATURE_CHANNELS = [
   'feature:memory:remove',
   'feature:memory:clear',
   'feature:memory:export',
-  'feature:memory:injection'
+  'feature:memory:injection',
+  'feature:memory:episodes',
+  'feature:memory:episodeToggle',
+  'feature:memory:episodeRemove',
+  'feature:memory:episodeClear',
+  'feature:memory:episodeInjection'
 ] as const
 
 export interface MemoryFeatureOptions {
@@ -128,15 +147,17 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
   register('feature:memory:add', (payload) => {
     const data = record(payload)
     const scope = parseScope(data)
+    const workspace = targetWorkspace(data, scope, options)
     const entry = service().add({
       scope,
-      workspace: targetWorkspace(data, scope, options),
+      workspace,
       text: requireString(data, 'text'),
       tags: stringTags(data.tags),
       enabled: data.enabled !== false,
       source: 'user'
     })
     log.info('memory added', { scope: entry.scope, id: entry.id })
+    sendFeatureEvent(MEMORY_CHANGED_EVENT, { scope, workspace })
     return { entry }
   })
 
@@ -148,7 +169,9 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
     const tags = stringTags(data.tags)
     if (tags !== undefined) patch.tags = tags
     if (data.enabled !== undefined) patch.enabled = data.enabled === true
-    const entry = service().update(scope, targetWorkspace(data, scope, options), requireString(data, 'id'), patch)
+    const workspace = targetWorkspace(data, scope, options)
+    const entry = service().update(scope, workspace, requireString(data, 'id'), patch)
+    sendFeatureEvent(MEMORY_CHANGED_EVENT, { scope, workspace })
     return { entry }
   })
 
@@ -157,22 +180,28 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
     const scope = parseScope(data)
     const id = requireString(data, 'id')
     const enabled = typeof data.enabled === 'boolean' ? data.enabled : undefined
-    const entry = service().toggle(scope, targetWorkspace(data, scope, options), id, enabled)
+    const workspace = targetWorkspace(data, scope, options)
+    const entry = service().toggle(scope, workspace, id, enabled)
+    sendFeatureEvent(MEMORY_CHANGED_EVENT, { scope, workspace })
     return { entry }
   })
 
   register('feature:memory:remove', (payload) => {
     const data = record(payload)
     const scope = parseScope(data)
-    service().remove(scope, targetWorkspace(data, scope, options), requireString(data, 'id'))
+    const workspace = targetWorkspace(data, scope, options)
+    service().remove(scope, workspace, requireString(data, 'id'))
+    sendFeatureEvent(MEMORY_CHANGED_EVENT, { scope, workspace })
     return { removed: true }
   })
 
   register('feature:memory:clear', (payload) => {
     const data = record(payload)
     const scope = parseScope(data)
-    const result = service().clear(scope, targetWorkspace(data, scope, options))
+    const workspace = targetWorkspace(data, scope, options)
+    const result = service().clear(scope, workspace)
     log.info('memory cleared', { scope, removed: result.removed })
+    sendFeatureEvent(MEMORY_CHANGED_EVENT, { scope, workspace })
     return result
   })
 
@@ -199,5 +228,115 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
       dataDir,
       maxTokens: typeof data.maxTokens === 'number' ? data.maxTokens : undefined
     })
+  })
+
+  /* ── 任务经验（自动记忆） ─────────────────────────────────── */
+
+  register('feature:memory:episodes', (payload) => {
+    const data = record(payload)
+    const scope = parseScope(data)
+    const workspace = targetWorkspace(data, scope, options)
+    const query = typeof data.query === 'string' ? data.query : undefined
+    return service().listEpisodes(scope, workspace, {
+      query,
+      includeDisabled: data.includeDisabled === true
+    })
+  })
+
+  register('feature:memory:episodeToggle', (payload) => {
+    const data = record(payload)
+    const scope = parseScope(data)
+    const workspace = targetWorkspace(data, scope, options)
+    const enabled = typeof data.enabled === 'boolean' ? data.enabled : undefined
+    const entry = service().toggleEpisode(scope, workspace, requireString(data, 'id'), enabled)
+    sendFeatureEvent(EPISODE_CHANGED_EVENT, { scope, workspace })
+    return { entry }
+  })
+
+  register('feature:memory:episodeRemove', (payload) => {
+    const data = record(payload)
+    const scope = parseScope(data)
+    const workspace = targetWorkspace(data, scope, options)
+    service().removeEpisode(scope, workspace, requireString(data, 'id'))
+    sendFeatureEvent(EPISODE_CHANGED_EVENT, { scope, workspace })
+    return { removed: true }
+  })
+
+  register('feature:memory:episodeClear', (payload) => {
+    const data = record(payload)
+    const scope = parseScope(data)
+    const workspace = targetWorkspace(data, scope, options)
+    const result = service().clearEpisodes(scope, workspace)
+    log.info('task episodes cleared', { scope, removed: result.removed })
+    sendFeatureEvent(EPISODE_CHANGED_EVENT, { scope, workspace })
+    return result
+  })
+
+  register('feature:memory:episodeInjection', (payload) => {
+    const data = record(payload)
+    const rawWorkspace = workspaceOf(data)
+    let workspace: string | null = null
+    if (rawWorkspace) {
+      if (options.isWorkspaceAllowed) {
+        if (!options.isWorkspaceAllowed(rawWorkspace)) throw new Error('记忆只能读写已登记的工作区。')
+        workspace = rawWorkspace
+      } else {
+        workspace = resolveWorkspaceDir(rawWorkspace, '记忆只能读写已登记的工作区。')
+      }
+    }
+    return service().episodeInjection(
+      workspace,
+      typeof data.query === 'string' ? data.query : '',
+      { maxTokens: typeof data.maxTokens === 'number' ? data.maxTokens : undefined }
+    )
+  })
+}
+
+function suggestionId(data: Record<string, unknown>): string {
+  const id = requireString(data, 'id').trim()
+  if (!id) throw new Error('缺少建议 id')
+  return id
+}
+
+/** 注册自进化建议频道；复盘写回记忆/技能库，仍以用户采纳为前提。 */
+export function registerEvolutionFeature(
+  register: RegisterFeatureChannel,
+  options: { dataDir?: string } = {}
+): void {
+  const dataDir = options.dataDir ?? resolveDataDir()
+  configureEvolutionRuntime(dataDir)
+  log.info('evolution feature registered', { dataDir })
+
+  const service = () => {
+    const instance = getEvolutionService()
+    if (!instance) throw new Error('建议服务尚未初始化')
+    return instance
+  }
+
+  register('feature:evolution:list', (payload) => {
+    const data = payload === undefined || payload === null ? {} : record(payload)
+    const workspace = typeof data.workspace === 'string' && data.workspace.trim() ? data.workspace.trim() : null
+    return service().list(workspace)
+  })
+
+  register('feature:evolution:review', async (payload) => {
+    const data = record(payload)
+    const sessionId = typeof data.sessionId === 'string' ? data.sessionId.trim() : ''
+    if (!sessionId) throw new Error('缺少 sessionId')
+    return getAgentService(getSettingsStore(), getSessionStore()).reviewEvolution(sessionId, true)
+  })
+
+  register('feature:evolution:apply', (payload) => {
+    const result = service().apply(suggestionId(record(payload)))
+    const pending = service().pendingCount()
+    sendFeatureEvent(EVOLUTION_CHANGED_EVENT, { reason: 'applied', pending })
+    return result
+  })
+
+  register('feature:evolution:ignore', (payload) => {
+    service().ignore(suggestionId(record(payload)))
+    const pending = service().pendingCount()
+    sendFeatureEvent(EVOLUTION_CHANGED_EVENT, { reason: 'ignored', pending })
+    return { ignored: true, pending }
   })
 }

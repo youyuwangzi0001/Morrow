@@ -3,6 +3,7 @@
  * 主进程只依赖 createProvider / testProviderConnection，不关心具体协议实现。
  */
 import type { ChatMessage, ProviderConfig, ProviderTestResult } from '../../shared/types'
+import { isLocalServiceUrl } from '../../shared/models'
 import type { ConnectionTestOptions, Provider } from '../types'
 import { newId } from '../util'
 import { AnthropicProvider } from './anthropic'
@@ -46,13 +47,9 @@ export function createProvider(config: ProviderConfig, apiKey: string | null, mo
   return new ToolProtocolProvider(provider)
 }
 
-function isLocalUrl(url: string): boolean {
-  return /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)
-}
-
 /**
  * 测试模型连接：发一个极短的流式请求（最多 16 token），返回首字延迟与人话结论。
- * - 本地地址（127.0.0.1 / localhost）允许不填 Key，方便本地 Mock/ Ollama 网关；
+ * - 本机 / 局域网地址允许不填 Key，方便本地 Ollama、LM Studio 或局域网网关；
  * - demo 直接返回就绪；
  * - 超时默认 15s，成功/失败都返回结构化结果而不是抛错。
  */
@@ -77,12 +74,12 @@ export async function testProviderConnection(
     return { ok: false, latencyMs: 0, modelCount, message: '还没有填写接口地址（Base URL）。' }
   }
   const hasKey = Boolean(apiKey && apiKey.trim())
-  if (!hasKey && !isLocalUrl(config.baseUrl)) {
+  if (!hasKey && !isLocalServiceUrl(config.baseUrl, { allowPrivate: true })) {
     return {
       ok: false,
       latencyMs: 0,
       modelCount,
-      message: '还没有填写 API Key。请先到提供商官网创建密钥，再粘贴到设置里。'
+      message: '还没有填写 API Key。公网服务请先到提供商官网创建密钥；本机或局域网服务可以留空。'
     }
   }
 

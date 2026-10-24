@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlignLeft, Check, Copy, FileDown, FileText, Globe, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { Artifact, ArtifactExportFormat } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, Modal } from '../../ui'
 import './ArtifactDialogs.css'
 

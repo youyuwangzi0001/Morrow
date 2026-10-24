@@ -1,25 +1,20 @@
 /**
  * 在系统文件管理器中定位文件 / 用系统默认程序打开文件。
  *
- * Windows 上从 Electron 主进程直接 spawn explorer.exe 在部分会话/作业对象里会以
- * 0xC0000142（DLL 初始化失败）退出，表现为按钮点击后毫无反应。便携启动器现在会在
- * 应用外部提供一个命名管道代理（MORROW_LAUNCHER_PIPE），由普通 Win32 进程执行
- * ShellExecute；这里优先走代理，失败再回退到 Electron shell / explorer 命令。
+ * Windows 上从受限会话创建 explorer.exe 子进程（或 shell.openPath 一个目录）会以
+ * 0xC0000142 失败并弹出系统错误框。便携启动器通过命名管道代理 SHELL 请求；代理不可用时，
+ * 这里用 PowerShell 调用现有 Shell 的 COM 接口完成定位，同样不创建新的 Explorer 进程。
+ * SHOpenFolderAndSelectItems 与 Shell.Application.Explore 都由已运行的 shell 执行。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { connect } from 'node:net'
-import { dirname } from 'node:path'
 import { shell } from 'electron'
 import { log } from './logger'
 
 const LAUNCHER_PIPE_ENV = 'MORROW_LAUNCHER_PIPE'
 const BROKER_TIMEOUT_MS = 2_500
-
-export function explorerSelectArgs(absolutePath: string): string[] {
-  // 与 windowsVerbatimArguments 搭配：由我们给出 `/select,"<path>"` 的最终命令行形态。
-  return [`/select,"${absolutePath}"`]
-}
+const SHELL_HELPER_TIMEOUT_MS = 8_000
 
 type BrokerResult =
   | { kind: 'ok' }
@@ -83,8 +78,55 @@ function askLauncher(command: 'OPEN' | 'REVEAL', target: string): Promise<Broker
   })
 }
 
-/** spawn explorer.exe；能识别 0xC0000142，避免把“没打开”误报成成功。 */
-function spawnExplorer(args: string[], verbatim = true): Promise<string | null> {
+// 由已运行的 Explorer 执行：REVEAL 优先复用/打开目标文件夹并选中文件；EXPLORE 只打开文件夹。
+const SHELL_HELPER_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$target = $env:MORROW_SHELL_TARGET
+$mode = $env:MORROW_SHELL_MODE
+$item = Get-Item -LiteralPath $target -Force
+$shell = New-Object -ComObject Shell.Application
+if ($mode -eq 'REVEAL' -and -not $item.PSIsContainer) {
+  $folder = $item.DirectoryName
+  $name = $item.Name
+  $window = $null
+  foreach ($candidate in $shell.Windows()) {
+    try {
+      if ($candidate.Document.Folder.Self.Path -ieq $folder) { $window = $candidate; break }
+    } catch { }
+  }
+  if ($null -eq $window) {
+    $shell.Explore($folder) | Out-Null
+    Start-Sleep -Milliseconds 700
+    foreach ($candidate in $shell.Windows()) {
+      try {
+        if ($candidate.Document.Folder.Self.Path -ieq $folder) { $window = $candidate; break }
+      } catch { }
+    }
+  }
+  if ($null -ne $window) {
+    try {
+      $window.Visible = $true
+      $entry = $shell.Namespace($folder).ParseName($name)
+      if ($null -ne $entry) { $window.Document.SelectItem($entry, 1) }
+    } catch { }
+  } else {
+    $shell.Explore($folder) | Out-Null
+  }
+} else {
+  $folder = $item.FullName
+  if (-not $item.PSIsContainer) { $folder = $item.DirectoryName }
+  $shell.Explore($folder) | Out-Null
+}
+Start-Sleep -Milliseconds 200
+exit 0
+`
+
+/**
+ * 启动器代理不可用时的兜底：用 PowerShell 驱动现有 Shell 打开/定位。
+ * 不创建 explorer.exe，因此不会在受限会话里触发 0xC0000142 错误框。
+ */
+function runShellHelper(target: string, mode: 'REVEAL' | 'EXPLORE'): Promise<string | null> {
+  if (process.platform !== 'win32') return Promise.resolve('仅支持 Windows')
   return new Promise((resolve) => {
     let settled = false
     let timer: NodeJS.Timeout | null = null
@@ -95,19 +137,28 @@ function spawnExplorer(args: string[], verbatim = true): Promise<string | null> 
       resolve(error)
     }
     try {
-      const child = spawn('explorer.exe', args, {
-        detached: true,
-        stdio: 'ignore',
-        windowsVerbatimArguments: verbatim
-      })
+      const child = spawn(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-EncodedCommand',
+          Buffer.from(SHELL_HELPER_SCRIPT, 'utf16le').toString('base64')
+        ],
+        {
+          windowsHide: true,
+          stdio: 'ignore',
+          env: { ...process.env, MORROW_SHELL_TARGET: target, MORROW_SHELL_MODE: mode }
+        }
+      )
       child.on('error', (err) => finish(err.message))
-      child.on('exit', (code) => {
-        // Explorer 成功把请求交给现有 shell 后通常也以 1 退出；只有 DLL 初始化失败才回退。
-        if (code === 0xc0000142) finish('Explorer 无法在当前会话中启动（0xC0000142）')
-        else finish(null)
-      })
-      // 有些环境下 Explorer 交接后不返回退出事件，不能无限等待。
-      timer = setTimeout(() => finish(null), 1_500)
+      child.on('exit', (code) => finish(code === 0 ? null : `系统 Shell 辅助进程退出码 ${code ?? '未知'}`))
+      timer = setTimeout(() => {
+        finish('系统 Shell 辅助进程超时')
+        child.kill()
+      }, SHELL_HELPER_TIMEOUT_MS)
       child.unref()
     } catch (err) {
       finish(err instanceof Error ? err.message : String(err))
@@ -123,11 +174,11 @@ function existingTarget(absolutePath: string): boolean {
   }
 }
 
-function containingFolder(absolutePath: string): string {
+function isDirectoryPath(absolutePath: string): boolean {
   try {
-    return statSync(absolutePath).isDirectory() ? absolutePath : dirname(absolutePath)
+    return statSync(absolutePath).isDirectory()
   } catch {
-    return dirname(absolutePath)
+    return false
   }
 }
 
@@ -151,22 +202,11 @@ export async function revealInFileManager(absolutePath: string): Promise<string 
   if (broker.kind === 'ok') return null
   if (broker.kind === 'error') log.warn('launcher reveal failed', { path: absolutePath, error: broker.message })
 
-  // 不再直接 spawn explorer.exe：受限会话里它会弹出 0xC0000142 应用程序错误。
-  // 启动器代理不可用时，退化为用系统 Shell 打开所在文件夹（至少能继续操作）。
-  const folder = containingFolder(absolutePath)
-  const openError = await shell.openPath(folder)
-  if (!openError) return null
-  log.warn('shell open folder failed', { path: absolutePath, error: openError })
+  const helperError = await runShellHelper(absolutePath, 'REVEAL')
+  if (!helperError) return null
+  log.warn('shell helper reveal failed', { path: absolutePath, error: helperError })
 
-  // 最后一次尝试：Electron 的“选中文件”接口；失败时无返回值，只能作为兜底。
-  try {
-    shell.showItemInFolder(absolutePath)
-    return null
-  } catch (err) {
-    log.warn('shell reveal fallback failed', { path: absolutePath, error: String(err) })
-  }
-
-  return broker.kind === 'error' ? broker.message : openError
+  return broker.kind === 'error' ? broker.message : helperError
 }
 
 /** 用系统默认程序打开文件/文件夹。返回 null 表示成功，字符串表示错误。 */
@@ -182,17 +222,22 @@ export async function openPathFromUserShell(absolutePath: string): Promise<strin
     return error || null
   }
 
+  // 目录必须交给现有 Shell 打开；shell.openPath(目录) 会新建 explorer.exe 并弹 0xC0000142。
+  if (isDirectoryPath(absolutePath)) {
+    // 自动化测试里不拉起真实的资源管理器窗口，直接走 shell.openPath 便于断言错误。
+    if (process.env.MORROW_TEST === '1') {
+      const testError = await shell.openPath(absolutePath)
+      return testError || null
+    }
+    const helperError = await runShellHelper(absolutePath, 'EXPLORE')
+    if (!helperError) return null
+    return broker.kind === 'error' ? broker.message : helperError
+  }
+
   // 非 HTML 文件优先用 ShellExecute；HTML 成品已由画布内置浏览器处理，不会再触发 Edge 提权提示。
   const shellError = await shell.openPath(absolutePath)
   if (!shellError) return null
 
-  const spawnError = await spawnExplorer([absolutePath], false)
-  if (!spawnError) return null
-
-  return broker.kind === 'error' ? broker.message : (shellError || spawnError)
+  return broker.kind === 'error' ? broker.message : shellError
 }
 
-/** 打开数据目录、日志目录、技能目录等系统文件夹。 */
-export async function openSystemFolder(absolutePath: string): Promise<string | null> {
-  return openPathFromUserShell(absolutePath)
-}

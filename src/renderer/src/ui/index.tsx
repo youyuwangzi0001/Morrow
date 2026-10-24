@@ -660,7 +660,7 @@ export function ErrorNote({
 /** 简单键盘提示列表（设置/命令面板用） */
 export function Shortcut({ keys, label }: { keys: string; label: string }): React.JSX.Element {
   return (
-    <div className="shortcut-row">
+    <div className="shortcut-row" role="group" aria-label={`${label}：${keys}`}>
       <span className="shortcut-label">{label}</span>
       <span className="shortcut-keys">
         {keys.split('+').map((key) => (

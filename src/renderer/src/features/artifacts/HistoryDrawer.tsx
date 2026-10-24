@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Clock, History, RefreshCw, RotateCcw, TriangleAlert, X } from 'lucide-react'
+import { formatBytes } from '@shared/usage'
 import { DiffView } from '../../components/DiffView'
 import { IconButton, Spinner } from '../../ui'
+import { formatArtifactTime } from '../../lib'
 import type { HistoryVersion } from './editor-api'
 import type { EditorDocument, EditorHistorySelection } from './useEditorDocs'
 import './editor.css'
@@ -21,20 +23,6 @@ const SOURCE_LABEL: Record<HistoryVersion['source'], string> = {
   agent: 'Morrow 修改',
   baseline: '打开时基线',
   restore: '版本恢复'
-}
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const sameDay = date.toDateString() === now.toDateString()
-  const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
-  if (sameDay) return time
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${time}`
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
 }
 
 /**
@@ -173,12 +161,12 @@ export function HistoryDrawer({
                   onClick={() => setSelectedId(version.id)}
                 >
                   <span className="editor-history-item-main">
-                    <span className="editor-history-item-time mono">{formatTime(version.createdAt)}</span>
+                    <span className="editor-history-item-time mono">{formatArtifactTime(version.createdAt)}</span>
                     <span className={`editor-history-item-source mono is-${version.source}`}>
                       {SOURCE_LABEL[version.source] ?? version.source}
                     </span>
                   </span>
-                  <span className="editor-history-item-meta mono">{formatSize(version.size)}</span>
+                  <span className="editor-history-item-meta mono">{formatBytes(version.size)}</span>
                 </button>
               ))}
             </div>
@@ -193,7 +181,7 @@ export function HistoryDrawer({
                 <>
                   <div className="editor-history-diff-head">
                     <span className="mono">
-                      对比：{formatTime(selection.version.createdAt)} → {selection.targetLabel}
+                      对比：{formatArtifactTime(selection.version.createdAt)} → {selection.targetLabel}
                     </span>
                     <span className="mono editor-history-diff-stats">
                       <span className="diff-add-count">+{selection.added}</span>

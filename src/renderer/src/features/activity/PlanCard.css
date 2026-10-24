@@ -58,22 +58,22 @@
 .plan-card-kicker {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
 }
 
 .plan-card-title {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
 }
 
 .plan-card-count {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .plan-card-body {
@@ -84,15 +84,15 @@
 .plan-card-summary {
   margin: 0 0 6px;
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .plan-card-hint {
   margin: 0 0 8px;
   color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
 }
 
 .plan-card-steps {
@@ -109,8 +109,8 @@
   align-items: flex-start;
   gap: 8px;
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .plan-card-step-mark {
@@ -162,15 +162,15 @@
   display: block;
   margin-bottom: 3px;
   color: var(--text-3);
-  font-size: 9px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caps);
 }
 
 .plan-card-risks p {
   margin: 0;
   color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .plan-card-feedback {
@@ -178,8 +178,8 @@
   padding-left: 9px;
   border-left: 2px solid var(--rust);
   color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .plan-card-actions {
@@ -199,8 +199,8 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 
@@ -257,8 +257,8 @@
   border-radius: var(--r-sm);
   background: var(--surface-inset);
   color: var(--text);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .plan-card-input:focus {
@@ -290,14 +290,14 @@
 .plan-notice-label {
   flex: 0 0 auto;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .plan-notice-title {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   text-align: right;
 }
 

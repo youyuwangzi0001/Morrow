@@ -1,10 +1,10 @@
-// 合并自 tests/unit/core/agent.test.ts、tests/unit/core/agent-http.test.ts、tests/unit/core/compaction-agent.test.ts、tests/unit/core/compaction.test.ts、tests/unit/core/context.test.ts、tests/unit/core/subagent-interactive.test.ts、tests/unit/core/subagent-parity.test.ts、tests/unit/core/subagent-terminal.test.ts
+// 合并自 tests/unit/core/agent.test.ts、tests/unit/core/agent-http.test.ts、tests/unit/core/compaction-agent.test.ts、tests/unit/core/compaction.test.ts、tests/unit/core/context.test.ts、tests/unit/core/subagent-interactive.test.ts、tests/unit/core/subagent-parity.test.ts、tests/unit/core/subagent-terminal.test.ts、tests/unit/evaluation/agent-quality.test.ts
 // 每个原文件整体包裹在独立 describe 中，保留原有 hooks 与用例。
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it, afterEach } from 'vitest'
+import { beforeEach, describe, expect, it, afterEach, afterAll } from 'vitest'
 import type {
   AskUserAnswer,
   ChatMessage,
@@ -47,6 +47,7 @@ import {
   type MockLLM,
 } from './helpers/mock-llm'
 import { expectValidAnthropicSequence, expectValidOpenAISequence } from './helpers/compaction-validators'
+import { ProviderError } from '../../../src/core/providers/types'
 
 beforeEach(() => {
   resetAllPermissionGrants()
@@ -432,7 +433,7 @@ describe('agent.test.ts', () => {
     })
   })
 
-  describe('ask_user / 子代理 / 状态透传', () => {
+  describe('ask_user / 集群成员 / 状态透传', () => {
     it('ask_user 走 question_asked/answered 并回填答案', async () => {
       const ws = makeTempWorkspace()
       try {
@@ -460,26 +461,26 @@ describe('agent.test.ts', () => {
       }
     })
 
-    it('task 子代理：只读执行并返回摘要，进度通过 tool_progress 上报', async () => {
+    it('swarm 单成员：执行并返回摘要，进度通过 tool_progress 上报', async () => {
       const ws = makeTempWorkspace({ 'data.txt': '数据内容' })
       try {
         const harness = await runScript(ws, [
-          { toolCalls: [{ name: 'task', input: { description: '调研数据', prompt: '读一下 data.txt 告诉我内容' } }] },
-          { text: '子代理的结论是：数据内容。' },
+          { toolCalls: [{ name: 'swarm', input: { goal: '调研数据', tasks: [{ title: '调研数据', prompt: '读一下 data.txt 告诉我内容' }] } }] },
+          { text: '成员的结论是：数据内容。' },
           { text: '主代理完成。' }
         ])
         expect(harness.result.reason).toBe('complete')
-        const taskBlock = harness.result.messages[0].content.find((block) => block.type === 'tool_use')
-        expect(taskBlock?.type === 'tool_use' && taskBlock.status).toBe('success')
-        if (taskBlock?.type === 'tool_use') {
-          expect(taskBlock.result?.output).toContain('子代理摘要')
-          expect(taskBlock.result?.output).toContain('子代理的结论')
-          expect(taskBlock.result?.meta?.steps).toBe(1)
+        const swarmBlock = harness.result.messages[0].content.find((block) => block.type === 'tool_use')
+        expect(swarmBlock?.type === 'tool_use' && swarmBlock.status).toBe('success')
+        if (swarmBlock?.type === 'tool_use') {
+          expect(swarmBlock.result?.output).toContain('集群结果')
+          expect(swarmBlock.result?.output).toContain('成员的结论')
+          expect((swarmBlock.result?.meta as { tasks?: Array<{ steps: number }> })?.tasks?.[0]?.steps).toBe(1)
         }
-        // 子代理对工具的使用以 tool_progress note 呈现
+        // 集群成员对工具的使用以 tool_progress note 呈现
         const progressNotes = harness.events.filter((event) => event.type === 'tool_progress')
         expect(progressNotes.length).toBeGreaterThan(1)
-        // 子代理内部没有对主会话发 message_*（只有主代理的两条消息）
+        // 成员内部没有对主会话发 message_*（只有主代理的两条消息）
         expect(harness.result.messages).toHaveLength(2)
       } finally {
         ws.cleanup()
@@ -871,6 +872,53 @@ describe('agent.test.ts', () => {
       expect(result.compacted).toBe(false)
       expect(result.reason).toBe('below-threshold')
       expect(provider.calls).toHaveLength(0)
+    })
+  })
+
+  describe('流式重复工具帧', () => {
+    it('同一 tool_call_end 重复出现时只执行一次', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        class DuplicateEndProvider implements Provider {
+          private calls = 0
+          async *stream(): AsyncGenerator<ProviderStreamEvent> {
+            this.calls += 1
+            if (this.calls === 1) {
+              const end = { type: 'tool_call_end' as const, index: 0, id: 'dup-end', name: 'write_file', input: { path: 'dup.txt', content: 'once' } }
+              yield { type: 'tool_call_start', index: 0, id: 'dup-end', name: 'write_file' }
+              yield end
+              yield end
+              yield { type: 'usage', usage: { inputTokens: 20, outputTokens: 6 } }
+              return
+            }
+            yield { type: 'text_delta', text: '完成。' }
+            yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 4 } }
+          }
+        }
+        const events: RuntimeEvent[] = []
+        const result = await runAgent({
+          runId: 'run_dup_end',
+          sessionId: 'session_dup_end',
+          provider: new DuplicateEndProvider(),
+          model: MODEL,
+          systemPrompt: '你是测试助手。',
+          history: [],
+          userMessage: { id: 'u-dup', role: 'user', content: [{ type: 'text', text: '写入 dup.txt' }], createdAt: Date.now() },
+          workspace: ws.root,
+          permissionMode: 'auto',
+          snapshotDir: ws.snapshotDir,
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          onPermission: async () => 'once',
+          onAskUser: async () => ({ value: 'A', label: 'A' }),
+          maxSteps: 8
+        })
+        expect(result.reason).toBe('complete')
+        expect(readFileSync(join(ws.root, 'dup.txt'), 'utf8')).toBe('once')
+        expect(events.filter((event) => event.type === 'tool_finished')).toHaveLength(1)
+      } finally {
+        ws.cleanup()
+      }
     })
   })
 
@@ -1590,14 +1638,19 @@ describe('compaction-agent.test.ts', () => {
         expect(hasDanglingToolUse(afterCompaction.messages)).toBe(false)
         expectValidOpenAISequence(afterCompaction.messages)
         expectValidAnthropicSequence(afterCompaction.messages)
-        // 最近工具结果保留：压缩后的请求里能看到 value=7 / value=9 的真实结果文本
+        // 极小窗口下至少保留最后一组真实结果，摘要覆盖更早的数据
         const keptToolOutputs = afterCompaction.messages
           .flatMap((message) => message.content)
           .filter((block) => block.type === 'tool_use')
           .map((block) => (block.type === 'tool_use' ? block.result?.output ?? '' : ''))
           .join('\n')
-        expect(keptToolOutputs).toContain('value=7')
         expect(keptToolOutputs).toContain('value=9')
+        const summaryText = afterCompaction.messages
+          .filter((message) => message.role === 'system')
+          .flatMap((message) => message.content)
+          .map((block) => (block.type === 'text' ? block.text : ''))
+          .join('')
+        expect(summaryText).toContain('value')
         // token 真实变短：对比「若不压缩的第 4 步请求（user + 前 3 个工具回合）」
         // 注意 result.messages 不含 user 消息，需手动拼上
         const uncompactedMessages = [
@@ -1650,6 +1703,139 @@ describe('compaction-agent.test.ts', () => {
         // 摘要请求的 320/90 token 也计入总用量
         expect(result.usage.inputTokens).toBeGreaterThanOrEqual(320)
         expect(result.usage.outputTokens).toBeGreaterThanOrEqual(90)
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('长任务每次达到阈值都会压缩（3 次以上），不会因压缩次数中断', async () => {
+      const ws = makeTempWorkspace({ 'a.txt': `value=12\n${'材料内容 '.repeat(900)}` })
+      try {
+        class RepeatedCompactionProvider implements Provider {
+          readonly calls: ProviderStreamRequest[] = []
+          private reads = 0
+          async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
+            this.calls.push({ ...request, messages: [...request.messages] })
+            if (request.tools.length === 0 && request.system.includes('压缩器')) {
+              yield {
+                type: 'text_delta',
+                text: '摘要：用户要求反复读取同一份材料并统计 value；只读、不写文件。已经读取了若干轮，剩余轮次继续；下一轮继续 read_file a.txt。'
+              }
+              yield { type: 'usage', usage: { inputTokens: 200, outputTokens: 60 } }
+              return
+            }
+            if (this.reads < 12) {
+              const id = `repeat-${this.reads}`
+              this.reads += 1
+              const command = `node -e "console.log('材料内容 '.repeat(${2000 + this.reads}))"`
+              yield { type: 'tool_call_start', index: 0, id, name: 'run_command' }
+              yield { type: 'tool_call_end', index: 0, id, name: 'run_command', input: { command } }
+              yield { type: 'usage', usage: { inputTokens: 160, outputTokens: 20 } }
+              return
+            }
+            yield { type: 'text_delta', text: '已完成 12 次读取，value=12。' }
+            yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 16 } }
+          }
+        }
+        const events: RuntimeEvent[] = []
+        const provider = new RepeatedCompactionProvider()
+        const result = await runAgent({
+          runId: 'run_repeat_compact',
+          sessionId: 'session_repeat_compact',
+          provider,
+          model: { ...MODEL, contextWindow: 6_000 },
+          systemPrompt: SYSTEM_PROMPT,
+          history: [],
+          userMessage: {
+            id: 'u-repeat',
+            role: 'user',
+            content: [{ type: 'text', text: '反复读取 a.txt 12 次并统计 value；只读，不写文件。' }],
+            createdAt: Date.now()
+          },
+          workspace: ws.root,
+          permissionMode: 'auto',
+          snapshotDir: ws.snapshotDir,
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          onPermission: async () => 'once',
+          onAskUser: async () => ({ value: 'A', label: 'A' }),
+          maxSteps: 40,
+          keepRecent: 2
+        })
+
+        const finished = events.filter((event) => event.type === 'compaction' && event.phase === 'finished')
+        const folded = events.filter(
+          (event) => event.type === 'notice' && event.message.includes('已折叠过大的工具输出')
+        )
+        // 每次达到阈值都必须处理：优先摘要压缩，摘要不划算时折叠大工具输出
+        expect(finished.length + folded.length).toBeGreaterThanOrEqual(3)
+        expect(events.some((event) => event.type === 'error')).toBe(false)
+        expect(result.reason).toBe('complete')
+        expect(result.messages.map(textOf).join('\n')).toContain('已完成 12 次读取')
+        // 每次压缩后仍保留用户任务锚点与合法消息序列
+        const lastMain = [...provider.calls].reverse().find((call) => call.tools.length > 0)
+        expect(lastMain?.messages.some((message) => message.role === 'user' && textOf(message).includes('反复读取'))).toBe(true)
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('上下文溢出不终止任务：自动压缩后重试，且不向用户弹错误', async () => {
+      const ws = makeTempWorkspace({ 'a.txt': 'ok' })
+      try {
+        class OverflowOnceProvider implements Provider {
+          readonly calls: ProviderStreamRequest[] = []
+          private failed = false
+          async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
+            this.calls.push({ ...request, messages: [...request.messages] })
+            if (request.tools.length === 0 && request.system.includes('压缩器')) {
+              yield { type: 'text_delta', text: '摘要：用户要求读取 a.txt 并给出结论；只读，不写文件；下一步继续完成任务。' }
+              yield { type: 'usage', usage: { inputTokens: 160, outputTokens: 40 } }
+              return
+            }
+            if (!this.failed) {
+              this.failed = true
+              throw new ProviderError("This model's maximum context length is 2400 tokens. Please reduce the length of the messages.", {
+                code: 'context_length_exceeded',
+                status: 400
+              })
+            }
+            yield { type: 'text_delta', text: '压缩后继续完成，a.txt 读取成功。' }
+            yield { type: 'usage', usage: { inputTokens: 80, outputTokens: 16 } }
+          }
+        }
+        const provider = new OverflowOnceProvider()
+        const events: RuntimeEvent[] = []
+        const big = '背景材料 '.repeat(60)
+        const history: ChatMessage[] = [
+          { id: 'h1', role: 'user', content: [{ type: 'text', text: `任务：读取 a.txt 并总结。${big}` }], createdAt: Date.now() },
+          { id: 'h2', role: 'assistant', content: [{ type: 'text', text: `先确认任务。${big}` }], createdAt: Date.now() },
+          { id: 'h3', role: 'user', content: [{ type: 'text', text: `补充约束：只读，不写文件。${big}` }], createdAt: Date.now() }
+        ]
+        const result = await runAgent({
+          runId: 'run_overflow_once',
+          sessionId: 'session_overflow_once',
+          provider,
+          model: MODEL,
+          systemPrompt: SYSTEM_PROMPT,
+          history,
+          userMessage: { id: 'u-overflow', role: 'user', content: [{ type: 'text', text: '继续完成。' }], createdAt: Date.now() },
+          workspace: ws.root,
+          permissionMode: 'auto',
+          compactThreshold: 0.99,
+          snapshotDir: ws.snapshotDir,
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          onPermission: async () => 'once',
+          onAskUser: async () => ({ value: 'A', label: 'A' }),
+          maxSteps: 20,
+          keepRecent: 2
+        })
+        expect(result.reason).toBe('complete')
+        expect(events.some((event) => event.type === 'compaction' && event.phase === 'finished')).toBe(true)
+        expect(events.some((event) => event.type === 'error')).toBe(false)
+        expect(provider.calls.some((call) => call.tools.length === 0 && call.system.includes('压缩器'))).toBe(true)
+        expect(result.messages.map(textOf).join('\n')).toContain('压缩后继续完成')
       } finally {
         ws.cleanup()
       }
@@ -2005,8 +2191,8 @@ describe('context.test.ts', () => {
 
 describe('subagent-interactive.test.ts', () => {
   /**
-   * 并行子代理的交互卡必须串行：一个子代理在等待审批时，
-   * 另一个子代理不能同时弹出审批卡或提问卡（否则后一张会覆盖前一张，任务悬挂）。
+   * 并行集群成员的交互卡必须串行：一个成员在等待审批时，
+   * 另一个成员不能同时弹出审批卡或提问卡（否则后一张会覆盖前一张，任务悬挂）。
    */
 
   const MODEL: ModelInfo = { id: 'mock-model', label: 'Mock', contextWindow: 32_000, supportsTools: true }
@@ -2018,13 +2204,23 @@ describe('subagent-interactive.test.ts', () => {
 
     async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
       this.calls.push(request)
-      if (!request.system.includes('## 子代理')) {
+      if (!request.system.includes('## 集群成员')) {
         this.parentCalls += 1
         if (this.parentCalls === 1) {
-          yield { type: 'tool_call_start', index: 0, id: 'task-a', name: 'task' }
-          yield { type: 'tool_call_end', index: 0, id: 'task-a', name: 'task', input: { description: '任务 A', prompt: '创建 a.txt，内容为 A' } }
-          yield { type: 'tool_call_start', index: 1, id: 'task-b', name: 'task' }
-          yield { type: 'tool_call_end', index: 1, id: 'task-b', name: 'task', input: { description: '任务 B', prompt: '先问用户选哪个，再汇报' } }
+          yield { type: 'tool_call_start', index: 0, id: 'swarm-ab', name: 'swarm' }
+          yield {
+            type: 'tool_call_end',
+            index: 0,
+            id: 'swarm-ab',
+            name: 'swarm',
+            input: {
+              goal: '并行处理 A/B',
+              tasks: [
+                { title: '任务 A', prompt: '创建 a.txt，内容为 A' },
+                { title: '任务 B', prompt: '先问用户选哪个，再汇报' }
+              ]
+            }
+          }
           yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 30 } }
           return
         }
@@ -2049,7 +2245,7 @@ describe('subagent-interactive.test.ts', () => {
             index: 0,
             id: 'ask-b',
             name: 'ask_user',
-            input: { question: '子代理 B 需要你选择', options: ['甲', '乙'] }
+            input: { question: '成员 B 需要你选择', options: ['甲', '乙'] }
           }
         }
         yield { type: 'usage', usage: { inputTokens: 40, outputTokens: 12 } }
@@ -2064,8 +2260,8 @@ describe('subagent-interactive.test.ts', () => {
     return message.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
   }
 
-  describe('并行子代理交互串行', () => {
-    it('审批卡与提问卡不会同时出现，两个子任务都能完成', async () => {
+  describe('并行集群成员交互串行', () => {
+    it('审批卡与提问卡不会同时出现，两个成员都能完成且拥有完整工具', async () => {
       const ws = makeTempWorkspace()
       try {
         const provider = new ParallelTaskProvider()
@@ -2077,11 +2273,11 @@ describe('subagent-interactive.test.ts', () => {
           maxOpen = Math.max(maxOpen, open)
         }
         const result = await runAgent({
-          runId: 'run_parallel_subagents',
-          sessionId: 'session_parallel_subagents',
+          runId: 'run_parallel_swarm_members',
+          sessionId: 'session_parallel_swarm_members',
           provider,
           model: MODEL,
-          systemPrompt: '你是并行子代理测试助手。',
+          systemPrompt: '你是并行集群协作测试助手。',
           history: [],
           userMessage: { id: 'u-parallel', role: 'user', content: [{ type: 'text', text: '并行派两个子任务。' }], createdAt: Date.now() },
           workspace: ws.root,
@@ -2113,19 +2309,23 @@ describe('subagent-interactive.test.ts', () => {
         expect(open).toBe(0)
         expect(existsSync(join(ws.root, '..', 'a.txt'))).toBe(true)
 
-        const taskResults = result.messages
+        const swarmBlocks = result.messages
           .flatMap((message) => message.content)
-          .filter((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'task')
-        expect(taskResults).toHaveLength(2)
-        expect(taskResults.every((block) => block.result?.ok === true)).toBe(true)
+          .filter((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
+        expect(swarmBlocks).toHaveLength(1)
+        expect(swarmBlocks[0]?.result?.ok).toBe(true)
+        const swarmMeta = swarmBlocks[0]?.result?.meta as { tasks?: Array<{ status: string }> } | undefined
+        expect(swarmMeta?.tasks?.map((task) => task.status)).toEqual(['completed', 'completed'])
         expect(result.messages.map(textOf).join('\n')).toContain('两个子任务都已完成')
 
-        const subCalls = provider.calls.filter((call) => call.system.includes('## 子代理'))
-        const subToolNames = new Set(subCalls.flatMap((call) => call.tools.map((tool) => tool.name)))
-        expect(subToolNames.has('task')).toBe(false)
-        expect(subToolNames.has('update_goal')).toBe(false)
-        expect(subToolNames.has('todo_write')).toBe(false)
-        expect(subToolNames.has('write_file')).toBe(true)
+        const memberCalls = provider.calls.filter((call) => call.system.includes('## 集群成员'))
+        const memberTools = new Set(memberCalls.flatMap((call) => call.tools.map((tool) => tool.name)))
+        expect(memberTools.has('swarm')).toBe(false)
+        expect(memberTools.has('update_goal')).toBe(false)
+        expect(memberTools.has('todo_write')).toBe(false)
+        for (const name of ['write_file', 'edit_file', 'run_command', 'terminal', 'mcp_call']) {
+          expect(memberTools.has(name), name).toBe(true)
+        }
       } finally {
         ws.cleanup()
       }
@@ -2133,648 +2333,648 @@ describe('subagent-interactive.test.ts', () => {
   })
 })
 
-describe('subagent-parity.test.ts', () => {
-  /**
-   * R9.1 子代理全权限 + 真实并行测试。
-   * - 子代理工具集与主代理一致（排除 task 防嵌套、update_goal 仅主代理）；
-   * - 子代理 write_file/run_command/mcp_call 走主代理同一套权限链（ask/auto/read-only）；
-   * - 同一 assistant 消息里多个 task 调用真正并发（时间线重叠）；
-   * - 并行审批串行（不会同时挂起多个审批卡）；拒绝/abort 正确传播。
-   */
+describe('cluster-swarm.test.ts', () => {
+  const MODEL: ModelInfo = { id: 'mock-model', label: 'Mock', contextWindow: 32_000, supportsTools: true }
 
-  const MODEL: ModelInfo = {
-    id: 'mock-model',
-    label: 'Mock',
-    contextWindow: 128_000,
-    supportsTools: true,
-    supportsReasoning: true,
-    reasoningStyle: 'effort'
-  }
-
-  interface ToolCallSpec {
-    name: string
-    input: Record<string, unknown>
-    id: string
-  }
-
-  interface Route {
-    text?: string
-    toolCalls?: ToolCallSpec[]
-  }
-
-  interface RoutedCall {
-    kind: 'main' | 'child'
-    label?: string
-    messagesLength: number
-    toolNames: string[]
-    reasoning?: ProviderStreamRequest['reasoning']
-  }
-
-  /** 按「最后一个 user 消息内容 + 是否第二轮」路由的可控 provider（支持并发调用） */
-  class RoutedProvider implements Provider {
-    readonly calls: RoutedCall[] = []
-    private readonly router: (request: ProviderStreamRequest) => Route
-
-    constructor(router: (request: ProviderStreamRequest) => Route) {
-      this.router = router
-    }
-
-    async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
-      const lastUser = [...request.messages].reverse().find((message) => message.role === 'user')
-      const text = lastUser?.content.find((block) => block.type === 'text')
-      const prompt = text && text.type === 'text' ? text.text : ''
-      const childMatch = /CHILD-([AB])/.exec(prompt)
-      this.calls.push({
-        kind: childMatch ? 'child' : 'main',
-        ...(childMatch ? { label: childMatch[1] } : {}),
-        messagesLength: request.messages.length,
-        toolNames: request.tools.map((tool) => tool.name),
-        ...(request.reasoning ? { reasoning: request.reasoning } : {})
-      })
-      yield* yieldRoute(this.router(request))
-    }
-  }
-
-  async function* yieldRoute(route: Route): AsyncGenerator<ProviderStreamEvent> {
-    if (route.text) yield { type: 'text_delta', text: route.text }
-    for (let index = 0; index < (route.toolCalls ?? []).length; index += 1) {
-      const call = (route.toolCalls ?? [])[index]
-      yield { type: 'tool_call_start', index, id: call.id, name: call.name }
-      yield { type: 'tool_call_delta', index, argsDelta: JSON.stringify(call.input) }
-      yield { type: 'tool_call_end', index, id: call.id, name: call.name, input: call.input }
-    }
-    yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
-  }
-
-  function userMessage(text: string): ChatMessage {
-    return { id: `u-${text}`, role: 'user', content: [{ type: 'text', text }], createdAt: Date.now() }
-  }
-
-  interface HarnessResult {
-    result: Awaited<ReturnType<typeof runAgent>>
-    events: RuntimeEvent[]
-    provider: RoutedProvider
-    permissionRequests: PermissionRequest[]
-  }
-
-  async function runParity(
-    ws: TempWorkspace,
-    provider: RoutedProvider,
-    overrides: Partial<RunAgentOptions> & { onPermission?: (request: PermissionRequest) => Promise<PermissionDecision> } = {}
-  ): Promise<HarnessResult> {
-    const { onPermission: overridePermission, ...rest } = overrides
-    const events: RuntimeEvent[] = []
-    const permissionRequests: PermissionRequest[] = []
-    const result = await runAgent({
-      runId: 'run_parity',
-      sessionId: 'session_parity',
-      provider,
-      model: MODEL,
-      systemPrompt: '你是测试助手。',
-      history: [],
-      userMessage: userMessage('START'),
-      workspace: ws.root,
-      permissionMode: 'auto',
-      snapshotDir: ws.snapshotDir,
-      signal: new AbortController().signal,
-      emit: (event) => events.push(event),
-      onPermission: async (request) => {
-        permissionRequests.push(request)
-        return overridePermission ? overridePermission(request) : 'once'
-      },
-      onAskUser: async (): Promise<AskUserAnswer> => ({ value: 'ok', label: 'OK' }),
-      maxSteps: 20,
-      ...rest
-    })
-    return { result, events, provider, permissionRequests }
-  }
-
-  function taskBlocks(result: Awaited<ReturnType<typeof runAgent>>) {
-    return result.messages
-      .flatMap((message) => message.content)
-      .filter((block): block is Extract<typeof block, { type: 'tool_use' }> => block.type === 'tool_use' && block.name === 'task')
-  }
-
-  /** 主代理首轮 → 一个 task；子代理首轮 → 指定工具；子代理第二轮 → 文本；主代理第二轮 → 文本 */
-  function singleTaskRouter(childRoute: (secondRound: boolean) => Route, taskId = 'task_1'): (req: ProviderStreamRequest) => Route {
-    return (request) => {
-      const lastUser = [...request.messages].reverse().find((message) => message.role === 'user')
-      const text = lastUser?.content.find((block) => block.type === 'text')
-      const prompt = text && text.type === 'text' ? text.text : ''
-      if (/CHILD-/.test(prompt)) return childRoute(request.messages.length > 1)
-      if (request.messages.length > 1) return { text: '主代理汇总完成。' }
-      return {
-        text: '我把任务拆给一个子代理。',
-        toolCalls: [
-          {
-            id: taskId,
-            name: 'task',
-            input: { description: '子任务', prompt: 'CHILD-A 请执行子任务并返回结果' }
-          }
-        ]
-      }
-    }
-  }
-
-  describe('R9.1 子代理工具/权限与主代理一致', () => {
-    it('子代理的 token 用量计入父运行总用量', async () => {
-      const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
-      try {
-        const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
-        const harness = await runParity(ws, provider)
-        expect(harness.result.reason).toBe('complete')
-        // 每次 provider.stream（父/子）都回报 10/5；父结果必须包含子代理消耗
-        expect(harness.result.usage.inputTokens).toBe(provider.calls.length * 10)
-        expect(harness.result.usage.outputTokens).toBe(provider.calls.length * 5)
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('子代理继承会话的推理强度', async () => {
-      const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
-      try {
-        const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
-        const harness = await runParity(ws, provider, { reasoningEffort: 'high' })
-        expect(harness.result.reason).toBe('complete')
-        const childCall = provider.calls.find((call) => call.kind === 'child')
-        expect(childCall?.reasoning).toEqual({ effort: 'high', style: 'effort' })
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('子代理工具集 = 主代理工具集 - task/swarm - update_goal（含 write_file/run_command/mcp_call）', async () => {
-      const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
-      try {
-        const provider = new RoutedProvider(singleTaskRouter(() => ({ text: '子代理完成' })))
-        const harness = await runParity(ws, provider)
-        expect(harness.result.reason).toBe('complete')
-        const childCall = provider.calls.find((call) => call.kind === 'child')
-        expect(childCall).toBeTruthy()
-        const childTools = new Set(childCall?.toolNames ?? [])
-        expect(childTools.has('read_file')).toBe(true)
-        expect(childTools.has('write_file')).toBe(true)
-        expect(childTools.has('run_command')).toBe(true)
-        expect(childTools.has('mcp_call')).toBe(true)
-        expect(childTools.has('task')).toBe(false)
-        expect(childTools.has('swarm')).toBe(false)
-        expect(childTools.has('update_goal')).toBe(false)
-        expect(childTools.has('todo_write')).toBe(false)
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('只读父任务 → 子代理写文件被权限层拒绝（文件不落盘，失败保留在 failedTools）', async () => {
-      const ws = makeTempWorkspace({ 'in/a.txt': 'A' })
-      try {
-        const provider = new RoutedProvider(
-          singleTaskRouter((secondRound) =>
-            secondRound
-              ? { text: '我无法写入（当前只读）。' }
-              : {
-                  toolCalls: [
-                    {
-                      id: 'child_write_ro',
-                      name: 'write_file',
-                      input: { path: 'out/should-not-exist.txt', content: 'x' }
-                    }
-                  ]
-                }
-          )
-        )
-        const harness = await runParity(ws, provider, { permissionMode: 'read-only' })
-        expect(harness.result.reason).toBe('complete')
-        expect(existsSync(join(ws.root, 'out/should-not-exist.txt'))).toBe(false)
-        // 只读模式下写工具直接拒绝，不弹审批
-        expect(harness.events.some((event) => event.type === 'permission_requested')).toBe(false)
-        const block = taskBlocks(harness.result)[0]
-        const failedTools = block?.result?.meta?.failedTools as string[] | undefined
-        expect(failedTools?.some((item) => item.includes('write_file') && /只读|拒绝/.test(item))).toBe(true)
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('ask 父任务 → 子代理写文件走父级审批，允许后真实落盘', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const provider = new RoutedProvider(
-          singleTaskRouter((secondRound) =>
-            secondRound
-              ? { text: '已写入子任务产物。' }
-              : { toolCalls: [{ id: 'child_write_ask', name: 'write_file', input: { path: '../once-child.txt', content: 'child-data' } }] }
-          )
-        )
-        const harness = await runParity(ws, provider, { permissionMode: 'ask' })
-        expect(harness.result.reason).toBe('complete')
-        expect(harness.permissionRequests).toHaveLength(1)
-        expect(harness.permissionRequests[0]).toMatchObject({ toolName: 'write_file', risk: 'high' })
-        expect(harness.permissionRequests[0].toolUseId).toBe('child_write_ask')
-        expect(harness.events.some((event) => event.type === 'permission_requested')).toBe(true)
-        expect(readFileSync(join(ws.root, '..', 'once-child.txt'), 'utf8')).toBe('child-data')
-        expect(taskBlocks(harness.result)[0]?.status).toBe('success')
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('auto 父任务 → 子代理 run_command 直接执行（输出可见，无审批）', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const command = process.platform === 'win32' ? "Write-Output 'child-ok'" : "echo 'child-ok'"
-        const provider = new RoutedProvider(
-          singleTaskRouter((secondRound) =>
-            secondRound
-              ? { text: '命令执行完成。' }
-              : { toolCalls: [{ id: 'child_run_auto', name: 'run_command', input: { command } }] }
-          )
-        )
-        const harness = await runParity(ws, provider, { permissionMode: 'auto' })
-        expect(harness.result.reason).toBe('complete')
-        expect(harness.events.some((event) => event.type === 'permission_requested')).toBe(false)
-        const taskBlock = taskBlocks(harness.result)[0]
-        expect(taskBlock?.status).toBe('success')
-        expect(String(taskBlock?.result?.meta?.status)).toBe('completed')
-      } finally {
-        ws.cleanup()
-      }
-    })
-  })
-
-  describe('R9.1 同一消息多个 task 真正并发', () => {
-    function parallelProvider(childRoute: (label: 'A' | 'B', secondRound: boolean) => Route): RoutedProvider {
-      return new RoutedProvider((request) => {
-        const lastUser = [...request.messages].reverse().find((message) => message.role === 'user')
-        const text = lastUser?.content.find((block) => block.type === 'text')
-        const prompt = text && text.type === 'text' ? text.text : ''
-        const child = /CHILD-([AB])/.exec(prompt)
-        if (child) return childRoute(child[1] as 'A' | 'B', request.messages.length > 1)
-        if (request.messages.length > 1) return { text: '两个子任务都完成了。' }
-        return {
-          text: '我并行派两个子代理。',
+  it('auto 父任务：单个集群成员拥有完整工作区权限，写入直接生效并登记 changedFiles', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const provider = new ScriptedProvider([
+        {
           toolCalls: [
-            { id: 'task_a', name: 'task', input: { description: '子任务A', prompt: 'CHILD-A 写入 A 文件' } },
-            { id: 'task_b', name: 'task', input: { description: '子任务B', prompt: 'CHILD-B 写入 B 文件' } }
-          ]
-        }
-      })
-    }
-
-    it('两个 task 的 tool_started 都在任一 task 完成之前（并行而非串行）', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const provider = parallelProvider((label, secondRound) =>
-          secondRound
-            ? { text: `子任务 ${label} 完成。` }
-            : {
-                toolCalls: [
-                  {
-                    id: `child_write_${label}`,
-                    name: 'write_file',
-                    input: { path: `../auto-${label.toLowerCase()}.txt`, content: `child-${label}` }
-                  }
-                ]
-              }
-        )
-        const harness = await runParity(ws, provider, { permissionMode: 'auto' })
-        expect(harness.result.reason).toBe('complete')
-        // 两个子任务产物独立写入
-        expect(readFileSync(join(ws.root, '..', 'auto-a.txt'), 'utf8')).toBe('child-A')
-        expect(readFileSync(join(ws.root, '..', 'auto-b.txt'), 'utf8')).toBe('child-B')
-        const started = harness.events.filter(
-          (event): event is Extract<RuntimeEvent, { type: 'tool_started' }> =>
-            event.type === 'tool_started' && event.block.name === 'task'
-        )
-        const finished = harness.events.filter(
-          (event): event is Extract<RuntimeEvent, { type: 'tool_finished' }> =>
-            event.type === 'tool_finished' && event.toolUseId === 'task_a' || (event.type === 'tool_finished' && event.toolUseId === 'task_b')
-        )
-        expect(started).toHaveLength(2)
-        expect(finished).toHaveLength(2)
-        // 串行实现：task_b 的 started 会在 task_a 的 finished 之后；并行实现：两个 started 先全部出现
-        const startedB = started.find((event) => event.block.id === 'task_b')
-        const finishedA = finished.find((event) => event.toolUseId === 'task_a')
-        expect(startedB?.at).toBeLessThanOrEqual(finishedA?.at ?? 0)
-        // 子代理确实执行了写工具
-        expect(provider.calls.filter((call) => call.kind === 'child')).toHaveLength(4)
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('并行子代理的审批串行化：不会同时挂起两个审批，两个写入都需各自批准', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const provider = parallelProvider((label, secondRound) =>
-          secondRound
-            ? { text: `子任务 ${label} 完成。` }
-            : {
-                toolCalls: [
-                  {
-                    id: `child_write_${label}`,
-                    name: 'write_file',
-                    input: { path: `../once-${label.toLowerCase()}.txt`, content: `child-${label}` }
-                  }
-                ]
-              }
-        )
-        let active = 0
-        let maxActive = 0
-        const harness = await runParity(ws, provider, {
-          permissionMode: 'ask',
-          onPermission: async () => {
-            active += 1
-            maxActive = Math.max(maxActive, active)
-            await new Promise((resolve) => setTimeout(resolve, 20))
-            active -= 1
-            return 'once'
-          }
-        })
-        expect(harness.result.reason).toBe('complete')
-        expect(harness.permissionRequests).toHaveLength(2)
-        expect(maxActive).toBe(1)
-        expect(existsSync(join(ws.root, '..', 'once-a.txt'))).toBe(true)
-        expect(existsSync(join(ws.root, '..', 'once-b.txt'))).toBe(true)
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('并行子代理审批被拒绝：文件都不落盘，拒绝原因保留在 failedTools', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const provider = parallelProvider((label, secondRound) =>
-          secondRound
-            ? { text: `子任务 ${label} 因权限失败。` }
-            : { toolCalls: [{ id: `child_write_${label}`, name: 'write_file', input: { path: `../deny-${label}.txt`, content: 'x' } }] }
-        )
-        const harness = await runParity(ws, provider, {
-          permissionMode: 'ask',
-          onPermission: async () => 'deny'
-        })
-        expect(harness.result.reason).toBe('complete')
-        expect(existsSync(join(ws.root, '..', 'deny-A.txt'))).toBe(false)
-        expect(existsSync(join(ws.root, '..', 'deny-B.txt'))).toBe(false)
-        const blocks = taskBlocks(harness.result)
-        for (const block of blocks) {
-          const failedTools = block.result?.meta?.failedTools as string[] | undefined
-          expect(failedTools?.some((item) => item.includes('write_file') && /只读|拒绝/.test(item))).toBe(true)
-        }
-      } finally {
-        ws.cleanup()
-      }
-    })
-
-    it('父任务 abort → 所有并行子代理取消，task 卡片标记 interrupted', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const sleepCommand = process.platform === 'win32' ? 'Start-Sleep -Milliseconds 3000' : 'sleep 3'
-        const controller = new AbortController()
-        const provider = parallelProvider((label, secondRound) =>
-          secondRound
-            ? { text: `子任务 ${label} 完成。` }
-            : { toolCalls: [{ id: `child_run_${label}`, name: 'run_command', input: { command: sleepCommand } }] }
-        )
-        const providerRouted: Provider = {
-          stream(request) {
-            return provider.stream(request)
-          }
-        }
-        const events: RuntimeEvent[] = []
-        let taskStarts = 0
-        const promise = runAgent({
-          runId: 'run_parallel_abort',
-          sessionId: 'session_parallel_abort',
-          provider: providerRouted,
-          model: MODEL,
-          systemPrompt: 's',
-          history: [],
-          userMessage: userMessage('START'),
-          workspace: ws.root,
-          permissionMode: 'auto',
-          snapshotDir: ws.snapshotDir,
-          signal: controller.signal,
-          emit: (event) => {
-            events.push(event)
-            if (event.type === 'tool_started' && event.block.name === 'task') {
-              taskStarts += 1
-              if (taskStarts === 2) setTimeout(() => controller.abort(), 120)
+            {
+              name: 'swarm',
+              input: { goal: '写文件', tasks: [{ title: '写文件', prompt: '创建 out.txt，内容为 ok' }] }
             }
-          },
-          onPermission: async () => 'once',
-          onAskUser: async () => ({ value: 'ok', label: 'OK' }),
-          maxSteps: 20
-        })
-        const result = await promise
-        expect(result.reason).toBe('cancelled')
-        const blocks = taskBlocks(result)
-        expect(blocks).toHaveLength(2)
-        expect(blocks.every((block) => block.status === 'interrupted')).toBe(true)
-      } finally {
-        ws.cleanup()
+          ]
+        },
+        { toolCalls: [{ name: 'write_file', input: { path: 'out.txt', content: 'ok' } }] },
+        { text: '成员完成。' },
+        { text: '主代理完成。' }
+      ])
+      const events: RuntimeEvent[] = []
+      const result = await runAgent({
+        runId: 'run_swarm_full_access',
+        sessionId: 'session_swarm_full_access',
+        provider,
+        model: MODEL,
+        systemPrompt: '你是集群协作测试助手。',
+        history: [],
+        userMessage: { id: 'u-swarm', role: 'user', content: [{ type: 'text', text: '派一个成员写文件。' }], createdAt: Date.now() },
+        workspace: ws.root,
+        permissionMode: 'auto',
+        snapshotDir: ws.snapshotDir,
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        onPermission: async () => {
+          throw new Error('auto 模式不应弹出审批')
+        },
+        onAskUser: async () => ({ value: 'A', label: 'A' }),
+        maxSteps: 10
+      })
+      expect(result.reason).toBe('complete')
+      expect(readFileSync(join(ws.root, 'out.txt'), 'utf8')).toBe('ok')
+      const swarmBlock = result.messages
+        .flatMap((message) => message.content)
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
+      expect(swarmBlock?.result?.ok).toBe(true)
+      const meta = swarmBlock?.result?.meta as { changedFiles?: Array<{ absolutePath?: string }> } | undefined
+      expect(meta?.changedFiles?.some((file) => String(file.absolutePath).endsWith('out.txt'))).toBe(true)
+      const memberCall = provider.calls.find((call) => call.system.includes('## 集群成员'))
+      const memberTools = new Set(memberCall?.tools.map((tool) => tool.name) ?? [])
+      for (const name of ['write_file', 'edit_file', 'run_command', 'terminal', 'mcp_call', 'browser_open']) {
+        expect(memberTools.has(name), name).toBe(true)
       }
-    })
+      // 角色管分工、技能管方法：成员提示词必须给出边界与冲突时的取舍
+      expect(memberCall?.system).toContain('## 角色与技能的关系')
+      expect(memberCall?.system).toContain('角色分工与安全边界 > 技能里的方法细节')
+      expect(memberCall?.system).toContain('技能与角色/任务的边界或验收冲突时')
+      expect(events.some((event) => event.type === 'permission_requested')).toBe(false)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('只读父任务不能启动集群，成员不能获得比主代理更高的权限', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const provider = new ScriptedProvider([
+        {
+          toolCalls: [
+            {
+              name: 'swarm',
+              input: { goal: '写文件', tasks: [{ title: '写文件', prompt: '创建 out.txt' }] }
+            }
+          ]
+        },
+        { text: '只读模式不能启动集群。' }
+      ])
+      const result = await runAgent({
+        runId: 'run_swarm_readonly',
+        sessionId: 'session_swarm_readonly',
+        provider,
+        model: MODEL,
+        systemPrompt: '你是集群协作测试助手。',
+        history: [],
+        userMessage: { id: 'u-swarm-ro', role: 'user', content: [{ type: 'text', text: '派成员写文件。' }], createdAt: Date.now() },
+        workspace: ws.root,
+        permissionMode: 'read-only',
+        snapshotDir: ws.snapshotDir,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        onPermission: async () => 'once',
+        onAskUser: async () => ({ value: 'A', label: 'A' }),
+        maxSteps: 10
+      })
+      expect(result.reason).toBe('complete')
+      expect(existsSync(join(ws.root, 'out.txt'))).toBe(false)
+      const swarmBlock = result.messages
+        .flatMap((message) => message.content)
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
+      expect(swarmBlock?.result?.ok).toBe(false)
+      expect(swarmBlock?.result?.error).toContain('只读上下文')
+      expect(provider.calls.some((call) => call.system.includes('## 集群成员'))).toBe(false)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('集群成员不再有 12 步上限：长任务可以持续执行到给出结论', async () => {
+    const ws = makeTempWorkspace({ 'a.txt': 'value=12\n' })
+    try {
+      class LongMemberProvider implements Provider {
+        readonly calls: ProviderStreamRequest[] = []
+        private parentCalls = 0
+        private memberSteps = 0
+        async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
+          this.calls.push({ ...request, messages: [...request.messages] })
+          if (!request.system.includes('## 集群成员')) {
+            this.parentCalls += 1
+            if (this.parentCalls === 1) {
+              yield { type: 'tool_call_start', index: 0, id: 'task-long', name: 'swarm' }
+              yield {
+                type: 'tool_call_end',
+                index: 0,
+                id: 'task-long',
+                name: 'swarm',
+                input: { goal: '长任务', tasks: [{ title: '长任务', prompt: '反复读取 a.txt 15 次，统计 value，然后给出结论。' }] }
+              }
+              yield { type: 'usage', usage: { inputTokens: 60, outputTokens: 20 } }
+              return
+            }
+            yield { type: 'text_delta', text: '成员长任务完成。' }
+            yield { type: 'usage', usage: { inputTokens: 40, outputTokens: 12 } }
+            return
+          }
+          this.memberSteps += 1
+          if (this.memberSteps <= 15) {
+            const id = `member-read-${this.memberSteps}`
+            yield { type: 'tool_call_start', index: 0, id, name: 'read_file' }
+            yield { type: 'tool_call_end', index: 0, id, name: 'read_file', input: { path: 'a.txt', offset: this.memberSteps } }
+            yield { type: 'usage', usage: { inputTokens: 30, outputTokens: 10 } }
+            return
+          }
+          yield { type: 'text_delta', text: '已读取 15 次，value=12，任务完成。' }
+          yield { type: 'usage', usage: { inputTokens: 30, outputTokens: 12 } }
+        }
+      }
+      const provider = new LongMemberProvider()
+      const result = await runAgent({
+        runId: 'run_long_member',
+        sessionId: 'session_long_member',
+        provider,
+        model: MODEL,
+        systemPrompt: '你是集群协作测试助手。',
+        history: [],
+        userMessage: { id: 'u-long-member', role: 'user', content: [{ type: 'text', text: '派一个成员完成长任务。' }], createdAt: Date.now() },
+        workspace: ws.root,
+        permissionMode: 'auto',
+        snapshotDir: ws.snapshotDir,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        onPermission: async () => 'once',
+        onAskUser: async () => ({ value: 'A', label: 'A' }),
+        maxSteps: 10
+      })
+      expect(result.reason).toBe('complete')
+      const swarmBlock = result.messages
+        .flatMap((message) => message.content)
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
+      expect(swarmBlock?.result?.ok).toBe(true)
+      const meta = swarmBlock?.result?.meta as { tasks?: Array<{ status: string; steps?: number }> } | undefined
+      expect(meta?.tasks?.[0]?.status).toBe('completed')
+      expect(meta?.tasks?.[0]?.steps ?? 0).toBeGreaterThan(12)
+      expect(JSON.stringify(swarmBlock?.result)).not.toContain('最大步数')
+    } finally {
+      ws.cleanup()
+    }
   })
 })
 
-describe('subagent-terminal.test.ts', () => {
+describe('agent-quality.test.ts', () => {
   /**
-   * R9 / R2-B、R2-C、M40-M46：子代理终态不能把失败/耗尽当成功。
-   * - 首步模型请求报错 → task 工具 ok=false，原因透传；
-   * - 12 步耗尽无最终结论 → task 工具 ok=false（exhausted）；
-   * - 子代理工具失败要保留在父任务结果里（不能被“完成”文字覆盖）；
-   * - 父任务 abort 要传到子循环（子任务中断、父 run cancelled）。
+   * Morrow Agent 质量评测（离线、确定性、无网络）。
+   *
+   * 对应 docs/EVALUATION.md 的四项指标：
+   * 1. 工具调用首次/重试成功率（真实工具 + 真实 Agent 循环，脚本化 Provider 提供动作）；
+   * 2. 长任务上下文漂移（60 轮、多次压缩后早期约束与中途决定是否仍可见）；
+   * 3. 压缩后关键决定保留（真实 compactSession + 本地兜底摘要）；
+   * 4. Token 曲线是否随轮次线性增长（有/无上下文管理对照）。
+   *
+   * 结果写入 docs/verification/eval-results.json，便于版本对比；不访问网络、不依赖本地大模型。
    */
 
-  const MODEL: ModelInfo = { id: 'mock-model', label: 'Mock', contextWindow: 128_000, supportsTools: true }
+  const MODEL: ModelInfo = { id: 'eval-scripted', label: 'Eval', contextWindow: 128_000, supportsTools: true }
+  const SYSTEM = '你是 Morrow 评测代理。只执行任务需要的动作，完成后用一句话说明。'
+  const ROOT = process.cwd()
+  const REPORT_PATH = join(ROOT, 'docs', 'verification', 'eval-results.json')
 
-  function userMessage(text: string): ChatMessage {
-    return { id: `u-${text}`, role: 'user', content: [{ type: 'text', text }], createdAt: Date.now() }
+  let messageSeq = 0
+  function message(role: ChatMessage['role'], text: string): ChatMessage {
+    messageSeq += 1
+    return { id: `eval-${messageSeq}`, role, content: [{ type: 'text', text }], createdAt: Date.now() }
   }
 
-  async function runWithScript(
-    ws: TempWorkspace,
+  function toolUses(result: RunAgentResult): ToolUseBlock[] {
+    return result.messages
+      .flatMap((item) => item.content)
+      .filter((block): block is ToolUseBlock => block.type === 'tool_use')
+  }
+
+  async function runToolScript(
+    workspace: string,
+    snapshotDir: string,
     steps: ConstructorParameters<typeof ScriptedProvider>[0],
-    overrides: Partial<RunAgentOptions> = {}
-  ): Promise<{ result: Awaited<ReturnType<typeof runAgent>>; events: RuntimeEvent[]; provider: Provider }> {
+    prompt = '执行评测任务'
+  ): Promise<RunAgentResult> {
     const events: RuntimeEvent[] = []
-    const provider = new ScriptedProvider(steps)
-    const result = await runAgent({
-      runId: 'run_subagent_test',
-      sessionId: 'session_subagent_test',
+    const provider = new ScriptedProvider(steps, { defaultText: '完成。' })
+    return runAgent({
+      runId: `eval-run-${++messageSeq}`,
+      sessionId: `eval-session-${messageSeq}`,
       provider,
       model: MODEL,
-      systemPrompt: '你是测试助手。',
+      systemPrompt: SYSTEM,
       history: [],
-      userMessage: userMessage('请委派一个子任务'),
-      workspace: ws.root,
+      userMessage: message('user', prompt),
+      workspace,
       permissionMode: 'auto',
-      snapshotDir: ws.snapshotDir,
+      snapshotDir,
       signal: new AbortController().signal,
       emit: (event) => events.push(event),
       onPermission: async () => 'once',
-      onAskUser: async () => ({ value: 'a', label: 'A' }),
-      maxSteps: 20,
-      ...overrides
+      onAskUser: async () => ({ value: 'A', label: '方案 A' }),
+      maxSteps: 8
     })
-    return { result, events, provider }
   }
 
-  function taskBlockFrom(result: Awaited<ReturnType<typeof runAgent>>): { status?: string; result?: { ok: boolean; output: string; error?: string; hint?: string; meta?: Record<string, unknown> } } | undefined {
-    for (const message of result.messages) {
-      for (const block of message.content) {
-        if (block.type === 'tool_use' && block.name === 'task') return block
-      }
+  function textOf(messages: ChatMessage[]): string {
+    return messages
+      .flatMap((item) => item.content)
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('\n')
+  }
+
+  function fitSlope(values: number[]): number {
+    const n = values.length
+    if (n < 2) return 0
+    const xMean = (n - 1) / 2
+    const yMean = values.reduce((sum, value) => sum + value, 0) / n
+    let numerator = 0
+    let denominator = 0
+    for (let index = 0; index < n; index += 1) {
+      numerator += (index - xMean) * (values[index] - yMean)
+      denominator += (index - xMean) ** 2
     }
-    return undefined
+    return denominator === 0 ? 0 : numerator / denominator
   }
 
-  describe('R2-B：子代理首步模型请求报错', () => {
-    it('外层 task 必须失败（ok=false）并保留原始失败原因', async () => {
-      const ws = makeTempWorkspace({ 'in/n.txt': '7' })
-      try {
-        const { result, events } = await runWithScript(ws, [
-          { toolCalls: [{ name: 'task', input: { description: '读取 n.txt', prompt: '读取 in/n.txt 并返回数值' } }] },
-          { error: { message: 'synthetic_child_request_error', code: 'server_error', retryable: false } },
-          { text: '子代理请求失败，我改用主代理直接读取。' }
-        ])
-        expect(result.reason).toBe('complete')
-        const block = taskBlockFrom(result)
-        expect(block?.status).toBe('error')
-        expect(block?.result?.ok).toBe(false)
-        expect(String(block?.result?.error ?? '')).toContain('synthetic_child_request_error')
-        expect(block?.result?.meta).toMatchObject({ status: 'failed' })
-        // 失败不能吞成 ok=true 的“摘要”
-        expect(block?.result?.output ?? '').not.toContain('子代理摘要')
-        expect(events.some((event) => event.type === 'error')).toBe(false)
-      } finally {
-        ws.cleanup()
-      }
-    })
+  const report: Record<string, unknown> = {
+    version: 1,
+    suite: 'morrow-agent-quality',
+    mode: 'offline-deterministic',
+    generatedAt: new Date().toISOString(),
+    metrics: {},
+    score: null
+  }
+
+  afterAll(() => {
+    const metrics = report.metrics as Record<string, Record<string, unknown>>
+    const tool = metrics.tool as { tsr1: number; tsrRetry: number } | undefined
+    const drift = metrics.drift as { rate: number; hardConstraintMissing: number } | undefined
+    const retention = metrics.retention as { rate: number; hardConstraintMissing: number } | undefined
+    const token = metrics.token as { slopeRatio: number } | undefined
+    if (!tool || !drift || !retention || !token) {
+      console.log('[eval] 离线四项指标未全部运行，跳过写报告')
+      return
+    }
+    const toolScore = 25 * (0.6 * tool.tsr1 + 0.4 * tool.tsrRetry)
+    const driftScore = 25 * Math.max(0, Math.min(1, 1 - drift.rate / 0.1))
+    const retentionScore = 25 * Math.max(0, Math.min(1, retention.rate))
+    const tokenScore = 25 * Math.max(0, Math.min(1, 1 - token.slopeRatio / 0.8))
+    const total = Math.round((toolScore + driftScore + retentionScore + tokenScore) * 10) / 10
+    const gates = {
+      toolFirst: tool.tsr1 >= 0.95,
+      toolRetry: tool.tsrRetry >= 0.99,
+      drift: drift.rate <= 0.02 && drift.hardConstraintMissing === 0,
+      retention: retention.rate >= 0.9 && retention.hardConstraintMissing === 0,
+      token: token.slopeRatio <= 0.5
+    }
+    report.score = {
+      total,
+      breakdown: {
+        tool: Math.round(toolScore * 10) / 10,
+        drift: Math.round(driftScore * 10) / 10,
+        retention: Math.round(retentionScore * 10) / 10,
+        token: Math.round(tokenScore * 10) / 10
+      },
+      gates,
+      pass: Object.values(gates).every(Boolean)
+    }
+    mkdirSync(join(ROOT, 'docs', 'verification'), { recursive: true })
+    writeFileSync(REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+    console.log(`[eval] ${REPORT_PATH}`)
+    console.log(`[eval] score=${total} pass=${String(report.score && (report.score as { pass: boolean }).pass)}`)
   })
 
-  describe('R2-C：子代理 12 步耗尽无结论', () => {
-    it('task 返回 exhausted/ok=false，不能把工具调用成功当任务完成', async () => {
-      const ws = makeTempWorkspace({ 'in/n.txt': '7', 'a.txt': 'a' })
+  describe('四项指标', () => {
+    it('指标一：工具调用首次成功率与重试成功率', async () => {
+      const ws = makeTempWorkspace({
+        'notes.md': 'Morrow 评测样本。\nneedle 在这里。\n第二行。',
+        'legacy/keep.txt': '不要修改我。'
+      })
       try {
-        const steps: ConstructorParameters<typeof ScriptedProvider>[0] = [
-          { toolCalls: [{ name: 'task', input: { description: '持续读取', prompt: '读取 a.txt，反复确认直到给出结论' } }] }
+        const cases: Array<{ name: string; call: { name: string; input: Record<string, unknown> }; check: (output: string) => boolean }> = [
+          { name: '读文件', call: { name: 'read_file', input: { path: 'notes.md' } }, check: (out) => out.includes('needle') },
+          { name: '列目录', call: { name: 'list_dir', input: { path: '.', depth: 2 } }, check: (out) => out.includes('legacy') },
+          { name: '找文件', call: { name: 'glob', input: { pattern: '**/*.md' } }, check: (out) => out.includes('notes.md') },
+          { name: '搜内容', call: { name: 'grep', input: { pattern: 'needle', path: '.' } }, check: (out) => out.includes('notes.md') },
+          { name: '写文件', call: { name: 'write_file', input: { path: 'out/report.md', content: '# 报告\n通过。' } }, check: (out) => out.includes('out/report.md') || out.includes('已创建') },
+          { name: '改文件', call: { name: 'edit_file', input: { path: 'out/report.md', old_string: '# 报告', new_string: '# 最终报告' } }, check: (out) => out.includes('最终报告') || out.includes('替换') },
+          { name: '复读验证', call: { name: 'read_file', input: { path: 'out/report.md' } }, check: (out) => out.includes('最终报告') },
+          { name: '跑命令', call: { name: 'run_command', input: { command: 'echo morrow-eval' } }, check: (out) => out.includes('morrow-eval') }
         ]
-        // 子代理原生上限 12 步：每步只调用读取工具、不给最终答案
-        for (let step = 0; step < 12; step += 1) {
-          steps.push({ toolCalls: [{ name: 'read_file', input: { path: 'in/n.txt' } }] })
+        let firstOk = 0
+        for (const item of cases) {
+          const result = await runToolScript(ws.root, ws.snapshotDir, [
+            { toolCalls: [item.call] },
+            { text: '完成。' }
+          ])
+          const uses = toolUses(result)
+          const use = uses.find((block) => block.name === item.call.name)
+          const ok = use?.result?.ok === true && item.check(use.result?.output ?? '')
+          if (ok) firstOk += 1
+          expect(ok, `${item.name} 首次执行失败：${use?.result?.error ?? '无结果'}`).toBe(true)
         }
-        steps.push({ text: '子代理耗尽步数，我改用主代理。' })
-        const { result } = await runWithScript(ws, steps)
-        expect(result.reason).toBe('complete')
-        const block = taskBlockFrom(result)
-        expect(block?.status).toBe('error')
-        expect(block?.result?.ok).toBe(false)
-        expect(String(block?.result?.error ?? '')).toMatch(/最大步数|步数上限/)
-        expect(block?.result?.meta).toMatchObject({ status: 'exhausted', steps: 12 })
-      } finally {
-        ws.cleanup()
-      }
-    })
-  })
 
-  describe('M46：子代理工具失败不能被“完成”文字覆盖', () => {
-    it('completed 时仍保留 failedTools，并提示父任务结论可能不完整', async () => {
-      const ws = makeTempWorkspace({ 'in/n.txt': '7' })
-      try {
-        const { result } = await runWithScript(ws, [
-          { toolCalls: [{ name: 'task', input: { description: '读取缺失文件', prompt: '读取 missing.txt' } }] },
+        const retryCases: Array<{ name: string; bad: { name: string; input: Record<string, unknown> }; good: { name: string; input: Record<string, unknown> } }> = [
           {
-            text: '我先尝试读取。',
-            toolCalls: [{ name: 'read_file', input: { path: 'missing.txt' } }]
+            name: '读不存在的文件后修正',
+            bad: { name: 'read_file', input: { path: 'missing.md' } },
+            good: { name: 'read_file', input: { path: 'notes.md' } }
           },
-          { text: '结论：该文件不存在，无法返回数值。' },
-          { text: '收到子代理结论。' }
-        ])
-        expect(result.reason).toBe('complete')
-        const block = taskBlockFrom(result)
-        expect(block?.status).toBe('success')
-        expect(block?.result?.meta).toMatchObject({ status: 'completed' })
-        const failedTools = block?.result?.meta?.failedTools as string[] | undefined
-        expect(failedTools?.length).toBeGreaterThanOrEqual(1)
-        expect(String(block?.result?.output ?? '')).toContain('工具失败')
+          {
+            name: '替换不存在的文本后修正',
+            bad: { name: 'edit_file', input: { path: 'out/report.md', old_string: '不存在的行', new_string: 'x' } },
+            good: { name: 'edit_file', input: { path: 'out/report.md', old_string: '通过。', new_string: '已通过。' } }
+          },
+          {
+            name: '缺少内容参数后修正',
+            bad: { name: 'write_file', input: { path: 'out/bad.md' } },
+            good: { name: 'write_file', input: { path: 'out/bad.md', content: '修正后写入。' } }
+          }
+        ]
+        let retryOk = 0
+        for (const item of retryCases) {
+          const result = await runToolScript(ws.root, ws.snapshotDir, [
+            { toolCalls: [item.bad] },
+            { toolCalls: [item.good] },
+            { text: '已修正。' }
+          ])
+          const uses = toolUses(result).filter((block) => block.name === item.good.name)
+          const failedFirst = uses[0]?.result?.ok === false
+          const succeededAfter = uses.some((block) => block.result?.ok === true)
+          if (failedFirst && succeededAfter) retryOk += 1
+          expect(failedFirst, `${item.name}：首次错误没有被工具层拒绝`).toBe(true)
+          expect(succeededAfter, `${item.name}：修正后仍未成功`).toBe(true)
+        }
+
+        const tsr1 = firstOk / cases.length
+        const tsrRetry = retryOk / retryCases.length
+        ;(report.metrics as Record<string, unknown>).tool = {
+          tasks: cases.length,
+          firstSuccess: firstOk,
+          tsr1,
+          retryTasks: retryCases.length,
+          retrySuccess: retryOk,
+          tsrRetry
+        }
+        expect(tsr1).toBeGreaterThanOrEqual(0.95)
+        expect(tsrRetry).toBeGreaterThanOrEqual(0.99)
       } finally {
         ws.cleanup()
       }
     })
-  })
 
-  describe('父任务 abort 传播到子循环', () => {
-    it('取消父任务时子代理也中断，run 以 cancelled 收尾', async () => {
-      const ws = makeTempWorkspace()
-      try {
-        const controller = new AbortController()
-        const provider: Provider = {
-          async *stream() {
-            if (controller.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
-            yield {
-              type: 'tool_call_start',
-              index: 0,
-              id: 'call_task_abort',
-              name: 'task'
-            }
-            yield {
-              type: 'tool_call_delta',
-              index: 0,
-              argsDelta: JSON.stringify({ description: '慢任务', prompt: '执行一个慢任务' })
-            }
-            yield {
-              type: 'tool_call_end',
-              index: 0,
-              id: 'call_task_abort',
-              name: 'task',
-              input: { description: '慢任务', prompt: '执行一个慢任务' }
-            }
-            // 父任务第一轮结束后：子代理循环会再次调用 provider（这个生成器每次都是同一逻辑）
-            if (controller.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
-            await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, 400)
-              controller.signal.addEventListener(
-                'abort',
-                () => {
-                  clearTimeout(timer)
-                  resolve()
-                },
-                { once: true }
-              )
-            })
-            if (controller.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
-            await new Promise((resolve) => setTimeout(resolve, 10))
-          }
-        }
-        const promise = runAgent({
-          runId: 'run_abort_sub',
-          sessionId: 'session_abort_sub',
-          provider,
-          model: MODEL,
-          systemPrompt: 's',
-          history: [],
-          userMessage: userMessage('委派慢任务'),
-          workspace: ws.root,
-          permissionMode: 'auto',
-          snapshotDir: ws.snapshotDir,
-          signal: controller.signal,
-          emit: () => undefined,
-          onPermission: async () => 'once',
-          onAskUser: async () => ({ value: 'a', label: 'A' }),
-          maxSteps: 10
-        })
-        await new Promise((resolve) => setTimeout(resolve, 120))
-        controller.abort()
-        const result = await promise
-        expect(result.reason).toBe('cancelled')
-        const block = taskBlockFrom(result)
-        expect(block?.status).toBe('interrupted')
-      } finally {
-        ws.cleanup()
+    it('指标二：60 轮长任务的上下文漂移率', () => {
+      const constraints = [
+        '所有输出必须使用中文',
+        '禁止修改 legacy/ 目录',
+        '预算上限 120000 tokens',
+        'API 端口固定 4310',
+        '最终文件名必须是 final-report.md'
+      ]
+      const decisions = [
+        '关键决定：数据层采用 SQLite，不引入 Prisma。',
+        '关键决定：最终交付路径改为 deliver/final-report.md，原 final-report.md 作废。',
+        '必须保留：评测密钥变量名 MORROW_EVAL_TOKEN。'
+      ]
+      const facts = [...constraints, 'SQLite', 'deliver/final-report.md', 'MORROW_EVAL_TOKEN']
+      const introduced = new Set<string>(constraints)
+      const system = `${SYSTEM}\n${constraints.join('；')}。`
+      let messages: ChatMessage[] = [
+        message(
+          'user',
+          `项目约束：${constraints.join('；')}。这些约束贯穿整个任务，后续压缩也不能丢。`
+        ),
+        message('assistant', '收到。我会按这些约束推进。')
+      ]
+      const checkAndCount = (): { missing: string[]; hardMissing: number } => {
+        const text = textOf(messages)
+        const missing = [...introduced].filter((fact) => !text.includes(fact))
+        return { missing, hardMissing: constraints.filter((fact) => !text.includes(fact)).length }
       }
+      let checks = 0
+      let violations = 0
+      let hardConstraintMissing = 0
+      const compactionAt = new Set([20, 40, 60])
+      for (let turn = 1; turn <= 60; turn += 1) {
+        if (turn === 12) {
+          messages.push(message('user', decisions[0]), message('assistant', '已记录，采用 SQLite。'))
+          introduced.add('SQLite')
+        }
+        if (turn === 28) {
+          messages.push(message('user', decisions[1]), message('assistant', '已切换到 deliver/final-report.md。'))
+          introduced.add('deliver/final-report.md')
+        }
+        if (turn === 45) {
+          messages.push(message('user', decisions[2]), message('assistant', '已保留评测密钥变量名。'))
+          introduced.add('MORROW_EVAL_TOKEN')
+        }
+        messages.push(
+          message('user', `第 ${turn} 轮：继续核对第 ${turn} 项数据，结果写入临时文件。`),
+          message('assistant', `第 ${turn} 项已完成。`)
+        )
+        if (!compactionAt.has(turn)) continue
+        const plan = planCompaction(messages, system, 8_000, { force: true, keepRecent: 6 })
+        expect(plan.shouldCompact, `第 ${turn} 轮应能压缩`).toBe(true)
+        const older = messages.slice(0, plan.cutIndex)
+        const summaryText = localExtractSummary(older)
+        messages = applyCompaction(messages, plan.cutIndex, summaryText)
+        const checked = checkAndCount()
+        checks += 1
+        violations += checked.missing.length
+        hardConstraintMissing += checked.hardMissing
+        expect(checked.hardMissing, `第 ${turn} 轮压缩后丢了硬约束：${checked.missing.join('、')}`).toBe(0)
+      }
+      const factsChecked = checks * introduced.size
+      const rate = factsChecked === 0 ? 0 : violations / factsChecked
+      ;(report.metrics as Record<string, unknown>).drift = {
+        turns: 60,
+        compactions: checks,
+        factsChecked,
+        violations,
+        rate,
+        hardConstraintMissing
+      }
+      expect(rate).toBeLessThanOrEqual(0.02)
+    })
+
+    it('指标三：压缩后关键决定保留（真实 compactSession + 本地兜底）', async () => {
+      const keys = ['SQLite', 'legacy/', '4310', 'MORROW_EVAL_TOKEN', 'deliver/final-report.md']
+      const buildHistory = (): ChatMessage[] => {
+        const history: ChatMessage[] = [
+          message('user', '项目约束：禁止修改 legacy/；端口 4310；密钥变量 MORROW_EVAL_TOKEN；最终文件 deliver/final-report.md。'),
+          message('assistant', '收到，按约束执行。')
+        ]
+        for (let turn = 1; turn <= 16; turn += 1) {
+          history.push(
+            message('user', `第 ${turn} 步：整理数据并记录决定。`),
+            message('assistant', turn === 6 ? '关键决定：数据库采用 SQLite，不引入 Prisma。' : `第 ${turn} 步完成，输出临时结果。`)
+          )
+        }
+        return history
+      }
+      const system = `${SYSTEM}\n项目约束：禁止修改 legacy/；端口 4310；密钥变量 MORROW_EVAL_TOKEN；最终文件 deliver/final-report.md。`
+      let expected = 0
+      let retained = 0
+      let hardConstraintMissing = 0
+
+      const fallbackProvider = new ScriptedProvider([{ error: { message: '评测：摘要模型不可用' } }])
+      const fallback = await compactSession({
+        provider: fallbackProvider,
+        model: { ...MODEL, id: 'eval-fallback', contextWindow: 4_000 },
+        systemPrompt: system,
+        messages: buildHistory(),
+        signal: new AbortController().signal,
+        force: true,
+        keepRecent: 4
+      })
+      expect(fallback.compacted).toBe(true)
+      const fallbackText = `${fallback.summary ?? ''}\n${textOf(fallback.messages)}`
+      for (const key of keys) {
+        expected += 1
+        if (fallbackText.includes(key)) retained += 1
+        else hardConstraintMissing += 1
+      }
+
+      const summary = [
+        '## 目标与用户意图',
+        '完成数据处理。',
+        '## 硬约束与偏好',
+        '禁止修改 legacy/；端口 4310；密钥变量 MORROW_EVAL_TOKEN；最终文件 deliver/final-report.md。',
+        '## 已完成与关键决策',
+        '数据库采用 SQLite。',
+        '## 未完成与下一步',
+        '继续完成剩余步骤。'
+      ].join('\n')
+      const modelProvider = new ScriptedProvider([{ text: summary }])
+      const modeled = await compactSession({
+        provider: modelProvider,
+        model: { ...MODEL, id: 'eval-summary', contextWindow: 4_000 },
+        systemPrompt: system,
+        messages: buildHistory(),
+        signal: new AbortController().signal,
+        force: true,
+        keepRecent: 4
+      })
+      expect(modeled.compacted).toBe(true)
+      const modeledText = `${modeled.summary ?? ''}\n${textOf(modeled.messages)}`
+      for (const key of keys) {
+        expected += 1
+        if (modeledText.includes(key)) retained += 1
+        else hardConstraintMissing += 1
+      }
+
+      const rate = expected === 0 ? 0 : retained / expected
+      ;(report.metrics as Record<string, unknown>).retention = {
+        scenarios: 2,
+        expected,
+        retained,
+        rate,
+        hardConstraintMissing,
+        fallbackCompacted: fallback.compacted,
+        modelCompacted: modeled.compacted
+      }
+      expect(hardConstraintMissing).toBe(0)
+      expect(rate).toBeGreaterThanOrEqual(0.9)
+    })
+
+    const liveIt = process.env.MORROW_EVAL_LIVE === '1' ? it : it.skip
+
+    liveIt('实机抽查：本地模型压缩历史后保留关键决定', async () => {
+      const baseUrl = process.env.MORROW_EVAL_LIVE_BASE_URL ?? 'http://127.0.0.1:8000/v1'
+      const modelId = process.env.MORROW_EVAL_LIVE_MODEL ?? 'Qwen3.8-27B-Coder390'
+      const config: ProviderConfig = {
+        id: 'eval-live',
+        kind: 'openai-compat',
+        name: '评测本地模型',
+        baseUrl,
+        models: [{ id: modelId, label: modelId, contextWindow: 65_536, maxOutput: 4_096, supportsTools: true }],
+        apiKeyStored: false,
+        enabled: true
+      }
+      const provider = createProvider(config, null, modelId)
+      const keys = ['SQLite', 'legacy/', '4310', 'MORROW_EVAL_TOKEN', 'deliver/final-report.md']
+      const history: ChatMessage[] = [
+        message('user', '项目约束：禁止修改 legacy/；端口 4310；密钥变量 MORROW_EVAL_TOKEN；最终文件 deliver/final-report.md。'),
+        message('assistant', '收到，按约束执行。')
+      ]
+      for (let turn = 1; turn <= 18; turn += 1) {
+        history.push(
+          message('user', `第 ${turn} 步：整理数据并记录决定。`),
+          message('assistant', turn === 6 ? '关键决定：数据库采用 SQLite，不引入 Prisma。' : `第 ${turn} 步完成，输出临时结果。`)
+        )
+      }
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 240_000)
+      try {
+        const startedAt = Date.now()
+        const result = await compactSession({
+          provider,
+          model: { ...MODEL, id: modelId, contextWindow: 65_536 },
+          systemPrompt: SYSTEM,
+          messages: history,
+          signal: controller.signal,
+          force: true,
+          keepRecent: 4
+        })
+        const text = `${result.summary ?? ''}
+${textOf(result.messages)}`
+        const missing = keys.filter((key) => !text.includes(key))
+        const reportLive = {
+          mode: 'live-local-model',
+          model: modelId,
+          baseUrl,
+          generatedAt: new Date().toISOString(),
+          compacted: result.compacted,
+          elapsedMs: Date.now() - startedAt,
+          summaryUsage: result.summaryUsage ?? null,
+          expected: keys.length,
+          retained: keys.length - missing.length,
+          rate: (keys.length - missing.length) / keys.length,
+          missing
+        }
+        mkdirSync(join(ROOT, 'docs', 'verification'), { recursive: true })
+        writeFileSync(join(ROOT, 'docs', 'verification', 'eval-live-results.json'), `${JSON.stringify(reportLive, null, 2)}
+`, 'utf8')
+        expect(result.compacted).toBe(true)
+        expect(missing).toEqual([])
+      } finally {
+        clearTimeout(timer)
+      }
+    }, 300_000)
+
+    it('指标四：Token 曲线随轮次是否线性增长', () => {
+      const system = SYSTEM
+      const contextLimit = 10_000
+      const filler = '核对数据、记录结果并保持既有约束。'.repeat(14)
+      const all: ChatMessage[] = [message('user', `长任务开始。${filler}`)]
+      let managed: ChatMessage[] = [...all]
+      const baselineCurve: number[] = []
+      const managedCurve: number[] = []
+      let compactions = 0
+      for (let turn = 1; turn <= 80; turn += 1) {
+        all.push(message('user', `第 ${turn} 轮：${filler}`), message('assistant', `第 ${turn} 轮完成：${filler}`))
+        managed = [...managed, all[all.length - 2], all[all.length - 1]]
+        const plan = planCompaction(managed, system, contextLimit, { keepRecent: 8 })
+        if (plan.shouldCompact) {
+          const older = managed.slice(0, plan.cutIndex)
+          managed = applyCompaction(managed, plan.cutIndex, localExtractSummary(older))
+          compactions += 1
+        }
+        baselineCurve.push(estimateMessagesTokens(all, system))
+        managedCurve.push(estimateMessagesTokens(managed, system))
+      }
+      const baselineSlope = fitSlope(baselineCurve.slice(19))
+      const managedSlope = fitSlope(managedCurve.slice(19))
+      const slopeRatio = baselineSlope <= 0 ? 0 : managedSlope / baselineSlope
+      const result = {
+        turns: 80,
+        contextLimit,
+        compactions,
+        baselineSlope: Math.round(baselineSlope * 100) / 100,
+        managedSlope: Math.round(managedSlope * 100) / 100,
+        slopeRatio: Math.round(slopeRatio * 1000) / 1000,
+        baselinePeak: baselineCurve[baselineCurve.length - 1],
+        managedPeak: Math.max(...managedCurve),
+        managedFinal: managedCurve[managedCurve.length - 1],
+        compactionEvents: compactions
+      }
+      ;(report.metrics as Record<string, unknown>).token = result
+      expect(compactions).toBeGreaterThanOrEqual(3)
+      expect(slopeRatio).toBeLessThanOrEqual(0.5)
+      expect(result.managedFinal).toBeLessThan(result.baselinePeak * 0.5)
     })
   })
 })

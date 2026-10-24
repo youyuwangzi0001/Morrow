@@ -3,7 +3,7 @@
 .md {
   color: var(--text);
   font-size: var(--fs-body);
-  line-height: 1.75;
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 
@@ -17,13 +17,13 @@
 
 .md-p {
   margin: 0 0 12px;
-  line-height: 1.75;
+  line-height: var(--lh-body);
 }
 
 /* App.css 里旧的占位规则 `.message-assistant p` 指度更高，这里统一压回 Prose 节奏 */
 .message-assistant .md .md-p {
   margin: 0 0 12px;
-  line-height: 1.75;
+  line-height: var(--lh-body);
 }
 
 .md-p + .md-p {
@@ -35,27 +35,27 @@
 .md-h2,
 .md-h3 {
   font-family: var(--font-display);
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-tight);
   color: var(--text);
 }
 
 .md-h1 {
   margin: 26px 0 12px;
-  font-size: 24px;
-  line-height: 1.3;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-title);
 }
 
 .md-h2 {
   margin: 24px 0 10px;
-  font-size: 20px;
-  line-height: 1.35;
+  font-size: var(--fs-title);
+  line-height: var(--lh-tight);
 }
 
 .md-h3 {
   margin: 22px 0 8px;
-  font-size: 17px;
-  line-height: 1.4;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-ui);
 }
 
 .md-h4,
@@ -63,9 +63,9 @@
 .md-h6 {
   margin: 18px 0 8px;
   font-family: var(--font-ui);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-ui);
   color: var(--text);
 }
 
@@ -110,7 +110,7 @@
 .md-ol > .md-li::marker {
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 
 .md-li {
@@ -146,8 +146,8 @@
   border: 1px solid var(--line-strong);
   border-radius: 4px;
   color: var(--patina);
-  font-size: 10px;
-  line-height: 1;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-none);
 }
 
 /* 引用 */
@@ -170,8 +170,9 @@
   background: color-mix(in srgb, var(--surface-inset) 72%, var(--surface));
   color: var(--text);
   font-family: var(--font-code);
+  font-weight: var(--code-font-weight, 400);
   font-size: calc(var(--fs-code) - 1px);
-  letter-spacing: 0.01em;
+  letter-spacing: var(--ls-ui);
   white-space: break-spaces;
 }
 
@@ -213,8 +214,8 @@
 .md-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-copy);
 }
 
 .md-th {
@@ -222,9 +223,9 @@
   border-bottom: 1px solid var(--line-strong);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-label);
   text-align: left;
   white-space: nowrap;
 }
@@ -253,7 +254,7 @@
 }
 
 .md-strong {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text);
 }
 
@@ -282,7 +283,7 @@
   display: block;
   margin-top: 6px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 /* 远程/不可显示图片：不渲染破图，给出域名与安全打开入口 */
@@ -297,8 +298,8 @@
   border-radius: var(--r-xs);
   background: var(--surface-inset);
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
   vertical-align: baseline;
 }
 
@@ -312,7 +313,7 @@
 .md-image-unavailable-open {
   flex: 0 0 auto;
   color: var(--gold);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   text-decoration: underline;
   text-decoration-color: var(--line-gold);
   text-underline-offset: 2px;

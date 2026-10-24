@@ -8,7 +8,7 @@ import SearchPanel from '../search/SearchPanel'
 import BrowserSurface from '../browser/BrowserSurface'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 import { GitPanel } from '../git/GitPanel'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { WORKBENCH_EVENT, parseWorkbenchPanel, type WorkbenchPanel } from './events'
 import './workbench.css'
 
@@ -44,6 +44,13 @@ export function WorkbenchHost(): React.JSX.Element {
     window.addEventListener(WORKBENCH_EVENT, onEvent)
     return () => window.removeEventListener(WORKBENCH_EVENT, onEvent)
   }, [openTerminal])
+
+  // 浏览器全屏面板需要独占窗口顶部：标题栏的原生拖动区分块会截获地址栏点击。
+  useEffect(() => {
+    const active = panel === 'browser' && !browserHidden
+    document.body.classList.toggle('is-browser-surface-open', active)
+    return () => document.body.classList.remove('is-browser-surface-open')
+  }, [panel, browserHidden])
 
   // Agent 打开/关闭网页时，面板跟随展示同一个可见浏览器实例
   useEffect(() => {

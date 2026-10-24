@@ -33,6 +33,7 @@ import {
   type ConnectorTestResult,
   type ConnectorView
 } from './connectors-api'
+import { errorText } from '../../lib'
 import './ConnectorDirectory.css'
 
 export interface ConnectorDirectoryProps {
@@ -45,10 +46,6 @@ export interface ConnectorDirectoryProps {
 }
 
 type CatalogFilter = 'all' | 'remote' | 'local'
-
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
 
 function shortenPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)

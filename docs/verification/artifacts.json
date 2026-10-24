@@ -1,0 +1,85 @@
+{
+  "product": "Morrow",
+  "version": "0.1.0",
+  "builtAt": "2026-10-24T16:26:55.742Z",
+  "platform": "win32-x64",
+  "source": {
+    "files": 313,
+    "codeFiles": 292,
+    "loc": {
+      "ts": 70589,
+      "tsx": 29133,
+      "css": 24947,
+      "total": 124669
+    }
+  },
+  "tests": {
+    "unit": {
+      "suites": 13,
+      "cases": 939,
+      "passed": 931,
+      "skipped": 8
+    },
+    "e2e": {
+      "suites": 17,
+      "cases": 206,
+      "passed": 195,
+      "skipped": 11,
+      "nonPackaged": {
+        "cases": 201,
+        "passed": 190,
+        "skipped": 11
+      },
+      "packaged": {
+        "cases": 5,
+        "passed": 5,
+        "skipped": 0
+      }
+    }
+  },
+  "docs": {
+    "files": 31,
+    "markdown": 10,
+    "guideScreens": 12,
+    "verificationScreens": 0
+  },
+  "delivery": {
+    "fileCount": 5,
+    "bytes": 362591414,
+    "mib": 345.79
+  },
+  "artifacts": [
+    {
+      "name": "LICENSE",
+      "bytes": 1070,
+      "mib": 0,
+      "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
+    },
+    {
+      "name": "Morrow-0.1.0-portable.exe",
+      "bytes": 205944832,
+      "mib": 196.4,
+      "sha256": "df74fcc4c68ef08f44aef2be15f3d8064942a2485f059a8e3bf6f779d4985db9"
+    },
+    {
+      "name": "Morrow-0.1.0-setup.exe",
+      "bytes": 156641717,
+      "mib": 149.39,
+      "sha256": "e7dc0edebfce6401ee4bd2a2f5914e99604a12ae00bf268aa622247deccd3f5f"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 338,
+      "mib": 0,
+      "sha256": "0dc1e3caad1cb2cf53d6dcefb9a368e1ed1aa7423e204481d135f00052005e30"
+    },
+    {
+      "name": "使用说明.txt",
+      "bytes": 3457,
+      "mib": 0,
+      "sha256": "47d33876b77ade130001a732385558a88d73c1f4972f89230431d790c317f6fa"
+    }
+  ],
+  "runtimeCache": ".morrow-runtime-0.1.0-r010",
+  "generatedAt": "2026-10-24T16:32:49.974Z"
+}

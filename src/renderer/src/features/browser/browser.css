@@ -14,6 +14,130 @@
   overflow: hidden;
 }
 
+.browser-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--tab-gap);
+  height: 34px;
+  flex: none;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-elev);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* 标签栏空白区可拖动窗口；标签与按钮显式 no-drag。 */
+  -webkit-app-region: drag;
+}
+
+.browser-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.browser-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 180px;
+  min-width: 92px;
+  max-width: var(--tab-max-width);
+  height: var(--tab-height);
+  padding: 0 var(--tab-pad-right) 0 var(--tab-pad-x);
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
+  color: var(--tab-color);
+  cursor: pointer;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  -webkit-app-region: no-drag;
+}
+
+.browser-tab:hover {
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-color);
+}
+
+.browser-tab.is-active {
+  border-color: var(--tab-active-border);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-color);
+}
+
+.browser-tab.is-error .browser-tab-title {
+  color: var(--rust);
+}
+
+.browser-tab-icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.browser-tab.is-active .browser-tab-icon {
+  color: var(--gold);
+}
+
+.browser-tab-spinner {
+  flex: none;
+  color: var(--gold);
+  animation: browser-spin 900ms linear infinite;
+}
+
+.browser-tab-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--tab-font-size);
+  line-height: var(--lh-none);
+}
+
+.browser-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tab-close-size);
+  height: var(--tab-close-size);
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tab-close-radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease, background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.browser-tab:hover .browser-tab-close,
+.browser-tab.is-active .browser-tab-close,
+.browser-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.browser-tab-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.browser-tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  margin: 0 0 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.browser-tab-new:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
 .browser-toolbar {
   position: relative;
   z-index: 2;
@@ -25,6 +149,15 @@
   padding: 0 10px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-elev);
+  /* 空白区域仍可拖动窗口；所有交互控件必须是 no-drag，避免原生拖动区截获点击。 */
+  -webkit-app-region: drag;
+}
+
+.browser-btn,
+.browser-address,
+.browser-meta,
+.browser-title {
+  -webkit-app-region: no-drag;
 }
 
 .browser-nav {
@@ -98,8 +231,8 @@
   outline: none;
   background: transparent;
   color: var(--text);
-  font-size: 12px;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-base);
+  letter-spacing: var(--ls-ui);
 }
 
 .browser-address-input::placeholder {
@@ -108,9 +241,9 @@
 
 .browser-address-enter {
   flex: none;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--ls-caps);
 }
 
 .browser-spinner {
@@ -136,7 +269,7 @@
 
 .browser-title {
   max-width: 260px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   color: var(--text-2);
 }
 
@@ -152,8 +285,8 @@
   border-radius: var(--r-full);
   background: var(--gold-ghost);
   color: var(--gold);
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
   white-space: nowrap;
 }
 
@@ -180,22 +313,22 @@
 
 .browser-empty-title {
   margin: 0;
-  font-size: 22px;
+  font-size: var(--fs-display-xs);
   color: var(--text-2);
 }
 
 .browser-empty-hint {
   margin: 0;
   max-width: 420px;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   color: var(--text-3);
-  line-height: 1.8;
+  line-height: var(--lh-loose);
 }
 
 .browser-empty-note {
   margin: 14px 0 0;
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
   color: var(--text-3);
   opacity: 0.8;
 }
@@ -205,7 +338,7 @@
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-3);
 }
 
@@ -233,22 +366,22 @@
 
 .browser-error-title {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--fs-body-lg);
   color: var(--text);
 }
 
 .browser-error-message {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.8;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-loose);
   color: var(--text-2);
   word-break: break-all;
 }
 
 .browser-error-code {
   margin: 8px 0 0;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
   color: var(--text-3);
 }
 
@@ -268,7 +401,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--gold);
-  font-size: 12px;
+  font-size: var(--fs-base);
   cursor: pointer;
   transition: background 140ms, color 140ms;
 }
@@ -280,7 +413,7 @@
 
 .browser-error-url {
   min-width: 0;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
 }
 
@@ -309,7 +442,7 @@
 
 .browser-download-title {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-base);
   color: var(--text);
 }
 
@@ -317,7 +450,7 @@
 .browser-download-path {
   margin: 0;
   max-width: 340px;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
 }
 
@@ -332,7 +465,7 @@
   height: 28px;
   padding: 0 12px;
   border-radius: var(--r-sm);
-  font-size: 12px;
+  font-size: var(--fs-base);
   cursor: pointer;
 }
 
@@ -371,7 +504,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   background: var(--surface);
-  font-size: 12px;
+  font-size: var(--fs-base);
   color: var(--text-2);
   box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.6);
 }
@@ -401,7 +534,7 @@
   border: 1px solid var(--line-gold);
   border-radius: var(--r-full);
   color: var(--gold);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   transition: background 120ms, color 120ms;
 }
 

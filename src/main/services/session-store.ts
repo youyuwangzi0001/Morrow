@@ -128,7 +128,7 @@ function normalizeStoredSession(raw: unknown, expectedId?: string): Session | nu
     ...(mode ? { mode } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(mode !== 'chat' && mode !== 'research' && item.planMode === true ? { planMode: true } : {}),
-    ...(mode === 'research' && isStoredResearch(item.research) ? { research: item.research } : {}),
+    ...(isStoredResearch(item.research) ? { research: item.research } : {}),
     ...(isStoredPlan(item.plan) ? { plan: item.plan } : {}),
     createdAt,
     updatedAt,

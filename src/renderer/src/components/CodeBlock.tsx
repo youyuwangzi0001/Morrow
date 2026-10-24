@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Copy } from 'lucide-react'
-import { useAppStore } from '../state/store'
+import { useAppStore } from '../store'
 import { highlightToHtml, resolveLanguage } from './shiki'
 import './CodeBlock.css'
 

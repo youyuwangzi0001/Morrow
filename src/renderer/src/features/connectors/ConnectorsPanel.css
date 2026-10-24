@@ -34,8 +34,8 @@
 .conn-path {
   margin: -4px 0 0;
   color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -49,8 +49,8 @@
   border-radius: var(--r-sm);
   background: var(--gold-ghost);
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .conn-workspace.is-trusted {
@@ -79,8 +79,8 @@
   border-radius: var(--r-sm);
   background: var(--amber-dim);
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .conn-warn svg {
@@ -95,8 +95,8 @@
   border-radius: var(--r-sm);
   background: var(--patina-dim);
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 /* ── 主区：左列表 + 右编辑 ───────────────────────────────────── */
@@ -170,7 +170,7 @@
 }
 
 .conn-item-name {
-  font-size: 13px;
+  font-size: var(--fs-ui);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -186,7 +186,7 @@
 
 .conn-item-off {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .conn-item .switch {
@@ -243,21 +243,21 @@
 
 .conn-label {
   color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
 }
 
 .conn-hint {
   margin: 0;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .conn-empty-inline {
   margin: 0;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 
 .conn-grid {
@@ -307,8 +307,8 @@
   margin: 0;
   padding-left: 18px;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.75;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-body);
 }
 
 .conn-notes li::marker {
@@ -334,7 +334,7 @@
 
 .conn-action-hint {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 /* ── 测试结果 ─────────────────────────────────────────────────── */
@@ -362,8 +362,8 @@
   gap: 7px;
   margin: 0;
   color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-copy);
 }
 
 .conn-test-ok .conn-test-title svg {
@@ -377,14 +377,14 @@
 .conn-test-reason {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .conn-test-message {
   margin: 0;
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
   word-break: break-word;
 }
 
@@ -419,14 +419,14 @@
 
 .conn-tool-name {
   color: var(--gold);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   flex: 0 0 auto;
 }
 
 .conn-tool-desc {
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -439,8 +439,8 @@
   background: var(--code-bg, var(--surface-inset));
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-copy);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 180px;
@@ -478,8 +478,8 @@
 
 .conn-mono-area {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 /* MCP 资源 / 提示词目录（P1-14） */
@@ -496,14 +496,14 @@
   gap: 6px;
   padding: 6px 9px;
   color: var(--text-2);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   cursor: pointer;
 }
 
 .conn-catalog-sub {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .conn-catalog-list {
@@ -530,14 +530,14 @@
   flex: 0 1 auto;
   max-width: 46%;
   color: var(--text);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .conn-catalog-desc {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .conn-copy {
@@ -548,7 +548,7 @@
   padding: 2px 5px;
   border-radius: 3px;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
 }
 
 .conn-copy:hover {
@@ -568,8 +568,8 @@
 .conn-oauth-title {
   margin-bottom: 4px;
   color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-semibold);
 }
 
 .conn-oauth-actions {
@@ -582,5 +582,5 @@
 
 .conn-oauth-status {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }

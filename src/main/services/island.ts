@@ -32,9 +32,16 @@ const TOOL_LABELS: Record<string, string> = {
   read_docx: '阅读文档',
   read_pptx: '阅读演示文稿',
   read_xlsx: '阅读表格',
-  task: '分派子任务',
+  swarm: '集群协作',
   todo_write: '更新计划',
   generate_image: '生成图片',
+  generate_video: '生成视频',
+  generate_film: '制作短片',
+  render_animation: '渲染代码动画',
+  edit_media: '剪辑媒体',
+  inspect_media: '查看媒体',
+  describe_media: '审看媒体',
+  media_status: '检查多媒体',
   memory: '整理记忆'
 }
 
@@ -60,6 +67,8 @@ function idleSnapshot(): IslandSnapshot {
 }
 
 let snapshot: IslandSnapshot = idleSnapshot()
+/** 灵动岛跟随的主窗口会话；null = 尚未选择会话。 */
+let followedSessionId: string | null = null
 
 export function configureIsland(options: { openMain: () => void; requestClose?: () => void }): void {
   openMainHandler = options.openMain
@@ -270,6 +279,7 @@ export function getIslandSnapshot(): IslandSnapshot {
 
 /** 清除全部对话后把桌面小伙伴恢复为空闲，避免它继续指向已删除的会话。 */
 export function resetIslandAfterClear(): void {
+  followedSessionId = null
   snapshot = idleSnapshot()
   sendSnapshot()
 }
@@ -277,7 +287,43 @@ export function resetIslandAfterClear(): void {
 /** 单个会话被删除时，只在它正是岛上显示的会话时复位，避免快速发送落到别的会话。 */
 export function clearIslandSession(sessionId: string): void {
   if (snapshot.sessionId !== sessionId) return
+  followedSessionId = null
   snapshot = idleSnapshot()
+  sendSnapshot()
+}
+
+/**
+ * 主窗口切换会话：灵动岛实时跟随当前会话。
+ * 当前会话有运行中的任务时显示运行态/耗时/计划；没有运行时也保留该会话的计划进度。
+ */
+export function syncIslandSession(
+  sessionId: string | null,
+  active?: { startedAt: number; status: 'running' | 'waiting' } | null
+): void {
+  followedSessionId = sessionId
+  if (!sessionId) {
+    snapshot = idleSnapshot()
+    sendSnapshot()
+    return
+  }
+  const session = getSessionStore().get(sessionId)
+  const todos = session?.todos ?? []
+  const completed = todos.filter((todo) => todo.status === 'completed').length
+  const progress = todos.length > 0 ? `计划 ${completed}/${todos.length}` : ''
+  const inProgress = inProgressDetail(todos)
+  const detail = active
+    ? inProgress ?? (active.status === 'waiting' ? '等待你的确认…' : '正在推进计划…')
+    : progress || '在桌面陪你待命'
+  snapshot = {
+    status: active?.status ?? 'idle',
+    sessionId,
+    sessionTitle: session?.title?.trim() || '新的对话',
+    detail,
+    todos,
+    startedAt: active?.startedAt ?? null,
+    unread: false,
+    updatedAt: Date.now()
+  }
   sendSnapshot()
 }
 
@@ -338,6 +384,12 @@ function inProgressDetail(todos: TodoItem[]): string | null {
  * 其他会话的事件不会抢走显示（后台任务仍可点击主窗口查看）。
  */
 export function ingestIslandRuntimeEvent(event: RuntimeEvent): void {
+  // 灵动岛显示主窗口当前会话；其它会话的后台事件不能抢走显示。
+  if (followedSessionId === null) {
+    if (event.type !== 'run_started') return
+    followedSessionId = event.sessionId
+  }
+  if (event.sessionId !== followedSessionId) return
   if (event.type === 'run_started') {
     publish({
       status: 'running',

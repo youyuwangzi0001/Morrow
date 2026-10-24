@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, Globe2, ExternalLink } from 'lucide-react'
 import type { WebSearchSource } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './SourcesTray.css'
 
 interface SessionSource extends WebSearchSource {

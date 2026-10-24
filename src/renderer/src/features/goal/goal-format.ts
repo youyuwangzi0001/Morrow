@@ -8,14 +8,6 @@ export const GOAL_STATUS_LABEL: Record<GoalStatus, string> = {
   cancelled: '已取消'
 }
 
-/** 状态色：金 / 灰 / 铜绿 / 锈红 */
-export function goalTone(status: GoalStatus): 'gold' | 'muted' | 'patina' | 'rust' {
-  if (status === 'active') return 'gold'
-  if (status === 'completed') return 'patina'
-  if (status === 'blocked' || status === 'cancelled') return 'rust'
-  return 'muted'
-}
-
 /** 停止原因人话（R7：停止 ≠ 完成，必须说清楚为什么停） */
 export const GOAL_STOP_REASON_LABEL: Record<GoalStopReason, string> = {
   user_paused: '你暂停了目标，进度已保留',

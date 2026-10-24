@@ -22,9 +22,9 @@
 .welcome-overline {
   margin-bottom: 15px;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
+  letter-spacing: var(--ls-ui);
 }
 
 /* 标题：Newsreader 斜体英文 + 中文衬线 */
@@ -35,17 +35,17 @@
 .welcome-zh {
   font-family: var(--font-display);
   font-size: clamp(30px, 3.3vw, 43px);
-  font-weight: 400;
-  line-height: 1.24;
-  letter-spacing: -0.012em;
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-title);
+  letter-spacing: var(--ls-tight);
   color: var(--text);
 }
 
 .welcome-sub {
   margin-top: 15px;
   color: var(--text-2);
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 /* 演示入口 + 连接模型 */
@@ -54,6 +54,13 @@
   align-items: center;
   gap: 20px;
   margin: 26px 0 0;
+}
+
+.welcome-demo .brand-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(255, 240, 205, 0.10);
 }
 
 .welcome-demo {
@@ -66,7 +73,7 @@
   border-radius: var(--r-sm);
   background: var(--gold-ghost);
   color: var(--gold-bright);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   transition:
     background var(--dur-fast) ease,
     border-color var(--dur-fast) ease,
@@ -93,8 +100,8 @@
 
 .welcome-demo-meta {
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
 }
 
 /* 三张不对称纸片：一张横向大卡 + 两张窄卡，内容统一顶对齐 */
@@ -155,20 +162,20 @@
 
 .welcome-paper-title {
   color: var(--text);
-  font-size: 13.5px;
-  font-weight: 550;
-  line-height: 1.4;
+  font-size: var(--fs-ui-plus);
+  font-weight: var(--fw-mid);
+  line-height: var(--lh-ui);
 }
 
 .welcome-paper.is-wide .welcome-paper-title {
   flex: 0 0 auto;
-  font-size: 15px;
+  font-size: var(--fs-body-lg);
 }
 
 .welcome-paper-desc {
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.62;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 .welcome-paper.is-wide .welcome-paper-desc {
@@ -205,7 +212,7 @@
   gap: 10px;
   margin-top: 26px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .welcome-foot-item {
@@ -214,7 +221,7 @@
   gap: 6px;
   max-width: 300px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .welcome-foot-item.is-action:hover {

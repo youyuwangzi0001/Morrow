@@ -2,7 +2,7 @@
  * R10-A 文件 API 客户端：所有调用统一走 window.morrow.features.invoke('feature:files:*')。
  * payload 里的 workspace 始终显式传入（主进程也支持缺省回退，但显式更安全）。
  */
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 
 export type EntryKind = 'file' | 'dir' | 'symlink'
 

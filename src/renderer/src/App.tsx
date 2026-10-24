@@ -1,7 +1,7 @@
 import { useEffect, type CSSProperties } from 'react'
-import brandMarkUrl from './assets/brand-mark.svg'
+import brandMarkUrl from './assets/brand-mark-dark.png'
 import './App.css'
-import { useAppStore } from './state/store'
+import { useAppStore } from './store'
 import { TitleBar } from './features/shell/TitleBar'
 import { Sidebar } from './features/shell/Sidebar'
 import { Welcome } from './features/shell/Welcome'
@@ -56,9 +56,15 @@ export default function App(): React.JSX.Element {
       const typing =
         !!target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      const mod = event.ctrlKey || event.metaKey
+      // 终端开关即使在终端聚焦时也应可用；其余全局键让给 shell。
+      if (mod && event.code === 'Backquote') {
+        event.preventDefault()
+        useAppStore.getState().toggleTerminal()
+        return
+      }
       // 终端内的按键归终端：Ctrl+K/B/N 等不能抢 shell 的快捷键
       if (target?.closest('.terminal-dock')) return
-      const mod = event.ctrlKey || event.metaKey
       if (mod && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         const state = useAppStore.getState()

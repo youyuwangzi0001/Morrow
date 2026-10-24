@@ -27,7 +27,7 @@ import {
   Trash2
 } from 'lucide-react'
 import type { SessionMeta } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import {
   Badge,
   Button,
@@ -50,6 +50,7 @@ import {
   type ProjectKnowledgeInfo,
   type ProjectSummary
 } from './projects-api'
+import { errorText } from '../../lib'
 import './ProjectsPanel.css'
 
 export interface ProjectsPanelProps {
@@ -86,10 +87,6 @@ const EMPTY_FORM: ProjectForm = {
   knowledgePaths: [],
   pinned: false,
   active: true
-}
-
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
 }
 
 function normalizePathForCompare(path: string): string {

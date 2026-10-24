@@ -92,7 +92,7 @@ export const readSkillTool: ToolImpl = {
   },
   async execute(input, ctx): Promise<ToolResult> {
     const workspace = getWorkspaceOrThrow(ctx.workspace)
-    const name = getString(input, 'name', { required: true })
+    const name = getString(input, 'name', { defaultValue: '' })
     const explicitPath = getString(input, 'path', { defaultValue: '' })
 
     let skill: SkillInfo | null = null
@@ -141,6 +141,15 @@ export const readSkillTool: ToolImpl = {
         }
       }
     } else {
+      if (!name) {
+        const available = discoverSkills(workspace).map((candidate) => candidate.name)
+        return errResult(
+          'read_skill 需要 name 参数。',
+          available.length > 0
+            ? `当前可用的技能：${available.join('、')}。请用 list_skills 确认名字后，以 {"name":"技能名"} 重试。`
+            : '当前没有可用的技能；先用 list_skills 查看。'
+        )
+      }
       skill = findSkill(workspace, name)
       if (!skill) {
         const available = discoverSkills(workspace).map((candidate) => candidate.name)

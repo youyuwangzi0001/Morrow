@@ -2,15 +2,15 @@
  * 合并自 6 个 E2E spec：b6-settings.spec.ts、settings-archive.spec.ts、settings-onboarding.spec.ts、data-dir-settings.spec.ts、a7-answer-style.spec.ts、r13-answer-settings.spec.ts
  * 每个原 spec 整体包在独立 test.describe 中，hooks 与局部变量互不污染。
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { launchMorrow, root, screensDir, screenshotPath } from './launch'
 import type { MorrowApp } from './launch'
 import { startMockLLM } from '../fixtures/mock-llm.mjs'
-import { configureMockProvider, createSession, dismissOnboarding, getEvents, installEventCollector, readStore, sendMessageViaStore, setThemeViaStore, waitForRunFinished, waitForStoreReady, waitUntil } from './store'
+import { clearEvents, configureMockProvider, createSession, dismissOnboarding, getEvents, installEventCollector, readStore, sendMessageViaStore, setThemeViaStore, waitForRunFinished, waitForStoreReady, waitUntil } from './store'
 
 // ── 原文件：b6-settings.spec.ts ──────────────────────────────────────────────
 test.describe('b6-settings.spec.ts', () => {
@@ -107,9 +107,10 @@ test.describe('B6 设置与状态', () => {
     await expect(settings.locator('.st-provider-state').filter({ hasText: 'Key 已保存' })).toBeVisible()
 
     await settings.getByRole('tab', { name: '关于' }).click()
-    // R12：无交互的「隐私」区块已删除，关于页直接进入快捷键
+    // R12 删除无交互的隐私区块；R20 起快捷键独立成页，关于页不再重复展示
     await expect(settings.locator('.st-about-privacy')).toHaveCount(0)
-    await expect(settings.getByText('键盘快捷键')).toBeVisible()
+    await expect(settings.locator('.st-about-shortcuts')).toHaveCount(0)
+    await expect(settings.getByRole('tab', { name: '快捷键' })).toBeVisible()
     await expect(settings.getByRole('button', { name: '更改目录' })).toBeVisible()
     await expect(settings.getByRole('button', { name: '更改目录' })).toBeDisabled()
     await expect(settings).toContainText('当前数据目录由启动参数指定')
@@ -358,7 +359,7 @@ test('设置页：未保存 Base URL 时先提示保存；切换服务商清空 
 
     await page.locator('#st-base-url').fill('https://example.invalid/v1')
     await page.getByRole('button', { name: '刷新可用模型' }).click()
-    await expect(page.getByText('还没保存的 Base URL')).toBeVisible()
+    await expect(page.getByText('还没保存的服务地址')).toBeVisible()
 
     await setThemeViaStore(page, 'dark')
     await page.waitForTimeout(350)
@@ -745,4 +746,476 @@ test('设置分页直接展示选项，不重复分页标题', async () => {
   } finally {
     await morrow.close()
   }
+})
+
+// ── 原文件：r20-shortcuts-archive.spec.ts ──────────────────────────────
+test.describe("r20-shortcuts-archive.spec.ts", () => {
+test('设置中的快捷键页与真实快捷键一致；归档按钮垂直居中', async () => {
+  test.setTimeout(120_000)
+  const morrow = await launchMorrow({ name: 'r20-shortcuts', timeoutMs: 90_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+
+    // Ctrl+, 打开设置；快捷键已从「关于」移出，成为独立页签。
+    await page.keyboard.press('Control+,')
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await expect(settings).toBeVisible({ timeout: 15_000 })
+    const shortcutsTab = settings.getByRole('tab', { name: '快捷键' })
+    await shortcutsTab.click()
+    await expect(shortcutsTab).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('.st-shortcuts')).toBeVisible()
+    await expect(page.getByRole('group', { name: '打开命令面板：Ctrl+K' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '打开或收起终端：Ctrl+`' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '显示或隐藏桌面伙伴：Ctrl+Shift+M' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '关闭当前标签页：Ctrl+W' })).toBeVisible()
+    await page.mouse.move(2, 2)
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('r20-shortcuts-dark.png') })
+    await setThemeViaStore(page, 'light')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('r20-shortcuts-light.png') })
+    await setThemeViaStore(page, 'dark')
+
+    await settings.getByRole('tab', { name: '关于' }).click()
+    await expect(page.locator('.st-about-shortcuts')).toHaveCount(0)
+
+    await settings.getByRole('tab', { name: '归档' }).click()
+    const clear = page.locator('.st-danger-zone').getByRole('button', { name: '清除全部' })
+    await expect(clear).toBeVisible()
+    await expect(page.locator('.st-danger-zone')).toHaveCSS('align-items', 'center')
+    await page.screenshot({ path: screenshotPath('r20-archive-clear-centered.png') })
+
+    await page.keyboard.press('Escape')
+    await expect(settings).toBeHidden()
+
+    // Ctrl+` 真正打开/收起终端，即使在终端获得焦点后也能再次关闭。
+    await page.keyboard.press('Control+Backquote')
+    await expect(page.locator('.terminal-dock')).toHaveClass(/is-open/)
+    await page.keyboard.press('Control+Backquote')
+    await expect(page.locator('.terminal-dock')).not.toHaveClass(/is-open/)
+  } finally {
+    await morrow.close()
+  }
+})
+})
+
+
+// ── 原文件：24-ui-tokens.spec.ts ──────────────────────────────────────────────
+test.describe('UI 设计令牌', () => {
+  let morrow: MorrowApp
+
+  test.afterEach(async () => {
+    await morrow?.close()
+  })
+
+  test('设置页与基础控件的字号、字重、控件高度来自顶层 token', async () => {
+    morrow = await launchMorrow({ name: 'ui-tokens', timeoutMs: 90_000 })
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    await page.keyboard.press('Control+,')
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.waitFor({ state: 'visible' })
+
+    const tokens = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement)
+      return {
+        pageTitle: style.getPropertyValue('--text-page-title-size').trim(),
+        pageWeight: style.getPropertyValue('--text-page-title-weight').trim(),
+        pageLeading: style.getPropertyValue('--text-page-title-leading').trim(),
+        section: style.getPropertyValue('--text-section-size').trim(),
+        hint: style.getPropertyValue('--text-hint-size').trim(),
+        body: style.getPropertyValue('--fs-body').trim(),
+        codeWeight: style.getPropertyValue('--code-font-weight').trim(),
+        controlSm: style.getPropertyValue('--control-sm').trim(),
+        controlMd: style.getPropertyValue('--control-md').trim(),
+        permissionTitle: style.getPropertyValue('--text-permission-title-size').trim(),
+        permissionTitleWeight: style.getPropertyValue('--text-permission-title-weight').trim(),
+        permissionTitleLeading: style.getPropertyValue('--text-permission-title-leading').trim(),
+        permissionDesc: style.getPropertyValue('--text-permission-desc-size').trim(),
+        permissionDescLeading: style.getPropertyValue('--text-permission-desc-leading').trim(),
+        permissionCode: style.getPropertyValue('--text-permission-code-size').trim(),
+        permissionButton: style.getPropertyValue('--text-permission-button-size').trim(),
+        permissionButtonWeight: style.getPropertyValue('--text-permission-button-weight').trim()
+      }
+    })
+    expect(tokens).toMatchObject({
+      pageTitle: '20px',
+      pageWeight: '500',
+      pageLeading: '1.2',
+      section: '13px',
+      hint: '12px',
+      body: '14px',
+      codeWeight: '400',
+      controlSm: '28px',
+      controlMd: '34px',
+      permissionTitle: '14px',
+      permissionTitleWeight: '600',
+      permissionTitleLeading: '1.35',
+      permissionDesc: '12.5px',
+      permissionDescLeading: '1.72',
+      permissionCode: '12px',
+      permissionButton: '12.5px',
+      permissionButtonWeight: '500'
+    })
+
+    const title = settings.locator('.st-page-title')
+    await expect(title).toHaveCSS('font-size', '20px')
+    await expect(title).toHaveCSS('font-weight', '500')
+    await expect(settings.locator('.st-page-desc')).toHaveCSS('font-size', '12px')
+
+    const body = await page.evaluate(() => getComputedStyle(document.body))
+    expect(body.fontSize).toBe('14px')
+    expect(body.fontWeight).toBe('450')
+
+    await settings.getByRole('tab', { name: '模型', exact: true }).click()
+    await settings.getByRole('tab', { name: '订阅', exact: true }).click()
+    const sm = settings.locator('.btn-sm').first()
+    await expect(sm).toHaveCSS('height', '28px')
+    const sectionTitle = settings.locator('.st-section-title').first()
+    if (await sectionTitle.count()) {
+      await expect(sectionTitle).toHaveCSS('font-size', '13px')
+      await expect(sectionTitle).toHaveCSS('font-weight', '600')
+    }
+  })
+})
+
+// ── 原文件：23-settings-titles.spec.ts ────────────────────────────────────────
+const TITLES: Record<string, string> = {
+  模型: '模型',
+  订阅: '模型订阅',
+  多媒体: '多媒体',
+  联网搜索: '联网搜索',
+  上下文: '上下文占用',
+  回答: '回答',
+  用量: 'Token 活动',
+  归档: '归档',
+  权限: '权限',
+  自动化: '自动化',
+  '功能与工具': '功能与工具',
+  终端: '终端',
+  外观: '外观',
+  快捷键: '快捷键',
+  关于: '关于'
+}
+
+test.describe('设置页标题统一', () => {
+  let morrow: MorrowApp
+
+  test.afterEach(async () => {
+    await morrow?.close()
+  })
+
+  test('所有子页面使用同一标题规格，并输出双主题截图', async () => {
+    morrow = await launchMorrow({ name: 'settings-titles', timeoutMs: 90_000 })
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    await page.keyboard.press('Control+,')
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.waitFor({ state: 'visible' })
+
+    const specs: Array<{ tab: string; title: string; size: string; weight: string; family: string }> = []
+    for (const [tab, title] of Object.entries(TITLES)) {
+      await settings.getByRole('tab', { name: tab, exact: true }).click()
+      const heading = settings.locator('.st-page-title')
+      await expect(heading).toHaveCount(1)
+      await expect(heading).toHaveText(title)
+      const spec = await heading.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { size: style.fontSize, weight: style.fontWeight, family: style.fontFamily }
+      })
+      specs.push({ tab, title, ...spec })
+    }
+
+    const first = specs[0]!
+    for (const spec of specs) {
+      expect(spec.size).toBe(first.size)
+      expect(spec.weight).toBe(first.weight)
+      expect(spec.family).toBe(first.family)
+    }
+    expect(first.size).toBe('20px')
+    expect(first.weight).toBe('500')
+
+    for (const theme of ['dark', 'light'] as const) {
+      await page.evaluate((next) => {
+        const store = (window as unknown as { __morrowStore: { getState: () => { setTheme: (value: string) => void } } }).__morrowStore
+        store.getState().setTheme(next)
+      }, theme)
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      for (const [tab, name] of [
+        ['模型', 'models'],
+        ['订阅', 'subscriptions'],
+        ['上下文', 'context'],
+        ['用量', 'usage'],
+        ['多媒体', 'media'],
+        ['外观', 'appearance']
+      ] as const) {
+        await settings.getByRole('tab', { name: tab, exact: true }).click()
+        await expect(settings.locator('.st-page-title')).toBeVisible()
+        await settings.screenshot({ path: screenshotPath(`settings-title-${name}-${theme}.png`) })
+      }
+    }
+
+    // 外链在测试模式下不拉起系统浏览器，但必须复制链接并给出可见反馈（放在截图之后，避免遮挡证据图）
+    await settings.getByRole('tab', { name: '多媒体', exact: true }).click()
+    await settings.getByRole('button', { name: '下载 ffmpeg' }).click()
+    await expect(page.getByText(/链接已复制/)).toBeVisible()
+  })
+})
+
+// ── 原文件：22-subscriptions.spec.ts ──────────────────────────────────────────
+async function openSubscriptions(page: Page) {
+  await page.keyboard.press('Control+,')
+  const settings = page.getByRole('dialog', { name: '设置' })
+  await settings.waitFor({ state: 'visible' })
+  await settings.getByRole('tab', { name: '订阅' }).click()
+  await expect(settings.locator('.st-subs')).toBeVisible()
+  return settings
+}
+
+test.describe('订阅设置页', () => {
+  let morrow: MorrowApp
+
+  test.afterEach(async () => {
+    await morrow?.close()
+  })
+
+  test('独立订阅页展示官方账号与第三方入口', async () => {
+    morrow = await launchMorrow({ name: 'subscriptions-ui', timeoutMs: 90_000 })
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const settings = await openSubscriptions(page)
+    await expect(settings.locator('.st-page-title')).toHaveText('模型订阅')
+    await expect(settings.locator('.st-subs')).toContainText('ChatGPT / Codex 订阅')
+    await expect(settings.locator('.st-subs')).toContainText('Qoder 订阅')
+    await expect(settings.locator('.st-subs')).toContainText('第三方 coding plan')
+    for (const channel of ['Kimi Code', 'GLM Coding Plan', 'MiniMax Code', 'Step Plan', 'Command Code', 'Cline Pass', 'Google Antigravity', 'OpenCode']) {
+      await expect(settings.locator('.st-subs')).toContainText(channel)
+    }
+    await settings.screenshot({ path: screenshotPath('subscriptions-dark.png') })
+    await settings.locator('.st-sub-card', { hasText: 'Kimi Code' }).getByRole('button', { name: '连接账号' }).click()
+    await expect(settings.getByLabel('Kimi Code 账号区域')).toBeVisible()
+    await settings.getByRole('button', { name: '返回订阅' }).click()
+    await settings.locator('.st-sub-card', { hasText: 'Step Plan' }).getByRole('button', { name: '连接账号' }).click()
+    await expect(settings.getByLabel('Step API Key')).toBeVisible()
+    await expect(settings.getByLabel('Step Plan 账号区域')).toBeVisible()
+    await settings.screenshot({ path: screenshotPath('subscriptions-step-dark.png') })
+    await settings.getByRole('button', { name: '返回订阅' }).click()
+    await settings.locator('.st-sub-card', { hasText: 'OpenCode' }).getByRole('button', { name: '连接账号' }).click()
+    await expect(settings.getByLabel('OpenCode Zen API Key')).toBeVisible()
+    await expect(settings.getByRole('button', { name: '浏览器登录' })).toHaveCount(0)
+    await settings.getByRole('button', { name: '返回订阅' }).click()
+    await settings.locator('.st-sub-card', { hasText: 'Command Code' }).getByRole('button', { name: '连接账号' }).click()
+    await expect(settings.getByLabel('Command Code API Key')).toBeVisible()
+    await expect(settings.getByRole('button', { name: '浏览器登录' })).toBeVisible()
+    await settings.screenshot({ path: screenshotPath('subscriptions-command-code-dark.png') })
+    await settings.getByRole('button', { name: '返回订阅' }).click()
+    await settings.screenshot({ path: screenshotPath('subscriptions-agents-dark.png') })
+    await settings.locator('.st-sub-card-qoder').getByRole('button', { name: '连接账号' }).click()
+    await expect(settings.locator('.st-subs')).toContainText('导入本机 qodercli')
+    await expect(settings.getByLabel('Qoder PAT 区域')).toBeVisible()
+    await settings.screenshot({ path: screenshotPath('subscriptions-qoder-dark.png') })
+    await settings.getByRole('button', { name: '返回订阅' }).click()
+    await settings.getByRole('button', { name: '添加订阅' }).first().click()
+    await expect(settings.locator('.st-subs')).toContainText('添加第三方订阅')
+    await expect(settings.getByLabel('订阅协议')).toBeVisible()
+    await settings.screenshot({ path: screenshotPath('subscriptions-form-dark.png') })
+  })
+
+  test('第三方 coding plan：填写兼容接口、token、模型并注册 Provider', async () => {
+    const mock = await startMockLLM({ scripts: [{ text: 'OK' }] })
+    try {
+      morrow = await launchMorrow({ name: 'subscriptions-custom', timeoutMs: 90_000 })
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      const settings = await openSubscriptions(page)
+      await settings.locator('.st-sub-section').last().getByRole('button', { name: '添加订阅' }).click()
+      await settings.getByLabel('订阅名称').fill('Mock Coding Plan')
+      await settings.getByLabel('接口地址').fill(mock.openaiBaseUrl)
+      await settings.getByLabel('token / API Key').fill('sk-test-subscription')
+      await settings.getByLabel('模型 ID（每行一个）').fill('mock-model')
+      await settings.getByRole('button', { name: '添加订阅', exact: true }).last().click()
+      await expect(settings.locator('.st-subs')).toContainText('Mock Coding Plan')
+      const provider = await page.evaluate(() => {
+        const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+        return (store.getState().settings.providers as Array<Record<string, any>>).find((item) => item.name === 'Mock Coding Plan') ?? null
+      })
+      expect(provider?.kind).toBe('openai-compat')
+      expect(provider?.apiKeyStored).toBe(true)
+      await settings.getByRole('button', { name: '管理' }).last().click()
+      await settings.getByRole('button', { name: '测试连接' }).click()
+      await expect(settings.locator('.st-sub-ok')).toContainText('连接', { timeout: 15_000 })
+    } finally {
+      await morrow?.close()
+      await mock.close()
+    }
+  })
+
+  test('真实 Codex 登录导入、额度与兼容代理', async () => {
+    test.skip(process.env.MORROW_SUBSCRIPTION_REAL !== '1', '需要本机 Codex CLI 登录态')
+    test.setTimeout(240_000)
+    morrow = await launchMorrow({ name: 'subscriptions-real', timeoutMs: 90_000 })
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const settings = await openSubscriptions(page)
+    await settings.locator('.st-sub-card-codex').getByRole('button', { name: '连接账号' }).click()
+    await settings.getByRole('button', { name: '导入本机 Codex CLI 登录' }).click()
+    await waitUntil(async () => {
+      const text = await settings.locator('.st-subs').innerText()
+      return text.includes('已连接') && text.includes('订阅额度') ? text : null
+    }, 90_000, 'Codex 订阅导入完成')
+    await expect(settings.locator('.st-subs')).toContainText('ChatGPT / Codex 订阅')
+    const configured = await page.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      return (store.getState().settings.providers as Array<Record<string, any>>).find((item) => item.id === 'codex-subscription') ?? null
+    })
+    expect(configured?.enabled).toBe(true)
+    expect(String(configured?.baseUrl)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
+    const testResult = await page.evaluate(async () => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      const settings = store.getState().settings
+      const provider = (settings.providers as Array<Record<string, any>>).find((item) => item.id === 'codex-subscription')
+      const modelId = provider?.models?.[0]?.id
+      if (!modelId) return { ok: false, message: '没有模型' }
+      const result = await window.morrow.settings.testProvider({ providerId: 'codex-subscription', modelId })
+      return result.ok ? result.data : { ok: false, message: result.error.message }
+    })
+    expect(testResult).toMatchObject({ ok: true })
+    await settings.screenshot({ path: screenshotPath('subscriptions-codex-detail-dark.png') })
+    await settings.getByRole('button', { name: '完成' }).click()
+
+    // 真实 Agent + 工具调用：通过本地兼容代理走 Responses 的工具调用回环
+    const workspace = join(root, 'tmp', `subscription-agent-${Date.now()}`)
+    mkdirSync(workspace, { recursive: true })
+    writeFileSync(join(workspace, 'sample.txt'), 'MORROW_SUBSCRIPTION_OK', 'utf8')
+    await createSession(page, {
+      workspace,
+      providerId: 'codex-subscription',
+      modelId: 'gpt-6-sol',
+      permissionMode: 'auto',
+      title: 'Codex 订阅 Agent'
+    })
+    await installEventCollector(page)
+    await clearEvents(page)
+    await sendMessageViaStore(page, '/no_think 读取 sample.txt 的第一行，并原样告诉我内容；必须使用 read_file 工具。')
+    await waitForRunFinished(page, 120_000)
+    const blocks = await page.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      const messages = store.getState().session?.messages ?? []
+      return messages.flatMap((message: Record<string, any>) => message.content ?? [])
+    })
+    expect(blocks.some((block: Record<string, any>) => block.type === 'tool_use' && block.name === 'read_file' && block.result?.ok === true)).toBe(true)
+    expect(blocks.some((block: Record<string, any>) => block.type === 'text' && String(block.text ?? '').includes('MORROW_SUBSCRIPTION_OK'))).toBe(true)
+    await page.screenshot({ path: screenshotPath('subscriptions-agent-dark.png') })
+
+    // 重启后从加密凭据恢复本地代理和 Provider
+    const dataDir = morrow.dataDir
+    const chromiumDir = morrow.chromiumDir
+    await morrow.close()
+    morrow = await launchMorrow({ name: 'subscriptions-restore', dataDir, chromiumDir, timeoutMs: 90_000 })
+    const restoredPage = morrow.page
+    await waitForStoreReady(restoredPage)
+    await dismissOnboarding(restoredPage)
+    const restoredSettings = await openSubscriptions(restoredPage)
+    await expect(restoredSettings.locator('.st-subs')).toContainText('已连接', { timeout: 30_000 })
+    await expect(restoredSettings.locator('.st-subs')).toContainText('ChatGPT / Codex 订阅')
+    const restoredProvider = await restoredPage.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      return (store.getState().settings.providers as Array<Record<string, any>>).find((item) => item.id === 'codex-subscription') ?? null
+    })
+    expect(String(restoredProvider?.baseUrl)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
+    await restoredSettings.screenshot({ path: screenshotPath('subscriptions-restored-dark.png') })
+  })
+})
+
+// ── 订阅分页排版统一（ChatGPT/Codex 页为基准） ────────────────────────────────
+test.describe('订阅分页排版统一', () => {
+  test('所有订阅详情页共用同一套字号、按钮高度与字体，并输出双主题截图', async () => {
+    const morrow = await launchMorrow({ name: 'subscription-type', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      await page.keyboard.press('Control+,')
+      const settings = page.getByRole('dialog', { name: '设置' })
+      await settings.waitFor({ state: 'visible' })
+      await settings.getByRole('tab', { name: '订阅' }).click()
+      await expect(settings.locator('.st-subs')).toBeVisible()
+
+      const measure = () =>
+        page.evaluate(() => {
+          const read = (selector: string) => {
+            const element = document.querySelector(selector)
+            if (!element) return null
+            const style = getComputedStyle(element)
+            return {
+              fontSize: style.fontSize,
+              fontWeight: style.fontWeight,
+              fontFamily: style.fontFamily,
+              lineHeight: style.lineHeight,
+              height: style.height
+            }
+          }
+          return {
+            title: read('.st-sub-detail-head h3'),
+            desc: read('.st-sub-detail-head p'),
+            body: read('.st-sub-connect > p'),
+            button: read('.st-sub-connect .btn-primary, .st-sub-connect .btn-secondary'),
+            connectTitle: read('.st-sub-connect-item strong'),
+            connectDesc: read('.st-sub-connect-item span'),
+            note: read('.st-sub-note'),
+            disclaimer: read('.st-sub-disclaimer')
+          }
+        })
+
+      const shots: Array<{ name: string; tab: 'codex' | 'qoder' }> = [
+        { name: 'codex', tab: 'codex' },
+        { name: 'qoder', tab: 'qoder' }
+      ]
+      const metrics: Record<string, Awaited<ReturnType<typeof measure>>> = {}
+      for (const item of shots) {
+        await settings.locator(`.st-sub-card-${item.tab}`).getByRole('button').last().click()
+        await expect(settings.locator('.st-sub-detail-head h3')).toBeVisible()
+        metrics[item.name] = await measure()
+        await page.mouse.move(2, 2)
+        await settings.screenshot({ path: screenshotPath(`subscription-detail-${item.name}-dark.png`) })
+        await setThemeViaStore(page, 'light')
+        await page.waitForTimeout(250)
+        await settings.screenshot({ path: screenshotPath(`subscription-detail-${item.name}-light.png`) })
+        await setThemeViaStore(page, 'dark')
+        await page.waitForTimeout(180)
+        await settings.getByRole('button', { name: /返回订阅/ }).click()
+      }
+
+      const codex = metrics.codex!
+      const qoder = metrics.qoder!
+      expect(codex.title).toMatchObject({ fontSize: '20px', fontWeight: '500' })
+      expect(codex.desc?.fontSize).toBe('12.5px')
+      expect(codex.body?.fontSize).toBe('12.5px')
+      expect(codex.button).toMatchObject({ fontSize: '13px', height: '34px' })
+      // 元素高度会随文案换行变化；这里只比较排版角色本身。
+      const typeface = (metric: typeof codex.title) =>
+        metric ? { fontSize: metric.fontSize, fontWeight: metric.fontWeight, fontFamily: metric.fontFamily } : null
+      expect(typeface(qoder.title)).toEqual(typeface(codex.title))
+      expect(typeface(qoder.desc)).toEqual(typeface(codex.desc))
+      expect(typeface(qoder.body)).toEqual(typeface(codex.body))
+      expect(qoder.button).toMatchObject({ fontSize: '13px', height: '34px' })
+      expect(qoder.connectTitle).toMatchObject({
+        fontSize: '13px',
+        fontWeight: '600',
+        fontFamily: codex.body!.fontFamily
+      })
+      expect(qoder.connectDesc?.fontSize).toBe('12px')
+      expect(qoder.note?.fontSize).toBe('12px')
+      expect(qoder.disclaimer?.fontSize).toBe('12px')
+    } finally {
+      await morrow.close()
+    }
+  })
 })

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Clock, RotateCcw, TriangleAlert } from 'lucide-react'
 import type { ArtifactVersionInfo } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { formatBytes } from '@shared/usage'
+import { useAppStore } from '../../store'
 import { Button, Modal, Spinner } from '../../ui'
+import { formatArtifactTime } from '../../lib'
 import './ArtifactDialogs.css'
 
 const SOURCE_LABEL: Record<ArtifactVersionInfo['source'], string> = {
@@ -10,19 +12,6 @@ const SOURCE_LABEL: Record<ArtifactVersionInfo['source'], string> = {
   agent: 'Morrow 修改',
   restore: '恢复记录',
   manual: '手动保存'
-}
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
-  if (date.toDateString() === now.toDateString()) return time
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${time}`
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
 }
 
 export function ArtifactVersionsDialog({
@@ -199,14 +188,14 @@ export function ArtifactVersionsDialog({
                   onClick={() => setSelectedId(version.id)}
                 >
                   <span className="artifact-version-main">
-                    <span className="artifact-version-time mono">{formatTime(version.createdAt)}</span>
+                    <span className="artifact-version-time mono">{formatArtifactTime(version.createdAt)}</span>
                     {index === 0 ? <span className="artifact-version-current mono">当前</span> : null}
                   </span>
                   <span className="artifact-version-meta">
                     <span className={`artifact-version-source mono is-${version.source}`}>
                       {SOURCE_LABEL[version.source] ?? version.source}
                     </span>
-                    <span className="artifact-version-size mono">{formatSize(version.size)}</span>
+                    <span className="artifact-version-size mono">{formatBytes(version.size)}</span>
                   </span>
                 </button>
               ))}
@@ -214,7 +203,7 @@ export function ArtifactVersionsDialog({
 
             <div className="artifact-version-detail">
               <div className="artifact-version-detail-head mono">
-                <span>{selected ? `${formatTime(selected.createdAt)} · ${SOURCE_LABEL[selected.source]}` : ''}</span>
+                <span>{selected ? `${formatArtifactTime(selected.createdAt)} · ${SOURCE_LABEL[selected.source]}` : ''}</span>
                 <span>{isCurrent ? '当前内容' : '历史快照'}</span>
               </div>
               <div className="artifact-version-preview">

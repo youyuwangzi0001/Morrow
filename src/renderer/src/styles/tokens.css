@@ -9,20 +9,165 @@
   /* 字体 */
   --font-ui: 'Manrope Variable', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
   --font-display: 'Newsreader Variable', 'Noto Serif SC Variable', 'Songti SC', 'SimSun', Georgia, serif;
-  /* Qoder 代码编辑器同款 IBM Plex Mono；中文回退到系统 Noto Sans SC / 雅黑 */
-  --font-code: 'IBM Plex Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  /* 代码默认 JetBrains Mono；IBM Plex Mono 仍可在外观里选；中文回退到系统 Noto Sans SC / 雅黑 */
+  --font-code: 'JetBrains Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace;
   --font-mono: var(--font-code);
+  --code-font-weight: 400;
 
+  /* 字号阶梯：9–20px 覆盖日常 UI，>20 只用于空态/品牌等装饰性标题 */
   --fs-display: 34px;
+  --fs-display-sm: 26px;
+  --fs-display-xs: 22px;
   --fs-h1: 24px;
+  --fs-title: 20px;
   --fs-h2: 17px;
+  --fs-title-sm: 16px;
+  --fs-body-lg: 15px;
   --fs-body: 14px;
   --fs-ui: 13px;
-  --fs-micro: 11px;
-  --fs-code: 13px;
+  --fs-ui-plus: 13.5px;
+  --fs-base: 12px;
+  --fs-base-plus: 12.5px;
+  --fs-sm: 11px;
+  --fs-sm-plus: 11.5px;
+  --fs-xs: 10px;
+  --fs-xs-plus: 10.5px;
+  --fs-2xs: 9.5px;
+  --fs-3xs: 9px;
+  --fs-micro: var(--fs-sm);
+  --fs-code: var(--fs-base);
 
-  --lh-body: 1.72;
+  /* 字距：标题收紧，标签/快捷键按层级放宽 */
+  --ls-tight: -0.01em;
+  --ls-none: 0;
+  --ls-ui: 0.01em;
+  --ls-label: 0.02em;
+  --ls-caps: 0.06em;
+  --ls-wide: 0.1em;
+  --ls-display: 0.14em;
+
+  /* 字重：正文 450，常规 400，标签 500，按钮/分区 550，标题 600 */
+  --fw-regular: 400;
+  --fw-book: 450;
+  --fw-medium: 500;
+  --fw-mid: 550;
+  --fw-semibold: 600;
+
+  /* 语义排版角色（页面标题 / 分区 / 正文 / 提示 / 元信息 / 代码） */
+  --text-page-title-size: var(--fs-title);
+  --text-page-title-weight: var(--fw-medium);
+  --text-page-title-leading: 1.2;
+  --text-page-desc-size: var(--fs-base);
+  --text-section-size: var(--fs-ui);
+  --text-section-weight: var(--fw-semibold);
+  --text-body-size: var(--fs-body);
+  --text-ui-size: var(--fs-ui);
+  --text-hint-size: var(--fs-base);
+  --text-meta-size: var(--fs-sm-plus);
+  --text-code-size: var(--fs-ui-plus);
+  --text-code-weight: var(--fw-regular);
+
+  /* 权限卡排版角色：字体、字号、字重、行距全部从这里取 */
+  --font-permission: var(--font-ui);
+  --font-permission-meta: var(--font-code);
+  --text-permission-title-size: var(--fs-body);
+  --text-permission-title-weight: var(--fw-semibold);
+  --text-permission-title-leading: var(--lh-tight);
+  --text-permission-desc-size: var(--fs-base-plus);
+  --text-permission-desc-weight: var(--fw-book);
+  --text-permission-desc-leading: var(--lh-body);
+  --text-permission-summary-size: var(--fs-base);
+  --text-permission-summary-weight: var(--fw-book);
+  --text-permission-summary-leading: var(--lh-readable);
+  --text-permission-risk-size: var(--fs-xs);
+  --text-permission-risk-weight: var(--fw-medium);
+  --text-permission-risk-leading: var(--lh-none);
+  --text-permission-preview-size: var(--fs-sm-plus);
+  --text-permission-preview-weight: var(--fw-book);
+  --text-permission-preview-leading: var(--lh-ui);
+  --text-permission-code-size: var(--fs-base);
+  --text-permission-code-weight: var(--text-code-weight);
+  --text-permission-code-leading: var(--lh-readable);
+  --text-permission-button-size: var(--fs-base-plus);
+  --text-permission-button-weight: var(--fw-medium);
+  --text-permission-button-leading: var(--lh-ui);
+  --text-permission-note-size: var(--fs-sm-plus);
+  --text-permission-note-weight: var(--fw-book);
+  --text-permission-note-leading: var(--lh-ui);
+  --text-permission-foot-size: var(--fs-sm);
+  --text-permission-foot-weight: var(--fw-book);
+  --text-permission-foot-leading: var(--lh-readable);
+
+  /* 页签：终端 / 浏览器 / 画布 / Git / 项目 / Office 共用的微圆角悬浮样式 */
+  --tab-height: 24px;
+  --tab-radius: var(--r-sm);
+  --tab-gap: 3px;
+  --tab-pad-x: 9px;
+  --tab-pad-right: 4px;
+  --tab-max-width: 210px;
+  --tab-font-size: var(--fs-sm);
+  --tab-font-weight: var(--fw-book);
+  --tab-border: 1px solid transparent;
+  --tab-hover-bg: var(--surface-hover);
+  --tab-hover-color: var(--text);
+  --tab-active-bg: var(--surface);
+  --tab-active-border: var(--line-gold);
+  --tab-active-color: var(--text);
+  --tab-color: var(--text-2);
+  --tab-close-size: 20px;
+  --tab-close-radius: var(--r-xs);
+
+  /* 订阅详情排版角色：所有渠道共用，ChatGPT/Codex 页为基准 */
+  --font-sub-detail: var(--font-display);
+  --font-sub-body: var(--font-ui);
+  --text-sub-detail-title-size: var(--fs-title);
+  --text-sub-detail-title-weight: var(--fw-medium);
+  --text-sub-detail-title-leading: var(--lh-title);
+  --text-sub-detail-desc-size: var(--fs-base-plus);
+  --text-sub-detail-desc-leading: var(--lh-readable);
+  --text-sub-panel-title-size: var(--fs-ui);
+  --text-sub-panel-title-weight: var(--fw-semibold);
+  --text-sub-body-size: var(--fs-base-plus);
+  --text-sub-body-leading: var(--lh-readable);
+  --text-sub-note-size: var(--fs-base);
+  --text-sub-note-leading: var(--lh-readable);
+  --text-sub-label-size: var(--fs-sm-plus);
+  --text-sub-value-size: var(--fs-base-plus);
+  --text-sub-connect-title-size: var(--fs-ui);
+  --text-sub-connect-desc-size: var(--fs-base);
+  --text-sub-button-font-size: var(--fs-ui);
+  --text-sub-button-height: var(--control-md);
+  --text-sub-small-button-font-size: var(--fs-base);
+  --text-sub-small-button-height: var(--control-sm);
+  --text-sub-back-size: var(--fs-base);
+  --text-sub-disclaimer-size: var(--fs-base);
+  --sub-panel-gap: var(--sp-3);
+  --sub-panel-pad: var(--sp-4);
+  --sub-connect-pad: 12px 13px;
+
+  --lh-none: 1;
+  --lh-title: 1.2;
   --lh-tight: 1.35;
+  --lh-ui: 1.45;
+  --lh-copy: 1.55;
+  --lh-readable: 1.65;
+  --lh-body: 1.72;
+  --lh-loose: 1.8;
+
+  /* 控件与图标（UI Kit 只从这里取值） */
+  --control-xs: 22px;
+  --control-sm: 28px;
+  --control-md: 34px;
+  --control-field: 36px;
+  --control-lg: 40px;
+  --icon-xs: 10px;
+  --icon-sm: 12px;
+  --icon-md: 14px;
+  --icon-lg: 16px;
+  --icon-xl: 20px;
+  --card-pad: var(--sp-4);
+  --row-gap: var(--sp-2);
+  --section-gap: var(--sp-3);
 
   /* 色板 — 墨夜 */
   --bg: #0b0d10;
@@ -62,6 +207,8 @@
   --grain-opacity: 0.026;
   --user-bubble: #1a212c;
   --code-bg: #0d1117;
+  --btn-primary-hover: #ffffff;
+  --text-on-gold: #17140f;
 
   /* 编辑器语法色（CodeMirror） */
   --syntax-keyword: #c8ae7d;
@@ -93,6 +240,10 @@
   --r-lg: 9px;
   --r-xl: 12px;
   --r-full: 999px;
+  --r-control: var(--r-sm);
+  --r-card: var(--r-lg);
+  --r-modal: var(--r-xl);
+  --r-pill: var(--r-full);
 
   /* 动效 */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -162,6 +313,8 @@
   --grain-opacity: 0.035;
   --user-bubble: #e8e1d2;
   --code-bg: #ece6d8;
+  --btn-primary-hover: #000000;
+  --text-on-gold: #17140f;
 
   /* 编辑器语法色：浅底上用深墨/暗金，保证可读 */
   --syntax-keyword: #7a5528;

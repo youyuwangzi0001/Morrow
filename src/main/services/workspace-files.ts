@@ -30,7 +30,7 @@ import { randomBytes } from 'node:crypto'
 import { sha256 } from '@core/util'
 import { inspectWorkspacePath, isPathInsideWorkspace, normalizeWorkspace } from '@core/tools/paths'
 import { TEXT_PREVIEW_MAX_BYTES } from '../../shared/file-types'
-import { formatBytes } from '../../shared/format'
+import { formatBytes } from '../../shared/usage'
 
 /** 以采样方式判断内容是否像二进制；用于编辑器打开与附件分类。 */
 export function isProbablyBinary(buffer: Buffer): boolean {

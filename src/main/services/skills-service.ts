@@ -8,8 +8,8 @@
  * - 本地安装：从一个文件夹或 .zip 技能包复制到用户技能库，安装前做严格校验：
  *   - 防 zip-slip（绝对路径 / `..` / 盘符 / 反斜杠混淆一律拒绝）；
  *   - 文件大小、数量、总大小、目录深度上限（防 zip 炸弹/超大技能包）；
- *   - 扩展名白名单：只允许 Markdown 与资源文件（图片/文本/JSON/YAML/CSV），
- *     明确拒绝可执行文件/脚本（.exe/.bat/.cmd/.ps1/.js/.py/...），安装完也不会执行任何内容；
+ *   - 可执行文件/脚本（.exe/.bat/.cmd/.ps1/.js/.py/...）会被跳过并在结果里报告，
+ *     其余 Markdown 与资源文件正常安装；安装完也不会执行任何内容；
  *   - 符号链接一律拒绝；先写隐藏暂存目录、校验通过后再原子改名，失败不留半成品。
  *
  * 纯 Node 实现（不 import electron），数据目录由调用方注入，便于单元测试。
@@ -58,25 +58,7 @@ const MAX_SKILL_MD_BYTES = 256 * 1024
 const MAX_DETAIL_FILES = 300
 const MAX_NAME_LENGTH = 64
 
-/** 允许安装进技能库的文件类型（Markdown + 常见文本/资源；不含任何可执行代码） */
-const ALLOWED_EXTENSIONS = new Set([
-  '.md',
-  '.markdown',
-  '.txt',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.csv',
-  '.tsv',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg'
-])
-
-/** 明确拦截的可执行/脚本类型：给出比「不在白名单」更清楚的错误信息 */
+/** 明确跳过的可执行/脚本类型：安装继续，但不会复制或执行这些文件 */
 const BLOCKED_EXTENSIONS = new Set([
   '.exe',
   '.dll',
@@ -180,6 +162,8 @@ export interface InstallSkillOptions {
 export interface InstallResult {
   installed: SkillView
   snapshot: SkillsSnapshot
+  /** 因可执行/脚本类型而跳过的文件（相对技能根目录） */
+  skipped: string[]
 }
 
 export interface SkillsServiceOptions {
@@ -308,32 +292,42 @@ export function assertArchiveEntriesSafe(buffer: Buffer): void {
   }
 }
 
-/** 校验单个文件：白名单 + 黑名单 + 大小。返回扩展开关用于错误提示 */
-function assertInstallableFile(relativePath: string, size: number): void {
+/** 校验单个文件：大小硬限制；可执行/脚本返回 false 由调用方跳过。 */
+function isInstallableFile(relativePath: string, size: number): boolean {
   const lower = relativePath.toLowerCase()
   const fileName = basename(relativePath)
   if (lower === 'skill.md' || fileName.toLowerCase() === 'skill.md') {
     if (size > MAX_SKILL_MD_BYTES) throw new Error(`SKILL.md 过大（${(size / 1024).toFixed(0)}KB，上限 256KB）。`)
-    return
-  }
-  const ext = extensionOf(fileName)
-  if (BLOCKED_EXTENSIONS.has(ext)) {
-    throw new Error(`技能包里不允许包含可执行/脚本文件：${relativePath}。技能库只接受 Markdown 与资源文件。`)
-  }
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    throw new Error(
-      `技能包里包含不支持的文件类型：${relativePath}。只允许 Markdown（.md）与资源文件（.txt/.json/.yaml/.csv/图片）。`
-    )
+    return true
   }
   if (size > MAX_FILE_BYTES) {
     throw new Error(`技能包里的文件过大：${relativePath}（${(size / 1024).toFixed(0)}KB，单文件上限 5MB）。`)
   }
+  return !BLOCKED_EXTENSIONS.has(extensionOf(fileName))
 }
 
 interface StagedFile {
   /** zip/文件夹内的相对路径（/ 分隔） */
   path: string
   size: number
+}
+
+function oneLineDescription(value: unknown): string {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+  return text.length > 160 ? `${text.slice(0, 160)}…` : text
+}
+
+/** 写入 SKILL.md 前统一补 frontmatter；已有 frontmatter 会被替换，避免 name/description 漂移。 */
+function normalizeWritableSkill(name: string, description: string, markdown: string): string {
+  const rawInput = typeof markdown === 'string' ? markdown : ''
+  const body = rawInput.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+  if (!body) throw new Error('技能正文不能为空。')
+  const desc = oneLineDescription(description) || '由 Morrow 的建议创建'
+  const raw = `---\nname: ${name}\ndescription: ${desc}\n---\n\n${body}\n`
+  if (Buffer.byteLength(raw, 'utf8') > MAX_SKILL_MD_BYTES) {
+    throw new Error(`SKILL.md 过大（上限 ${Math.round(MAX_SKILL_MD_BYTES / 1024)}KB）。`)
+  }
+  return raw
 }
 
 /* ── 服务 ─────────────────────────────────────────────────────── */
@@ -621,11 +615,12 @@ export class SkillsService {
     if (!stat) throw new Error(`路径不存在：${source}`)
     const staging = join(this.userDir, `.staging-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
     mkdirSync(staging, { recursive: true })
+    const skipped: string[] = []
     try {
       let nameHint: string
       if (stat.isDirectory()) {
         nameHint = basename(source)
-        this.stageFromFolder(source, staging)
+        skipped.push(...this.stageFromFolder(source, staging))
       } else if (stat.isFile()) {
         const ext = extensionOf(source)
         if (ext !== '.zip') {
@@ -635,7 +630,7 @@ export class SkillsService {
           throw new Error(`技能包过大（${(stat.size / 1024 / 1024).toFixed(1)}MB，上限 25MB）。`)
         }
         nameHint = basename(source, extname(source))
-        await this.stageFromZip(source, staging)
+        skipped.push(...(await this.stageFromZip(source, staging)))
       } else {
         throw new Error(`不支持的安装来源：${source}`)
       }
@@ -682,7 +677,7 @@ export class SkillsService {
         snapshot.skills.find((skill) => skill.source === 'user' && skill.name === targetName) ??
         snapshot.skills.find((skill) => skill.source === 'user' && skill.name.toLowerCase() === targetName.toLowerCase())
       if (!installed) throw new Error('安装完成但未能读取技能信息，请尝试重新扫描。')
-      return { installed, snapshot }
+      return { installed, snapshot, skipped }
     } finally {
       rmSync(staging, { recursive: true, force: true })
     }
@@ -699,9 +694,10 @@ export class SkillsService {
     return null
   }
 
-  /** 从文件夹拷贝到暂存目录（校验符号链接/白名单/大小/数量） */
-  private stageFromFolder(sourceDir: string, staging: string): void {
+  /** 从文件夹拷贝到暂存目录（校验符号链接/大小/数量；脚本跳过并报告） */
+  private stageFromFolder(sourceDir: string, staging: string): string[] {
     const files: StagedFile[] = []
+    const skipped: string[] = []
     let totalBytes = 0
     const walk = (dir: string, prefix: string, depth: number): void => {
       if (depth > MAX_DEPTH) throw new Error(`技能目录层级过深（上限 ${MAX_DEPTH} 层）。`)
@@ -719,7 +715,10 @@ export class SkillsService {
         if (!lst.isFile()) continue
         if (entry.name.startsWith('.') || entry.name === 'Thumbs.db' || entry.name === 'desktop.ini') continue
         const size = lst.size
-        assertInstallableFile(relPath, size)
+        if (!isInstallableFile(relPath, size)) {
+          skipped.push(relPath)
+          continue
+        }
         totalBytes += size
         if (totalBytes > MAX_TOTAL_BYTES) throw new Error('技能目录总大小超过 20MB 上限。')
         files.push({ path: relPath, size })
@@ -727,16 +726,17 @@ export class SkillsService {
       }
     }
     walk(sourceDir, '', 0)
-    if (files.length === 0) throw new Error('技能目录是空的。')
+    if (files.length === 0) throw new Error('技能目录里没有可安装的文件（脚本会被跳过）。')
     for (const file of files) {
       const target = join(staging, ...file.path.split('/'))
       mkdirSync(dirname(target), { recursive: true })
       cpSync(join(sourceDir, ...file.path.split('/')), target)
     }
+    return skipped
   }
 
-  /** 从 zip 解压到暂存目录（防 zip-slip、大小/数量/白名单/可执行拦截） */
-  private async stageFromZip(zipPath: string, staging: string): Promise<void> {
+  /** 从 zip 解压到暂存目录（防 zip-slip、大小/数量；脚本跳过并报告） */
+  private async stageFromZip(zipPath: string, staging: string): Promise<string[]> {
     const buffer = readFileSync(zipPath)
     // 第一层：直接读原始中央目录，恶意的 zip-slip/绝对路径在解压前就拒绝
     assertArchiveEntriesSafe(buffer)
@@ -747,6 +747,7 @@ export class SkillsService {
       throw new Error(`无法解析技能包（不是有效的 zip 或已损坏/加密）：${errorMessage(err)}`)
     }
     const entries: Array<{ path: string; file: JSZip.JSZipObject; size: number }> = []
+    const skipped: string[] = []
     let totalBytes = 0
     for (const [rawName, file] of Object.entries(zip.files)) {
       if (file.dir) continue
@@ -757,13 +758,16 @@ export class SkillsService {
       if (lower.startsWith('__macosx/') || lower.endsWith('/.ds_store') || lower === '.ds_store') continue
       if (basename(normalized).startsWith('.')) continue
       const internalSize = Number((file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0)
-      assertInstallableFile(normalized, internalSize || 0)
+      if (!isInstallableFile(normalized, internalSize || 0)) {
+        skipped.push(normalized)
+        continue
+      }
       totalBytes += internalSize
       if (totalBytes > MAX_TOTAL_BYTES) throw new Error('技能包解压后总大小超过 20MB 上限。')
       entries.push({ path: normalized, file, size: internalSize })
       if (entries.length > MAX_INSTALL_FILES) throw new Error(`技能包文件过多（上限 ${MAX_INSTALL_FILES} 个）。`)
     }
-    if (entries.length === 0) throw new Error('技能包是空的。')
+    if (entries.length === 0) throw new Error('技能包里没有可安装的文件（脚本会被跳过）。')
 
     // 若 zip 只有一个顶层目录（常见打包方式），剥掉这层目录
     const firstSegments = new Set(entries.map((entry) => entry.path.split('/')[0]))
@@ -778,9 +782,8 @@ export class SkillsService {
     for (const entry of entries) {
       const relativePath = prefix && entry.path.startsWith(prefix) ? entry.path.slice(prefix.length) : entry.path
       if (!relativePath) continue
-      // 剥掉 wrapper 后再次校验
+      // 剥掉 wrapper 后再次校验路径安全（文件类型已在扫描阶段分流）
       normalizeArchivePath(relativePath)
-      assertInstallableFile(relativePath, entry.size)
       const buffer = await entry.file.async('nodebuffer')
       if (buffer.length > MAX_FILE_BYTES) throw new Error(`技能包里的文件过大：${relativePath}`)
       actualTotal += buffer.length
@@ -789,6 +792,86 @@ export class SkillsService {
       mkdirSync(dirname(target), { recursive: true })
       writeFileSync(target, buffer)
     }
+    return skipped
+  }
+
+  /* ── 自进化：从文本创建 / 更新用户技能 ─────────────────────── */
+
+  /**
+   * 从建议文本创建用户技能。只写 SKILL.md，不复制或执行任何脚本。
+   * 调用方需保证目录名不冲突；冲突时明确报错，由调用方决定改名或更新。
+   */
+  createUserSkill(input: { name: string; description: string; markdown: string }): SkillView {
+    this.ensureDirs()
+    if (this.list(null).skills.length >= MAX_SKILLS) {
+      throw new Error(`技能数量已达上限（${MAX_SKILLS} 个），请先清理旧技能。`)
+    }
+    const name = sanitizeSkillDirName(String(input.name ?? '').trim())
+    const description = oneLineDescription(input.description)
+    const raw = normalizeWritableSkill(name, description, input.markdown)
+    const dirName = sanitizeSkillDirName(name)
+    const targetDir = join(this.userDir, dirName)
+    if (existsSync(targetDir)) {
+      throw new Error(`技能「${dirName}」已存在；请选择更新已有技能或换一个名字。`)
+    }
+    const staging = join(
+      this.userDir,
+      `.staging-skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    )
+    mkdirSync(staging, { recursive: true })
+    try {
+      writeFileSync(join(staging, SKILL_FILE), raw, { encoding: 'utf8', mode: 0o600 })
+      renameSync(staging, targetDir)
+    } catch (err) {
+      try {
+        rmSync(staging, { recursive: true, force: true })
+      } catch {
+        // 清理失败不覆盖原始错误
+      }
+      throw err
+    }
+    this.setStateEntry(`user:${dirName.toLowerCase()}`, {
+      enabled: true,
+      installedAt: Date.now(),
+      origin: 'evolution'
+    })
+    const created = this.list(null).skills.find((skill) => skill.id === `user:${dirName.toLowerCase()}`)
+    if (!created) throw new Error('技能已写入，但重新扫描时没有找到；请刷新技能库。')
+    return created
+  }
+
+  /**
+   * 用新的 SKILL.md 更新用户技能。内置技能与工作区技能不允许从这里覆盖；
+   * 只替换 SKILL.md，保留同目录下的参考资源。
+   */
+  updateUserSkill(id: string, input: { markdown: string; description?: string }): SkillView {
+    this.ensureDirs()
+    const view = this.list(null).skills.find((skill) => skill.id === id || skill.name === id)
+    if (!view) throw new Error(`没有找到技能：${id}`)
+    if (view.source !== 'user') throw new Error('只能更新用户技能库里的技能。')
+    if (view.builtin) throw new Error('内置技能不能被建议覆盖；请创建一个新的用户技能。')
+    const raw = normalizeWritableSkill(
+      view.name,
+      oneLineDescription(input.description ?? view.description),
+      input.markdown
+    )
+    const target = join(view.dir, SKILL_FILE)
+    const temp = join(view.dir, `.${SKILL_FILE}.${process.pid}.${Date.now()}.tmp`)
+    try {
+      writeFileSync(temp, raw, { encoding: 'utf8', mode: 0o600 })
+      renameSync(temp, target)
+    } catch (err) {
+      try {
+        rmSync(temp, { force: true })
+      } catch {
+        // 清理失败不覆盖原始错误
+      }
+      throw err
+    }
+    this.setStateEntry(view.id, { enabled: view.enabled, origin: 'evolution-update' })
+    const updated = this.list(null).skills.find((skill) => skill.id === view.id)
+    if (!updated) throw new Error('技能已更新，但重新扫描时没有找到；请刷新技能库。')
+    return updated
   }
 
   /* ── 其它 ───────────────────────────────────────────────────── */

@@ -78,10 +78,3 @@ export function sessionExportContent(session: Session, format: 'markdown' | 'jso
   return { filename: `${safeTitle}.md`, content: sessionToMarkdown(session) }
 }
 
-/** 从消息里提取分支标题提示（用于 UI 默认）。 */
-export function branchTitle(session: Session, messageId: string): string {
-  const index = session.messages.findIndex((message) => message.id === messageId)
-  const user = [...session.messages.slice(0, index + 1)].reverse().find((message) => message.role === 'user')
-  const base = user ? userMessageDisplayText(user).replace(/\s+/g, ' ').slice(0, 24) : session.title
-  return `${base || session.title} · 分支`.slice(0, 80)
-}

@@ -15,7 +15,8 @@ export const RESERVED_COMMAND_NAMES: ReadonlySet<string> = new Set([
   'export-json',
   'usage',
   'compact',
-  'git'
+  'git',
+  'research'
 ])
 
 /** `/init` 模板：渲染层与主进程共用的提示词，避免两处文案漂移。 */
@@ -46,3 +47,100 @@ export function expandCustomCommand(template: string, rawArgs: string): string {
   if (!hasPlaceholder && args) return `${expanded.trimEnd()}\n\n${args}`.trim()
   return expanded.trim()
 }
+
+/**
+ * Morrow 实际支持的键盘快捷键清单。
+ * 设置 → 快捷键直接渲染这里；新增快捷键时同时更新真实处理器，避免 UI 展示不可用的键。
+ */
+export interface ShortcutEntry {
+  id: string
+  keys: string
+  label: string
+  hint?: string
+  /** 仅在对应功能开启时可用 */
+  requires?: 'islandEnabled'
+  /** 发送键跟随设置动态显示 */
+  dynamic?: 'sendKey'
+}
+
+export interface ShortcutGroup {
+  id: string
+  label: string
+  description?: string
+  entries: ShortcutEntry[]
+}
+
+export const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    id: 'global',
+    label: '全局',
+    description: '在 Morrow 窗口里生效；桌面伙伴快捷键在 Morrow 后台也有效。',
+    entries: [
+      { id: 'palette', keys: 'Ctrl+K', label: '打开命令面板' },
+      { id: 'sidebar', keys: 'Ctrl+B', label: '收起或展开侧栏' },
+      { id: 'new-session', keys: 'Ctrl+N', label: '新建对话' },
+      { id: 'settings', keys: 'Ctrl+,', label: '打开设置' },
+      { id: 'terminal', keys: 'Ctrl+`', label: '打开或收起终端' },
+      {
+        id: 'island',
+        keys: 'Ctrl+Shift+M',
+        label: '显示或隐藏桌面伙伴',
+        hint: '需在设置中开启桌面伙伴',
+        requires: 'islandEnabled'
+      },
+      { id: 'escape', keys: 'Esc', label: '停止生成或关闭弹窗' }
+    ]
+  },
+  {
+    id: 'chat',
+    label: '对话输入',
+    description: '在输入框中生效；发送键跟随「设置 → 回答」。',
+    entries: [
+      {
+        id: 'send',
+        keys: 'Enter',
+        label: '发送消息',
+        hint: '可在设置 → 回答切换为 Ctrl+Enter',
+        dynamic: 'sendKey'
+      },
+      { id: 'newline', keys: 'Shift+Enter', label: '在消息中换行' },
+      { id: 'command', keys: '/', label: '打开命令菜单' },
+      { id: 'mention', keys: '@', label: '引用文件夹里的文件' }
+    ]
+  },
+  {
+    id: 'editor',
+    label: '编辑器',
+    description: '在画布或文件编辑器聚焦时生效。',
+    entries: [
+      { id: 'save', keys: 'Ctrl+S', label: '保存当前文件' },
+      { id: 'find', keys: 'Ctrl+F', label: '查找' },
+      { id: 'undo', keys: 'Ctrl+Z', label: '撤销' },
+      { id: 'redo', keys: 'Ctrl+Y', label: '重做' }
+    ]
+  },
+  {
+    id: 'files',
+    label: '文件树',
+    description: '在文件树获得焦点时生效。',
+    entries: [
+      { id: 'open', keys: 'Enter', label: '打开文件或展开文件夹' },
+      { id: 'rename', keys: 'F2', label: '重命名' },
+      { id: 'delete', keys: 'Delete', label: '删除' },
+      { id: 'navigate', keys: '方向键', label: '在文件之间移动' },
+      { id: 'menu', keys: 'Shift+F10', label: '打开右键菜单' }
+    ]
+  },
+  {
+    id: 'browser',
+    label: '内置浏览器',
+    description: '内置浏览器面板显示时生效。',
+    entries: [
+      { id: 'new-tab', keys: 'Ctrl+T', label: '新建标签页' },
+      { id: 'address', keys: 'Ctrl+L', label: '聚焦地址栏' },
+      { id: 'close-tab', keys: 'Ctrl+W', label: '关闭当前标签页' },
+      { id: 'next-tab', keys: 'Ctrl+Tab', label: '切换到下一个标签页' },
+      { id: 'prev-tab', keys: 'Ctrl+Shift+Tab', label: '切换到上一个标签页' }
+    ]
+  }
+]

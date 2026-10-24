@@ -1,6 +1,6 @@
 import { BrowserWindow, Notification } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type {
   AskUserAnswer,
@@ -25,8 +25,9 @@ import type {
   ToolUseBlock
 } from '../../shared/types'
 import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL } from '../../shared/ipc'
+import { EVOLUTION_CHANGED_EVENT, EVOLUTION_SKIP_LABEL } from '../../shared/memory'
 import { estimateUsageCost } from '../../shared/usage'
-import { dataPath } from './paths'
+import { dataPath, resolveDataDir } from './paths'
 import { log } from './logger'
 import { SensitiveGuard } from './output-guard'
 import {
@@ -48,13 +49,18 @@ import { replaceUserMessageText, userMessageDisplayText } from '../../shared/mes
 import { mergeSwarmTask, swarmTasksFromMeta } from '../../shared/swarm'
 import { planStepsCompleted, todosFromPlan } from '../../shared/plan'
 import { getCheckpointService } from './checkpoint-service'
-import { getArtifactVersionStore } from './artifact-versions-runtime'
 import { runHooks, runPromptHooks } from './hooks'
 import { loadAgentRoles } from './custom-agents'
 import { getWebSearchService } from './web-search'
 import { getTerminalManager } from './terminal-manager'
+import { getMediaService } from './media-service'
+import { getMediaCatalog } from './media-catalog'
 import { isDemoWorkspace } from './workspace'
-import { getTokenActivityService, recordTokenUsage } from './token-activity-runtime'
+import { getArtifactVersionStore, getTokenActivityService, recordTokenUsage } from './runtime'
+import { getEvolutionService } from './evolution-service'
+import { MemoryService, getEpisodePrompt } from './memory-service'
+import { EPISODE_CHANGED_EVENT, MEMORY_CHANGED_EVENT } from '../../shared/memory'
+import { sendFeatureEvent } from '../feature-ipc'
 import { createPdfOcrHandler } from './pdf-ocr'
 import { ingestIslandRuntimeEvent } from './island'
 import {
@@ -146,6 +152,8 @@ interface ActiveRun {
   runId: string
   sessionId: string
   controller: AbortController
+  /** 本轮用户消息（任务经验/记忆使用） */
+  userMessage: ChatMessage
   startedAt: number
   window: BrowserWindow | null
   demo: boolean
@@ -182,6 +190,8 @@ interface ActiveRun {
   pricing?: ModelInfo['pricing']
   /** 最近一次 todo 快照：切换会话/崩溃恢复时计划不倒退回旧版本 */
   liveTodos: TodoItem[] | null
+  /** 生成中的画布产物：长视频/短片运行中崩溃后仍能恢复成品卡片 */
+  liveArtifacts?: import('../../shared/types').Artifact[]
   incrementalTimer: ReturnType<typeof setTimeout> | null
   lastIncrementalAt: number
   /** 研究模式自动续研的内部轮次：不重复发系统通知 */
@@ -210,6 +220,7 @@ export class AgentService {
   private questions = new Map<string, PendingQuestion>()
   /** 正在做手动上下文压缩的会话：期间禁止发送/建目标/切模式，避免摘要覆盖新消息。 */
   private compactingSessions = new Set<string>()
+  private evolutionTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** 已删除会话的墓碑：阻止运行收尾/目标续跑在删除后重新写盘。 */
   private deletedSessions = new Set<string>()
   /** 运行中排队的下一条消息（按会话隔离，内存态） */
@@ -226,6 +237,20 @@ export class AgentService {
     if (this.goalLoops.has(sessionId)) return true
     for (const run of this.runs.values()) if (run.sessionId === sessionId) return true
     return false
+  }
+
+  /** 供灵动岛跟随主窗口会话时读取：当前会话是否有活动运行、开始时间与是否在等待确认。 */
+  activeRunInfo(sessionId: string): { startedAt: number; status: 'running' | 'waiting' } | null {
+    let result: { startedAt: number; status: 'running' | 'waiting' } | null = null
+    for (const run of this.runs.values()) {
+      if (run.sessionId !== sessionId) continue
+      const waiting =
+        [...this.permissions.values()].some((item) => item.sessionId === sessionId) ||
+        [...this.questions.values()].some((item) => item.sessionId === sessionId)
+      result = { startedAt: run.startedAt, status: waiting ? 'waiting' : 'running' }
+      break
+    }
+    return result
   }
 
   /** 精确判断某个 run 是否仍在运行（定时任务跟踪用，避免把用户后续轮次算进本次时长） */
@@ -649,6 +674,7 @@ export class AgentService {
       runId,
       sessionId: session.id,
       controller,
+      userMessage,
       startedAt: Date.now(),
       window,
       demo: isDemo,
@@ -696,8 +722,10 @@ export class AgentService {
       ...session.messages,
       ...(options?.userMessage ? [options.userMessage] : [])
     ])
-    // 临时对话不读取项目记忆/项目说明，也不写入长期记忆。
-    const projectContext = session.temporary ? '' : this.buildProjectContext(session.workspace)
+    // 临时对话不读取项目记忆/项目说明/任务经验，也不写入长期记忆。
+    const projectContext = session.temporary
+      ? ''
+      : this.buildProjectContext(session.workspace, userMessageDisplayText(userMessage))
     const snapshotDir = dataPath('snapshots', session.id)
     if (!session.temporary && !existsSync(snapshotDir)) mkdirSync(snapshotDir, { recursive: true })
     const searchService = getWebSearchService(this.settingsStore)
@@ -706,6 +734,21 @@ export class AgentService {
       ? (input: { query: string; maxResults?: number; signal: AbortSignal }) => searchService.search(input)
       : undefined
     const terminal = this.terminalHandler(session.workspace)
+    const media = getMediaService()
+    const catalog = getMediaCatalog()
+    media.catalog = {
+      status: () => catalog.status(),
+      manifest: async (id) => catalog.manifest(id),
+      installModel: (id, onProgress, signal) => catalog.installModel(id, onProgress, signal),
+      uninstallModel: (id) => catalog.uninstallModel(id),
+      installEngine: (id) => catalog.installEngine(id),
+      startEngine: (id) => catalog.startEngine(id),
+      stopEngine: (id) => catalog.stopEngine(id),
+      registerModel: (manifest) => catalog.registerModel(manifest),
+      removeModel: (id) => catalog.removeModel(id),
+      registerEngine: (manifest) => catalog.registerEngine(manifest),
+      removeEngine: (id) => catalog.removeEngine(id)
+    }
     const permissionRules = session.workspace ? getPermissionRulesService().list(session.workspace) : []
     const reasoningEffort = session.reasoningEffort ?? this.settingsStore.get().reasoningEffort
     const agents = loadAgentRoles(session.workspace)
@@ -769,7 +812,26 @@ export class AgentService {
           commandShell: terminalShell,
           snapshotDir,
           ...(webSearch ? { webSearch } : {}),
+          remember: async ({ text, scope, tags }) => {
+            if (session.temporary) throw new Error('临时对话不写入长期记忆。')
+            if (scope === 'project' && !session.workspace) throw new Error('当前对话没有文件夹，只能写入全局记忆。')
+            const memory = new MemoryService({ dataDir: resolveDataDir() })
+            const entry = memory.add({
+              scope,
+              workspace: scope === 'project' ? session.workspace : null,
+              text,
+              tags,
+              source: 'agent'
+            })
+            sendFeatureEvent(MEMORY_CHANGED_EVENT, {
+              scope,
+              workspace: entry.workspace
+            })
+            return { scope, text: entry.text }
+          },
           terminal,
+          media,
+          vision: { provider: resolved.provider, model: resolved.modelInfo },
           permissionRules,
           reasoningEffort,
           agents: researchMode ? [] : agents,
@@ -801,6 +863,7 @@ export class AgentService {
         }
         this.runFinishHooks(active, result)
         this.maybeStartQueued(active, result, window)
+        if (result.reason === 'complete') this.scheduleEvolutionReview(active, resolved.config.kind)
       } catch (err) {
         log.error('agent run crashed', { runId, error: err instanceof Error ? err.message : String(err) })
         const message = err instanceof Error ? err.message : '执行出错'
@@ -963,6 +1026,19 @@ export class AgentService {
     return session.research
   }
 
+  /** 研究子流程结束或失败后回到普通工作；研究状态和报告保留在会话里。 */
+  private returnResearchToWork(session: Session, window: BrowserWindow | null): void {
+    if (session.mode !== 'research') return
+    if (!session.research || !['completed', 'stopped', 'error'].includes(session.research.status)) return
+    session.mode = 'work'
+    session.planMode = false
+    this.sessionStore.save(session)
+    this.forward(
+      { seq: 0, runId: 'research', sessionId: session.id, at: Date.now(), type: 'session_updated', meta: deriveMeta(session) },
+      window
+    )
+  }
+
   /** 一轮结束：计划阶段生成可审阅计划；检索阶段达到来源/报告目标就完成，否则继续补查。 */
   private finishResearchRound(active: ActiveRun, result: RunAgentResult, window: BrowserWindow | null): string | null {
     const session = this.sessionStore.get(active.sessionId)
@@ -985,6 +1061,7 @@ export class AgentService {
         }
         this.sessionStore.save(session)
         this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
         return null
       }
       if (result.reason === 'error') {
@@ -996,6 +1073,7 @@ export class AgentService {
         }
         this.sessionStore.save(session)
         this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
         return null
       }
       const plan = this.latestAssistantText(session, session.research.startedAt)
@@ -1008,6 +1086,7 @@ export class AgentService {
         }
         this.sessionStore.save(session)
         this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
         return null
       }
       // 计划在进度卡里以可编辑形式呈现；把它从对话正文隐藏，避免同一份计划出现两次。
@@ -1030,6 +1109,7 @@ export class AgentService {
       delete session.research.artifactId
       this.sessionStore.save(session)
       this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
       this.notifyUser(active, '研究计划已生成', `《${session.title}》的研究计划已生成，确认后开始检索。`)
       return null
     }
@@ -1042,6 +1122,7 @@ export class AgentService {
       }
       this.sessionStore.save(session)
       this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
       return null
     }
     if (result.reason === 'error') {
@@ -1053,6 +1134,7 @@ export class AgentService {
       }
       this.sessionStore.save(session)
       this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
       return null
     }
     const decision = decideResearchNextStep(session.research, session.messages, session.artifacts)
@@ -1068,6 +1150,7 @@ export class AgentService {
       if (session.research.steer) delete session.research.steer
       this.sessionStore.save(session)
       this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
       return decision.followUpPrompt
     }
     const completed: ResearchState = {
@@ -1084,6 +1167,7 @@ export class AgentService {
     session.research = completed
     this.sessionStore.save(session)
     this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
     if (decision.status === 'completed') {
       this.notifyUser(active, '研究报告已生成', `《${session.title}》的深度研究已完成，可以在画布查看报告。`)
     }
@@ -1109,6 +1193,7 @@ export class AgentService {
     }
     this.sessionStore.save(session)
     this.emitResearch(session, window)
+        this.returnResearchToWork(session, window)
   }
 
   /** 自动续研：用隐藏的用户消息启动下一轮，不污染可见对话。 */
@@ -1311,13 +1396,17 @@ export class AgentService {
     if (this.isSessionRunning(sessionId)) throw new Error('这个对话正在运行：先停止本次运行，再切换模式。')
     if (this.compactingSessions.has(sessionId)) throw new Error('正在压缩上下文：完成后再切换模式。')
     if (
-      (session.research?.status === 'searching' || session.research?.status === 'planning') &&
+      (session.research?.status === 'searching' || session.research?.status === 'planning' || session.research?.status === 'ready') &&
       next !== 'research'
     ) {
       session.research = {
         ...session.research,
         status: 'stopped',
-        gap: session.research.status === 'planning' ? '已切换出研究模式；计划制定已停止。' : '已切换出研究模式；可以切回来继续。',
+        gap: session.research.status === 'planning'
+          ? '已退出研究；计划制定已停止。'
+          : session.research.status === 'ready'
+            ? '已退出研究；计划尚未开始。'
+            : '已退出研究；可以继续普通工作。',
         updatedAt: Date.now()
       }
     }
@@ -1724,6 +1813,7 @@ export class AgentService {
           if (block) {
             if (event.status) block.status = event.status
             if (event.title) block.title = event.title
+            if (typeof event.percent === 'number') block.progressPercent = event.percent
             if (event.swarmTask) {
               block.swarmTasks = mergeSwarmTask(block.swarmTasks, event.swarmTask)
             }
@@ -1802,6 +1892,8 @@ export class AgentService {
       }
       case 'artifacts_updated': {
         if (event.artifacts.length > active.baselineArtifacts) active.roundProgressActions += 1
+        active.liveArtifacts = event.artifacts
+        this.scheduleIncrementalSave(active, true)
         break
       }
       case 'todos_updated': {
@@ -1899,6 +1991,10 @@ export class AgentService {
       }
       if (active.liveTodos) {
         session.todos = active.liveTodos
+        changed = true
+      }
+      if (active.liveArtifacts) {
+        session.artifacts = active.liveArtifacts
         changed = true
       }
       // 目标预算计数实时落盘：崩溃重启后轮次/调用数/有效时间不会归零。
@@ -2315,6 +2411,8 @@ export class AgentService {
     this.questions.clear()
     this.compactingSessions.clear()
     this.runs.clear()
+    for (const timer of this.evolutionTimers.values()) clearTimeout(timer)
+    this.evolutionTimers.clear()
     for (const timer of this.queueRetryTimers.values()) clearTimeout(timer)
     this.queueRetryTimers.clear()
     this.queues.clear()
@@ -2432,11 +2530,12 @@ export class AgentService {
     }
   }
 
-  /** 项目上下文 = 项目/记忆 + AGENTS.md/CLAUDE.md/MORROW.md 规则文件。 */
-  private buildProjectContext(workspace: string | null): string {
+  /** 项目上下文 = 项目/记忆 + 规则文件 + 与当前请求相关的任务经验。 */
+  private buildProjectContext(workspace: string | null, query = ''): string {
     const base = getProjectPrompt(workspace) || this.readProjectMemory(workspace) || ''
     const rules = getAgentRulesPrompt(workspace)
-    return [base.trim(), rules.trim()].filter(Boolean).join('\n\n')
+    const episodes = getEpisodePrompt(workspace, query)
+    return [base.trim(), rules.trim(), episodes.trim()].filter(Boolean).join('\n\n')
   }
 
   private readProjectMemory(workspace: string | null): string | undefined {
@@ -2453,9 +2552,10 @@ export class AgentService {
 
   private forward(event: RuntimeEvent, window: BrowserWindow | null): void {
     if (this.deletedSessions.has(event.sessionId)) return
+    // 灵动岛是独立窗口，不能依赖某个主窗口是否还活着：后台/计划/切换会话后的运行也要同步。
+    ingestIslandRuntimeEvent(event)
     if (!window || window.isDestroyed()) return
     window.webContents.send(EVENT_CHANNEL, event)
-    ingestIslandRuntimeEvent(event)
   }
 
   private awaitPermission(active: ActiveRun, request: PermissionRequest): Promise<PermissionDecision> {
@@ -2675,12 +2775,204 @@ export class AgentService {
       },
       active.window
     )
+    this.captureTaskEpisode(active, result, saved)
     log.info('run persisted', {
       runId: active.runId,
       reason: result.reason,
       messages: result.messages.length,
       durationMs: Date.now() - active.startedAt
     })
+  }
+
+  /**
+   * 自动任务经验：不调用模型，只把“这轮做了什么、结果如何”压成一条可检索的经验。
+   * 只记录有实际工具/文件产出的完成轮次，避免把普通聊天塞进记忆。
+   */
+  private captureTaskEpisode(active: ActiveRun, result: RunAgentResult, session: Session): void {
+    if (result.reason !== 'complete' || active.demo || active.internal || active.unattended) return
+    if (!this.settingsStore.get().episodeMemoryEnabled) return
+    if (session.temporary || session.demo || session.planMode === true) return
+    const tools = new Set<string>()
+    const files = new Set<string>()
+    let toolCount = 0
+    for (const message of result.messages) {
+      for (const block of message.content) {
+        if (block.type !== 'tool_use') continue
+        toolCount += 1
+        tools.add(block.name)
+        const meta = block.result?.meta as Record<string, unknown> | undefined
+        const addPath = (value: unknown): void => {
+          if (typeof value !== 'string' || !value) return
+          let display = basename(value)
+          if (session.workspace) {
+            const rel = relative(session.workspace, value)
+            if (rel && !rel.startsWith('..') && !rel.startsWith('/')) display = rel.split(sep).join('/')
+          }
+          files.add(display)
+        }
+        addPath(meta?.absolutePath)
+        if (Array.isArray(meta?.changedFiles)) {
+          for (const file of meta.changedFiles) {
+            if (file && typeof file === 'object') addPath((file as Record<string, unknown>).absolutePath)
+          }
+        }
+      }
+    }
+    if (toolCount === 0 && files.size === 0 && result.artifacts.length === 0) return
+    const finalAssistant = [...result.messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.content.some((block) => block.type === 'text'))
+    const summary = finalAssistant
+      ? finalAssistant.content
+          .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n')
+          .trim()
+          .slice(0, 1600)
+      : result.artifacts.map((artifact) => artifact.title).filter(Boolean).join('、')
+    if (!summary) return
+    const intent = userMessageDisplayText(active.userMessage).trim().slice(0, 800)
+    const genericTitle = !session.title || session.title === '新对话' || session.title === '临时对话'
+    const title = (genericTitle ? intent.split(/\r?\n/)[0] : session.title).trim().slice(0, 120) || '任务记录'
+    const tags = [
+      ...new Set(
+        [...files]
+          .map((file) => file.split('.').pop()?.toLowerCase())
+          .filter((value): value is string => Boolean(value && value.length <= 12))
+      )
+    ].slice(0, 4)
+    try {
+      const service = new MemoryService({ dataDir: resolveDataDir() })
+      const entry = service.captureEpisode({
+        scope: session.workspace ? 'project' : 'global',
+        workspace: session.workspace,
+        title,
+        intent,
+        summary,
+        outcome: 'completed',
+        tools: [...tools],
+        files: [...files],
+        tags,
+        sourceSessionId: active.sessionId,
+        sourceSessionTitle: session.title,
+        sourceMessageId: finalAssistant?.id ?? active.runId
+      })
+      sendFeatureEvent(EPISODE_CHANGED_EVENT, {
+        scope: entry.scope,
+        workspace: entry.workspace,
+        episodeId: entry.id
+      })
+    } catch (err) {
+      log.warn('task episode capture failed', {
+        sessionId: active.sessionId,
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+
+  /**
+   * 任务结束后延迟做一次轻量复盘。
+   * 不在主流程里 await，避免拖慢队列/通知；如果用户马上开始了下一轮，直接跳过。
+   */
+  private scheduleEvolutionReview(active: ActiveRun, providerKind: ProviderConfig['kind']): void {
+    if (providerKind === 'demo' || active.demo || active.internal || active.unattended) return
+    if (!this.settingsStore.get().evolutionEnabled) return
+    if (this.evolutionTimers.has(active.sessionId)) return
+    const timer = setTimeout(() => {
+      this.evolutionTimers.delete(active.sessionId)
+      const session = this.sessionStore.get(active.sessionId)
+      if (!session || session.temporary || session.demo || session.planMode === true) return
+      if (this.isSessionRunning(active.sessionId) || this.compactingSessions.has(active.sessionId)) return
+      void this.reviewEvolution(active.sessionId, false)
+        .then((result) => {
+          if (result.suggestions.length > 0) {
+            log.info('evolution suggestions created', {
+              sessionId: active.sessionId,
+              count: result.suggestions.length,
+              created: result.created
+            })
+          }
+        })
+        .catch((err) => {
+          log.warn('automatic evolution review failed', {
+            sessionId: active.sessionId,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        })
+    }, 1_200)
+    timer.unref?.()
+    this.evolutionTimers.set(active.sessionId, timer)
+  }
+
+  /**
+   * 复盘一个对话并生成建议。手工复盘允许在关闭自动复盘时使用；
+   * 自动复盘仍受信号、冷却时间与待处理数量限制。
+   */
+  async reviewEvolution(
+    sessionId: string,
+    manual: boolean
+  ): Promise<import('./evolution-service').EvolutionReviewOutcome> {
+    const service = getEvolutionService()
+    const skip = (
+      reason: import('../../shared/memory').EvolutionSkipReason,
+      message?: string
+    ): import('./evolution-service').EvolutionReviewOutcome => ({
+      suggestions: [],
+      created: 0,
+      reviewedAt: service?.lastReviewedAt() ?? null,
+      skipped: reason,
+      message: message ?? EVOLUTION_SKIP_LABEL[reason]
+    })
+    if (!service) return skip('no-model', '自进化服务尚未初始化。')
+    if (!manual && !this.settingsStore.get().evolutionEnabled) return skip('disabled')
+    const session = this.sessionStore.get(sessionId)
+    if (!session) return skip('no-session')
+    if (session.temporary) return skip('temporary')
+    if (session.demo) return skip('demo')
+    if (this.isSessionRunning(sessionId)) return skip('running')
+    let resolved: ReturnType<typeof this.resolveModel>
+    try {
+      resolved = this.resolveModel(session.model)
+    } catch (err) {
+      return skip('no-model', err instanceof Error ? err.message : '还没有连接可用的模型')
+    }
+    if (resolved.config.kind === 'demo') return skip('demo')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 45_000)
+    timer.unref?.()
+    try {
+      const result = await service.review({
+        session,
+        provider: resolved.provider,
+        model: resolved.modelInfo,
+        signal: controller.signal,
+        manual
+      })
+      if (result.usage && !session.temporary) {
+        recordTokenUsage({
+          sessionId,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          cacheReadTokens: result.usage.cacheReadTokens ?? 0
+        })
+      }
+      if (!result.skipped) {
+        sendFeatureEvent(EVOLUTION_CHANGED_EVENT, {
+          reason: 'reviewed',
+          sessionId,
+          pending: service.pendingCount(),
+          created: result.created
+        })
+      }
+      return result
+    } catch (err) {
+      if (controller.signal.aborted) {
+        return skip('timeout')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   /** 首次运行结束时兜底命名：覆盖排队、目标/计划等未能走普通发送路径的会话。 */

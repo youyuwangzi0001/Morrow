@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { registerFeatureHandler, sendFeatureEvent } from '../feature-ipc'
 import { runSideChat, type SideChatHistoryItem } from '../services/side-chat'
-import { recordTokenUsage } from '../services/token-activity-runtime'
+import { recordTokenUsage } from '../services/runtime'
 import { getSessionStore } from '../services/session-store'
 import { estimateTokens } from '@core/index'
 

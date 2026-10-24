@@ -27,7 +27,7 @@
   padding: 3px 4px;
   border-radius: var(--r-xs);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-align: left;
   transition: background var(--dur-fast) ease;
 }
@@ -38,8 +38,8 @@
 
 .ft-toggle .ft-title {
   color: var(--text-2);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-sm);
+  letter-spacing: var(--ls-wide);
   flex: 0 0 auto;
 }
 
@@ -48,7 +48,7 @@
   min-width: 0;
   max-width: 74px;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -100,7 +100,7 @@
   border: 0;
   background: transparent;
   color: var(--text);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .ft-filter-clear {
@@ -111,8 +111,8 @@
   place-items: center;
   border-radius: var(--r-xs);
   color: var(--text-3);
-  font-size: 13px;
-  line-height: 1;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-none);
 }
 
 .ft-filter-clear:hover {
@@ -130,8 +130,8 @@
   border-radius: var(--r-xs);
   background: var(--gold-ghost);
   color: var(--text-3);
-  font-size: 10px;
-  line-height: 1.45;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-ui);
 }
 
 /* 树主体：独立滚动，避免挤占会话列表 */
@@ -160,7 +160,7 @@
   padding-right: 6px;
   border-radius: var(--r-xs);
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   cursor: default;
   user-select: none;
 }
@@ -228,7 +228,7 @@
   max-width: 86px;
   overflow: hidden;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.8;
@@ -247,7 +247,7 @@
   margin-left: auto;
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
   opacity: 0.65;
 }
 
@@ -257,7 +257,7 @@
   border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
   border-radius: var(--r-full);
   color: var(--amber);
-  font-size: 8px;
+  font-size: var(--fs-3xs);
   line-height: 13px;
   opacity: 0.9;
 }
@@ -270,14 +270,14 @@
   gap: 5px;
   padding: 8px 8px 10px;
   color: var(--text-2);
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-copy);
 }
 
 .ft-empty-hint {
   color: var(--text-3);
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-readable);
 }
 
 .ft-empty-inline {
@@ -286,7 +286,7 @@
 
 .ft-link {
   color: var(--gold);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   text-align: left;
 }
 
@@ -304,21 +304,21 @@
   border-radius: var(--r-xs);
   background: var(--rust-dim);
   color: var(--rust);
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-copy);
 }
 
 .ft-retry {
   margin-left: auto;
   flex: 0 0 auto;
   color: var(--gold);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ft-loading {
   padding: 6px 8px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ft-loading.is-inline {
@@ -328,7 +328,7 @@
 .ft-limited {
   padding: 4px 8px;
   color: var(--text-3);
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
 }
 
 .ft-filter-empty {
@@ -362,7 +362,7 @@
   padding: 0 9px;
   border-radius: var(--r-xs);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-align: left;
   white-space: nowrap;
 }
@@ -404,19 +404,19 @@
 
 .ft-confirm-text {
   color: var(--text);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-body);
 }
 
 .ft-confirm-detail {
   color: var(--amber);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .ft-confirm-hint {
   color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.6;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-readable);
 }
 
 .ft-dialog-form {
@@ -427,13 +427,13 @@
 
 .ft-dialog-location {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ft-dialog-error {
   color: var(--rust);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 @media (max-width: 1120px) {

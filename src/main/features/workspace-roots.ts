@@ -3,17 +3,12 @@
  * 终端、Git 工作台都经过同一份路径判定。
  */
 import { realpathSync, statSync } from 'node:fs'
-import { resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
+import { isPathInside } from '../services/paths'
 import { getSettingsStore } from '../services/settings-store'
 import { getSessionStore } from '../services/session-store'
 
-export function isPathInside(root: string, target: string): boolean {
-  const normalize = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
-  const base = normalize(root)
-  const candidate = normalize(target)
-  const prefix = base.endsWith(sep) ? base : `${base}${sep}`
-  return candidate === base || candidate.startsWith(prefix)
-}
+export { isPathInside }
 
 export function knownWorkspaceRoots(): string[] {
   const roots: string[] = []

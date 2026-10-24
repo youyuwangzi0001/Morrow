@@ -227,6 +227,7 @@ export function EditorPane({
           <CodeEditor
             ref={editorRef}
             value={doc.content}
+            documentKey={doc.relPath || doc.title}
             language={doc.language}
             readOnly={readOnly}
             theme={theme}

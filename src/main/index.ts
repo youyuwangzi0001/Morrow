@@ -1,10 +1,14 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, protocol, screen, session, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, protocol, screen, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
 import { disposeAgentRuntime, registerIpcHandlers } from './ipc'
 import { installFeatureIpc } from './feature-ipc'
 import { registerFeatureModules } from './features'
+import { getSubscriptionService } from './services/subscriptions'
+import { getQoderSubscriptionService } from './services/qoder-subscription'
+import { allAgentServices } from './services/agent-subscriptions'
+import { openExternalQuiet } from './services/external-open'
 import { handlePreviewProtocol } from './services/file-preview'
 import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './services/artifact-preview'
 import { ensureDataDirs, resolveDataDir } from './services/paths'
@@ -13,11 +17,15 @@ import { configureMemoryRuntime } from './services/memory-service'
 import { configureProjectsRuntime } from './services/project-service'
 import { getTerminalManager } from './services/terminal-manager'
 import { configurePermissionRulesRuntime } from './services/permission-rules'
-import { initializeTokenActivity } from './services/token-activity-runtime'
+import { initializeTokenActivity } from './services/runtime'
 import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
 import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
 import {
+  appIconPath,
+  attachIconTray,
+  attachIconWindow,
   configureLifecycle,
+  currentIconTheme,
   handleMainWindowClose,
   isAppQuitting,
   markAppQuitting,
@@ -70,6 +78,9 @@ function bootstrap(dataDir: string): void {
     registerIpcHandlers()
     registerFeatureModules()
     installFeatureIpc()
+    void getSubscriptionService().restore()
+    void getQoderSubscriptionService().restore()
+    for (const service of allAgentServices()) void service.restore()
     initializeTokenActivity()
     configureLifecycle(() => mainWindow)
     createWindow()
@@ -91,6 +102,9 @@ function bootstrap(dataDir: string): void {
   app.on('will-quit', () => {
     disposeScheduleRuntime()
     disposeAgentRuntime()
+    void getSubscriptionService().dispose()
+    void getQoderSubscriptionService().dispose()
+    for (const service of allAgentServices()) void service.dispose()
     globalShortcut.unregisterAll()
     try {
       getTerminalManager().dispose()
@@ -125,13 +139,13 @@ function bootstrap(dataDir: string): void {
       return url === rendererFileUrl || url.startsWith(`${rendererFileUrl}#`)
     }
     contents.setWindowOpenHandler(({ url }) => {
-      if (!testMode && /^https?:/i.test(url)) void shell.openExternal(url)
+      if (!testMode && /^https?:/i.test(url)) openExternalQuiet(url)
       return { action: 'deny' }
     })
     contents.on('will-navigate', (event, url) => {
       if (!isAppUrl(url)) {
         event.preventDefault()
-        if (!testMode && /^https?:/i.test(url)) void shell.openExternal(url)
+        if (!testMode && /^https?:/i.test(url)) openExternalQuiet(url)
       }
     })
     contents.on('will-attach-webview', (event) => event.preventDefault())
@@ -163,15 +177,6 @@ function installSecurityPolicy(): void {
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
-function appIconPath(): string | null {
-  return [
-    join(__dirname, '../../build/icon.png'),
-    join(app.getAppPath(), 'build/icon.png'),
-    join(process.resourcesPath, 'icon.png'),
-    join(process.resourcesPath, 'build', 'icon.png')
-  ].find((candidate) => existsSync(candidate)) ?? null
-}
-
 export function showMainWindow(): void {
   const win = mainWindow
   if (!win || win.isDestroyed()) {
@@ -191,6 +196,7 @@ function createTray(): void {
   let image = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
   if (!image.isEmpty()) image = image.resize({ width: 16, height: 16 })
   tray = new Tray(image)
+  attachIconTray(tray)
   tray.setToolTip('Morrow')
   const menu = Menu.buildFromTemplate([
     { label: '打开 Morrow', click: () => showMainWindow() },
@@ -239,12 +245,7 @@ export function createWindow(): BrowserWindow {
   const windowWidth = toDip(targetPhysicalWidth)
   const windowHeight = toDip(targetPhysicalHeight)
   log.info('window sizing', { scaleFactor, windowWidth, windowHeight, targetPhysicalWidth, targetPhysicalHeight })
-  const windowIcon = [
-    join(__dirname, '../../build/icon.png'),
-    join(app.getAppPath(), 'build', 'icon.png'),
-    join(process.resourcesPath, 'icon.png'),
-    join(process.resourcesPath, 'build', 'icon.png')
-  ].find((candidate) => existsSync(candidate))
+  const windowIcon = appIconPath(currentIconTheme())
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
@@ -303,6 +304,7 @@ export function createWindow(): BrowserWindow {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+  attachIconWindow(mainWindow)
 
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) {

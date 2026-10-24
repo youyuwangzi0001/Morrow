@@ -22,6 +22,7 @@ import { skillTools } from './skills-tools'
 import { webFetchTool } from './web-tools'
 import { browserTools } from './browser-tools'
 import { computerTools } from './computer-tools'
+import { mediaTools } from './media-tools'
 import { xlsxTools } from './xlsx-tools'
 import { errResult, type ToolImpl } from './types'
 
@@ -55,7 +56,9 @@ const BASE_TOOLS: ToolImpl[] = [
   // R10-K1 浏览器自动化：外部动作逐次审批
   ...browserTools,
   // R10-K3 受控 computer-use：仅在用户逐次审批后执行
-  ...computerTools
+  ...computerTools,
+  // 本地多媒体：生成/剪辑走本机引擎，未配置时给出可执行指引
+  ...mediaTools
 ]
 // P0-2 计划模式工具：不进入普通会话工具清单，只由 toolDefinitionsForRun(planMode=true) 注入
 const PLAN_TOOLS: ToolImpl[] = [...planTools]
@@ -72,7 +75,7 @@ export const PLAN_TOOL_DEFINITION: ToolDefinition = submitPlanTool.definition
 
 /**
  * 计划模式工具集：只读工具 + 计划/提问/任务面板。
- * 不包含写入、执行、记忆、子代理、外发与目标工具，权限层同时固定只读。
+ * 不包含写入、执行、记忆、集群、外发与目标工具，权限层同时固定只读。
  */
 export const PLAN_MODE_TOOL_DEFINITIONS: ToolDefinition[] = [
   ...TOOL_DEFINITIONS.filter(
@@ -107,7 +110,7 @@ export function toolDefinitionsForRun(
   return goalMode ? [...base, GOAL_TOOL_DEFINITION] : base
 }
 
-/** 只读类工具清单：聊天模式过滤与审计参考（子代理与主代理共用完整工具集） */
+/** 只读类工具清单：聊天模式过滤与审计参考（集群成员与主代理共用完整工具集） */
 export const READ_ONLY_TOOL_DEFINITIONS: ToolDefinition[] = TOOL_DEFINITIONS.filter((definition) => definition.category === 'read')
 
 export function getToolDefinition(name: string): ToolDefinition | undefined {
@@ -163,7 +166,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
     const available = [...TOOL_BY_NAME.keys()].join('、')
     return errResult(`没有名为「${name}」的工具。`, `本次可用工具：${available}。请使用正确的工具名。`)
   }
-  // 计划模式白名单兜底：未暴露的 meta 工具（task/swarm/update_goal 等）也不能被模型偷偷调用
+  // 计划模式白名单兜底：未暴露的 meta 工具（swarm/update_goal 等）也不能被模型偷偷调用
   if (ctx.planMode && !PLAN_MODE_TOOL_NAMES.has(name)) {
     return errResult(
       '计划模式只能使用只读工具、ask_user、todo_write 和 submit_plan。',

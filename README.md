@@ -1,116 +1,228 @@
 # Morrow · 明日工坊
 
-> 住在你电脑里的 AI 工作伙伴。你说清想要的结果，它自己读文件、写代码、跑命令、做报告，把成品放到你面前。
+> **住在你电脑里的 AI 工作伙伴。** 你说清想要的结果，它自己读文件、写代码、跑命令、做报告，把成品放到你面前。
 >
-> **v0.1.0 · Windows 10/11 便携版** · Electron 44 + React 19 + TypeScript · 单机优先 · 无遥测。
+> Windows 10/11 · Electron 44 · React 19 · TypeScript · 本地优先 · 无遥测 · MIT
 
-## 这是什么
+![Morrow 主界面](docs/guide/screens/02-chat-home-dark.png)
 
-Morrow 是一个桌面 AI 工作伙伴。它不只是聊天：会真实读写你选择的文件夹、运行命令、查资料、做计划，并把 HTML 报告、Markdown 文档、代码或表格直接放到右侧画布。
+Morrow 是一个面向非技术用户的桌面 AI Agent。它不是只会聊天的助手：会真实读写你选择的文件夹、运行命令、维护计划与长期目标、联网查资料，并把 HTML、Markdown、代码、表格、图片或视频放到右侧画布。
 
-适合没有编程背景、但电脑上有很多杂活要处理的人：整理资料、做数据分析、写周报、批量改文件、查清楚一个问题。
+当前版本 **0.1.0**，优先保证单机可用、过程可审计、结果可验证。接口与内部结构仍可能调整，欢迎通过 Issue / PR 参与共建。
 
-- **说人话就能开始**：不需要懂提示词工程，说清结果即可。
-- **过程看得见**：每一步操作、命令和文件改动都显示在对话中。
-- **安全可控**：默认询问；工作区内自动执行，危险/越界/外部动作才询问；写入前有备份；可随时停止；可一并回退对话和文件。
-- **长任务能跑完**：计划、目标、自动压缩上下文、集群。
-- **深度研究**：先给出可编辑的研究计划（目标、范围、子问题、检索策略与报告结构），确认后再多轮联网检索、交叉核对；运行中可追加要求，最终交付带引用的报告。
-- **离线也有演示**：没有 API Key 也能先看一场完整演示。
+---
 
-## 主要能力
+## 核心能力
 
-- **文件与编辑器**：左侧文件夹树，新建/重命名/删除/搜索；右侧 CodeMirror 编辑器，多标签、查找替换、版本历史与文件预览（图片、PDF、Word、Excel、PPT、音视频、压缩包等）；扫描版 PDF 用 Windows 本机 OCR 离线识别，不上传文件。
-- **对话与执行**：流式回答、工具调用、计划模式、长期目标、上下文压缩、队列与后台运行、分叉与导出。
-- **轻量回退**：每条回答末尾点「回退」，只弹一次确认，确认后同时恢复这一轮改过的文件并回退对话。
-- **右侧栏**：画布与侧边聊天共用右侧空间，可直接拖拽宽度，不遮挡输入框；成品有 30 个文本版本快照，可预览、确认后恢复，并可导出独立网页、Markdown、纯文本或 PDF。
-- **集群（Agent Swarm）**：2–8 个独立子任务按角色并行，最多 8 个同时推进；执行过程中实时显示每个小助手的等待/进行中/完成状态与结论；失败不会被当成完成。Kimi Work 也把同类能力称为 Agent 集群。
-- **文件、工具与数据**：真实终端（PowerShell / CMD / Git Bash / WSL，可在设置中选择）、后台任务、版本历史（Git）、外部工具（MCP）、技能、记忆、项目、全局搜索、浏览器、受控 computer-use。
-- **项目范围**：项目面板在「全部项目 / 当前文件夹」之间切换；当前文件夹没有项目时可直接新建，说明与资料只注入这个文件夹的对话。
-- **临时对话、归档与数据清理**：临时对话只存在内存，不写会话文件、不进入历史与搜索、不记 token；归档对话从侧栏收起，在设置 → 归档 中恢复或永久删除；同一页可一次性清除全部对话及派生数据，但不动文件夹文件、设置、记忆、项目和密钥。
-- **全局回答风格**：设置 →「回答」可选平衡、简洁、讲解、正式或自定义偏好，持久保存在本机，对主对话、侧边聊天与定时任务统一生效。
-- **新手友好**：首次引导、中文界面、可读的执行过程、清楚的错误提示与演示模式。
+### 对话与执行
 
-## 模型
+- **聊天 / 工作双模式**：聊天只讨论与只读分析；工作模式可读写文件、运行命令、推进计划与目标。
+- **计划模式**：先只读探索，给出可验证的步骤、风险与验收标准；用户批准后才执行。输入 `/plan 任务` 即可进入。
+- **长期目标**：按复杂度自动估算轮次预算，每轮落盘摘要与下一步；完成必须有真实文件证据，阻塞会如实停止。
+- **深度研究**：`/research [quick|standard|deep] 问题` 先出可编辑研究计划，再多轮检索、交叉核对，最终交付带引用的报告。
+- **模型订阅**：在「设置 → 订阅」接入 ChatGPT/Codex、Qoder、Kimi、GLM、MiniMax、Step、Command Code、Cline、Antigravity、OpenCode 与第三方 coding plan；每条渠道都有真实登录/导入、加密存储、本地 Provider 与额度状态。
+- **集群（Agent Swarm）**：把独立子任务并行派发给不同角色，实时显示每个成员的状态、工具轨迹与结论；失败不会伪装成完成。
+- **执行过程与回退**：工具调用、命令输出、文件 diff 都在对话中可见；每轮结束可一次性回退对话与 Morrow 写过的文件。
+- **上下文管理**：达到阈值自动压缩，保留任务锚点、最近消息与工具对；长任务可跨轮继续。
+- **队列、后台运行、分叉、导出**：运行中可插话或排队；可切到其他对话查看；对话可分支、导出 Markdown / JSON。
 
-默认接入 `deepseek-flash`（DeepSeek V4.1 Flash），也支持：
+### 文件、编辑器与预览
 
-- 国内：DeepSeek、Kimi、通义千问、智谱 GLM、MiniMax M3、小米 MiMo V2.6
-- 国际：Anthropic（含 Claude Fable 5.1）、OpenAI、Google Gemini、xAI Grok、Meta Muse Spark 1.3
-- 聚合 / 本地：OpenRouter、Ollama、LM Studio
-- 任何 OpenAI 兼容服务
+- 工作区文件树：新建、重命名、移动、复制、删除、搜索；写入前快照，支持冲突检测。
+- CodeMirror 编辑器：多标签、查找替换、撤销重做、外部修改冲突、历史版本与 Markdown / HTML 预览。
+- 预览：图片、PDF、Word、Excel、PPT、RTF / ODT / EPUB、ZIP 目录、CSV / TSV、音频、视频；扫描版 PDF 可用本机 OCR 离线识别。
 
-设置 → 模型里选择服务并填 API Key；模型列表可在运行时刷新。思考强度使用 `auto` / `low` / `medium` / `high` / `xhigh` / `max`。
+### 本机多媒体与任意模型
+
+- 通过可注册清单接入 **ComfyUI、llama.cpp、Ollama、LM Studio** 或自建引擎；支持检查、安装、启动、停止、下载和使用。
+- **应用内添加本机模型**：设置 → 多媒体 → 添加本机模型。llama.cpp 选 GGUF，Ollama/LM Studio 填引擎内 ID；ComfyUI 直接粘贴 API 格式工作流 JSON，填写输出节点与输出类型即可注册。模型文件在引擎目录外时自动复制，重名自动加序号。
+- 内置 Qwen-Image 2.1 Turbo、MiniMax-H3 等预设，也可注册任意图片 / 视频 / 音频 / 多模态模型；**Morrow 不自带生成引擎或模型文件**。
+- Agent 工具：`generate_image` / `edit_image` / `generate_video` / `generate_film` / `edit_media` / `inspect_media` / `describe_media` / `render_animation` / `run_local_model`。
+
+### 工作台与系统能力
+
+- **真实终端**：PowerShell 7 / Windows PowerShell / CMD / Git Bash / WSL；后台任务、标签页、复制粘贴、拖动调高。
+- **Git 工作台**：查看差异、暂存、提交、切换 / 新建分支、浏览历史；可在面板内配置仓库身份。
+- **内置浏览器**：渲染层 chrome + 主进程 WebContentsView；Agent 与用户共用同一页面；支持多标签、下载确认、返回主页面并保留页面状态。
+- **全局搜索、记忆、项目、定时任务、MCP、技能**：跨对话 / 文件 / 成品搜索；长期记忆与任务经验；项目说明与资料按文件夹带进对话；定时任务无人值守运行；MCP 外部工具与本地技能可安装、启停、审计。
+- **computer-use**：受控桌面操作，逐次审批，敏感窗口拒绝。
+- **双主题与代码字体**：深色墨夜书房 / 浅色素纸界面；应用字号 12–15（默认 14），代码字号 11–14（默认 12），代码字体默认 JetBrains Mono。
+
+### 模型
+
+- 国内：DeepSeek、Kimi、通义千问、智谱 GLM、MiniMax、小米 MiMo
+- 国际：Anthropic Claude、OpenAI GPT、Google Gemini、xAI Grok、Meta Muse
+- 本地：llama.cpp / Ollama / LM Studio / 任意 OpenAI 兼容服务
+
+设置 → 模型选择服务并填 API Key；本机或局域网服务可以留空。支持运行时同步模型列表，思考强度使用 `auto / low / medium / high / xhigh / max`。
+
+![模型设置](docs/guide/screens/05-settings-models-dark.png)
+
+## 架构一览
+
+Morrow 采用 Electron 三进程结构，业务核心与 UI 解耦：
+
+```text
+┌──────────────────────────── Electron Main ────────────────────────────┐
+│ 窗口/生命周期    AgentService（run、审批、事件、持久化）              │
+│ Session/Settings  MediaService / Catalog   MCP / Browser / Terminal   │
+│ ipc.ts + feature:<name>:<action> 窄 IPC 注册中心                       │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │ contextBridge（窄接口）
+┌───────────────────────────────┴───────────────────────────────────────┐
+│ Renderer：React 19 + Zustand + Vite                                    │
+│ shell / composer / chat / activity / artifacts / files / settings      │
+│ 只做展示与交互；不直接接触 Node、文件系统或密钥                        │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │ Provider / Tool 注入
+┌───────────────────────────────┴───────────────────────────────────────┐
+│ Core（纯 TS，无 Electron/React）：AgentRuntime、上下文压缩、工具、     │
+│ 权限、Provider（OpenAI 兼容 / Anthropic / 本地）、媒体工具             │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+设计原则：
+
+- **单机优先**：对话、设置、记忆与文件都在本机；默认不发送遥测。
+- **最小信任面**：渲染层通过 preload 的窄 API 访问主进程；所有文件路径先 realpath + 工作区边界校验。
+- **过程可审计**：工具调用、审批、文件改动与运行结果都有事件与落盘记录。
+- **可验证交付**：计划/目标完成必须有真实证据；失败、阻塞与停止不会被描述成完成。
+- **可扩展而非写死**：模型、引擎、技能、MCP、自定义命令都通过清单/文件扩展。
+
+完整设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 快速开始
 
-1. 运行 **`Morrow-0.1.0-portable.exe`**。如果 exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选「解除锁定」→ 确定，再双击（去掉 Windows 的“来自 Internet”标记）。
-2. 首次会把应用解压到 exe 同级的 `.morrow-runtime-0.1.0`（约 5–10 秒，带进度小窗），之后启动更快。
-3. 如果 Windows 弹出「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」。v0.1.0 尚未做代码签名（`signed:false`），这不是病毒提示；配置受信任证书重新打包后，提示才可能消失（新证书仍需积累下载信誉）。解除锁定后通常不会再出现 SmartScreen。
-4. 首次启动可先看演示；之后在「设置 → 模型」填入自己的 API Key；在顶栏选择一个文件夹，然后直接说出你要的结果。
+### 从源码运行
 
-数据默认保存在 exe 同级的 `Morrow Data` 文件夹；把 exe 和 `Morrow Data` 一起拷走即可换机继续。可在「设置 → 关于」更改数据目录：会重启 Morrow，可选择迁移对话、设置、项目、记忆与技能（浏览器登录状态与缓存不迁移），也可恢复默认目录。API Key 使用 Windows DPAPI 加密，只保存在本机。交付包不包含任何用户数据、缓存或密钥。
+环境：Windows 10/11 x64、Node.js 22+、npm；可选的多媒体功能需要 NVIDIA 显卡、ComfyUI 与 ffmpeg。
+
+```bash
+npm ci
+npm run dev          # 开发模式（Electron + Vite HMR）
+npm run typecheck    # 主进程 / 渲染层类型检查
+npm run audit:ui     # UI 令牌审计
+npm run test:unit    # 13 个单元套件 / 939 个用例
+npm run test:e2e     # 17 个 E2E 套件 / 206 个用例（真实 Electron；真实登录/本地模型按环境跳过）
+npm run build        # 类型检查 + 生产构建
+npm run dist         # 生成单文件便携 exe + NSIS 安装包
+```
+
+常用可选测试：
+
+```bash
+npm run test:eval                                  # 四项质量评测，写 eval-results.json
+MORROW_MEDIA_INTEGRATION=1 npx vitest run tests/unit/main/media.test.ts
+MORROW_MEDIA_REAL=1 npx playwright test tests/e2e/16-media.spec.ts -g "雨后纸鹤"
+MORROW_LOCAL_MODEL=1 npx playwright test tests/e2e/15-local-model.spec.ts
+MORROW_AGENT_EVAL=1 npx playwright test tests/e2e/15-local-model.spec.ts -g "Morrow Agent 通用能力评测"
+```
+
+### 使用发布包
+
+**安装包（推荐日常使用）**：运行 `Morrow-0.1.0-setup.exe`，按向导选择安装目录。默认按当前用户安装，创建开始菜单/桌面快捷方式；安装版数据默认保存在 `%APPDATA%\Morrow`，可在「设置 → 关于」更改或恢复数据目录。卸载在 Windows 设置 → 应用 → Morrow 中完成，用户数据默认保留。
+
+**单文件便携版**：
+
+1. 运行 `Morrow-0.1.0-portable.exe`。若来自浏览器/聊天工具，先右键 → 属性 → 解除锁定。
+2. 首次启动会在 exe 同级解压 `.morrow-runtime-0.1.0-r010`（约 5–10 秒），之后复用缓存。
+3. 若出现 Windows SmartScreen：点「更多信息 → 仍要运行」。本次构建未配置代码签名证书，便携版与安装包均未签名；签名能力已内置于打包脚本。
+4. 在「设置 → 模型」填入自己的 API Key；在顶栏选择文件夹，然后直接描述目标。
+
+便携版数据默认在 exe 同级的 `Morrow Data`；可在「设置 → 关于」更改或恢复数据目录（需重启，可迁移对话、设置、项目、记忆与技能，不含浏览器缓存/登录状态）。API Key 使用系统加密（Windows DPAPI）保存，只在本机。
+
+## 测试与质量
+
+- **类型**：`npm run typecheck`，TypeScript 严格模式，主进程与渲染层分开检查。
+- **UI 令牌**：`npm run audit:ui` 扫描渲染层 CSS/TSX，字号/字重/行高/字距必须走顶层 token；设置域 E2E 校验页面标题、提示、正文、按钮高度、权限卡与订阅详情排版。
+- **单元**：`npm run test:unit` → **13 个套件、939 个用例（931 passed + 8 skipped）**（含按环境跳过的真实引擎/本地模型集成）。覆盖 Agent 循环、双协议 Provider、工具、权限、上下文压缩、会话持久化、媒体目录/工具、输出隐私守卫、评测指标与 8 条订阅渠道的协议规则。
+- **端到端**：`npm run test:e2e` → **17 个套件、206 个用例**，使用真实 Electron + 真实主进程；默认用 Mock LLM/ComfyUI，可选真实本地模型、引擎与 Codex 订阅登录。
+- **质量评测**：四项离线确定性指标（工具成功率、60 轮漂移、压缩保留、Token 曲线）见 [EVALUATION.md](docs/EVALUATION.md)。
+- **打包冒烟**：`npm run smoke:packaged` 启动便携 exe，检查渲染、预加载 API 与截图。
+- **证据与包体**：最新验收记录、双主题截图、文件数与包体哈希见 [VERIFICATION.md](docs/verification/VERIFICATION.md) 与 [artifacts.json](docs/verification/artifacts.json)。
+
+## 仓库结构
+
+```text
+src/
+  shared/          # 领域类型、IPC 契约、模型/媒体清单、纯函数
+  core/            # 纯 TS Agent：循环、上下文、Provider、工具、权限
+  main/            # Electron 主进程：窗口/生命周期、服务、feature IPC
+  preload/         # contextBridge，只暴露窄 API
+  renderer/src/    # React 界面：shell、composer、chat、activity、artifacts…
+tests/
+  unit/            # 13 个领域套件（core / main / shared）
+  e2e/             # 17 个主题套件 + launch/store helpers
+  fixtures/        # Mock LLM / ComfyUI、媒体与文档样本
+scripts/           # 构建、打包、冒烟、探针
+build/             # 图标、启动器（C#）与打包资源
+docs/              # 用户指南、功能参考、架构、设计、安全、排障与验收
+```
 
 ## 安全与隐私
 
-- 文件操作限制在你选择的文件夹内；越界、危险命令、外部动作都需要额外确认。
-- 权限三档：只读 / 询问 / 完全访问。默认询问；「完全访问」不弹任何审批。
-- 写文件前自动备份；回退时检测文件是否被外部修改，冲突则整体拒绝。
-- 对话与设置保存在本机；不接入 Morrow 的云服务，不发送遥测。
-- MCP、浏览器与 computer-use 均逐次审批，敏感窗口会被拒绝。
+- 文件操作限制在用户选择的工作区内；越界、危险命令、外部动作逐次审批。
+- 权限三档：只读 / 询问 / 完全访问；默认询问，完全访问仅建议在隔离或可恢复任务中使用。
+- 写文件前快照；回退检测外部修改；冲突整体拒绝。
+- 主进程输出链路对已出现的邮箱、用户名、token 做遮蔽；流式分片结束后再兜底扫描。
+- 浏览器、MCP、computer-use 默认逐次审批；远程网页内容按不可信资料处理。
+- 不接入 Morrow 云服务，不发送遥测；对话、设置、记忆与项目保存在本机。
+- 详细说明见 [SECURITY-PRIVACY.md](docs/SECURITY-PRIVACY.md)；漏洞报告请按 [SECURITY.md](SECURITY.md) 私下进行。
 
-## 开发与验证
+## 扩展方式
 
-```bash
-npm install
-npm run dev          # 开发模式
-npm run build        # 类型检查 + 构建
-npm run test:unit    # 单元测试
-npm run test:e2e     # 全量 Playwright E2E（真实 Electron）
-npm run dist         # 生成最终单文件便携 exe（交付形态）
-npm run dist:all     # 内部构建检查：文件夹 + zip + 单文件
-npm run smoke:packaged
-```
-
-测试按领域组织为 10 个单元测试套件与 14 个 E2E 套件（每个原测试文件保留独立 `describe`），完整结果与包体元信息见 [VERIFICATION.md](docs/verification/VERIFICATION.md)。
-
-## 文档
-
-- [使用说明](docs/USER-GUIDE.md) — 5 分钟上手、操作、权限、数据位置、常见问题
-- [架构](docs/ARCHITECTURE.md) — 进程模型、Agent 循环、工具与权限、持久化
-- [设计系统](docs/DESIGN-SYSTEM.md) — 视觉语言、字体、颜色、动效与布局
-- [模型调研](docs/MODELS-RESEARCH.md) — 模型、上下文与 API 端点核对
-- [项目计划](docs/PLAN.md) — v0.1.0 范围、已完成项与已知限制
+- **模型 / 引擎**：`shared/media-models.ts` 定义清单；设置页可导入 JSON 或在应用内添加。无需改 UI 即可注册新模型或引擎。
+- **Provider**：`core/providers/` 中的 OpenAI 兼容 / Anthropic 适配器；也可通过 OpenAI 兼容网关接入其他服务。
+- **工具**：`core/tools/` + `registry.ts`；输入校验、结果截断、权限分类与 UI 展示统一走公共类型。
+- **技能**：`src/main/builtin-skill-content/*.md` 内置；用户技能在数据目录 `skills/`，支持本地文件夹或 zip 安装。
+- **MCP**：设置 → 外部工具，支持内置目录、手动配置、OAuth；每次调用按权限档位审批。
+- **功能面板**：主进程 `main/features/index.ts` 统一注册 + renderer 对应 feature 目录；只通过 `feature:<name>:<action>` 频道通信。
 
 ## 已知限制
 
-- 小助手不能再创建小助手；并行任务必须相互独立。
-- 回退只覆盖 Morrow 通过写文件工具改过的文件；命令直接生成的文件不在回退范围。
-- 终端使用真实 PTY（ConPTY）；应用退出时终端与后台任务都会结束。
-- 外部工具、浏览器自动化与 computer-use 需要服务本身与网络/权限支持。
-- 更改数据目录需要重启；迁移只复制 Morrow 的对话、设置、项目、记忆与技能，不复制内置浏览器缓存/登录状态。恢复默认目录不会自动合并两边的数据。
-- 便携版未做代码签名（`Get-AuthenticodeSignature` = `NotSigned`）。首次运行可能被 SmartScreen 拦截一次，需要「更多信息 → 仍要运行」；解除下载锁定通常即可避免。如果每次都被拦截，可把 exe 加入安全软件白名单。要彻底消除提示，需要受信任的代码签名证书（见下方「代码签名」）。
+- 仅提供 Windows 10/11 x64；便携版与安装包均可交付，但本次构建未配置代码签名证书（signed:false），首次运行可能触发 SmartScreen。
+- 多媒体功能依赖本机 NVIDIA 显卡、ComfyUI、模型文件与 ffmpeg，均不随包分发；16GB 显存下高分辨率/长视频会明显变慢，代码模型与视频模型需分阶段执行。
+- 远程 Provider、MCP、浏览器与 computer-use 依赖网络、服务与系统权限。
+- 真实引擎与真实本地模型的测试默认跳过，需要自备环境；Ollama / LM Studio 适配已实现，但尚未纳入真实安装 CI。
+- 回退只覆盖 Morrow 通过写文件工具修改的文件；命令直接生成的文件不在范围内。
+- 终端使用真实 PTY；应用退出时终端与后台任务会结束。
+- 更改数据目录需要重启；迁移不包含浏览器缓存/登录状态，恢复默认目录不会自动合并两边数据。
+
+## 贡献
+
+欢迎 Issue、讨论与 PR。完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。提交前请：
+
+1. 说明问题、复现方式与预期结果；涉及 UI 的改动请附截图。
+2. 运行 `npm run typecheck && npm run test:unit`；涉及交互/持久化的改动请补充或更新 E2E。
+3. 保持现有代码风格与模块边界；优先复用已有工具、Provider 与 UI 组件。
+4. 不提交 API Key、用户数据、`deliver/`、`tmp/`、日志或截图缓存。
+5. 多媒体与真实模型测试可选；在 PR 中注明未运行的真实环境测试。
+
+## 文档
+
+- [使用说明](docs/USER-GUIDE.md) — 图文上手、操作、权限、数据位置与常见问题
+- [功能参考](docs/FEATURES.md) — 按入口列出全部能力与边界
+- [排障指南](docs/TROUBLESHOOTING.md) — 安装、模型、订阅、多媒体、终端与数据问题
+- [架构说明](docs/ARCHITECTURE.md) — 进程模型、Agent 循环、工具/权限、持久化、媒体与打包
+- [安全与隐私](docs/SECURITY-PRIVACY.md) — 本地优先、密钥、权限、数据与网络边界
+- [设计系统](docs/DESIGN-SYSTEM.md) — 视觉语言、令牌、字号、权限卡与订阅排版
+- [通用模型清单](docs/MEDIA-MODELS.md) — 模型/引擎注册、安装、启停与卸载
+- [模型订阅](docs/SUBSCRIPTIONS.md) — 10 条渠道的登录/导入、加密存储、协议转换与额度
+- [质量评测](docs/EVALUATION.md) — 工具成功率、长任务漂移、压缩保留与 Token 曲线
+- [验收记录](docs/verification/VERIFICATION.md) — 自动化门禁、双主题截图与包体信息
+- [贡献指南](CONTRIBUTING.md) — 开发环境、检查项、代码边界与 PR 约定
+- [安全策略](SECURITY.md) — 漏洞报告范围与处理原则
 
 ## 代码签名（可选）
 
-默认不签名，`docs/verification/packaging.json` 中 `signed:false`。配置以下任一环境变量后运行 `npm run dist`，脚本会用 signtool 对单文件 exe 及其内置应用做 SHA-256 + RFC3161 时间戳签名，并用 signtool 与 PowerShell 双重校验；校验失败会让打包失败。
+默认构建未签名。配置以下任一证书来源后运行 `npm run dist`，脚本会对应用本体、便携启动器、单文件便携版与 NSIS 安装包统一签名，并用 `signtool verify /pa` 与 PowerShell `Get-AuthenticodeSignature` 双重校验；校验失败则打包失败。
 
-- `MORROW_SIGN_PFX` + `MORROW_SIGN_PFX_PASSWORD` — `.pfx` 文件与密码
-- `MORROW_SIGN_THUMBPRINT` — `CurrentUser\My` 中的证书指纹
-- `MORROW_SIGN_SUBJECT` — `CurrentUser\My` 中的证书主题
-- `MORROW_SIGN_AUTO=1` — 仅当恰好一张私钥可用、未过期、链可信的代码签名证书时自动使用
-- `MORROW_SIGN_TIMESTAMP_URL` — 默认 `http://timestamp.digicert.com`
-
-没有证书时不会生成或安装自签名证书；产物保持未签名并记录原因。签名能解决“发布者未知”的一部分问题，但 SmartScreen 仍需要证书受信任并积累下载信誉（EV 证书通常更快）。
-
-## 交付
-
-- 单文件便携版：`deliver/Morrow-0.1.0-portable.exe`（187.66 MB，SHA-256 `04ca53a9417bd7a25c84ee9e484fc20cc9e3eb88b1728ca964867e0422763c8b`）
-- 使用说明与校验：`deliver/使用说明.txt`、`deliver/SHA256SUMS.txt`
-- 许可证：`deliver/LICENSE`（MIT）
-- 打包摘要、签名状态与验证证据：[packaging.json](docs/verification/packaging.json)
-
-`deliver/` 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；不包含文件夹版、zip、缓存、用户数据或旧包。
+```bash
+MORROW_SIGN_PFX=path/to/cert.pfx MORROW_SIGN_PFX_PASSWORD=*** npm run dist
+MORROW_SIGN_THUMBPRINT=<thumbprint> npm run dist
+MORROW_SIGN_SUBJECT="CN=Morrow Studio" npm run dist
+```
 
 ## License
 
-MIT
+MIT。见 [LICENSE](LICENSE)。

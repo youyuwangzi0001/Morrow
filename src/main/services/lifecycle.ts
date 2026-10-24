@@ -1,11 +1,14 @@
 /**
- * 应用生命周期：关闭动作（询问 / 最小化到任务栏 / 完全退出）与退出兜底。
+ * 应用生命周期：关闭动作（询问 / 最小化到任务栏 / 完全退出）、退出兜底与主题图标。
  *
  * - 主窗口关闭按钮、Alt+F4 与灵动岛右键“关闭 Morrow”共用同一套规则；
  * - 用户第一次选择后写入 settings.closeAction，之后不再询问；
- * - 退出时清理挂起的 agent/终端/定时任务，并在 4 秒后强制结束，避免进程残留。
+ * - 退出时清理挂起的 agent/终端/定时任务，并在 4 秒后强制结束，避免进程残留；
+ * - 窗口、任务栏与托盘图标随浅色/深色主题切换；exe/安装包图标保持静态。
  */
-import { app, BrowserWindow, dialog, type Event as ElectronEvent } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage, type Event as ElectronEvent, type Tray } from 'electron'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { CloseAction } from '../../shared/types'
 import { WINDOW_CLOSE_REQUEST_CHANNEL } from '../../shared/ipc'
 import { getSettingsStore } from './settings-store'
@@ -143,4 +146,59 @@ export async function requestCloseFromIsland(): Promise<void> {
   } catch (err) {
     log.warn('island close prompt failed', { error: String(err) })
   }
+}
+
+/* ── 应用图标：窗口/托盘随主题切换，exe 图标固定使用深色版 ───── */
+
+export type AppIconTheme = 'dark' | 'light'
+
+let iconTheme: AppIconTheme = 'dark'
+let iconWindow: BrowserWindow | null = null
+let iconTray: Tray | null = null
+
+function iconCandidates(file: string): string[] {
+  return [
+    join(__dirname, '../../build', file),
+    join(app.getAppPath(), 'build', file),
+    join(process.resourcesPath, file),
+    join(process.resourcesPath, 'build', file)
+  ]
+}
+
+export function appIconPath(next: AppIconTheme = iconTheme): string | null {
+  return iconCandidates(`icon-${next}.png`).find((candidate) => existsSync(candidate)) ?? null
+}
+
+function trayIconPath(next: AppIconTheme): string | null {
+  return iconCandidates(`tray-${next}.png`).find((candidate) => existsSync(candidate)) ?? null
+}
+
+export function currentIconTheme(): AppIconTheme {
+  return iconTheme
+}
+
+function applyIconToTargets(): void {
+  const icon = appIconPath(iconTheme)
+  if (icon && iconWindow && !iconWindow.isDestroyed()) {
+    iconWindow.setIcon(nativeImage.createFromPath(icon))
+  }
+  const trayIcon = trayIconPath(iconTheme)
+  if (trayIcon && iconTray && !iconTray.isDestroyed()) {
+    iconTray.setImage(nativeImage.createFromPath(trayIcon).resize({ width: 16, height: 16 }))
+  }
+}
+
+export function setAppIconTheme(next: AppIconTheme): void {
+  iconTheme = next === 'light' ? 'light' : 'dark'
+  applyIconToTargets()
+}
+
+export function attachIconWindow(win: BrowserWindow): void {
+  iconWindow = win
+  applyIconToTargets()
+}
+
+export function attachIconTray(tray: Tray): void {
+  iconTray = tray
+  applyIconToTargets()
 }

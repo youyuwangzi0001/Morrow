@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, ClipboardList, FileText, Pencil, Play, RotateCcw, X } from 'lucide-react'
 import { todoMatchesPlanStep } from '@shared/plan'
 import type { SessionPlan, TodoItem } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './PlanCard.css'
 
 const EMPTY_TODOS: TodoItem[] = []

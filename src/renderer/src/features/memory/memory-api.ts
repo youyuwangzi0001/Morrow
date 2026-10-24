@@ -4,6 +4,18 @@
  * 这里的类型与 `src/main/services/memory-service.ts` 的公开类型一一对应（wire contract）；
  * 面板不直接 import 主进程代码（渲染层只依赖 @shared 与 window.morrow）。
  */
+import type {
+  EpisodeInjection,
+  EpisodeListResult,
+  EpisodeStats,
+  EvolutionApplyResult,
+  EvolutionListResult,
+  EvolutionReviewResult,
+  TaskEpisode
+} from '@shared/memory'
+import { EVOLUTION_CHANGED_EVENT } from '@shared/memory'
+
+export type { EpisodeInjection, EpisodeListResult, EpisodeStats, TaskEpisode }
 
 export type MemoryScope = 'project' | 'global'
 export type MemorySource = 'agent' | 'user' | 'migration'
@@ -98,7 +110,31 @@ export const memoryApi = {
   exportMemory: (input: { scope: MemoryScope; workspace?: string | null }): Promise<MemoryExportResult> =>
     invoke('export', input),
   injection: (input: { workspace?: string | null; maxTokens?: number }): Promise<MemoryInjection> =>
-    invoke('injection', input)
+    invoke('injection', input),
+  listEpisodes: (input: {
+    scope: MemoryScope
+    workspace?: string | null
+    query?: string
+    includeDisabled?: boolean
+  }): Promise<EpisodeListResult> => invoke('episodes', input),
+  toggleEpisode: (input: {
+    scope: MemoryScope
+    workspace?: string | null
+    id: string
+    enabled?: boolean
+  }): Promise<{ entry: TaskEpisode }> => invoke('episodeToggle', input),
+  removeEpisode: (input: {
+    scope: MemoryScope
+    workspace?: string | null
+    id: string
+  }): Promise<{ removed: boolean }> => invoke('episodeRemove', input),
+  clearEpisodes: (input: { scope: MemoryScope; workspace?: string | null }): Promise<{ removed: number }> =>
+    invoke('episodeClear', input),
+  episodeInjection: (input: {
+    workspace?: string | null
+    query?: string
+    maxTokens?: number
+  }): Promise<EpisodeInjection> => invoke('episodeInjection', input)
 }
 
 export const MEMORY_SOURCE_LABEL: Record<MemorySource, string> = {
@@ -133,3 +169,37 @@ export function downloadTextFile(fileName: string, content: string, mime = 'text
   document.body.removeChild(anchor)
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+/* ── 自进化建议客户端（同一个 feature 客户端，避免重复封装） ───── */
+
+const EVOLUTION_CHANNEL_PREFIX = 'feature:evolution:'
+
+async function invokeEvolution<T>(action: string, payload?: unknown): Promise<T> {
+  const result = await window.morrow.features.invoke<T>(`${EVOLUTION_CHANNEL_PREFIX}${action}`, payload)
+  if (!result.ok) throw new Error(result.error.message || '建议操作失败')
+  return result.data
+}
+
+export const evolutionApi = {
+  list: (workspace?: string | null): Promise<EvolutionListResult> =>
+    invokeEvolution('list', { workspace: workspace ?? null }),
+  review: (sessionId: string): Promise<EvolutionReviewResult> => invokeEvolution('review', { sessionId }),
+  apply: (id: string): Promise<EvolutionApplyResult> => invokeEvolution('apply', { id }),
+  ignore: (id: string): Promise<{ ignored: boolean; pending: number }> => invokeEvolution('ignore', { id })
+}
+
+export function formatEvolutionTime(timestamp: number | null): string {
+  if (!timestamp) return '还没有检查'
+  try {
+    return new Date(timestamp).toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return ''
+  }
+}
+
+export { EVOLUTION_CHANGED_EVENT }

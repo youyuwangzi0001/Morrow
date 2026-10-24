@@ -35,8 +35,8 @@
   align-items: center;
   gap: 6px;
   color: var(--text-2);
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-sm-plus);
+  letter-spacing: var(--ls-label);
 }
 
 .sch-side-title svg {
@@ -45,7 +45,7 @@
 }
 
 .sch-count {
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--gold);
   opacity: 0.75;
 }
@@ -56,8 +56,8 @@
 
 .sch-side-hint {
   margin: 0;
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
   color: var(--text-3);
 }
 
@@ -66,7 +66,7 @@
   align-items: center;
   gap: 8px;
   padding: 14px 2px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-3);
 }
 
@@ -127,8 +127,8 @@
 .sch-task-name {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 550;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-mid);
   color: var(--text);
 }
 
@@ -137,7 +137,7 @@
   padding: 1px 5px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  font-size: 8px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
 }
 
@@ -163,12 +163,12 @@
 
 .sch-task-schedule {
   width: 100%;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
 }
 
 .sch-task-meta {
-  font-size: 8.5px;
+  font-size: var(--fs-3xs);
   color: var(--text-3);
   opacity: 0.85;
 }
@@ -188,7 +188,7 @@
 
 .sch-empty-side p {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .sch-empty-side button {
@@ -197,7 +197,7 @@
   padding: 0;
   background: none;
   color: var(--gold);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -208,8 +208,8 @@
   margin: auto 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--line);
-  font-size: 8.5px;
-  letter-spacing: 0.03em;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-label);
   color: var(--text-3);
   opacity: 0.7;
 }
@@ -255,7 +255,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 
@@ -284,16 +284,16 @@
 
 .sch-next {
   margin-left: auto;
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   color: var(--gold);
 }
 
 .sch-title {
   margin: 0;
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.22;
-  letter-spacing: 0.005em;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-title);
+  letter-spacing: var(--ls-ui);
   color: var(--text);
 }
 
@@ -303,7 +303,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 0;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   color: var(--text-3);
 }
 
@@ -316,7 +316,7 @@
   background: none;
   color: var(--gold);
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 
@@ -335,8 +335,8 @@
   margin: 0;
   padding: 7px 9px;
   border-radius: var(--r-sm);
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-copy);
 }
 
 .sch-notice {
@@ -394,8 +394,8 @@
 }
 
 .sch-label {
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
   color: var(--text-2);
 }
@@ -415,7 +415,7 @@
   background: var(--surface-inset);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   outline: 0;
   transition: border-color var(--dur-fast) linear;
 }
@@ -432,7 +432,7 @@
 .sch-time {
   width: 104px;
   font-family: var(--font-mono);
-  letter-spacing: 0.03em;
+  letter-spacing: var(--ls-label);
 }
 
 .sch-date {
@@ -446,7 +446,7 @@
 
 .sch-preview {
   margin: 0;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 
@@ -474,7 +474,7 @@
 .sch-workspace-path {
   flex: 1;
   min-width: 0;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   color: var(--text-2);
 }
 
@@ -483,7 +483,7 @@
   min-height: 24px;
   padding-top: 0;
   padding-bottom: 0;
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .sch-enable {
@@ -506,7 +506,7 @@
 
 .sch-actions .btn {
   min-height: 30px;
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .sch-actions-spacer {
@@ -523,7 +523,7 @@
   border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--rust) 6%, transparent);
   color: var(--text-2);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .sch-confirm-actions {
@@ -561,15 +561,15 @@
 
 .sch-empty-title {
   margin: 0;
-  font-size: 25px;
-  font-weight: 500;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-medium);
   color: var(--text);
 }
 
 .sch-empty > p {
   margin: 0;
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-body);
   color: var(--text-2);
 }
 
@@ -586,7 +586,7 @@
   align-items: center;
   gap: 5px;
   margin-right: auto;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   color: var(--text-3);
 }
 

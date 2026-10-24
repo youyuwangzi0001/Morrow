@@ -75,8 +75,3 @@ export function decodeSecret(raw: string | null | undefined, crypto: SecretCrypt
   }
 }
 
-/** 存储模式：safe=全部经过系统加密；legacy-insecure=存在历史降级项；unavailable=系统加密不可用 */
-export function secretStorageMode(crypto: SecretCrypto, hasLegacyKeys: boolean): 'safe' | 'legacy-insecure' | 'unavailable' {
-  if (!crypto.available) return 'unavailable'
-  return hasLegacyKeys ? 'legacy-insecure' : 'safe'
-}

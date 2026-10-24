@@ -1,7 +1,7 @@
 /**
  * P0-3 检查点与回退。
  *
- * 每轮用户消息开始时创建一个检查点；写/编辑工具（含子代理）成功后，
+ * 每轮用户消息开始时创建一个检查点；写/编辑工具（含集群成员）成功后，
  * 把「本轮第一次改到该文件时的写前快照」与「最后一次写入后哈希」记入检查点。
  *
  * 回退：
@@ -10,7 +10,7 @@
  * - conversation：从目标用户消息开始截断对话，并恢复 todo / artifacts / plan；
  * - both：两者都做。
  *
- * 边界：只跟踪 write_file / edit_file（含子代理）产生的变更；run_command 的
+ * 边界：只跟踪 write_file / edit_file（含集群成员）产生的变更；run_command 的
  * 副作用无法通用追踪，若它改动了已登记文件，哈希冲突会阻止回退；未登记文件
  * 不会出现在检查点里。
  */
@@ -221,7 +221,7 @@ export class CheckpointService {
     return checkpoint
   }
 
-  /** 写/编辑工具成功后登记文件；子代理通过 meta.changedFiles 批量上报。 */
+  /** 写/编辑工具成功后登记文件；集群成员通过 meta.changedFiles 批量上报。 */
   recordToolResult(sessionId: string, checkpointId: string, meta: Record<string, unknown> | undefined): void {
     if (!meta || !SAFE_ID.test(sessionId) || !SAFE_ID.test(checkpointId)) return
     const checkpoint = this.get(sessionId, checkpointId)

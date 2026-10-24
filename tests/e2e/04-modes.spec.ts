@@ -1142,7 +1142,7 @@ test.describe('R8 #5 显式聊天 / 工作模式', () => {
       expect(requests[0].toolNames).not.toContain('remove_file')
       expect(requests[0].toolNames).not.toContain('run_command')
       expect(requests[0].toolNames).not.toContain('update_goal')
-      // 泛化断言：聊天模式工具列表里不允许出现任何写入/执行/记忆/目标/计划/子代理类工具
+      // 泛化断言：聊天模式工具列表里不允许出现任何写入/执行/记忆/目标/计划/集群成员类工具
       for (const name of requests[0].toolNames) {
         expect(name, `聊天模式不应下发 ${name}`).not.toMatch(
           /^(write_|edit_|run_command|remember$|update_goal$|todo_write$|task$|open_artifact$)/

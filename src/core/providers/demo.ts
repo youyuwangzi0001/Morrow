@@ -955,7 +955,7 @@ function buildDemoScript(workspace: string | null, now: Date): DemoStep[] {
       thinking: '报告要给老板直接看，单文件、无外链、视觉得撑得住场面。',
       text:
         `口径全部核对完了：Q2 分渠道加总 **¥${fmtMoney(m.q2Revenue)}**，表内合计行却是 **¥${fmtMoney(m.q2ReportedTotal)}**（差 ¥${fmtMoney(Math.abs(m.q2Gap))}）；Q3 环比增长 **${fmtPct(m.qoqGrowth)}**。\n\n` +
-        '现在开始写报告：石墨底 + 香槟金、衬线大标题、关键指标卡和环比条形图，做成单文件自包含的 HTML——双击就能看，直接转发也不丢样式。',
+        '现在开始写报告：先把结构、样式和图表骨架写好，再补数据与文案。石墨底 + 香槟金、衬线大标题、关键指标卡和环比条形图，做成单文件自包含的 HTML——双击就能看，直接转发也不丢样式。',
       tools: [{ name: 'write_file', input: { path: '分析报告.html', content: report } }]
     },
     {
@@ -1083,15 +1083,31 @@ export class DemoProvider implements Provider {
     const args = JSON.stringify(tool.input)
     yield { type: 'tool_call_delta', index, argsDelta: args }
     await this.pause(200, signal)
+    if (tool.name === 'write_file') {
+      // 真实开发里写文件是最耗时的一步：演示时按内容长度模拟“正在写代码”，
+      // 让报告不是瞬间出现，而是先看到结构、再等文件落盘。
+      const content = typeof tool.input.content === 'string' ? tool.input.content : ''
+      const lines = content ? content.split('\n').length : 20
+      const file = typeof tool.input.path === 'string' ? tool.input.path : '文件'
+      yield {
+        type: 'demo_step',
+        index: this.stepIndex,
+        total: this.script?.length ?? 0,
+        caption: `编写 ${file}（约 ${lines} 行）`
+      }
+      await this.pause(1_100 + Math.min(4_200, Math.round(content.length / 7)), signal)
+    } else if (tool.name === 'run_command' || tool.name === 'terminal') {
+      yield {
+        type: 'demo_step',
+        index: this.stepIndex,
+        total: this.script?.length ?? 0,
+        caption: '运行命令并核对输出'
+      }
+      await this.pause(650, signal)
+    } else {
+      await this.pause(180, signal)
+    }
     yield { type: 'tool_call_end', index, id, name: tool.name, input: tool.input }
   }
 }
 
-/** 演示工作区的推荐文件名（主进程创建演示会话时可参考） */
-export const DEMO_WORKSPACE_FILES = {
-  sales: '销售明细-2026Q3.csv',
-  customers: '客户名单.csv',
-  readme: 'README-待整理.md',
-  q2: '旧文件/2026Q2-销售汇总.csv',
-  notes: '旧文件/客户回访记录-2026-06.txt'
-} as const

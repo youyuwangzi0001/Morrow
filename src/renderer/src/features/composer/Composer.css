@@ -161,12 +161,12 @@ body.is-resizing-composer {
 
 .composer-background-title {
   color: var(--text);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .composer-background-sub {
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .composer-background-actions {
@@ -182,7 +182,7 @@ body.is-resizing-composer {
   border-radius: var(--r-xs);
   background: transparent;
   color: var(--gold);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   white-space: nowrap;
 }
 
@@ -219,7 +219,7 @@ body.is-resizing-composer {
   border-radius: var(--r-xs);
   background: var(--surface-inset);
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .composer-file-name {
@@ -231,7 +231,7 @@ body.is-resizing-composer {
 
 .composer-file-size {
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .composer-file.is-warn {
@@ -270,7 +270,7 @@ body.is-resizing-composer {
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 26px;
+  min-height: 80px;
   max-height: none;
   margin: 0;
   padding: 3px 6px 6px;
@@ -279,7 +279,7 @@ body.is-resizing-composer {
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--fs-body);
-  line-height: 1.62;
+  line-height: var(--lh-readable);
   overflow-y: hidden;
   resize: none;
   scrollbar-width: none;
@@ -392,7 +392,7 @@ body.is-resizing-composer {
   align-items: baseline;
   justify-content: space-between;
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .composer-ctx-pop-percent {
@@ -418,7 +418,7 @@ body.is-resizing-composer {
 .composer-ctx-pop-sub {
   color: var(--text-3);
   font-size: var(--fs-micro);
-  line-height: 1.5;
+  line-height: var(--lh-copy);
 }
 
 .composer-ctx-pop-grid {
@@ -460,7 +460,7 @@ body.is-resizing-composer {
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   transition:
     background var(--dur-fast) ease,
     color var(--dur-fast) ease,
@@ -489,8 +489,8 @@ body.is-resizing-composer {
 
 .composer-elapsed {
   color: var(--text-3);
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
 }
 
 /* 模型 / 权限：把 ui/Select 收成 composer 里的小 chip（宽度由容器查询控制） */
@@ -503,7 +503,7 @@ body.is-resizing-composer {
 }
 
 .composer-picker-perm {
-  width: 82px;
+  width: 104px;
 }
 
 /* 显式会话模式：聊天 / 工作（与权限档位同一排，复用 ui/Segmented 并压成 composer 尺寸） */
@@ -531,7 +531,7 @@ body.is-resizing-composer {
   height: 24px;
   padding: 0 8px;
   border-radius: var(--r-xs);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-3);
 }
 
@@ -556,7 +556,7 @@ body.is-resizing-composer {
   border-radius: var(--r-xs);
   background: var(--surface-inset);
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
 
@@ -587,7 +587,7 @@ body.is-resizing-composer {
   border-radius: var(--r-xs);
   background: transparent;
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   gap: 3px;
 }
 
@@ -609,7 +609,7 @@ body.is-resizing-composer {
 }
 
 .composer-picker-perm .select-value {
-  max-width: 40px;
+  max-width: 64px;
 }
 
 .composer-picker .select-popup {
@@ -622,7 +622,7 @@ body.is-resizing-composer {
 }
 
 .composer-picker .select-option-label {
-  font-size: 12.5px;
+  font-size: var(--fs-base-plus);
 }
 
 /* 发送 / 停止 */
@@ -705,12 +705,12 @@ body.is-resizing-composer {
   margin-bottom: 3px;
   border-bottom: 1px solid var(--line);
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-wide);
 }
 
 .composer-pop-hint {
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-label);
   opacity: 0.75;
 }
 
@@ -760,25 +760,25 @@ body.is-resizing-composer {
 }
 
 .composer-pop-title {
-  font-size: 12.5px;
+  font-size: var(--fs-base-plus);
 }
 
 .composer-pop-desc {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .composer-pop-key {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .composer-pop-empty {
   padding: 14px 10px;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: var(--fs-base);
+  line-height: var(--lh-readable);
 }
 
 /* 拖拽文件 */
@@ -801,7 +801,7 @@ body.is-resizing-composer {
   background: var(--glass);
   backdrop-filter: blur(10px);
   color: var(--gold-bright);
-  font-size: 12.5px;
+  font-size: var(--fs-base-plus);
   pointer-events: none;
   z-index: 30;
 }

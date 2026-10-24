@@ -16,3 +16,6 @@ probe/
 
 tmp/
 *.tsbuildinfo
+.qoder/
+docs/audit/
+docs/verification/logs/

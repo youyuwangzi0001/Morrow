@@ -6,13 +6,14 @@
   background: var(--code-bg);
   overflow: hidden;
   font-family: var(--font-code);
+  font-weight: var(--code-font-weight, 400);
   font-size: var(--fs-code);
 }
 
 .diff-view.is-empty {
   padding: 10px 12px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .diff-head {
@@ -31,7 +32,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -40,7 +41,7 @@
   display: inline-flex;
   gap: 8px;
   margin-left: auto;
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .diff-add-count {
@@ -63,7 +64,7 @@
 .diff-hunk-head {
   padding: 3px 12px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   background: color-mix(in srgb, var(--surface-inset) 55%, transparent);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -78,7 +79,7 @@
   width: 100%;
   padding: 3px 12px;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   background: color-mix(in srgb, var(--surface-inset) 45%, transparent);
   border-bottom: 1px solid var(--line);
   transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
@@ -110,7 +111,7 @@
   width: 34px;
   padding-right: 8px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-align: right;
   user-select: none;
   opacity: 0.75;
@@ -137,7 +138,7 @@
   padding-right: 14px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .diff-line.is-ctx .diff-code {
@@ -148,5 +149,5 @@
   padding: 6px 12px;
   border-top: 1px solid var(--line);
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }

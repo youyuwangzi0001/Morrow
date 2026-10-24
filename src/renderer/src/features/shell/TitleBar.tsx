@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Folder, Ghost, Globe, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { IconButton } from '../../ui'
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
 import { openWorkbench } from '../workbench/events'

@@ -17,6 +17,11 @@ import { CONNECTOR_CHANNELS } from '../../../src/main/features/connectors'
 import { CONNECTOR_CATALOG } from '../../../src/shared/connector-catalog'
 import { buildLocalNpxInvocation } from '../../../src/shared/connector-catalog'
 
+import type { ChatMessage, ModelInfo, Session } from "../../../src/shared/types"
+import type { Provider, ProviderStreamEvent } from "../../../src/core/index"
+import { EvolutionService } from "../../../src/main/services/evolution-service"
+import { createSkillsService } from "../../../src/main/services/skills-service"
+
 const electronState = vi.hoisted(() => ({
   dataDir: '',
   picked: [] as string[]
@@ -430,7 +435,7 @@ describe('feature IPC 频道（feature:memory:*）', () => {
       // 单测不启动 Electron 设置/会话存储，用白名单模拟「已登记工作区」
       isWorkspaceAllowed: (ws) => ws === wsA
     })
-    expect(featureModule.MEMORY_FEATURE_CHANNELS.length).toBe(8)
+    expect(featureModule.MEMORY_FEATURE_CHANNELS.length).toBe(13)
 
     const added = await invokeFeatureForTest<{ entry: MemoryEntry }>('feature:memory:add', {
       scope: 'project',
@@ -2127,4 +2132,399 @@ describe('MCP OAuth 2.0（PKCE）', () => {
     expect(connectorOAuthStatus('user', 'oauth-mcp')).toMatchObject({ configured: false, authorized: false })
   })
 })
+})
+
+describe("evolution.test.ts", () => {
+  const dirs: string[] = []
+  let dataDir = ''
+  let workspace = ''
+
+  function textMessage(id: string, role: 'user' | 'assistant', text: string): ChatMessage {
+    return {
+      id,
+      role,
+      createdAt: Date.now(),
+      content: [{ type: 'text', text }]
+    }
+  }
+
+  function makeSession(messages: ChatMessage[], overrides: Partial<Session> = {}): Session {
+    return {
+      id: 'session-evolution',
+      title: '整理报表并发布',
+      workspace,
+      model: { providerId: 'mock', modelId: 'mock-model' },
+      permissionMode: 'auto',
+      mode: 'work',
+      createdAt: Date.now() - 60_000,
+      updatedAt: Date.now(),
+      messageCount: messages.length,
+      messages,
+      todos: [],
+      artifacts: [],
+      usage: { inputTokens: 0, outputTokens: 0 },
+      ...overrides
+    }
+  }
+
+  const MODEL: ModelInfo = {
+    id: 'mock-model',
+    label: 'Mock',
+    contextWindow: 32_000,
+    supportsTools: true
+  }
+
+  function fakeProvider(output: string): Provider {
+    return {
+      stream: async function* (): AsyncGenerator<ProviderStreamEvent> {
+        yield { type: 'text_delta', text: output }
+        yield { type: 'usage', usage: { inputTokens: 321, outputTokens: 87 } }
+      }
+    }
+  }
+
+  function reviewPayload(): string {
+    return JSON.stringify({
+      suggestions: [
+        {
+          kind: 'memory',
+          action: 'create',
+          scope: 'project',
+          title: '报表口径',
+          text: '周报按季度口径汇总；数字保留两位小数。',
+          tags: ['报表', '口径'],
+          rationale: '用户明确要求以后都按这个口径处理。',
+          confidence: 0.91
+        },
+        {
+          kind: 'skill',
+          action: 'create',
+          name: 'release-pipeline',
+          description: '把双形态交付整理成可重复执行的发布流程。',
+          body: [
+            '## 何时使用',
+            '需要同时产出便携文件夹版和单文件版时。',
+            '',
+            '## 步骤',
+            '1. 运行类型检查和单元测试。',
+            '2. 构建并检查 app.asar 是否被占用。',
+            '3. 打包单文件并做冒烟。',
+            '',
+            '## 完成检查',
+            '窗口能打开，使用说明和 SHA256SUMS 已更新。',
+            '',
+            '## 反模式',
+            '不要跳过冒烟，不要把 Morrow Data 放进交付包。'
+          ].join('\n'),
+          rationale: '这次任务形成了可复现的打包流程。',
+          confidence: 0.86
+        }
+      ]
+    })
+  }
+
+  beforeEach(() => {
+    const root = mkdtempSync(join(tmpdir(), 'morrow-evolution-'))
+    dirs.push(root)
+    dataDir = join(root, 'data')
+    workspace = join(root, 'workspace')
+    electronState.dataDir = dataDir
+    mkdirSync(dataDir, { recursive: true })
+    mkdirSync(workspace, { recursive: true })
+  })
+
+  afterEach(() => {
+    while (dirs.length > 0) {
+      const dir = dirs.pop()
+      if (dir) rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  describe('EvolutionService：信号门禁', () => {
+    it('简单问答不触发；两次纠正或复杂工具链才触发', () => {
+      const service = new EvolutionService({ dataDir })
+      const simple = makeSession([
+        textMessage('u1', 'user', '今天几号？'),
+        textMessage('a1', 'assistant', '10 月 24 日。')
+      ])
+      expect(service.shouldAutoReview(simple)).toBe('no-signal')
+
+      const corrected = makeSession([
+        textMessage('u1', 'user', '先做一版。'),
+        textMessage('a1', 'assistant', '好的。'),
+        textMessage('u2', 'user', '不要用表格，改成纯文本。'),
+        textMessage('a2', 'assistant', '好的。'),
+        textMessage('u3', 'user', '还是不对，以后都按季度口径。'),
+        textMessage('a3', 'assistant', '明白。')
+      ])
+      expect(service.shouldAutoReview(corrected)).toBeNull()
+    })
+
+    it('同一会话复盘后进入冷却；临时/演示对话直接跳过', async () => {
+      const service = new EvolutionService({ dataDir })
+      const session = makeSession([
+        textMessage('u1', 'user', '以后都用简体中文。'),
+        textMessage('a1', 'assistant', '好。')
+      ])
+      expect(service.shouldAutoReview({ ...session, temporary: true })).toBe('temporary')
+      expect(service.shouldAutoReview({ ...session, demo: true })).toBe('demo')
+      await service.review({
+        session,
+        provider: fakeProvider(reviewPayload()),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      expect(service.shouldAutoReview(session)).toBe('cooldown')
+    })
+  })
+
+  describe('EvolutionService：审阅与采纳', () => {
+    it('解析记忆/技能建议，脱敏后入库；采纳会真实写入记忆与用户技能库', async () => {
+      const service = new EvolutionService({ dataDir })
+      const session = makeSession([
+        textMessage('u1', 'user', '以后都用简体中文。我的邮箱是 me@example.com，请记住。'),
+        textMessage('a1', 'assistant', '好的，我会按这个偏好处理。')
+      ])
+      const result = await service.review({
+        session,
+        provider: fakeProvider(reviewPayload()),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      expect(result.created).toBe(2)
+      expect(result.suggestions).toHaveLength(2)
+      expect(result.usage?.inputTokens).toBe(321)
+
+      const list = service.list(workspace)
+      expect(list.pending).toBe(2)
+      const memory = list.suggestions.find((item) => item.kind === 'memory')
+      const skill = list.suggestions.find((item) => item.kind === 'skill')
+      expect(memory?.kind).toBe('memory')
+      expect(skill?.kind).toBe('skill')
+      expect(skill?.content).toContain('---\nname: release-pipeline')
+      expect(skill?.content).not.toContain('me@example.com')
+
+      const memoryApply = service.apply(memory!.id)
+      expect(memoryApply.target.kind).toBe('memory')
+      const memories = new MemoryService({ dataDir }).list('project', workspace).entries
+      expect(memories.some((entry) => entry.text.includes('季度口径'))).toBe(true)
+
+      const skillApply = service.apply(skill!.id)
+      expect(skillApply.target.kind).toBe('skill')
+      const skills = createSkillsService({ dataDir }).list(workspace).skills
+      const created = skills.find((item) => item.name === 'release-pipeline')
+      expect(created).toBeTruthy()
+      expect(created?.source).toBe('user')
+      expect(readFileSync(created!.skillPath, 'utf8')).toContain('release-pipeline')
+      expect(service.list(workspace).suggestions).toHaveLength(0)
+    })
+
+    it('忽略建议后不再显示；过期建议会被清理', async () => {
+      let now = 1_700_000_000_000
+      const service = new EvolutionService({ dataDir, now: () => now })
+      const session = makeSession([
+        textMessage('u1', 'user', '记住这个偏好。'),
+        textMessage('a1', 'assistant', '好。')
+      ])
+      const result = await service.review({
+        session,
+        provider: fakeProvider(reviewPayload()),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      const first = result.suggestions[0]
+      service.ignore(first.id)
+      expect(service.list(workspace).suggestions).toHaveLength(1)
+
+      now += 15 * 24 * 60 * 60 * 1000
+      expect(service.list(workspace).suggestions).toHaveLength(0)
+    })
+
+    it('采纳 update 技能时只替换 SKILL.md，不新建同名技能', async () => {
+      const service = new EvolutionService({ dataDir })
+      const skillsService = createSkillsService({ dataDir })
+      const created = skillsService.createUserSkill({
+        name: 'release-pipeline',
+        description: '旧描述',
+        markdown: '## 旧流程\n\n1. 运行检查。\n2. 打包。\n3. 冒烟。\n\n## 完成检查\n窗口能打开，校验和一致。'
+      })
+      const session = makeSession([
+        textMessage('u1', 'user', '以后都用这个发布流程。'),
+        textMessage('a1', 'assistant', '好。')
+      ])
+      const payload = JSON.stringify({
+        suggestions: [
+          {
+            kind: 'skill',
+            action: 'update',
+            name: 'release-pipeline',
+            targetId: created.id,
+            description: '新版发布流程',
+            body: '## 新流程\n\n1. 先跑类型检查。\n2. 再跑单元与冒烟。\n3. 最后核对 SHA256SUMS。\n\n## 完成检查\n窗口能打开，交付目录没有运行时缓存。\n\n## 反模式\n不要跳过冒烟。',
+            rationale: '用户确认以后都这样做。',
+            confidence: 0.9
+          }
+        ]
+      })
+      const result = await service.review({
+        session,
+        provider: fakeProvider(payload),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      expect(result.suggestions[0].action).toBe('update')
+      const applied = service.apply(result.suggestions[0].id)
+      expect(applied.target.id).toBe(created.id)
+      const skills = createSkillsService({ dataDir }).list(workspace).skills.filter(
+        (skill) => skill.name === 'release-pipeline'
+      )
+      expect(skills).toHaveLength(1)
+      expect(skills[0].description).toContain('新版发布流程')
+      expect(readFileSync(skills[0].skillPath, 'utf8')).toContain('## 新流程')
+    })
+
+    it('建议正文会沿用会话中的敏感值脱敏', async () => {
+      const service = new EvolutionService({ dataDir })
+      const session = makeSession([
+        textMessage('u1', 'user', '联系邮箱 me@example.com，以后都按这个来。'),
+        textMessage('a1', 'assistant', '好。')
+      ])
+      const payload = JSON.stringify({
+        suggestions: [
+          {
+            kind: 'memory',
+            action: 'create',
+            scope: 'global',
+            title: '联系邮箱',
+            text: '默认联系邮箱是 me@example.com。',
+            tags: [],
+            rationale: '用户给了长期偏好。',
+            confidence: 0.9
+          }
+        ]
+      })
+      const result = await service.review({
+        session,
+        provider: fakeProvider(payload),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      expect(result.suggestions).toHaveLength(1)
+      expect(result.suggestions[0].content).toContain('[REDACTED]')
+      expect(result.suggestions[0].content).not.toContain('me@example.com')
+    })
+
+    it('已有记忆完全相同时不重复建议', async () => {
+      const service = new EvolutionService({ dataDir })
+      new MemoryService({ dataDir }).add({
+        scope: 'project',
+        workspace,
+        text: '周报按季度口径汇总；数字保留两位小数。',
+        source: 'user'
+      })
+      const session = makeSession([
+        textMessage('u1', 'user', '记住这个口径。'),
+        textMessage('a1', 'assistant', '好。')
+      ])
+      const result = await service.review({
+        session,
+        provider: fakeProvider(reviewPayload()),
+        model: MODEL,
+        signal: new AbortController().signal,
+        manual: true
+      })
+      expect(result.suggestions.some((item) => item.kind === 'memory')).toBe(false)
+      expect(result.suggestions.some((item) => item.kind === 'skill')).toBe(true)
+    })
+  })
+
+  describe('EvolutionService：存储边界', () => {
+    it('损坏的建议文件不会阻塞记忆中心', () => {
+      const service = new EvolutionService({ dataDir })
+      const path = service.storePath()
+      mkdirSync(join(dataDir, 'evolution'), { recursive: true })
+      writeFileSync(path, '{not-json', 'utf8')
+      expect(() => service.list(null)).not.toThrow()
+      expect(service.list(null).suggestions).toEqual([])
+    })
+  })
+
+  describe('任务经验（自动记忆）', () => {
+    it('捕获、去重、相关检索、启停、删除与清空', () => {
+      const memory = new MemoryService({ dataDir })
+      const first = memory.captureEpisode({
+        scope: 'project',
+        workspace,
+        title: '整理销售报表',
+        intent: '把季度销售数据整理成报告',
+        summary: '生成 out/report.md，按季度汇总销售额并保留两位小数。',
+        tools: ['read_file', 'write_file'],
+        files: ['out/report.md'],
+        tags: ['报表'],
+        sourceSessionId: 's1',
+        sourceSessionTitle: '季度报表',
+        sourceMessageId: 'm1'
+      })
+      const list = memory.listEpisodes('project', workspace, { includeDisabled: true })
+      expect(list.entries).toHaveLength(1)
+      expect(list.stats.total).toBe(1)
+      expect(readFileSync(join(workspace, '.morrow', 'episodes.json'), 'utf8')).toContain('整理销售报表')
+
+      const duplicate = memory.captureEpisode({
+        scope: 'project',
+        workspace,
+        title: '整理销售报表',
+        intent: '把季度销售数据整理成报告',
+        summary: '更新后的结论：销售额同比增长 18%。',
+        sourceSessionId: 's1',
+        sourceMessageId: 'm1'
+      })
+      expect(duplicate.id).toBe(first.id)
+      expect(memory.listEpisodes('project', workspace).entries).toHaveLength(1)
+      expect(memory.listEpisodes('project', workspace).entries[0].summary).toContain('18%')
+
+      const injection = memory.episodeInjection(workspace, '季度销售额报告', { maxTokens: 320 })
+      expect(injection.included).toBe(1)
+      expect(injection.text).toContain('相关任务经验')
+      expect(injection.text).toContain('整理销售报表')
+
+      memory.toggleEpisode('project', workspace, first.id, false)
+      expect(memory.listEpisodes('project', workspace).entries).toHaveLength(0)
+      expect(memory.listEpisodes('project', workspace, { includeDisabled: true }).entries[0].enabled).toBe(false)
+      expect(memory.episodeInjection(workspace, '季度销售额报告').included).toBe(0)
+
+      memory.toggleEpisode('project', workspace, first.id, true)
+      memory.removeEpisode('project', workspace, first.id)
+      expect(memory.listEpisodes('project', workspace, { includeDisabled: true }).entries).toHaveLength(0)
+      memory.captureEpisode({
+        scope: 'project',
+        workspace,
+        title: '临时经验',
+        intent: '测试清空',
+        summary: '这条会被清空。',
+        sourceSessionId: 's2',
+        sourceMessageId: 'm2'
+      })
+      expect(memory.clearEpisodes('project', workspace).removed).toBe(1)
+    })
+
+    it('没有工作区时写入全局任务经验，不会伪造项目路径', () => {
+      const memory = new MemoryService({ dataDir })
+      memory.captureEpisode({
+        scope: 'global',
+        title: '用户级整理',
+        intent: '整理下载目录',
+        summary: '生成了文件清单。',
+        sourceSessionId: 's3',
+        sourceMessageId: 'm3'
+      })
+      expect(memory.listEpisodes('global', null).entries[0].scope).toBe('global')
+      expect(readFileSync(join(dataDir, 'episodes', 'global.json'), 'utf8')).toContain('用户级整理')
+    })
+  })
 })

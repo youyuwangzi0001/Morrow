@@ -6,12 +6,14 @@ import '@fontsource-variable/newsreader/wght.css'
 import '@fontsource-variable/newsreader/wght-italic.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/500.css'
 import '@fontsource-variable/noto-serif-sc'
 
 import './styles/base.css'
 import App from './App'
 import { IslandApp } from './features/island/IslandApp'
-import { useAppStore } from './state/store'
+import { useAppStore } from './store'
 import { applyThemePreferences } from './theme'
 
 const container = document.getElementById('root')

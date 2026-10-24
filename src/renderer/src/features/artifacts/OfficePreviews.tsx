@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Archive, FileText, Search } from 'lucide-react'
-import { formatBytes } from '@shared/format'
+import { formatBytes } from '@shared/usage'
 import { withMorrowScrollbar } from '@shared/scrollbar'
 import type {
   ArchiveEntryPreview,

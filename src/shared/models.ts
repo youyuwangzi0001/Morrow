@@ -13,6 +13,8 @@ const deepseekModels: ModelInfo[] = [
     contextWindow: 1_048_576,
     maxOutput: 393_216,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '速度快、性价比高'
   },
@@ -22,6 +24,8 @@ const deepseekModels: ModelInfo[] = [
     contextWindow: 1_048_576,
     maxOutput: 393_216,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '旗舰推理与复杂任务能力，适合长任务'
   }
@@ -29,30 +33,33 @@ const deepseekModels: ModelInfo[] = [
 
 const kimiModels: ModelInfo[] = [
   {
+    id: 'kimi-k3.1-pro',
+    label: 'Kimi K3.1 Pro',
+    contextWindow: 1_000_000,
+    maxOutput: 65_536,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: 'K3 系列最新旗舰；适合复杂 Agent 与长任务'
+  },
+  {
     id: 'kimi-k3',
     label: 'Kimi K3',
     contextWindow: 1_000_000,
     maxOutput: 65_536,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '支持图片输入'
   },
   {
-    id: 'kimi-k2.7-code',
-    label: 'Kimi K2.7 Code',
+    id: 'kimi-k2.8-preview',
+    label: 'Kimi K2.8 Preview',
     contextWindow: 262_144,
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
-    note: '面向代码与 Agent 任务'
-  },
-  {
-    id: 'kimi-k2.6',
-    label: 'Kimi K2.6',
-    contextWindow: 262_144,
-    maxOutput: 65_536,
-    supportsTools: true,
-    supportsReasoning: true
+    note: '上一代预览模型；新任务优先 K3.1 Pro'
   }
 ]
 
@@ -84,6 +91,8 @@ const anthropicModels: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '长程编程与复杂任务；自适应思考默认开启',
     pricing: { inputPerMTok: 10, outputPerMTok: 50, cacheReadPerMTok: 2.5 }
@@ -94,6 +103,8 @@ const anthropicModels: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: 'Anthropic 旗舰，适合长任务与复杂写作'
   },
@@ -103,6 +114,8 @@ const anthropicModels: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '速度与质量平衡'
   },
@@ -112,6 +125,8 @@ const anthropicModels: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     note: '高并发、低成本'
   }
 ]
@@ -123,6 +138,8 @@ const openaiModels: ModelInfo[] = [
     contextWindow: 1_050_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: 'OpenAI 当前默认旗舰（2026-10-09 发布）'
   },
@@ -132,6 +149,8 @@ const openaiModels: ModelInfo[] = [
     contextWindow: 1_050_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '最复杂推理与编码旗舰（2026-09-04 发布）'
   },
@@ -141,6 +160,8 @@ const openaiModels: ModelInfo[] = [
     contextWindow: 1_050_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true
   },
   {
@@ -149,6 +170,8 @@ const openaiModels: ModelInfo[] = [
     contextWindow: 1_050_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '低延迟档位'
   }
@@ -161,6 +184,8 @@ const geminiModels: ModelInfo[] = [
     contextWindow: 1_048_576,
     maxOutput: 65_536,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: 'Google 前沿旗舰（2026-10 上线），适合超长资料'
   },
@@ -170,6 +195,8 @@ const geminiModels: ModelInfo[] = [
     contextWindow: 1_048_576,
     maxOutput: 65_536,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '高性价比档位（2026-10 最新 Flash）'
   }
@@ -191,12 +218,23 @@ const glmModels: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: '原生多模态、低成本版本（320B 总参 / 18B 激活）'
   }
 ]
 
 const miniMaxModels: ModelInfo[] = [
+  {
+    id: 'MiniMax-M3.1-Flash',
+    label: 'MiniMax M3.1 Flash',
+    contextWindow: 1_000_000,
+    maxOutput: 65_536,
+    supportsTools: true,
+    supportsReasoning: true,
+    note: 'M3.1 Flash 正式版，速度优先'
+  },
   {
     id: 'MiniMax-M3',
     label: 'MiniMax M3',
@@ -205,15 +243,6 @@ const miniMaxModels: ModelInfo[] = [
     supportsTools: true,
     supportsReasoning: true,
     note: '擅长代码和 Agent 任务'
-  },
-  {
-    id: 'MiniMax-M3.1-Flash',
-    label: 'MiniMax M3.1 Flash',
-    contextWindow: 1_000_000,
-    maxOutput: 65_536,
-    supportsTools: true,
-    supportsReasoning: true,
-    note: '最新轻量版，速度优先'
   }
 ]
 
@@ -258,62 +287,31 @@ const xaiModels: ModelInfo[] = [
     contextWindow: 500_000,
     maxOutput: 65_536,
     supportsTools: true,
+    supportsVision: true,
+
     supportsReasoning: true,
     note: 'xAI 当前旗舰（2026-09-21），支持图片输入'
   },
   {
-    id: 'grok-4.1-fast',
-    label: 'Grok 4.1 Fast',
-    contextWindow: 2_000_000,
-    maxOutput: 65_536,
-    supportsTools: true,
-    supportsReasoning: true,
-    note: '长上下文、低延迟上一代'
-  }
-]
-
-const openRouterModels: ModelInfo[] = [
-  {
-    id: 'openai/gpt-6.1-sol',
-    label: 'GPT-6.1 Sol（OpenRouter）',
-    contextWindow: 1_050_000,
-    maxOutput: 128_000,
-    supportsTools: true,
-    supportsReasoning: true
-  },
-  {
-    id: 'anthropic/claude-opus-5.5',
-    label: 'Claude Opus 5.5（OpenRouter）',
-    contextWindow: 1_000_000,
-    maxOutput: 128_000,
-    supportsTools: true,
-    supportsReasoning: true
-  },
-  {
-    id: 'google/gemini-4-argon',
-    label: 'Gemini 4 Argon（OpenRouter）',
-    contextWindow: 1_048_576,
-    maxOutput: 65_536,
-    supportsTools: true,
-    supportsReasoning: true
-  },
-  {
-    id: 'x-ai/grok-4.7',
-    label: 'Grok 4.7（OpenRouter）',
+    id: 'grok-4.6',
+    label: 'Grok 4.6',
     contextWindow: 500_000,
     maxOutput: 65_536,
     supportsTools: true,
-    supportsReasoning: true
-  },
-  {
-    id: 'deepseek/deepseek-v4-flash',
-    label: 'DeepSeek V4.1 Flash（OpenRouter）',
-    contextWindow: 1_048_576,
-    maxOutput: 393_216,
-    supportsTools: true,
-    supportsReasoning: true
+    supportsReasoning: true,
+    note: '500K 上下文、低延迟，适合日常与长任务'
   }
 ]
+
+/**
+ * 已从内置目录下线的模型：读取旧设置时一并移除，避免升级后设置页仍显示被替换的型号。
+ * 只列内置模型 ID；自定义 Provider 自有模型不受影响。
+ */
+export const RETIRED_MODEL_IDS: Record<string, readonly string[]> = {
+  xai: ['grok-4.1', 'grok-4.1-fast', 'grok-4.1-fast-reasoning'],
+  kimi: ['kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.7', 'kimi-k2.6-preview'],
+  llamacpp: ['Sage-A1.5-Q4_K_M', 'Sage-A1.5', 'local-model']
+}
 
 const localModels: ModelInfo[] = [
   {
@@ -323,6 +321,18 @@ const localModels: ModelInfo[] = [
     maxOutput: 32_768,
     supportsTools: true,
     note: 'Ollama/LM Studio 的模型 ID 以本机加载为准，可在设置里编辑'
+  }
+]
+
+/** llama.cpp 的 llama-server 默认监听 8000，模型 ID 与启动参数 --alias 一致。 */
+const llamaCppModels: ModelInfo[] = [
+  {
+    id: 'Qwen3.8-27B-Coder390',
+    label: 'Qwen3.8 27B（llama.cpp）',
+    contextWindow: 65_536,
+    maxOutput: 16_384,
+    supportsTools: true,
+    note: 'llama-server 启动后可用；64K 上下文全显存，模型 ID 需与 --alias 一致'
   }
 ]
 
@@ -493,22 +503,22 @@ export function builtinProviders(): ProviderConfig[] {
       category: 'global'
     },
     {
-      id: 'openrouter',
-      kind: 'openai-compat',
-      name: 'OpenRouter（模型聚合）',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      models: enrichModels(openRouterModels, 'openrouter'),
-      apiKeyStored: false,
-      enabled: true,
-      isBuiltin: true,
-      category: 'aggregator'
-    },
-    {
       id: 'ollama',
       kind: 'openai-compat',
       name: 'Ollama（本地）',
       baseUrl: 'http://127.0.0.1:11434/v1',
       models: enrichModels(localModels, 'local').map((m) => ({ ...m, label: 'Ollama 本地模型（改成实际 ID）' })),
+      apiKeyStored: false,
+      enabled: false,
+      isBuiltin: true,
+      category: 'local'
+    },
+    {
+      id: 'llamacpp',
+      kind: 'openai-compat',
+      name: 'llama.cpp（本地）',
+      baseUrl: 'http://127.0.0.1:8000/v1',
+      models: enrichModels(llamaCppModels, 'local'),
       apiKeyStored: false,
       enabled: false,
       isBuiltin: true,
@@ -567,12 +577,51 @@ export function findModel(providers: ProviderConfig[], ref: ModelRef): ModelInfo
   return model && provider ? normalizeReasoningStyle(model, provider.kind) : null
 }
 
+/** 统一本机/局域网服务判定：provider 测试、模型同步与设置页共用同一规则。 */
+function normalizeHost(host: string): string {
+  return host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
+}
+
+export function isLoopbackHost(host: string): boolean {
+  const value = normalizeHost(host)
+  return value === 'localhost' || value === '::1' || /^127\./.test(value)
+}
+
+export function isPrivateNetworkHost(host: string): boolean {
+  const value = normalizeHost(host)
+  if (isLoopbackHost(value) || value.endsWith('.local')) return true
+  // IPv6 唯一本地地址 fc00::/7 与链路本地 fe80::/10
+  if (/^f[cd][0-9a-f]{2}:/.test(value) || /^fe[89ab][0-9a-f]:/.test(value)) return true
+  const parts = value.split('.')
+  if (parts.length !== 4) return false
+  const octets = parts.map(Number)
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false
+  const [first, second] = octets as [number, number, number, number]
+  return (
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 169 && second === 254)
+  )
+}
+
+export function isLocalServiceUrl(value: string, options: { allowPrivate?: boolean } = {}): boolean {
+  try {
+    const url = new URL(value.trim())
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+    return options.allowPrivate ? isPrivateNetworkHost(url.hostname) : isLoopbackHost(url.hostname)
+  } catch {
+    return false
+  }
+}
+
 export function defaultSettings(): Settings {
   return {
     version: 1,
     theme: 'dark',
     fontSize: 14,
-    codeFontSize: 13,
+    codeFontSize: 12,
+    codeFont: 'jetbrains',
     reduceMotion: false,
     permissionMode: 'ask',
     sendKey: 'enter',
@@ -586,6 +635,8 @@ export function defaultSettings(): Settings {
     demoSeen: false,
     showTokenMeter: true,
     autoTitle: true,
+    evolutionEnabled: true,
+    episodeMemoryEnabled: true,
     sidebarWidth: 240,
     autoCompact: true,
     compactThreshold: 0.8,
@@ -593,10 +644,20 @@ export function defaultSettings(): Settings {
     composerHeight: 0,
     layoutVersion: 2,
     webSearch: {
-      enabled: false,
-      provider: 'tavily',
+      enabled: true,
+      provider: 'builtin',
       apiKeyStored: false,
       maxResults: 5
+    },
+    mediaEngine: {
+      enabled: true,
+      comfyuiUrl: 'http://127.0.0.1:8188',
+      comfyuiDir: null,
+      ffmpegPath: null,
+      autoStart: true,
+      imageTimeoutSec: 600,
+      videoTimeoutSec: 3600,
+      outputDir: 'media'
     },
     closeAction: 'ask',
     notifyOnFinish: true,

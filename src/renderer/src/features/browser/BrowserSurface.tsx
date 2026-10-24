@@ -10,7 +10,8 @@
  * `feature:browser:set-bounds` 同步给主进程，窗口缩放/全屏时持续同步。
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Globe, House, Loader2, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, House, Loader2, Plus, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { formatBytes } from '@shared/usage'
 import './browser.css'
 
 export interface BrowserSurfaceProps {
@@ -26,6 +27,16 @@ export interface BrowserSurfaceProps {
   initialUrl?: string
 }
 
+interface BrowserTabInfo {
+  id: string
+  url: string
+  title: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  error: { code: string; message: string } | null
+}
+
 interface BrowserState {
   open: boolean
   visible: boolean
@@ -36,6 +47,8 @@ interface BrowserState {
   canGoForward: boolean
   error: { code: string; message: string } | null
   automationActive: boolean
+  tabs?: BrowserTabInfo[]
+  activeTabId?: string | null
 }
 
 interface DownloadRequest {
@@ -67,7 +80,9 @@ const EMPTY_STATE: BrowserState = {
   canGoBack: false,
   canGoForward: false,
   error: null,
-  automationActive: false
+  automationActive: false,
+  tabs: [],
+  activeTabId: null
 }
 
 const featureApi = () => window.morrow?.features
@@ -89,10 +104,10 @@ function displayHost(url: string): string {
   }
 }
 
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '大小未知'
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+function tabLabel(tab: { title: string; url: string }): string {
+  const title = tab.title.trim()
+  if (title && title !== 'about:blank') return title
+  return tab.url ? displayHost(tab.url) : '新标签页'
 }
 
 export function BrowserSurface({ open, visible = true, onHide, onClose, initialUrl }: BrowserSurfaceProps): React.JSX.Element | null {
@@ -184,24 +199,25 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
   )
 
   useLayoutEffect(() => {
-    if (!open) {
+    if (!open || !visible) {
       lastBounds.current = ''
       return
     }
-    syncBounds()
+    // 重新展开时强制重报一次边界：原生视图可能还保留隐藏前的旧位置。
+    syncBounds(true)
     const element = viewportRef.current
     if (!element) return
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncBounds()) : null
     observer?.observe(element)
     const onResize = (): void => {
-      requestAnimationFrame(() => syncBounds())
+      requestAnimationFrame(() => syncBounds(true))
     }
     window.addEventListener('resize', onResize)
     return () => {
       observer?.disconnect()
       window.removeEventListener('resize', onResize)
     }
-  }, [open, syncBounds])
+  }, [open, visible, syncBounds])
 
   /* 原生视图创建后强制补一次 bounds：首次同步可能早于 surface 创建而被丢弃 */
   useEffect(() => {
@@ -219,12 +235,11 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     return () => cancelAnimationFrame(frame)
   }, [download, savedDownload, actionError, open, state.open, syncBounds])
 
-  // Agent 导航时地址栏跟随当前页面；用户正在输入时不抢焦点内容
+  // 切换标签/Agent 导航时地址栏跟随活动页面；用户正在输入时不覆盖
   useEffect(() => {
-    if (!state.url) return
     if (document.activeElement === addressRef.current) return
-    setAddress(state.url)
-  }, [state.url])
+    setAddress(state.url || '')
+  }, [state.url, state.activeTabId])
 
   /* ── open/visible/initialUrl 驱动 ───────────────────────────── */
   useEffect(() => {
@@ -239,7 +254,13 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
         const current = await invoke<BrowserState>('feature:browser:get-state')
         if (cancelled) return
         if (current.open) {
-          // 面板可能只是被隐藏过（surface 还活着）：重新展开时恢复原生视图
+          // 面板可能只是被隐藏过（surface 还活着）：先重报当前边界，再恢复原生视图，
+          // 避免旧视图以隐藏前的尺寸盖住地址栏。
+          const bounds = measureBounds()
+          if (bounds) {
+            lastBounds.current = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`
+            await invoke('feature:browser:set-bounds', bounds)
+          }
           const shown = await invoke<BrowserState>('feature:browser:set-visible', { visible: true })
           if (!cancelled) {
             setState(shown)
@@ -303,6 +324,79 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     [applyResult, measureBounds]
   )
 
+  const openNewTab = useCallback(async (): Promise<void> => {
+    setActionError(null)
+    try {
+      const bounds = measureBounds()
+      const next = await invoke<BrowserState>('feature:browser:tab-new', {
+        ...(bounds ? { bounds } : {})
+      })
+      applyResult(next)
+      setAddress('')
+      requestAnimationFrame(() => addressRef.current?.focus())
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }, [applyResult, measureBounds])
+
+  const activateTab = useCallback(
+    async (id: string): Promise<void> => {
+      setActionError(null)
+      try {
+        const next = await invoke<BrowserState>('feature:browser:tab-activate', { id })
+        applyResult(next)
+        setAddress(next.url || '')
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [applyResult]
+  )
+
+  const closeTab = useCallback(
+    async (id: string): Promise<void> => {
+      setActionError(null)
+      try {
+        const next = await invoke<BrowserState>('feature:browser:tab-close', { id })
+        applyResult(next)
+        setAddress(next.url || '')
+        if (!next.open) onClose()
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [applyResult, onClose]
+  )
+
+  useEffect(() => {
+    if (!open || !visible) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      if (key === 't') {
+        event.preventDefault()
+        void openNewTab()
+      } else if (key === 'l') {
+        event.preventDefault()
+        addressRef.current?.focus()
+        addressRef.current?.select()
+      } else if (key === 'w' && !event.shiftKey && state.activeTabId) {
+        event.preventDefault()
+        void closeTab(state.activeTabId)
+      } else if (event.key === 'Tab') {
+        const tabs = state.tabs ?? []
+        if (tabs.length < 2) return
+        event.preventDefault()
+        const current = tabs.findIndex((tab) => tab.id === state.activeTabId)
+        const delta = event.shiftKey ? -1 : 1
+        const next = (current + delta + tabs.length) % tabs.length
+        if (tabs[next]) void activateTab(tabs[next].id)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, visible, openNewTab, closeTab, activateTab, state.activeTabId, state.tabs])
+
   const runAction = useCallback(
     async (action: 'back' | 'forward' | 'reload' | 'stop' | 'close') => {
       setActionError(null)
@@ -359,8 +453,60 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
   const title = state.title?.trim() || (state.url ? displayHost(state.url) : '空白页')
   const error = state.error ?? (bootError ? { code: 'FEATURE', message: bootError } : null)
 
+  const tabs = state.tabs ?? []
+
   return (
     <section className="browser-surface" aria-label="内置浏览器">
+      <div className="browser-tabs" role="tablist" aria-label="浏览器标签">
+        {tabs.map((tab) => {
+          const active = tab.id === state.activeTabId
+          const label = tabLabel(tab)
+          return (
+            <div
+              key={tab.id}
+              className={['browser-tab', active ? 'is-active' : '', tab.loading ? 'is-loading' : '', tab.error ? 'is-error' : '']
+                .filter(Boolean)
+                .join(' ')}
+              role="tab"
+              tabIndex={0}
+              aria-selected={active}
+              title={tab.url || label}
+              onClick={() => {
+                if (!active) void activateTab(tab.id)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  if (!active) void activateTab(tab.id)
+                }
+              }}
+            >
+              {tab.loading ? (
+                <Loader2 size={11} strokeWidth={1.6} className="browser-tab-spinner" aria-hidden />
+              ) : (
+                <Globe size={11} strokeWidth={1.5} className="browser-tab-icon" aria-hidden />
+              )}
+              <span className="browser-tab-title truncate">{label}</span>
+              <button
+                type="button"
+                className="browser-tab-close"
+                aria-label={`关闭标签 ${label}`}
+                title="关闭标签（Ctrl+W）"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void closeTab(tab.id)
+                }}
+              >
+                <X size={11} strokeWidth={1.7} aria-hidden />
+              </button>
+            </div>
+          )
+        })}
+        <button type="button" className="browser-tab-new" aria-label="新建标签页" title="新建标签页（Ctrl+T）" onClick={() => void openNewTab()}>
+          <Plus size={14} strokeWidth={1.7} aria-hidden />
+        </button>
+      </div>
+
       <header className="browser-toolbar">
         <button
           type="button"

@@ -157,11 +157,11 @@ describe('goal.test.ts', () => {
   describe('工具列表按模式注入 update_goal', () => {
     it('TOOL_DEFINITIONS 保持基础工具；goal 模式追加 update_goal', () => {
       const baseNames = TOOL_DEFINITIONS.map((tool) => tool.name)
-      expect(baseNames).toHaveLength(46)
+      expect(baseNames).toHaveLength(57)
       expect(baseNames).not.toContain('update_goal')
       const goalTools = toolDefinitionsForRun(true)
       expect(goalTools.map((tool) => tool.name)).toContain('update_goal')
-      expect(goalTools).toHaveLength(46)
+      expect(goalTools).toHaveLength(57)
       const goalTool = goalTools.find((tool) => tool.name === 'update_goal')
       expect(goalTool).toMatchObject({ category: 'meta', risk: 'low' })
       expect(goalTool?.parameters).toMatchObject({ required: ['status'] })
@@ -435,7 +435,7 @@ describe('mode.test.ts', () => {
    *
    * 覆盖审计报告第 5 项的验收点：
    * 1) 聊天模式系统提示：明确「只讨论、不执行」、只列只读工具、Goal 段不注入；
-   * 2) 工具白名单：只读工具 + ask_user；写入/执行/记忆/目标/计划/子代理一律不可用；
+   * 2) 工具白名单：只读工具 + ask_user；写入/执行/记忆/目标/计划/集群成员一律不可用；
    * 3) 权限层硬拦截：即使 permission=auto，chat 下 write_file / run_command / remember 也 denied，
    *    **工具不会真正执行**、文件与命令产物不变（不是只靠提示词）；
    * 4) 主进程自带 systemPrompt 缺聊天段时由内核补上（防止绕过）；
@@ -576,7 +576,7 @@ describe('mode.test.ts', () => {
   /* ── 2. 工具白名单 ───────────────────────────────────────────── */
 
   describe('聊天模式工具白名单', () => {
-    it('只读类工具与 ask_user 放行，其余（写入/执行/记忆/目标/计划/子代理/画布）全部拒绝', () => {
+    it('只读类工具与 ask_user 放行，其余（写入/执行/记忆/目标/计划/集群成员/画布）全部拒绝', () => {
       for (const name of ['read_file', 'list_dir', 'glob', 'grep']) {
         expect(isChatModeToolAllowed(name, 'read'), name).toBe(true)
       }
@@ -587,7 +587,7 @@ describe('mode.test.ts', () => {
       expect(isChatModeToolAllowed('run_command', 'exec')).toBe(false)
       expect(isChatModeToolAllowed('remember', 'meta')).toBe(false)
       expect(isChatModeToolAllowed('todo_write', 'meta')).toBe(false)
-      expect(isChatModeToolAllowed('task', 'meta')).toBe(false)
+      expect(isChatModeToolAllowed('swarm', 'meta')).toBe(false)
       expect(isChatModeToolAllowed('open_artifact', 'meta')).toBe(false)
       expect(isChatModeToolAllowed('update_goal', 'meta')).toBe(false)
     })
@@ -629,7 +629,7 @@ describe('mode.test.ts', () => {
   /* ── 3. 权限层硬拦截 ─────────────────────────────────────────── */
 
   describe('聊天模式权限层硬拦截（即使 permission=auto）', () => {
-    it('写入 / 执行 / 记忆 / 目标 / 计划 / 子代理 / 画布 一律 deny，并提示切到工作模式', () => {
+    it('写入 / 执行 / 记忆 / 目标 / 计划 / 集群成员 / 画布 一律 deny，并提示切到工作模式', () => {
       const ws = makeTempWorkspace()
       try {
         const ctx = policy(ws.root, 'auto', 'chat')
@@ -640,7 +640,7 @@ describe('mode.test.ts', () => {
           ['remember', 'meta', { text: '记住：以后都用 CSV' }],
           ['update_goal', 'meta', { status: 'active' }],
           ['todo_write', 'meta', { todos: [] }],
-          ['task', 'meta', { description: '调研', prompt: '调研一下' }],
+          ['swarm', 'meta', { goal: '调研', tasks: [{ title: '调研', prompt: '调研一下' }] }],
           ['open_artifact', 'meta', { title: '报告', kind: 'html', content: '<html></html>' }]
         ]
         for (const [name, category, input] of denied) {
@@ -845,7 +845,7 @@ describe('mode.test.ts', () => {
 describe('plan-mode.test.ts', () => {
   /**
    * P0-2 计划模式 —— 内核验收：
-   * 1) 工具白名单：只读 + ask_user/todo_write/submit_plan，写入/执行/记忆/子代理/目标一律不暴露；
+   * 1) 工具白名单：只读 + ask_user/todo_write/submit_plan，写入/执行/记忆/集群成员/目标一律不暴露；
    * 2) 即使模型强行调用写入工具，权限层也只读拒绝（不是只靠提示词）；
    * 3) submit_plan 生成 pending 计划、plan_updated 事件与 Markdown 产物；
    * 4) 计划模式可带历史 goal 运行，但不会注入目标段/update_goal；
@@ -923,7 +923,7 @@ describe('plan-mode.test.ts', () => {
         expect(names).toEqual(
           expect.arrayContaining(['list_dir', 'glob', 'grep', 'read_file', 'ask_user', 'todo_write', 'submit_plan'])
         )
-        expect(names).not.toEqual(expect.arrayContaining(['write_file', 'edit_file', 'run_command', 'task', 'remember', 'update_goal', 'web_fetch', 'mcp_call', 'terminal']))
+        expect(names).not.toEqual(expect.arrayContaining(['write_file', 'edit_file', 'run_command', 'swarm', 'remember', 'update_goal', 'web_fetch', 'mcp_call', 'terminal']))
         expect(run.provider.calls[0].system).toContain('## 计划模式')
         expect(run.provider.calls[0].system).toContain('submit_plan')
         // 计划模式不注入 Goal 段，即使会话里曾有 active 目标
@@ -940,18 +940,18 @@ describe('plan-mode.test.ts', () => {
       expect(prompt).toContain('工具使用（计划模式：只读）')
       expect(prompt).not.toContain('新建文件用 write_file')
       expect(prompt).not.toContain('Windows 默认 PowerShell')
-      expect(prompt).not.toContain('## 可用子代理角色')
+      expect(prompt).not.toContain('## 可用集群成员角色')
     })
 
-    it('denies unadvertised meta tools such as task even if the model calls them', async () => {
+    it('denies unadvertised meta tools such as swarm even if the model calls them', async () => {
       const ws = makeTempWorkspace({ 'in/sales.csv': 'a,b\n1,2\n' })
       try {
         const run = await runScript(ws, [
           {
             text: '',
-            toolCalls: [{ name: 'task', input: { description: '偷偷调研', prompt: '读取工作区并总结' } }]
+            toolCalls: [{ name: 'swarm', input: { goal: '偷偷调研', tasks: [{ title: '调研', prompt: '读取工作区并总结' }] } }]
           },
-          { text: '计划模式下不能启动子代理。' }
+          { text: '计划模式下不能启动集群。' }
         ])
         const tool = run.result.messages
           .flatMap((message) => message.content)
@@ -1582,6 +1582,67 @@ describe('prompt-mentions.test.ts', () => {
         })
         expect(forModel).toContain('## 交付质量（全类型）')
         expect(forModel).toContain('deliverable-quality')
+      }
+    })
+
+    it('工作模式包含讨论/执行分界、最小改动、可逆性与如实汇报约束', () => {
+      const prompt = buildSystemPrompt({ workspace: 'C:\\work', permissionMode: 'auto', mode: 'work' })
+      for (const text of [
+        '## 讨论与执行的分界',
+        '## 改动边界（最小正确改动）',
+        '共享状态与不可逆操作',
+        '区分已验证与未验证',
+        '4K/超宽屏',
+        '相对路径:行号'
+      ]) {
+        expect(prompt).toContain(text)
+      }
+    })
+
+    it('提示词不含固定分辨率或固定视口数值', () => {
+      const modes = ['work', 'chat', 'research'] as const
+      const prompts = [
+        ...modes.map((mode) => buildSystemPrompt({ workspace: 'C:\\work', mode })),
+        buildSystemPrompt({ workspace: 'C:\\work', planMode: true })
+      ]
+      for (const prompt of prompts) {
+        expect(prompt).not.toMatch(/\b(?:1080p|1440|1920|2560|3840)\b/)
+        expect(prompt).not.toMatch(/\b\d{3,4}\s*px\b/)
+      }
+    })
+
+    it('计划模式按定界、勘察、设计、收敛、提交五段组织，并要求提交前自检', () => {
+      const prompt = buildSystemPrompt({ workspace: 'C:\\work', planMode: true })
+      for (const text of ['### 工作节奏', '**定界**', '**勘察**', '**设计**', '**收敛**', '### 提交前自检', '### 边界', 'submit_plan']) {
+        expect(prompt).toContain(text)
+      }
+      expect(prompt).not.toContain('## 可用集群成员角色')
+    })
+
+    it('目标模式要求完成审计、真实证据与预算收尾', () => {
+      const prompt = buildSystemPrompt({
+        workspace: 'C:\\work',
+        mode: 'work',
+        goal: {
+          id: 'g1',
+          objective: '交付一份可发布的报告',
+          status: 'active',
+          maxRounds: 5,
+          round: 2,
+          createdAt: 1,
+          updatedAt: 2,
+          summary: '已完成初稿',
+          nextStep: '补齐数据',
+          maxToolCalls: 200,
+          toolCalls: 4,
+          maxActiveMs: 1200000,
+          activeMs: 60000,
+          maxNoProgressRounds: 3,
+          noProgressRounds: 0
+        }
+      })
+      for (const text of ['### 完成审计', '原始要求 → 产物/证据', 'evidence', 'status=completed', 'status=blocked', '接近预算时先收尾在途工作']) {
+        expect(prompt).toContain(text)
       }
     })
   })

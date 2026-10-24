@@ -24,7 +24,7 @@
 
 .rewind-confirm-time {
   flex: 0 0 auto;
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .rewind-confirm-label {
@@ -32,7 +32,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -40,8 +40,8 @@
 .rewind-confirm-summary {
   margin: 0;
   color: var(--text-2);
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-body);
 }
 
 .rewind-confirm-files {
@@ -70,7 +70,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -78,7 +78,7 @@
 .rewind-confirm-action {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .rewind-confirm-files li.is-conflict .rewind-confirm-path,
@@ -99,8 +99,8 @@
   gap: 6px;
   margin: 0 0 7px;
   color: var(--rust);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-medium);
 }
 
 .rewind-confirm-conflicts ul {
@@ -114,22 +114,22 @@
 
 .rewind-confirm-conflicts li {
   color: var(--text-2);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
   overflow-wrap: anywhere;
 }
 
 .rewind-confirm-conflicts li .mono {
   display: block;
   color: var(--text);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .rewind-confirm-recheck {
   margin-top: 8px;
   padding: 0;
   color: var(--gold);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -144,8 +144,8 @@
   border-radius: 0 var(--r-xs) var(--r-xs) 0;
   background: var(--amber-dim);
   color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .rewind-confirm-warning svg {
@@ -157,15 +157,15 @@
 .rewind-confirm-error {
   margin: 0;
   color: var(--rust);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .rewind-confirm-note {
   margin: 0;
   color: var(--text-3);
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
 }
 
 .rewind-btn {
@@ -177,8 +177,8 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 

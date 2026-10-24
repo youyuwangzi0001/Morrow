@@ -23,7 +23,7 @@ import {
   type XlsxPreviewResult,
   type XlsxSheetPreview
 } from '../../shared/file-types'
-import { formatBytes } from '../../shared/format'
+import { formatBytes } from '../../shared/usage'
 import { statWorkspaceFile } from './workspace-files'
 
 const MAX_XML_TEXT_BYTES = 32 * 1024 * 1024

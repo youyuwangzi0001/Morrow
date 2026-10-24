@@ -80,6 +80,7 @@ const api: MorrowApi = {
     hide: () => invoke<void>(IPC.islandHide),
     openMain: (input?: IslandOpenMainInput) => invoke<void>(IPC.islandOpenMain, input ?? {}),
     quickSend: (input: IslandQuickSendInput) => invoke<void>(IPC.islandQuickSend, input),
+    syncSession: (sessionId: string | null) => invoke<void>(IPC.islandSyncSession, { sessionId }),
     onState: (listener: (snapshot: import('../shared/types').IslandSnapshot) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, payload: import('../shared/types').IslandSnapshot): void =>
         listener(payload)
@@ -282,6 +283,7 @@ const api: MorrowApi = {
 
   app: {
     openExternal: (url: string) => invoke<void>(IPC.openExternal, { url }),
+    setTheme: (theme: 'dark' | 'light') => invoke<void>(IPC.appTheme, { theme }),
     openDataDir: () => invoke<void>(IPC.openDataDir),
     openLogs: () => invoke<void>(IPC.openLogs),
     changeDataDir: () => invoke<{ restarted: boolean; path?: string; canceled?: boolean; files?: number }>(IPC.changeDataDir),

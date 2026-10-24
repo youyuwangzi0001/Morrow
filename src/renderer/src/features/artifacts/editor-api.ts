@@ -249,10 +249,6 @@ export async function listHistory(path: string): Promise<HistoryListResult> {
   return invoke<HistoryListResult>('feature:history:list', { path })
 }
 
-export async function readHistoryVersion(path: string, versionId: string): Promise<{ version: HistoryVersion; content: string }> {
-  return invoke('feature:history:read', { path, versionId })
-}
-
 export async function diffHistory(path: string, versionId: string, targetContent?: string): Promise<HistoryDiffResult> {
   return invoke<HistoryDiffResult>('feature:history:diff', {
     path,

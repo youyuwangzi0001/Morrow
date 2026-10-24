@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -33,6 +33,7 @@ import { createBootstrap } from './services/bootstrap'
 import { getSettingsStore } from './services/settings-store'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './services/agent-service'
+import { openExternalUrl } from './services/external-open'
 import { deriveMeta, getSessionStore } from './services/session-store'
 import { getCheckpointService } from './services/checkpoint-service'
 import { sessionExportContent } from './services/session-export'
@@ -40,7 +41,6 @@ import { getWebSearchService } from './services/web-search'
 import { syncProviderModels } from './services/model-sync'
 import { restoreSnapshotSafely } from './services/snapshot-restore'
 import { registerArtifactHtml } from './services/artifact-preview'
-import { getArtifactVersionStore } from './services/artifact-versions-runtime'
 import { buildExportHtml, buildExportMarkdown, buildExportText } from './services/artifact-export'
 import {
   clearIslandSession,
@@ -50,9 +50,10 @@ import {
   quickSendToMain,
   resetIslandAfterClear,
   setIslandExpanded,
+  syncIslandSession,
   syncIslandVisibility
 } from './services/island'
-import { resolveWindowClose } from './services/lifecycle'
+import { resolveWindowClose, setAppIconTheme } from './services/lifecycle'
 import {
   createDemoWorkspace,
   describeWorkspace,
@@ -62,11 +63,16 @@ import {
   searchWorkspaceFiles
 } from './services/workspace'
 import { describeAttachment } from './services/attachments'
-import { clearSearchIndex, invalidateSearchSession } from './services/search-invalidation'
 import { clearScheduleSessionReferences } from './services/schedule-runtime'
 import { abortAllSideChats } from './features/sidechat'
-import { getTokenActivityService, initializeTokenActivity } from './services/token-activity-runtime'
-import { openPathFromUserShell, openSystemFolder, revealInFileManager } from './services/reveal'
+import {
+  clearSearchIndex,
+  getArtifactVersionStore,
+  getTokenActivityService,
+  initializeTokenActivity,
+  invalidateSearchSession
+} from './services/runtime'
+import { openPathFromUserShell, revealInFileManager } from './services/reveal'
 import { log } from './services/logger'
 import { cleanTargetDataDir, copyUserDataForMigration } from './services/paths'
 import {
@@ -414,22 +420,29 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.openExternal, async (_e, payload: { url: string }): Promise<Result<void>> => {
-    if (!/^https?:\/\//i.test(payload?.url ?? '')) return fail('INVALID_URL', '只能打开 http(s) 链接。')
-    // 功能测试/演示自动化下不拉起外部 Edge，避免测试机出现“Edge 正在以提升权限运行”弹窗。
-    if (process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')) return ok(undefined)
-    await shell.openExternal(payload.url)
+    const url = payload?.url ?? ''
+    if (!/^https?:\/\//i.test(url)) return fail('INVALID_URL', '只能打开 http(s) 链接。')
+    const result = await openExternalUrl(url)
+    if (!result.opened) {
+      return fail('EXTERNAL_OPEN_FAILED', `无法调用系统浏览器；链接已复制到剪贴板：${url}`)
+    }
+    return ok(undefined)
+  })
+
+  ipcMain.handle(IPC.appTheme, async (_e, payload: { theme?: string }): Promise<Result<void>> => {
+    setAppIconTheme(payload?.theme === 'light' ? 'light' : 'dark')
     return ok(undefined)
   })
 
   ipcMain.handle(IPC.openDataDir, async (): Promise<Result<void>> => {
-    const error = await openSystemFolder(app.getPath('userData'))
+    const error = await openPathFromUserShell(app.getPath('userData'))
     if (error) return fail('OPEN_DATA_DIR_FAILED', `打开数据目录失败：${error}`)
     return ok(undefined)
   })
 
   ipcMain.handle(IPC.openLogs, async (): Promise<Result<void>> => {
     const dir = join(app.getPath('userData'), 'logs')
-    const error = await openSystemFolder(existsSync(dir) ? dir : app.getPath('userData'))
+    const error = await openPathFromUserShell(existsSync(dir) ? dir : app.getPath('userData'))
     if (error) return fail('OPEN_LOGS_FAILED', `打开日志目录失败：${error}`)
     return ok(undefined)
   })
@@ -594,6 +607,15 @@ export function registerIpcHandlers(): void {
 
   /* ── 桌面灵动岛 ───────────────────────────────────────── */
   ipcMain.handle(IPC.islandState, (): Result<unknown> => ok(getIslandSnapshot()))
+
+  ipcMain.handle(IPC.islandSyncSession, (_e, payload: { sessionId?: unknown } | undefined): Result<void> => {
+    const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.trim() ? payload.sessionId.trim() : null
+    const active = sessionId
+      ? getAgentService(getSettingsStore(), getSessionStore()).activeRunInfo(sessionId)
+      : null
+    syncIslandSession(sessionId, active)
+    return ok(undefined)
+  })
 
   ipcMain.handle(IPC.islandSetExpanded, (_e, payload: { expanded?: unknown }): Result<void> => {
     setIslandExpanded(payload?.expanded === true)
@@ -1341,8 +1363,8 @@ export function registerIpcHandlers(): void {
         const target = resolveWorkspacePath(payload?.path, 'file')
         if (!target) return fail('FILE_UNAVAILABLE', '产物不在可访问的工作区内，或已被移动。')
         const kind = target.split('.').pop()?.toLowerCase() ?? 'txt'
-        // HTML 报告常内嵌图片/样式，放宽到 8MB；其它文本仍限制 2MB，避免超大内容拖垮渲染
-        const limit = /^(?:html?|xhtml)$/i.test(kind) ? 8 * 1024 * 1024 : 2 * 1024 * 1024
+        // 长报告/HTML 都可能接近数 MB；统一 8MB 上限，超出时由 readTextSafe 标记 truncated。
+        const limit = 8 * 1024 * 1024
         const { content, size, truncated } = await readTextSafe(target, limit)
         return ok({ content, size, kind, truncated })
       } catch (err) {
@@ -1734,12 +1756,3 @@ export function disposeAgentRuntime(): void {
   }
 }
 
-export function disposeIpc(): void {
-  for (const channel of Object.values(IPC)) {
-    try {
-      ipcMain.removeHandler(channel)
-    } catch {
-      // ignore
-    }
-  }
-}

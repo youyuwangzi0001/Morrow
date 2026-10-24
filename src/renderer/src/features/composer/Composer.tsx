@@ -32,7 +32,7 @@ import {
   isTextFileName
 } from '@shared/file-types'
 import { expandCustomCommand, INIT_RULES_PROMPT, RESERVED_COMMAND_NAMES } from '@shared/commands'
-import { formatBytes } from '@shared/format'
+import { formatBytes } from '@shared/usage'
 import { findModel } from '@shared/models'
 import { decodeTextBytes } from '@shared/text-decode'
 import type {
@@ -46,14 +46,19 @@ import type {
 } from '@shared/types'
 import { isReasoningEffort, REASONING_EFFORTS } from '@shared/models'
 import { RESEARCH_DEPTHS } from '@shared/research'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { IconButton, Segmented, Select } from '../../ui'
 import { requestSettingsTab } from '../settings/settings-tab'
 import { openWorkbench } from '../workbench/events'
 import { ContextMeter } from './ContextMeter'
 import './Composer.css'
 
-const MAX_INPUT_HEIGHT = 220
+/** 输入区最小高度（与图 3 的默认高度一致）；最大高度为窗口的三分之一 */
+const MIN_INPUT_HEIGHT = 80
+
+function maxInputHeightForViewport(): number {
+  return Math.max(MIN_INPUT_HEIGHT, Math.floor(window.innerHeight / 3))
+}
 
 const REASONING_DESCRIPTIONS: Record<ReasoningEffort, string> = {
   auto: '由模型自己决定',
@@ -80,18 +85,20 @@ const PERMISSION_OPTIONS: { value: PermissionMode; label: string; description: s
   {
     value: 'ask',
     label: '询问',
-    description: '工作区内的写入与命令自动执行；危险命令、外部动作与越界访问先问你'
+    description: '当前文件夹内的写入和命令自动执行；危险命令、外部操作或访问文件夹外时先问你'
   },
   {
     value: 'auto',
     label: '完全访问',
-    description: '无需任何批准：写入、命令、危险操作与工作区外访问都直接执行'
+    description: '不再询问：写入、命令、危险操作和访问文件夹外都直接执行'
   }
 ]
 
 /* ── 对话模式（聊天 / 工作）文案 ──────────────────────────────── */
 
-const SESSION_MODE_OPTIONS: { value: SessionMode; label: string; description: string }[] = [
+type ComposerMode = 'chat' | 'work'
+
+const SESSION_MODE_OPTIONS: { value: ComposerMode; label: string; description: string }[] = [
   {
     value: 'chat',
     label: '聊天',
@@ -100,20 +107,13 @@ const SESSION_MODE_OPTIONS: { value: SessionMode; label: string; description: st
   {
     value: 'work',
     label: '工作',
-    description: '工作模式：可以读写文件、执行命令与推进目标，受右侧权限档位约束'
-  },
-  {
-    value: 'research',
-    label: '研究',
-    description: '深度研究：多轮联网检索与交叉核对，最后生成带引用的报告；不改文件、不跑命令'
+    description: '工作模式：可以读写文件、执行命令与推进目标；深度研究用 /research 调取'
   }
 ]
 
-
-const MODE_DESCRIPTION: Record<SessionMode, string> = {
+const MODE_DESCRIPTION: Record<ComposerMode, string> = {
   chat: '聊天模式：Morrow 只讨论和只读分析，不会改文件、跑命令；需要动手时切到工作模式。',
-  work: '工作模式：Morrow 可以读写文件、执行命令、推进目标（按权限档位）。',
-  research: '深度研究模式：多轮检索、核对来源，最后生成带引用的报告；不改文件、不跑命令。'
+  work: '工作模式：可以读写文件、执行命令、推进目标；深度研究用 /research 调取（按权限档位）。'
 }
 
 /* ── 斜杠命令（可执行子集） ───────────────────────────────────── */
@@ -406,22 +406,29 @@ export function Composer(): React.JSX.Element {
   const [sweep, setSweep] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [manualHeight, setManualHeight] = useState(settings.composerHeight || 0)
+  const [maxInputHeight, setMaxInputHeight] = useState(maxInputHeightForViewport)
   const goalBusyRef = useRef(false)
 
   useEffect(() => {
     setManualHeight(settings.composerHeight || 0)
   }, [settings.composerHeight])
 
+  useEffect(() => {
+    const onResize = (): void => setMaxInputHeight(maxInputHeightForViewport())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   const beginComposerResize = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>): void => {
       event.preventDefault()
       const startY = event.clientY
-      const startHeight = manualHeight > 0 ? manualHeight : Math.max(26, textareaRef.current?.clientHeight ?? 60)
+      const startHeight = manualHeight > 0 ? manualHeight : Math.max(MIN_INPUT_HEIGHT, textareaRef.current?.clientHeight ?? MIN_INPUT_HEIGHT)
       let latest = startHeight
       let moved = false
       const onMove = (moveEvent: PointerEvent): void => {
         moved = true
-        latest = Math.max(80, Math.min(360, Math.round(startHeight + startY - moveEvent.clientY)))
+        latest = Math.max(MIN_INPUT_HEIGHT, Math.min(maxInputHeight, Math.round(startHeight + startY - moveEvent.clientY)))
         setManualHeight(latest)
       }
       const onUp = (): void => {
@@ -434,24 +441,19 @@ export function Composer(): React.JSX.Element {
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     },
-    [manualHeight, updateSettings]
+    [manualHeight, maxInputHeight, updateSettings]
   )
-
-  const resetComposerHeight = useCallback((): void => {
-    setManualHeight(0)
-    void updateSettings({ composerHeight: 0 })
-  }, [updateSettings])
 
   const onComposerResizeKey = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
       event.preventDefault()
-      const current = manualHeight || Math.max(26, textareaRef.current?.clientHeight ?? 80)
-      const next = Math.max(80, Math.min(360, current + (event.key === 'ArrowUp' ? 16 : -16)))
+      const current = manualHeight || Math.max(MIN_INPUT_HEIGHT, textareaRef.current?.clientHeight ?? MIN_INPUT_HEIGHT)
+      const next = Math.max(MIN_INPUT_HEIGHT, Math.min(maxInputHeight, current + (event.key === 'ArrowUp' ? 16 : -16)))
       setManualHeight(next)
       void updateSettings({ composerHeight: next })
     },
-    [manualHeight, updateSettings]
+    [manualHeight, maxInputHeight, updateSettings]
   )
 
   const modelRef = session?.model ?? settings.defaultModel
@@ -462,6 +464,7 @@ export function Composer(): React.JSX.Element {
   const reasoningAvailable = Boolean(modelInfo?.supportsReasoning && modelInfo.reasoningStyle)
   const sessionMode: SessionMode =
     session?.mode === 'chat' ? 'chat' : session?.mode === 'research' ? 'research' : 'work'
+  const uiSessionMode: ComposerMode = sessionMode === 'chat' ? 'chat' : 'work'
   const chatMode = sessionMode === 'chat'
   const researchMode = sessionMode === 'research'
   const researchLocked =
@@ -719,6 +722,36 @@ export function Composer(): React.JSX.Element {
         disabledReason: chatMode ? '聊天模式不能使用计划模式：先切到工作模式。' : '生成过程中不能切换计划模式，先停止再试。',
         run: () => (planMode ? void setPlanMode(false) : armPlanPrefix())
       },
+      {
+        name: 'research',
+        label: researchMode ? '退出深度研究' : '深度研究',
+        description: chatMode
+          ? '聊天模式不能研究；先切到工作模式，再用 /research 问题'
+          : researchMode
+            ? '退出研究子流程，回到普通工作；已完成的研究报告仍保留'
+            : '在当前工作对话中启动多轮检索、来源核对与带引用报告；可写 /research quick 问题',
+        disabled: chatMode || running,
+        disabledReason: chatMode
+          ? '聊天模式不能研究：先切到工作模式。'
+          : running
+            ? '当前正在运行，等本轮结束或先停止，再启动/退出研究。'
+            : undefined,
+        run: () => {
+          if (researchMode) {
+            void setSessionMode('work')
+            return
+          }
+          setText('/research ')
+          setPopup(null)
+          requestAnimationFrame(() => {
+            const el = textareaRef.current
+            if (!el) return
+            el.focus()
+            el.setSelectionRange(el.value.length, el.value.length)
+          })
+          notify('info', '在 /research 后面写研究问题；可先写 quick / standard / deep 指定深度。')
+        }
+      },
       { name: 'settings', label: '打开设置', description: '模型、权限、外观、功能与工具', run: openSettings },
       {
         name: 'btw',
@@ -732,13 +765,13 @@ export function Composer(): React.JSX.Element {
         name: 'swarm',
         label: '集群',
         description: chatMode
-          ? '聊天模式不能启动小助手；先切换到工作模式'
+          ? '聊天模式不能启动集群；先切换到工作模式'
           : planMode
             ? '计划模式只读探索；批准后再用集群'
-            : '把目标拆成 2–8 个独立部分，同时交给多个小助手',
+            : '把目标拆成 1–10 个独立部分，交给集群成员并行完成',
         disabled: chatMode || planMode || running || !session,
         disabledReason: chatMode
-          ? '聊天模式不能启动小助手：先切到工作模式。'
+          ? '聊天模式不能启动集群：先切到工作模式。'
           : planMode
             ? '计划模式只读探索；批准执行后再用集群。'
             : running
@@ -753,7 +786,7 @@ export function Composer(): React.JSX.Element {
             el.focus()
             el.setSelectionRange(el.value.length, el.value.length)
           })
-          notify('info', '在 /swarm 后面写下目标；Morrow 会拆成独立部分，同时交给多个小助手（最多 8 个并行）。')
+          notify('info', '在 /swarm 后面写下目标；Morrow 会拆成 1–10 个独立部分，交给集群成员并行完成。')
         }
       },
       chatMode
@@ -847,19 +880,19 @@ export function Composer(): React.JSX.Element {
           run: () => armCustomCommand(command)
         }))
     ]
-  }, [newSession, startDemo, openSettings, armGoalPrefix, armPlanPrefix, compactSession, compacting, running, session, chatMode, planMode, permissionMode, setPlanMode, openRewind, initProjectRules, workspace, exportCurrentSession, customCommands, armCustomCommand])
+  }, [newSession, startDemo, openSettings, armGoalPrefix, armPlanPrefix, compactSession, compacting, running, session, chatMode, researchMode, planMode, permissionMode, setPlanMode, setSessionMode, notify, openRewind, initProjectRules, workspace, exportCurrentSession, customCommands, armCustomCommand])
 
-  /* 自动增高（到 220px 才出现内部滚动条）；手动拖动过高度时以手动值为下限 */
+  /* 自动增高（到窗口 1/3 才出现内部滚动条）；手动拖动过高度时以手动值为下限 */
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    const min = manualHeight > 0 ? manualHeight : 26
-    const max = manualHeight > 0 ? Math.max(MAX_INPUT_HEIGHT, manualHeight) : MAX_INPUT_HEIGHT
+    const max = maxInputHeight
+    const min = manualHeight > 0 ? Math.min(manualHeight, max) : MIN_INPUT_HEIGHT
     const next = Math.min(max, Math.max(min, el.scrollHeight))
     el.style.height = `${next}px`
     el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
-  }, [text, manualHeight])
+  }, [text, manualHeight, maxInputHeight])
 
   /* 运行计时 */
   const runId = run?.runId
@@ -1003,6 +1036,55 @@ export function Composer(): React.JSX.Element {
       openSideChat((btwCommand[1] ?? '').trim() || undefined)
       return
     }
+    // /research [quick|standard|deep] [问题]：工作模式内启动深度研究子流程
+    const researchCommand = /^\/research(?:\s+(quick|standard|deep|快速|标准|深入))?(?:\s+([\s\S]*))?$/i.exec(value)
+    if (researchCommand) {
+      const rawDepth = (researchCommand[1] ?? '').toLowerCase()
+      const topic = (researchCommand[2] ?? '').trim()
+      const depthMap: Record<string, ResearchDepth> = { quick: 'quick', standard: 'standard', deep: 'deep', 快速: 'quick', 标准: 'standard', 深入: 'deep' }
+      const requestedDepth = depthMap[rawDepth] ?? researchDepth
+      setPopup(null)
+      if (!topic) {
+        setText(rawDepth ? `/research ${researchCommand[1]} ` : '/research ')
+        requestAnimationFrame(() => textareaRef.current?.focus())
+        notify('info', '在 /research 后面写研究问题；可先写 quick / standard / deep 指定深度。')
+        return
+      }
+      if (chatMode) {
+        notify('warning', '聊天模式不能启动深度研究：先切到工作模式。')
+        return
+      }
+      if (running) {
+        notify('warning', '当前正在运行，等本轮结束或先停止，再启动新的研究。')
+        return
+      }
+      if (researchMode) {
+        notify('info', '当前已有研究子流程；先完成或退出研究，再开始新的研究。')
+        return
+      }
+      if (planMode) {
+        notify('warning', '计划模式只读探索；先退出计划模式，再启动深度研究。')
+        return
+      }
+      if (goalActive) {
+        notify('warning', '目标进行中，先暂停或结束目标，再启动深度研究。')
+        return
+      }
+      const outgoing = attachments
+      setText('')
+      setAttachments([])
+      setSweep(true)
+      window.setTimeout(() => setSweep(false), 480)
+      setResearchDepth(requestedDepth)
+      void (async () => {
+        await setSessionMode('research')
+        if (useAppStore.getState().session?.mode !== 'research') return
+        const ok = await sendMessage(topic, outgoing.length ? outgoing : undefined, { researchDepth: requestedDepth })
+        if (!ok) await setSessionMode('work')
+      })()
+      requestAnimationFrame(() => textareaRef.current?.focus())
+      return
+    }
     // /plan [任务]：给出提示并保留输入；带任务发送时自动进入计划模式
     const planCommand = /^\/plan(?:\s+([\s\S]*))?$/i.exec(value)
     if (planCommand) {
@@ -1033,7 +1115,7 @@ export function Composer(): React.JSX.Element {
       requestAnimationFrame(() => textareaRef.current?.focus())
       return
     }
-    // /swarm + 目标：让模型拆成并行子任务（真正的编排仍由模型决定）
+    // /swarm + 目标：让模型拆成集群任务（真正的编排仍由模型决定）
     const swarmCommand = /^\/swarm(?:\s+([\s\S]*))?$/i.exec(value)
     if (swarmCommand) {
       const objective = (swarmCommand[1] ?? '').trim()
@@ -1044,11 +1126,11 @@ export function Composer(): React.JSX.Element {
         return
       }
       if (chatMode) {
-        notify('warning', '聊天模式不能启动小助手：先切到工作模式。')
+        notify('warning', '聊天模式不能启动集群：先切到工作模式。')
         return
       }
       if (researchMode) {
-        notify('warning', '深度研究模式不启用并行小助手：先切到工作模式。')
+        notify('warning', '深度研究模式不启用集群：先切到工作模式。')
         return
       }
       if (planMode) {
@@ -1061,7 +1143,7 @@ export function Composer(): React.JSX.Element {
       window.setTimeout(() => setSweep(false), 480)
       void sendMessage(
         [
-          '请把下面的总目标拆成 2–8 个相互独立的子任务，并用 swarm 工具（集群）并行交给合适的角色（explore/plan/review/test/docs/general），每个子任务写清背景、输入/输出与验证方式。',
+          '请把下面的总目标拆成 1–10 个相互独立的子任务，并用 swarm 工具（集群）并行交给合适的成员类型（explore/plan/review/test/docs/general）；成员与主代理拥有相同的工作区权限，类型只改变工作重点。每个子任务写清背景、输入/输出与验证方式。',
           '等所有子任务返回后，汇总结果、检查是否有失败或冲突，再给出真实可验证的最终结果；不要把未完成的子任务当作完成。',
           '',
           `总目标：${objective}`
@@ -1288,10 +1370,9 @@ export function Composer(): React.JSX.Element {
       <button
         type="button"
         className="composer-resize"
-        aria-label="拖动调整输入框高度，双击恢复自动高度"
-        title="拖动调整输入框高度 · 双击恢复自动"
+        aria-label="拖动调整输入框高度"
+        title="拖动调整输入框高度"
         onPointerDown={beginComposerResize}
-        onDoubleClick={resetComposerHeight}
         onKeyDown={onComposerResizeKey}
       >
         <span className="composer-resize-grip" aria-hidden />
@@ -1577,16 +1658,19 @@ export function Composer(): React.JSX.Element {
                 />
               </div>
             ) : null}
-            <div className="composer-picker composer-picker-mode" title={MODE_DESCRIPTION[sessionMode]}>
+            <div className="composer-picker composer-picker-mode" title={MODE_DESCRIPTION[uiSessionMode]}>
               <Segmented
-                ariaLabel={`对话模式：${MODE_DESCRIPTION[sessionMode]}`}
-                value={sessionMode}
+                ariaLabel={`对话模式：${MODE_DESCRIPTION[uiSessionMode]}`}
+                value={uiSessionMode}
                 options={SESSION_MODE_OPTIONS.map((item) => ({
                   value: item.value,
                   label: item.label,
                   description: item.description
                 }))}
-                onChange={(next) => void setSessionMode(next)}
+                onChange={(next) => {
+                  if (next === uiSessionMode) return
+                  void setSessionMode(next)
+                }}
               />
             </div>
             {chatMode ? (

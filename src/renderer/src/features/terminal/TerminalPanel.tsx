@@ -9,12 +9,16 @@ import type {
   TerminalProcessInfo,
   ThemeMode
 } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button } from '../../ui'
 import './terminal.css'
 
 const CODE_FONT_FAMILY =
-  "'IBM Plex Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace"
+  "'JetBrains Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace"
+
+function resolvedCodeFont(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue('--font-code').trim() || CODE_FONT_FAMILY
+}
 
 const EVENT_CHANNEL = 'feature:terminal:event'
 const HEIGHT_KEY = 'morrow.terminal.height.v2'
@@ -93,7 +97,8 @@ function TerminalSurface({
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const codeFontSize = useAppStore((state) => state.settings.codeFontSize || 13)
+  const codeFontSize = useAppStore((state) => state.settings.codeFontSize || 12)
+  const codeFont = useAppStore((state) => state.settings.codeFont || 'jetbrains')
   const runningRef = useRef(process.status === 'running')
   runningRef.current = process.status === 'running'
 
@@ -101,8 +106,9 @@ function TerminalSurface({
     const host = hostRef.current
     if (!host) return undefined
     const term = new Terminal({
-      fontFamily: CODE_FONT_FAMILY,
+      fontFamily: resolvedCodeFont(),
       fontSize: codeFontSize,
+      fontWeight: 400,
       lineHeight: 1.15,
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -224,8 +230,9 @@ function TerminalSurface({
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    term.options.fontFamily = CODE_FONT_FAMILY
+    term.options.fontFamily = resolvedCodeFont()
     term.options.fontSize = codeFontSize
+    term.options.fontWeight = 400
     requestAnimationFrame(() => {
       try {
         fitRef.current?.fit()
@@ -233,7 +240,7 @@ function TerminalSurface({
         // 容器尚未布局完成时忽略
       }
     })
-  }, [codeFontSize])
+  }, [codeFontSize, codeFont])
 
   useEffect(() => {
     if (!active || !open) return undefined

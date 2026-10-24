@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { findModel } from '@shared/models'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { useClickOutside } from '../../ui'
 import {
   contextSnapshot,

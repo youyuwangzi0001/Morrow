@@ -266,26 +266,20 @@ export function TokenActivityTab(): React.JSX.Element {
 
   return (
     <div className="token-activity">
-      <header className="token-activity-head">
-        <div>
-          <h3 className="token-activity-title">Token 活动</h3>
-          <p className="token-activity-sub">按天统计真实 token 用量；服务商没有返回时会标成估算。</p>
-        </div>
-        <div className="token-activity-head-actions">
-          <Segmented
-            value={mode}
-            options={(Object.keys(MODE_LABEL) as ViewMode[]).map((key) => ({ value: key, label: MODE_LABEL[key] }))}
-            onChange={(next) => {
-              setMode(next)
-              setTooltip(null)
-            }}
-            ariaLabel="Token 活动视图"
-          />
-          <button type="button" className="token-refresh" aria-label="刷新 Token 活动" title="刷新" onClick={() => void load()}>
-            <RefreshCw size={13} strokeWidth={1.5} className={loading ? 'is-spinning' : ''} aria-hidden />
-          </button>
-        </div>
-      </header>
+      <div className="token-activity-head-actions token-activity-toolbar">
+        <Segmented
+          value={mode}
+          options={(Object.keys(MODE_LABEL) as ViewMode[]).map((key) => ({ value: key, label: MODE_LABEL[key] }))}
+          onChange={(next) => {
+            setMode(next)
+            setTooltip(null)
+          }}
+          ariaLabel="Token 活动视图"
+        />
+        <button type="button" className="token-refresh" aria-label="刷新 Token 活动" title="刷新" onClick={() => void load()}>
+          <RefreshCw size={13} strokeWidth={1.5} className={loading ? 'is-spinning' : ''} aria-hidden />
+        </button>
+      </div>
 
       {summary ? (
         <div className="token-activity-stats">

@@ -205,6 +205,93 @@ describe('SettingsStore：Provider 配置校验', () => {
     expect(mergedOpenai.models.some((model) => model.id === 'manual-extra')).toBe(true)
   })
 
+  it('旧设置里已下线的 Grok 4.1 与 OpenRouter 不会复活', () => {
+    const s = store()
+    const xai = builtinProviders().find((provider) => provider.id === 'xai')!
+    s.saveProvider({
+      ...xai,
+      models: [
+        ...xai.models,
+        {
+          id: 'grok-4.1-fast',
+          label: 'Grok 4.1 Fast',
+          contextWindow: 2_000_000,
+          maxOutput: 65_536,
+          supportsTools: true,
+          supportsReasoning: true
+        }
+      ]
+    })
+
+    const file = join(electronState.dataDir, 'settings.json')
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as { providers: ProviderConfig[] }
+    raw.providers.push({
+      id: 'openrouter',
+      kind: 'openai-compat',
+      name: 'OpenRouter（模型聚合）',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      models: [{ id: 'x-ai/grok-4.7', label: 'Grok 4.7（OpenRouter）', contextWindow: 500_000, supportsTools: true }],
+      apiKeyStored: false,
+      enabled: true,
+      isBuiltin: true,
+      category: 'custom'
+    })
+    writeFileSync(file, JSON.stringify(raw))
+
+    const restarted = store()
+    const providers = restarted.get().providers
+    expect(providers.some((provider) => provider.id === 'openrouter')).toBe(false)
+    const mergedXai = providers.find((provider) => provider.id === 'xai')!
+    expect(mergedXai.models.map((model) => model.id)).toContain('grok-4.6')
+    expect(mergedXai.models.map((model) => model.id)).not.toContain('grok-4.1-fast')
+
+    // 合并结果立即写回磁盘，旧条目不再留在设置文件里
+    const persisted = JSON.parse(readFileSync(file, 'utf8')) as { providers: ProviderConfig[] }
+    expect(persisted.providers.some((provider) => provider.id === 'openrouter')).toBe(false)
+    expect(persisted.providers.find((provider) => provider.id === 'xai')!.models.map((model) => model.id)).not.toContain(
+      'grok-4.1-fast'
+    )
+  })
+
+  it('旧 Kimi 模型在启动合并时移除，并保持 K3.1 Pro / K3 / K2.8 的顺序', () => {
+    const s = store()
+    const kimi = builtinProviders().find((provider) => provider.id === 'kimi')!
+    s.saveProvider({
+      ...kimi,
+      models: [
+        { id: 'kimi-k2.6', label: 'Kimi K2.6', contextWindow: 262_144, supportsTools: true },
+        ...kimi.models,
+        { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code', contextWindow: 262_144, supportsTools: true }
+      ]
+    })
+
+    const restarted = store()
+    const merged = restarted.get().providers.find((provider) => provider.id === 'kimi')!
+    expect(merged.models.map((model) => model.id)).toEqual(['kimi-k3.1-pro', 'kimi-k3', 'kimi-k2.8-preview'])
+
+    const persisted = JSON.parse(readFileSync(join(electronState.dataDir, 'settings.json'), 'utf8')) as {
+      providers: ProviderConfig[]
+    }
+    expect(persisted.providers.find((provider) => provider.id === 'kimi')!.models.map((model) => model.id)).toEqual([
+      'kimi-k3.1-pro',
+      'kimi-k3',
+      'kimi-k2.8-preview'
+    ])
+  })
+
+  it('旧版未配置外部搜索的用户自动启用内置搜索；显式关闭 builtin 保持关闭', () => {
+    store()
+    const file = join(electronState.dataDir, 'settings.json')
+    const raw = { ...defaultSettings(), webSearch: { enabled: false, provider: 'tavily', apiKeyStored: false, maxResults: 5 } } as Record<string, any>
+    writeFileSync(file, JSON.stringify(raw))
+    const migrated = store().get().webSearch
+    expect(migrated).toMatchObject({ enabled: true, provider: 'builtin' })
+
+    raw.webSearch = { enabled: false, provider: 'builtin', apiKeyStored: false, maxResults: 5 }
+    writeFileSync(file, JSON.stringify(raw))
+    expect(store().get().webSearch).toMatchObject({ enabled: false, provider: 'builtin' })
+  })
+
   it('模型列表按 ID 去重，非法模型不会落盘', () => {
     const s = store()
     const config = customProvider({
@@ -221,25 +308,38 @@ describe('SettingsStore：Provider 配置校验', () => {
 describe('SettingsStore：update 与默认模型', () => {
   it('合法设置生效；越界/未知字段/不存在的默认模型被拒绝', () => {
     const s = store()
+    const initial = s.get()
+    expect(initial.fontSize).toBe(14)
+    expect(initial.codeFontSize).toBe(12)
+    expect(initial.codeFont).toBe('jetbrains')
     const updated = s.update({ theme: 'light', fontSize: 15, sidebarWidth: 300, compactThreshold: 0.7 })
     expect(updated).toMatchObject({ theme: 'light', fontSize: 15, sidebarWidth: 300, compactThreshold: 0.7 })
     expect(s.get().runningSendMode).toBe('queue')
-    expect(s.get().codeFontSize).toBe(13)
-    expect(s.update({ codeFontSize: 12 }).codeFontSize).toBe(12)
-    expect(s.update({ codeFontSize: 15 }).codeFontSize).toBe(15)
-    expect(() => s.update({ codeFontSize: 11 })).toThrow()
-    expect(() => s.update({ codeFontSize: 16 })).toThrow()
+    expect(s.update({ codeFontSize: 11 }).codeFontSize).toBe(11)
+    expect(s.update({ codeFontSize: 14 }).codeFontSize).toBe(14)
+    expect(() => s.update({ codeFontSize: 10 })).toThrow()
+    expect(() => s.update({ codeFontSize: 15 })).toThrow()
     expect(() => s.update({ codeFontSize: 9 })).toThrow()
+    expect(s.update({ fontSize: 12 }).fontSize).toBe(12)
+    expect(s.update({ fontSize: 15 }).fontSize).toBe(15)
+    expect(() => s.update({ fontSize: 11 })).toThrow()
+    expect(() => s.update({ fontSize: 16 })).toThrow()
 
-    // 旧版本允许 11–20，升级载入时夹到 12–15，避免设置页没有选中项。
+    // 旧版本允许更大范围，升级载入时夹进当前区间，避免设置页没有选中项。
     writeFileSync(
       join(electronState.dataDir, 'settings.json'),
-      JSON.stringify({ ...defaultSettings(), codeFontSize: 20 }),
+      JSON.stringify({ ...defaultSettings(), fontSize: 20, codeFontSize: 20, codeFont: 'anthropic' }),
       'utf8'
     )
-    expect(store().get().codeFontSize).toBe(15)
+    expect(store().get().fontSize).toBe(15)
+    expect(store().get().codeFontSize).toBe(14)
+    // Anthropic Mono 已停止提供；旧配置回落到默认字体，也不能再写入。
+    expect(store().get().codeFont).toBe('jetbrains')
+    expect(() => s.update({ codeFont: 'anthropic' as never })).toThrow()
     expect(s.update({ runningSendMode: 'steer' }).runningSendMode).toBe('steer')
     expect(() => s.update({ runningSendMode: 'bad' as never })).toThrow()
+    expect(s.update({ evolutionEnabled: false }).evolutionEnabled).toBe(false)
+    expect(s.update({ evolutionEnabled: true }).evolutionEnabled).toBe(true)
 
     for (const effort of ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
       expect(s.update({ reasoningEffort: effort }).reasoningEffort).toBe(effort)
@@ -628,6 +728,26 @@ describe('SessionStore 持久化', () => {
     session.research = planning
     store.save(session)
     expect(store.get(session.id)?.research?.status).toBe('planning')
+  })
+
+  it('研究状态在回到工作模式后仍可持久化', () => {
+    const session = createSession('work')
+    session.research = {
+      topic: '完成后回到工作',
+      depth: 'quick',
+      status: 'completed',
+      round: 2,
+      maxRounds: 2,
+      minSources: 4,
+      sourceCount: 4,
+      startedAt: 1,
+      updatedAt: 2,
+      artifactId: 'artifact_report'
+    }
+    store.save(session)
+    const loaded = store.get(session.id)
+    expect(loaded?.mode).toBe('work')
+    expect(loaded?.research).toMatchObject({ status: 'completed', topic: '完成后回到工作', sourceCount: 4 })
   })
 
   it('半损坏会话补齐数组/默认值，仍可加载', () => {

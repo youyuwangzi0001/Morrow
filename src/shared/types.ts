@@ -163,6 +163,9 @@ export interface RewindResult {
 
 export type ThemeMode = 'dark' | 'light'
 
+/** 代码/等宽内容的字体 */
+export type CodeFontId = 'ibm-plex' | 'jetbrains' | 'system'
+
 /* ── 模型与提供方 ─────────────────────────────────────────────── */
 
 export type ProviderKind = 'openai-compat' | 'anthropic' | 'demo'
@@ -185,13 +188,15 @@ export interface ModelInfo {
   maxOutput?: number
   supportsTools: boolean
   supportsReasoning?: boolean
+  /** 模型是否接受图片输入；describe_media 会优先用当前对话模型的视觉能力 */
+  supportsVision?: boolean
   /** 推理强度如何映射到 provider：effort=reasoning_effort，thinking=thinking budget */
   reasoningStyle?: 'effort' | 'thinking'
   pricing?: ModelPricing
   note?: string
 }
 
-export type ProviderCategory = 'cn' | 'global' | 'aggregator' | 'local' | 'custom'
+export type ProviderCategory = 'cn' | 'global' | 'local' | 'custom'
 
 export interface ProviderConfig {
   id: string
@@ -199,7 +204,7 @@ export interface ProviderConfig {
   name: string
   baseUrl: string
   models: ModelInfo[]
-  /** 设置页分组：国内 / 国际 / 聚合 / 本地 / 自定义 */
+  /** 设置页分组：国内 / 国际 / 本地 / 自定义 */
   category?: ProviderCategory
   /** 主进程保存的加密 Key 是否存在（渲染层永远拿不到明文） */
   apiKeyStored: boolean
@@ -267,24 +272,42 @@ export interface ToolUseBlock {
   result?: ToolResult
   startedAt?: number
   finishedAt?: number
-  /** 子代理工具的活动摘要 */
-  subagent?: { label: string; stepCount?: number }
+  /** 长任务进度（0–100），由工具进度事件实时更新 */
+  progressPercent?: number
   /** swarm 每个子任务的实时状态与最终摘要 */
   swarmTasks?: SwarmTaskProgress[]
 }
 
 export type SwarmTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'exhausted'
 
+export interface SwarmOperation {
+  id: string
+  name: string
+  title: string
+  status: ToolStatus
+  /** 入参摘要（路径/命令/关键词） */
+  input?: string
+  /** 结果摘要（成功输出） */
+  output?: string
+  error?: string
+  startedAt?: number
+  finishedAt?: number
+}
+
 export interface SwarmTaskProgress {
   index: number
   title: string
   agent: string
+  /** 成员类型的中文名（新事件提供；旧数据回退到 agent） */
+  agentTitle?: string
   status: SwarmTaskStatus
   stepCount?: number
   /** 最近一步在做什么 */
   note?: string
   summary?: string
   error?: string
+  /** 成员实际执行过的全部工具操作（按时间顺序） */
+  operations?: SwarmOperation[]
 }
 
 export interface ContentBlockError {
@@ -722,7 +745,7 @@ export interface TerminalEventPayload {
 
 /* ── 联网搜索 ─────────────────────────────────────────────────── */
 
-export type WebSearchProvider = 'tavily' | 'brave' | 'serper' | 'searxng'
+export type WebSearchProvider = 'builtin' | 'tavily' | 'brave' | 'serper' | 'searxng'
 
 export interface WebSearchSettings {
   enabled: boolean
@@ -752,6 +775,87 @@ export interface WebSearchResponse {
   cached?: boolean
 }
 
+/* ── 本地多媒体（ComfyUI / ffmpeg） ──────────────────────────── */
+
+/**
+ * Morrow 不内置推理引擎和权重，只负责检测、启动、配置与调用本机 ComfyUI。
+ * 两个可选引擎（ComfyUI、ffmpeg）各自独立，缺失时给出明确指引。
+ */
+export interface MediaEngineSettings {
+  enabled: boolean
+  /** ComfyUI HTTP API，例如 http://127.0.0.1:8188 */
+  comfyuiUrl: string
+  /** ComfyUI 安装目录；填写后可在设置里一键启动引擎 */
+  comfyuiDir: string | null
+  /** 自定义 ffmpeg 路径；留空则从 PATH 检测 */
+  ffmpegPath: string | null
+  /** 引擎离线时，生成任务自动尝试启动 */
+  autoStart: boolean
+  /** 单张图片/编辑的超时（秒） */
+  imageTimeoutSec: number
+  /** 单条视频的超时（秒） */
+  videoTimeoutSec: number
+  /** 成品在工作区内的子目录，例如 media */
+  outputDir: string
+}
+
+export type MediaKind = 'image' | 'video' | 'audio'
+
+/** 生成/编辑结果随 ToolResult.meta.media 回传，用于聊天内联卡片与画布。 */
+export interface MediaToolMeta {
+  kind: MediaKind
+  /** 工作区内的绝对路径 */
+  path: string
+  artifactId?: string
+  title: string
+  model: string
+  engine: string
+  bytes: number
+  width?: number
+  height?: number
+  durationSec?: number
+  seed?: number
+  elapsedMs?: number
+  /** 内联缩略图（data URL），避免依赖会过期的预览令牌 */
+  thumbnailDataUrl?: string
+  referencePath?: string
+}
+
+export interface MediaEngineModelStatus {
+  id: 'image' | 'video'
+  label: string
+  ready: boolean
+  /** false 表示没有安装目录、引擎也不在线，无法核对文件，而不是文件真的缺失 */
+  verified: boolean
+  missing: string[]
+  installed: string[]
+  /** 视频模型的可用模式；图片模型省略 */
+  modes?: { ref2va: boolean; fl2va: boolean }
+}
+
+export interface MediaEngineStatus {
+  engine: {
+    online: boolean
+    url: string
+    version?: string
+    gpu?: string
+    vramTotalMb?: number
+    vramFreeMb?: number
+    message: string
+  }
+  models: MediaEngineModelStatus[]
+  /** ComfyUI 侧必需的自定义节点是否可用（离线时未知，按 false 处理） */
+  nodes: { gguf: boolean; minimaxH3: boolean }
+  ffmpeg: {
+    available: boolean
+    path?: string
+    version?: string
+    message: string
+  }
+  comfyuiDir: string | null
+  canStart: boolean
+}
+
 /* ── 设置 ─────────────────────────────────────────────────────── */
 
 export type SendKey = 'enter' | 'ctrl+enter'
@@ -766,6 +870,7 @@ export interface Settings {
   fontSize: number
   /** 代码/等宽内容的独立字号（不影响正文与界面字号） */
   codeFontSize: number
+  codeFont: CodeFontId
   reduceMotion: boolean
   permissionMode: PermissionMode
   sendKey: SendKey
@@ -793,8 +898,14 @@ export interface Settings {
   layoutVersion?: number
   /** 会话自动命名（用首条消息） */
   autoTitle: boolean
+  /** 任务结束后自动复盘，生成记忆/技能改进建议（只在强信号时调用当前模型） */
+  evolutionEnabled: boolean
+  /** 任务完成后自动记录一条任务经验（不调用模型） */
+  episodeMemoryEnabled: boolean
   /** 联网搜索配置 */
   webSearch: WebSearchSettings
+  /** 本地多媒体引擎（ComfyUI / ffmpeg）；不内置模型 */
+  mediaEngine: MediaEngineSettings
   /** 关闭窗口时：询问并记住 / 最小化到任务栏 / 完全退出 */
   closeAction: CloseAction
   /** 任务完成/失败时发送系统通知 */
@@ -829,6 +940,14 @@ export interface CustomCommandInfo {
 }
 
 export type HookEvent = 'user_prompt_submit' | 'post_tool_use' | 'run_finished'
+
+export const HOOK_EVENTS: readonly HookEvent[] = ['user_prompt_submit', 'post_tool_use', 'run_finished']
+export const MAX_HOOKS = 20
+export const MAX_ENABLED_HOOKS_PER_EVENT = 5
+
+export function isHookEvent(value: unknown): value is HookEvent {
+  return typeof value === 'string' && (HOOK_EVENTS as readonly string[]).includes(value)
+}
 
 export interface HookConfig {
   id: string
@@ -888,7 +1007,9 @@ export type RuntimeEvent =
       status?: ToolStatus
       title?: string
       note?: string
-      /** 子代理当前步数（用于活动条展示，不参与模型上下文） */
+      /** 长任务进度（0–100） */
+      percent?: number
+      /** 集群成员当前步数（用于活动条展示，不参与模型上下文） */
       stepCount?: number
       /** swarm 子任务的结构化实时状态（同一个 swarm 工具下按 index 区分） */
       swarmTask?: SwarmTaskProgress
@@ -914,7 +1035,7 @@ export type RuntimeEvent =
   | (RuntimeEventBase & { type: 'goal_updated'; goal: Goal | null })
   | (RuntimeEventBase & { type: 'plan_updated'; plan: SessionPlan | null; planMode: boolean })
   | (RuntimeEventBase & { type: 'queue_updated'; queue: QueuedMessage[] })
-  | (RuntimeEventBase & { type: 'compaction'; phase: 'started' | 'finished'; savedTokens?: number })
+  | (RuntimeEventBase & { type: 'compaction'; phase: 'started' | 'finished'; savedTokens?: number; beforeTokens?: number; afterTokens?: number })
   | (RuntimeEventBase & { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string })
   | (RuntimeEventBase & { type: 'error'; error: ResultError })
   | (RuntimeEventBase & { type: 'demo_step'; index: number; total: number; caption: string })

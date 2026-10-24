@@ -128,9 +128,9 @@
 .canvas-head-title {
   overflow: hidden;
   color: var(--text);
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.005em;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -165,16 +165,16 @@
 
 .canvas-head-title.is-empty {
   font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-regular);
   letter-spacing: 0;
 }
 
 .canvas-head-kicker {
   overflow: hidden;
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -199,11 +199,11 @@
 /* 第二层：多产物时出现的 mono 文件 tabs */
 .canvas-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   flex: 0 0 auto;
-  gap: 2px;
-  min-height: 32px;
-  padding: 0 8px;
+  gap: var(--tab-gap);
+  min-height: 34px;
+  padding: 0 8px 0 10px;
   overflow-x: auto;
   overflow-y: hidden;
   border-bottom: 1px solid var(--line);
@@ -222,34 +222,30 @@
   gap: 6px;
   flex: 0 0 auto;
   max-width: 220px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 0;
-  color: var(--text-3);
-  font-size: 11px;
-  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+  height: var(--tab-height);
+  padding: 0 var(--tab-pad-right) 0 var(--tab-pad-x);
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
+  color: var(--tab-color);
+  font-size: var(--tab-font-size);
+  font-weight: var(--tab-font-weight);
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 
 .canvas-tab:hover {
-  color: var(--text-2);
-  background: var(--surface-inset);
+  color: var(--tab-hover-color);
+  background: var(--tab-hover-bg);
 }
 
 .canvas-tab.is-active {
-  border: 0;
-  border-radius: 0;
-  color: var(--text);
-  background: var(--surface);
+  border-color: var(--tab-active-border);
+  border-radius: var(--tab-radius);
+  color: var(--tab-active-color);
+  background: var(--tab-active-bg);
 }
 
 .canvas-tab.is-active::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 1px;
-  background: var(--gold);
+  content: none;
 }
 
 .canvas-tab.is-active svg {
@@ -259,9 +255,19 @@
 .canvas-doc-tab {
   position: relative;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   flex: 0 0 auto;
+  height: var(--tab-height);
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
+  color: var(--tab-color);
   cursor: grab;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.canvas-doc-tab:hover {
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-color);
 }
 
 .canvas-doc-tab.is-dragging {
@@ -270,12 +276,23 @@
 }
 
 .canvas-doc-tab .canvas-tab-inner {
-  padding-right: 26px;
+  height: 100%;
+  padding: 0 26px 0 var(--tab-pad-x);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.canvas-doc-tab .canvas-tab-inner:hover,
+.canvas-doc-tab .canvas-tab-inner.is-active {
+  border: 0;
+  background: transparent;
 }
 
 .canvas-doc-tab.is-active {
-  background: var(--surface);
-  color: var(--text);
+  border-color: var(--tab-active-border);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-color);
 }
 
 .canvas-tab-dirty {
@@ -292,20 +309,20 @@
   border: 1px solid var(--line);
   border-radius: 3px;
   color: var(--text-3);
-  font-size: 8px;
+  font-size: var(--fs-3xs);
   line-height: 13px;
 }
 
 .canvas-tab-close {
   position: absolute;
-  right: 4px;
+  right: var(--tab-pad-right);
   top: 50%;
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: var(--tab-close-size);
+  height: var(--tab-close-size);
   translate: 0 -50%;
-  border-radius: var(--r-xs);
+  border-radius: var(--tab-close-radius);
   color: var(--text-3);
   opacity: 0;
   transition: opacity var(--dur-fast) ease, color var(--dur-fast) ease, background var(--dur-fast) ease;
@@ -326,8 +343,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10.5px;
-  letter-spacing: 0.01em;
+  font-size: var(--tab-font-size);
+  letter-spacing: var(--ls-ui);
 }
 
 /* ── 内容区 ───────────────────────────────────────────────────── */
@@ -358,8 +375,8 @@
   border-radius: var(--r-xs);
   background: var(--surface-inset);
   color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.6;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-readable);
 }
 
 .canvas-preview-failure {
@@ -377,13 +394,13 @@
 
 .canvas-preview-failure-title {
   color: var(--rust);
-  font-size: 13px;
+  font-size: var(--fs-ui);
 }
 
 .canvas-preview-failure-detail {
   color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.7;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 
@@ -434,8 +451,8 @@
   border-radius: var(--r-sm);
   background: var(--surface-inset);
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -498,11 +515,11 @@
 
 .canvas-empty-lead {
   font-family: var(--font-display);
-  font-size: 16.5px;
-  font-weight: 400;
-  line-height: 1.55;
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-copy);
   color: var(--text);
-  letter-spacing: 0.005em;
+  letter-spacing: var(--ls-ui);
 }
 
 .canvas-empty-guide {
@@ -518,15 +535,15 @@
   align-items: baseline;
   gap: 10px;
   color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
 }
 
 .canvas-empty-step {
   flex: 0 0 auto;
   color: var(--gold);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-wide);
   opacity: 0.9;
 }
 
@@ -541,8 +558,8 @@
 
 .canvas-recent-label {
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-wide);
 }
 
 .canvas-recent-list {
@@ -593,14 +610,14 @@
 .canvas-recent-title {
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .canvas-recent-meta {
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .canvas-recent-arrow {
@@ -617,8 +634,8 @@
 
 .canvas-empty-foot {
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-label);
 }
 
 /* 加载与错误 */
@@ -663,7 +680,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-base);
   white-space: nowrap;
   transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }

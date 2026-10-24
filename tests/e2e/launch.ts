@@ -67,11 +67,23 @@ export interface MorrowApp {
   close(): Promise<void>
 }
 
-/** 等第一个窗口并加载完成。 */
+/** 等第一个窗口并加载完成。灵动岛模式下主窗口与岛窗口创建顺序有竞争，优先返回主窗口。 */
 async function waitFirstWindow(app: ElectronApplication, opts: LaunchOptions): Promise<Page> {
-  const page = await app.firstWindow({ timeout: opts.timeoutMs ?? 60_000 })
+  const timeout = opts.timeoutMs ?? 60_000
+  const started = Date.now()
+  let page = await app.firstWindow({ timeout })
+  if (page.url().includes('#island')) {
+    while (Date.now() - started < timeout) {
+      const main = app.windows().find((candidate) => !candidate.isClosed() && !candidate.url().includes('#island'))
+      if (main) {
+        page = main
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
   await page.waitForLoadState('domcontentloaded')
-  if (opts.waitForSelector) await page.waitForSelector(opts.waitForSelector, { timeout: opts.timeoutMs ?? 60_000 })
+  if (opts.waitForSelector) await page.waitForSelector(opts.waitForSelector, { timeout })
   return page
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import {
-  Bot,
   ChevronRight,
   Copy,
+  Clapperboard,
   ExternalLink,
   FileCode2,
   FilePen,
@@ -20,10 +20,11 @@ import {
 } from 'lucide-react'
 import type { SwarmTaskProgress, ToolUseBlock } from '@shared/types'
 import { swarmTasksFromMeta } from '@shared/swarm'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { CodeBlock } from '../../components/CodeBlock'
 import { DiffView } from '../../components/DiffView'
 import { formatDuration, extractDiff, toolDuration, toolStatusLabel, toolSummary, toolVisual, type ToolVisual } from './tool-meta'
+import { MediaResultCard, readMediaMeta } from './MediaResultCard'
 import './activity.css'
 
 const SWARM_STATUS_LABEL: Record<SwarmTaskProgress['status'], string> = {
@@ -32,7 +33,7 @@ const SWARM_STATUS_LABEL: Record<SwarmTaskProgress['status'], string> = {
   completed: '完成',
   failed: '失败',
   cancelled: '已取消',
-  exhausted: '步数用尽'
+  exhausted: '未完成'
 }
 
 const ICONS: Record<ToolVisual, React.JSX.Element> = {
@@ -45,10 +46,10 @@ const ICONS: Record<ToolVisual, React.JSX.Element> = {
   glob: <FolderOpen size={14} strokeWidth={1.5} aria-hidden />,
   todo: <ListChecks size={14} strokeWidth={1.5} aria-hidden />,
   ask: <MessageCircleQuestion size={14} strokeWidth={1.5} aria-hidden />,
-  subagent: <Bot size={14} strokeWidth={1.5} aria-hidden />,
   artifact: <FileCode2 size={14} strokeWidth={1.5} aria-hidden />,
   web: <Globe size={14} strokeWidth={1.5} aria-hidden />,
   memory: <Sparkles size={14} strokeWidth={1.5} aria-hidden />,
+  media: <Clapperboard size={14} strokeWidth={1.5} aria-hidden />,
   other: <Wrench size={14} strokeWidth={1.5} aria-hidden />
 }
 
@@ -63,10 +64,10 @@ const FALLBACK_TITLE: Record<ToolVisual, string> = {
   glob: '查找文件',
   todo: '更新计划',
   ask: '向你提问',
-  subagent: '交给小助手',
   artifact: '生成成品',
   web: '查询网络',
   memory: '记下要点',
+  media: '处理多媒体',
   other: '执行操作'
 }
 
@@ -114,13 +115,14 @@ interface ToolRowProps {
 
 /**
  * 执行过程中的一行：菱形节点 + 工具图标 + 人话标题 + mono 摘要 + 耗时。
- * 展开后是参数、结果、diff、子代理摘要。这是产品的签名元素，刻意不用卡片堆叠。
+ * 展开后是参数、结果、diff、集群成员摘要。这是产品的签名元素，刻意不用卡片堆叠。
  */
 export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Element {
   const copyText = useAppStore((s) => s.copyText)
   const undoFileChange = useAppStore((s) => s.undoFileChange)
   const openExternal = useAppStore((s) => s.openExternal)
   const [open, setOpen] = useState(false)
+  const [openTask, setOpenTask] = useState<number | null>(null)
   const [undoing, setUndoing] = useState(false)
   const [undone, setUndone] = useState(false)
   const userToggled = useRef(false)
@@ -132,17 +134,20 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
   const statusLabel = toolStatusLabel(block.status)
   const diff = extractDiff(block.result, block)
   const failed = block.status === 'error' || block.status === 'denied'
-  const subagent = block.subagent
   const isSwarm = block.name === 'swarm'
 
   /* 撤销文件修改：主进程在写文件前做了快照（meta.snapshotPath） */
   const resultMeta = block.result?.meta ?? {}
+  const mediaMeta = readMediaMeta(resultMeta.media)
   const webSources =
     block.name === 'web_search' && Array.isArray(resultMeta.sources)
       ? (resultMeta.sources as Array<Record<string, unknown>>).filter(
           (source) => typeof source.url === 'string' && /^https?:\/\//i.test(source.url)
         )
       : []
+  const searchQuery = block.name === 'web_search' && typeof block.input?.query === 'string' ? block.input.query : ''
+  const searchAnswer =
+    block.name === 'web_search' && typeof resultMeta.answer === 'string' ? resultMeta.answer.trim() : ''
   /* swarm：输入给出编排，实时事件给出进度，结果 meta 给出最终摘要。三者按 index 合并。 */
   const swarmInputTasks =
     block.name === 'swarm' && Array.isArray(block.input?.tasks)
@@ -171,13 +176,19 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
       index: plan.index,
       title: plan.title,
       agent: plan.agent,
+      ...(finalTask?.agentTitle ?? liveTask?.agentTitle
+        ? { agentTitle: finalTask?.agentTitle ?? liveTask?.agentTitle }
+        : {}),
       status: finalTask?.status ?? liveTask?.status ?? swarmFallback,
       ...(finalTask?.stepCount !== undefined || liveTask?.stepCount !== undefined
         ? { stepCount: finalTask?.stepCount ?? liveTask?.stepCount }
         : {}),
       ...(liveTask?.note ? { note: liveTask.note } : {}),
       ...(finalTask?.summary ?? liveTask?.summary ? { summary: finalTask?.summary ?? liveTask?.summary } : {}),
-      ...(finalTask?.error ?? liveTask?.error ? { error: finalTask?.error ?? liveTask?.error } : {})
+      ...(finalTask?.error ?? liveTask?.error ? { error: finalTask?.error ?? liveTask?.error } : {}),
+      ...(finalTask?.operations ?? liveTask?.operations
+        ? { operations: finalTask?.operations ?? liveTask?.operations }
+        : {})
     }
   })
   const swarmCompleted = swarmTasks.filter((task) => task.status === 'completed').length
@@ -186,7 +197,11 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
     ['failed', 'cancelled', 'exhausted'].includes(task.status)
   ).length
   const swarmGoal = isSwarm && typeof block.input?.goal === 'string' ? block.input.goal.trim() : ''
-  const baseSummary = isSwarm
+  const baseSummary = block.name === 'web_search'
+    ? [`${webSources.length} 个来源`, searchAnswer ? searchAnswer.replace(/\s+/g, ' ').slice(0, 72) : '']
+        .filter(Boolean)
+        .join(' · ')
+    : isSwarm
     ? [
         `${swarmCompleted}/${swarmTasks.length} 完成`,
         swarmRunning > 0 ? `${swarmRunning} 个进行中` : '',
@@ -194,11 +209,7 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
       ]
         .filter(Boolean)
         .join(' · ')
-    : subagent
-      ? typeof subagent.stepCount === 'number'
-        ? `${subagent.stepCount} 步`
-        : ''
-      : toolSummary(block)
+    : toolSummary(block)
   // 失败详情默认收起后，行内摘要直接显示错误原因，便于不展开也能定位。
   const summary = !isSwarm && failed && block.result?.error ? block.result.error : baseSummary
   const snapshotPath = typeof resultMeta.snapshotPath === 'string' && resultMeta.snapshotPath ? resultMeta.snapshotPath : null
@@ -229,12 +240,15 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
     }
   }
 
-  // 并行任务重要的是过程可见：开始运行时自动展开，用户手动收起后不再打扰。
+  // 集群任务重要的是过程可见：开始运行时自动展开，用户手动收起后不再打扰。
   useEffect(() => {
     if (isSwarm && (block.status === 'running' || block.status === 'waiting') && !userToggled.current) {
       setOpen(true)
     }
-  }, [isSwarm, block.status])
+    if (block.name === 'web_search' && block.status === 'running' && !userToggled.current) {
+      setOpen(true)
+    }
+  }, [isSwarm, block.name, block.status])
 
   const toggle = (): void => {
     userToggled.current = true
@@ -247,8 +261,7 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
         'spine-row',
         `is-${block.status}`,
         open ? 'is-open' : '',
-        last ? 'is-last' : '',
-        subagent ? 'is-subagent' : ''
+        last ? 'is-last' : ''
       ]
         .filter(Boolean)
         .join(' ')}
@@ -260,12 +273,25 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
             {ICONS[visual]}
           </span>
           <span className="spine-title">{block.title || FALLBACK_TITLE[visual]}</span>
-          {subagent || isSwarm ? <span className="spine-tag mono">小助手</span> : null}
+          {isSwarm ? <span className="spine-tag mono">集群成员</span> : null}
           {statusLabel ? <span className={`spine-status mono is-${block.status}`}>{statusLabel}</span> : null}
           {summary ? <span className="spine-summary mono" title={summary}>{summary}</span> : null}
           {duration ? <span className="spine-duration mono">{duration}</span> : null}
           <ChevronRight className="spine-chevron" size={13} strokeWidth={1.6} aria-hidden />
         </button>
+        {running && typeof block.progressPercent === 'number' ? (
+          <div
+            className="spine-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(block.progressPercent)}
+            aria-label={`${block.title || '任务'}进度`}
+          >
+            <span style={{ width: `${Math.max(2, Math.min(100, block.progressPercent))}%` }} />
+          </div>
+        ) : null}
+        {mediaMeta ? <MediaResultCard media={mediaMeta} /> : null}
 
         {open ? (
           <div className="spine-detail" id={detailId}>
@@ -276,26 +302,18 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
               </div>
             ) : null}
 
-            {subagent && !isSwarm ? (
-              <div className="spine-subagent">
-                <Bot size={13} strokeWidth={1.5} aria-hidden />
-                <span>小助手：{subagent.label}</span>
-                {typeof subagent.stepCount === 'number' ? <span className="mono">{subagent.stepCount} 步</span> : null}
-              </div>
-            ) : null}
-
             {isSwarm ? (
               <div className="spine-section">
                 <div className="spine-section-head">
-                  <span className="mono">并行任务</span>
+                  <span className="mono">集群任务</span>
                   <span className="mono spine-section-name">{swarmTasks.length} 个</span>
                   {block.result?.output ? (
                     <button
                       type="button"
                       className="spine-copy"
                       onClick={() => void copyText(block.result?.output ?? '')}
-                      aria-label="复制并行结果"
-                      title="复制并行结果"
+                      aria-label="复制集群结果"
+                      title="复制集群结果"
                     >
                       <Copy size={12} strokeWidth={1.6} aria-hidden />
                     </button>
@@ -315,27 +333,83 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
                     >
                       <span className="spine-swarm-index mono">{String(task.index + 1).padStart(2, '0')}</span>
                       <div className="spine-swarm-main">
-                        <div className="spine-swarm-line">
+                        <button
+                          type="button"
+                          className="spine-swarm-line spine-swarm-task-toggle"
+                          aria-expanded={openTask === task.index}
+                          onClick={() => setOpenTask((value) => (value === task.index ? null : task.index))}
+                          title={task.operations?.length ? '展开成员实际操作' : task.title}
+                        >
                           <span className="spine-swarm-title truncate">{task.title}</span>
-                          <span className="spine-swarm-role mono">{task.agent}</span>
+                          <span className="spine-swarm-role mono">{task.agentTitle ?? task.agent}</span>
                           <span className={`spine-swarm-status mono is-${task.status}`}>
                             {SWARM_STATUS_LABEL[task.status]}
                           </span>
                           {task.stepCount ? (
                             <span className="spine-swarm-steps mono">{task.stepCount} 步</span>
                           ) : null}
-                        </div>
+                          {task.operations && task.operations.length > 0 ? (
+                            <span className="spine-swarm-ops-count mono">{task.operations.length} 操作</span>
+                          ) : null}
+                          <ChevronRight
+                            className={['spine-swarm-chevron', openTask === task.index ? 'is-open' : ''].filter(Boolean).join(' ')}
+                            size={12}
+                            strokeWidth={1.6}
+                            aria-hidden
+                          />
+                        </button>
                         {task.status === 'running' && task.note ? (
                           <span className="spine-swarm-note">{task.note}</span>
                         ) : null}
                         {task.summary ? <span className="spine-swarm-summary">{task.summary}</span> : null}
                         {task.error ? <span className="spine-swarm-error">{task.error}</span> : null}
+                        {openTask === task.index && task.operations && task.operations.length > 0 ? (
+                          <div className="spine-swarm-ops">
+                            {task.operations.map((operation) => (
+                              <div className={`spine-swarm-op is-${operation.status}`} key={operation.id}>
+                                <span className="spine-swarm-op-icon" aria-hidden>
+                                  {operation.name === 'run_command' || operation.name === 'terminal' ? (
+                                    <Terminal size={11} strokeWidth={1.5} />
+                                  ) : operation.name === 'write_file' ? (
+                                    <FilePlus2 size={11} strokeWidth={1.5} />
+                                  ) : operation.name === 'edit_file' ? (
+                                    <FilePen size={11} strokeWidth={1.5} />
+                                  ) : operation.name.startsWith('web_') || operation.name === 'browser_open' ? (
+                                    <Globe size={11} strokeWidth={1.5} />
+                                  ) : (
+                                    <Wrench size={11} strokeWidth={1.5} />
+                                  )}
+                                </span>
+                                <span className="spine-swarm-op-main">
+                                  <span className="spine-swarm-op-line">
+                                    <span className="spine-swarm-op-title">{operation.title || operation.name}</span>
+                                    <span className="mono spine-swarm-op-name">{operation.name}</span>
+                                    {operation.startedAt && operation.finishedAt ? (
+                                      <span className="mono spine-swarm-op-time">
+                                        {formatDuration(operation.finishedAt - operation.startedAt)}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  {operation.input ? (
+                                    <span className="mono spine-swarm-op-param">{operation.input}</span>
+                                  ) : null}
+                                  {operation.output ? (
+                                    <span className="spine-swarm-op-output">{operation.output}</span>
+                                  ) : null}
+                                  {operation.error ? (
+                                    <span className="spine-swarm-op-error">{operation.error}</span>
+                                  ) : null}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </li>
                   ))}
                 </ul>
               </div>
-            ) : (
+            ) : block.name === 'web_search' ? null : (
               <div className="spine-section">
                 <div className="spine-section-head">
                   <span className="mono">参数</span>
@@ -370,7 +444,7 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
               </div>
             ) : null}
 
-            {block.result && block.name !== 'swarm' && (block.result.output || !failed) ? (
+            {block.result && block.name !== 'swarm' && block.name !== 'web_search' && (block.result.output || !failed) ? (
               <div className="spine-section">
                 <div className="spine-section-head">
                   <span className="mono">结果</span>
@@ -417,6 +491,36 @@ export function ToolRow({ block, last = false }: ToolRowProps): React.JSX.Elemen
               </div>
             ) : running && block.name !== 'swarm' ? (
               <p className="spine-empty">正在执行，结果出来后会显示在这里。</p>
+            ) : null}
+
+            {block.name === 'web_search' ? (
+              <div className="spine-section spine-search">
+                <div className="spine-section-head">
+                  <span className="mono">搜索</span>
+                  <span className="mono spine-section-name">{searchQuery || '联网搜索'}</span>
+                </div>
+                {searchAnswer ? <p className="spine-search-answer selectable">{searchAnswer}</p> : null}
+                {webSources.length > 0 ? (
+                  <div className="spine-search-chips">
+                    {webSources.slice(0, 6).map((source, index) => {
+                      const url = String(source.url)
+                      const title = typeof source.title === 'string' && source.title ? source.title : url
+                      return (
+                        <button
+                          type="button"
+                          className="spine-search-chip"
+                          key={`${url}-${index}`}
+                          onClick={() => void openExternal(url)}
+                          title={url}
+                        >
+                          <span className="mono">{index + 1}</span>
+                          <span className="truncate">{title}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
 
             {webSources.length > 0 ? (

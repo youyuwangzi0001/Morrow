@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, ListOrdered, Pencil, X, Zap } from 'lucide-react'
 import type { QueuedMessage } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './QueueTray.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []

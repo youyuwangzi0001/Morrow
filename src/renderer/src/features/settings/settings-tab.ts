@@ -5,6 +5,8 @@
  */
 export type SettingsTabId =
   | 'models'
+  | 'subscriptions'
+  | 'media'
   | 'search'
   | 'context'
   | 'style'
@@ -15,6 +17,7 @@ export type SettingsTabId =
   | 'tools'
   | 'terminal'
   | 'appearance'
+  | 'shortcuts'
   | 'about'
 
 let pendingTab: SettingsTabId | null = null

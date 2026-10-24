@@ -43,15 +43,15 @@
   border-radius: var(--r-xs);
   background: var(--gold-ghost);
   color: var(--gold);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   line-height: 15px;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--ls-caps);
 }
 
 .preview-meta {
   overflow: hidden;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -62,7 +62,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-xs);
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   line-height: 15px;
 }
 
@@ -76,7 +76,7 @@
 .preview-zoom {
   min-width: 34px;
   color: var(--text-2);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   text-align: center;
 }
 
@@ -87,8 +87,8 @@
   border-bottom: 1px solid var(--line);
   background: var(--gold-ghost);
   color: var(--text-3);
-  font-size: 10.5px;
-  line-height: 1.6;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
 }
 
 /* 通用加载 / 错误态 */
@@ -103,23 +103,23 @@
   min-height: 0;
   padding: 24px;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-align: center;
 }
 
 .preview-state-title {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-medium);
 }
 
 .preview-state-detail {
   max-width: 440px;
   margin: 0;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 
@@ -141,7 +141,7 @@
   border-radius: var(--r-xs);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
@@ -250,7 +250,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -268,14 +268,14 @@
 .preview-media-hint {
   margin: 0;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .preview-media-error {
   margin: 0;
   color: var(--rust);
-  font-size: 11px;
-  line-height: 1.7;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
 }
 
 .preview-media-error button {
@@ -321,7 +321,7 @@
   align-items: center;
   gap: 10px;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--fs-base);
   text-align: center;
 }
 
@@ -371,7 +371,7 @@
   border-radius: var(--r-xs);
   background: var(--surface-inset);
   color: var(--text);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   text-align: center;
 }
 
@@ -435,7 +435,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -444,8 +444,8 @@
   max-width: 370px;
   margin: 2px 0 4px;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-body);
 }
 
 @media (max-width: 520px) {
@@ -495,7 +495,7 @@
   gap: 5px;
   margin-left: auto;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   cursor: pointer;
   user-select: none;
 }
@@ -519,8 +519,8 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
 }
 
 .office-table th,
@@ -543,7 +543,7 @@
   z-index: 1;
   background: var(--surface-active);
   color: var(--text);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .office-table tr:nth-child(even) td {
@@ -556,7 +556,8 @@
 
 .office-sheet-tabs {
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: var(--tab-gap);
   flex: 0 0 auto;
   padding: 0 0 8px;
   overflow-x: auto;
@@ -564,32 +565,33 @@
 
 .office-sheet-tab {
   flex: 0 0 auto;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: var(--r-xs);
-  color: var(--text-3);
-  font-size: 11px;
+  height: var(--tab-height);
+  padding: 0 9px;
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
+  background: transparent;
+  color: var(--tab-color);
+  font-size: var(--tab-font-size);
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 
 .office-sheet-tab:hover {
-  background: var(--surface);
-  color: var(--text-2);
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-color);
 }
 
 .office-sheet-tab.is-active {
-  border-color: var(--line-gold);
-  background: var(--gold-ghost);
-  color: var(--gold-bright);
+  border-color: var(--tab-active-border);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-color);
 }
 
 .preview-office-foot {
   flex: 0 0 auto;
   margin: 8px 0 0;
   color: var(--text-3);
-  font-size: 9.5px;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-label);
 }
 
 .preview-office-pane .preview-toolbar {
@@ -625,8 +627,8 @@
   flex: 0 0 auto;
   width: 22px;
   color: var(--gold);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-caps);
   opacity: 0.85;
 }
 
@@ -637,17 +639,17 @@
 .preview-slide-title {
   margin: 0;
   color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.5;
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-copy);
 }
 
 .preview-slide-lines {
   margin: 6px 0 0;
   padding-left: 16px;
   color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.65;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
 }
 
 .preview-slide-lines li + li {
@@ -672,7 +674,7 @@
   border: 0;
   background: transparent;
   color: var(--text);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   outline: none;
 }
 
@@ -695,7 +697,7 @@
   padding: 0 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
 }
 
 .preview-archive-row:last-child {
@@ -730,14 +732,14 @@
 .preview-archive-size {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .preview-archive-ratio {
   flex: 0 0 auto;
   width: 34px;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   text-align: right;
   opacity: 0.7;
 }

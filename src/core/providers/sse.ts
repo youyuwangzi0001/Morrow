@@ -121,20 +121,49 @@ export class SSEParser {
   }
 }
 
+export const STREAM_IDLE_TIMEOUT_MS = 180_000
+
 /**
  * 把 fetch 的 body 流转成 SSE 帧。
  * 注意：调用方负责判断 `data: [DONE]`。
+ * 超过 idleTimeoutMs 没有任何数据（含心跳）就报错，避免连接半开导致整轮永久卡住。
  */
-export async function* iterateSSE(stream: ReadableStream<Uint8Array> | AsyncIterable<string | Uint8Array>): AsyncGenerator<SSEFrame> {
+export async function* iterateSSE(
+  stream: ReadableStream<Uint8Array> | AsyncIterable<string | Uint8Array>,
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS
+): AsyncGenerator<SSEFrame> {
   const parser = new SSEParser()
   const decoder = new TextDecoder('utf-8', { fatal: false })
-  for await (const chunk of stream as AsyncIterable<string | Uint8Array>) {
-    const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
-    for (const frame of parser.push(text)) yield frame
+  const iterator = (stream as AsyncIterable<string | Uint8Array>)[Symbol.asyncIterator]()
+  let timer: NodeJS.Timeout | null = null
+  let timedOut = false
+  const arm = (): Promise<never> =>
+    new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true
+        reject(new Error(`模型流式响应超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有数据，已中断。`))
+      }, idleTimeoutMs)
+    })
+  try {
+    while (true) {
+      if (timer) clearTimeout(timer)
+      timer = null
+      const next = await Promise.race([iterator.next(), arm()])
+      if (next.done) break
+      if (timer) clearTimeout(timer)
+      timer = null
+      const chunk = next.value
+      const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
+      for (const frame of parser.push(text)) yield frame
+    }
+    const tail = decoder.decode()
+    if (tail) for (const frame of parser.push(tail)) yield frame
+    for (const frame of parser.flush()) yield frame
+  } finally {
+    if (timer) clearTimeout(timer)
+    // 不等待 return：底层读取可能同样卡死，等它会把超时又变成永久挂起
+    if (timedOut) void Promise.resolve(iterator.return?.()).catch(() => undefined)
   }
-  const tail = decoder.decode()
-  if (tail) for (const frame of parser.push(tail)) yield frame
-  for (const frame of parser.flush()) yield frame
 }
 
 /**

@@ -31,7 +31,7 @@
  * - feature:skills:pickFolder   {} → { path: string | null }（系统文件夹对话框）
  */
 import { dialog } from 'electron'
-import { openSystemFolder } from '../services/reveal'
+import { openPathFromUserShell } from '../services/reveal'
 import { resolveDataDir } from '../services/paths'
 import { ensureBuiltinSkills } from '../services/builtin-skills'
 import {
@@ -44,27 +44,13 @@ import {
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 一致；模块不直接依赖 feature-ipc） */
 export type RegisterFeatureChannel = (channel: string, handler: (payload: unknown) => Promise<unknown>) => void
 
-/** 本模块注册的全部频道，便于集成/测试断言 */
-export const SKILLS_FEATURE_CHANNELS = [
-  'feature:skills:list',
-  'feature:skills:read',
-  'feature:skills:setEnabled',
-  'feature:skills:install',
-  'feature:skills:remove',
-  'feature:skills:rescan',
-  'feature:skills:reveal',
-  'feature:skills:openUserDir',
-  'feature:skills:pickZip',
-  'feature:skills:pickFolder'
-] as const
-
 const effects: SkillsFeatureEffects = {
   async revealPath(path: string): Promise<void> {
-    const error = await openSystemFolder(path)
+    const error = await openPathFromUserShell(path)
     if (error) throw new Error(`打开技能目录失败：${error}`)
   },
   async openUserDir(path: string): Promise<void> {
-    const error = await openSystemFolder(path)
+    const error = await openPathFromUserShell(path)
     if (error) throw new Error(`打开技能库目录失败：${error}`)
   },
   async pickZip(): Promise<string | null> {

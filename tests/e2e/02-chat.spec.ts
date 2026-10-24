@@ -56,7 +56,7 @@ test.describe('聊天转录渲染', () => {
       '',
       `裸链接：[${longUrl}](${longUrl})`,
       '',
-      '[相对链接](note.txt)',
+      '[相对链接](note)',
       '',
       '![远程图](https://example.com/pic.png)',
       '',
@@ -81,6 +81,16 @@ test.describe('聊天转录渲染', () => {
 
       await waitForRunFinished(page, 120_000)
       const assistant = page.locator('.message-assistant').last()
+      // 品牌徽记与首段正文同一行，不再单独占一行高度
+      const lead = assistant.locator('.stream-text.has-lead').first()
+      const mark = lead.locator('.message-agent-mark')
+      await expect(mark).toBeVisible()
+      expect(await assistant.locator('.message-agent-mark').count()).toBe(1)
+      const markBox = await mark.boundingBox()
+      const textBox = await lead.locator('.md > :first-child').first().boundingBox()
+      expect(markBox && textBox).toBeTruthy()
+      expect(Math.abs(markBox!.y - textBox!.y)).toBeLessThan(8)
+      expect(textBox!.x).toBeGreaterThanOrEqual(markBox!.x + markBox!.width)
       await expect(assistant.locator('.md-h2')).toContainText('渲染检查')
       await expect(assistant.locator('.md-li')).toHaveCount(2)
       await expect(assistant.locator('.md-table')).toBeVisible()
@@ -122,6 +132,59 @@ test.describe('聊天转录渲染', () => {
       await setThemeViaStore(page, 'dark')
       await page.waitForTimeout(600)
       await page.screenshot({ path: screenshotPath('chat-transcript-media-dark.png') })
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('交付文件路径可点击打开，右键可复制内容/路径', async () => {
+    test.setTimeout(180_000)
+    const workspace = join(root, 'tmp', `e2e-file-link-${Date.now()}`)
+    mkdirSync(join(workspace, 'deliver'), { recursive: true })
+    writeFileSync(join(workspace, 'deliver', 'report.md'), '# 报告\n\n内容\n', 'utf8')
+    const mock = await startMockLLM({ scripts: [{ text: '已完成，产物在 `deliver/report.md`。' }] })
+    const morrow = await launchMorrow({ name: 'chat-file-link', timeoutMs: 90_000 })
+    try {
+      const { page } = morrow
+      await waitForStoreReady(page)
+      await dismissOnboarding(page)
+      const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+      await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '路径链接测试' })
+      await installEventCollector(page)
+      await sendMessageViaStore(page, '交付报告')
+      await waitForRunFinished(page, 120_000)
+
+      const assistant = page.locator('.message-assistant').last()
+      const link = assistant.locator('.md-file-link').filter({ hasText: 'deliver/report.md' })
+      await expect(link).toBeVisible()
+
+      await page.evaluate(() => {
+        const target = window as unknown as { __copied: string[] }
+        target.__copied = []
+        const original = navigator.clipboard.writeText.bind(navigator.clipboard)
+        navigator.clipboard.writeText = async (text: string) => {
+          target.__copied.push(text)
+          return original(text)
+        }
+      })
+
+      await link.click({ button: 'right' })
+      const menu = page.getByRole('menu', { name: '文件操作' })
+      await expect(menu).toBeVisible()
+      await expect(menu.getByRole('menuitem', { name: '在资源管理器中打开' })).toBeVisible()
+      await menu.getByRole('menuitem', { name: '复制内容' }).click()
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied.join('\n---\n'))).toContain('# 报告\n\n内容')
+
+      await link.click({ button: 'right' })
+      await page.getByRole('menu', { name: '文件操作' }).getByRole('menuitem', { name: '复制路径', exact: true }).click()
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied.join('\n---\n')))
+        .toContain(join(workspace, 'deliver', 'report.md'))
+
+      await link.click()
+      await expect(page.locator('.canvas-root')).toBeVisible({ timeout: 15_000 })
+      await expect(page.locator('.canvas-tab-title').filter({ hasText: 'report.md' })).toHaveCount(1)
     } finally {
       await morrow.close()
       await mock.close()
@@ -1207,88 +1270,74 @@ test.describe('跨会话运行态', () => {
 
 })
 
-// ── 原文件：subagent-ui.spec.ts ──────────────────────────────────────────────
-test.describe('subagent-ui.spec.ts', () => {
-/**
- * 并行子代理 UI：活动条展示任务、审批卡一次只出现一张、两个子代理都能完成。
- */
-
-test('并行子代理：审批卡串行、活动条可见、两个子任务真实落盘', async () => {
+// ── 原文件：chat-turn-nav.spec.ts（R20 长对话轮次跳转）──────────────────────────
+test.describe('chat-turn-nav.spec.ts', () => {
+test('长对话出现右侧轮次导航，点击分段跳到对应轮次', async () => {
   test.setTimeout(180_000)
-  const mock = await startMockLLM({
-    scripts: [
-      {
-        text: '我并行安排两个子任务。',
-        toolCalls: [
-          { name: 'task', arguments: { description: '写入 A', prompt: '请在上一级目录创建 alpha.txt，内容为 A。' } },
-          { name: 'task', arguments: { description: '写入 B', prompt: '请在上一级目录创建 beta.txt，内容为 B。' } }
-        ]
-      },
-      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: '../alpha.txt', content: 'A' } }] },
-      { text: '开始写文件。', toolCalls: [{ name: 'write_file', arguments: { path: '../beta.txt', content: 'B' } }] },
-      { text: '子任务 A 完成。' },
-      { text: '子任务 B 完成。' },
-      { text: '两个子任务都完成了。' }
-    ]
-  })
-  const workspace = join(root, 'tmp', `e2e-subagent-${Date.now()}`)
+  const workspace = join(root, 'tmp', `e2e-turn-nav-${Date.now()}`)
   mkdirSync(workspace, { recursive: true })
-  const morrow = await launchMorrow({ name: 'subagent-ui', timeoutMs: 90_000 })
+  const answer = (round: number): string =>
+    [`## 第 ${round} 轮回答`, '', ...Array.from({ length: 24 }, (_, index) => `- 第 ${round} 轮要点 ${index + 1}：确认滚动定位与轮次导航。`)].join('\n')
+  const mock = await startMockLLM({
+    scripts: [1, 2, 3, 4].map((round) => ({ text: answer(round) }))
+  })
+  const morrow = await launchMorrow({ name: 'chat-turn-nav', timeoutMs: 90_000 })
   try {
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
     const provider = await configureMockProvider(page, mock.openaiBaseUrl)
-    await createSession(page, { workspace, ...provider, permissionMode: 'ask', title: '并行子代理测试' })
+    await createSession(page, {
+      workspace,
+      ...provider,
+      permissionMode: 'auto',
+      title: '轮次导航测试'
+    })
     await installEventCollector(page)
 
-    await sendMessageViaStore(page, '并行创建两个文件。')
-    await waitForRunStarted(page, 30_000)
-    const first = await waitForPermission(page, 30_000)
-    expect(first.toolName).toBe('write_file')
-    await expect(page.locator('.permission-card')).toHaveCount(1)
-    await clickPermissionCard(page, 'once')
+    for (const round of [1, 2]) {
+      await sendMessageViaStore(page, `第 ${round} 轮问题：整理一段较长的说明。`)
+      await waitForRunFinished(page, 60_000)
+    }
+    // 两轮虽然已经超出一屏，但还不算长对话：不出现导航，避免短会话被刻度打扰。
+    await expect(page.locator('.transcript-turn-nav')).toHaveCount(0)
 
-    // 第一张审批卡结束后才出现第二张，不能同时叠两张
-    const second = await waitUntil(
-      async () => {
-        const state = await readStore(page)
-        return state.pendingPermission && state.pendingPermission.id !== first.id ? state.pendingPermission : null
-      },
-      30_000,
-      '第二张审批卡'
-    )
-    expect(second.toolName).toBe('write_file')
-    await expect(page.locator('.permission-card')).toHaveCount(1)
-    await clickPermissionCard(page, 'once')
+    for (const round of [3, 4]) {
+      await sendMessageViaStore(page, `第 ${round} 轮问题：继续补充并核对结论。`)
+      await waitForRunFinished(page, 60_000)
+    }
 
-    await waitForRunFinished(page, 90_000)
-    await expect(page.getByText('两个子任务都完成了。')).toBeVisible()
-    expect(existsSync(join(workspace, '..', 'alpha.txt'))).toBe(true)
-    expect(existsSync(join(workspace, '..', 'beta.txt'))).toBe(true)
+    const nav = page.locator('.transcript-turn-nav')
+    await expect(nav).toBeVisible({ timeout: 15_000 })
+    await expect(nav.locator('.transcript-turn')).toHaveCount(4)
 
-    const rows = page.locator('.spine-row.is-subagent')
-    await expect(rows).toHaveCount(2)
-    await expect(rows.locator('.spine-tag')).toHaveCount(2)
-    await expect(page.locator('.permission-card')).toHaveCount(0)
+    const second = page.getByRole('button', { name: /跳到第 2 轮/ })
+    await second.hover()
+    const tip = page.locator('.transcript-turn-tip')
+    await expect(tip).toBeVisible()
+    await expect(tip).toContainText('第 2 轮问题')
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: screenshotPath('r20-turn-nav-dark.png') })
 
-    await rows.first().locator('.spine-item').click()
-    await expect(rows.first().locator('.spine-subagent')).toContainText('小助手')
-    await expect(rows.first().locator('.spine-subagent .mono')).toContainText('步')
-    await page.evaluate(() => {
-      document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
+    await second.click()
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(page.locator('[data-turn-index="1"]')).toHaveClass(/is-turn-hit/)
+    await page.waitForTimeout(900)
+    const offset = await page.evaluate(() => {
+      const scroller = document.querySelector('.transcript-scroll') as HTMLElement
+      const target = document.querySelector('[data-turn-index="1"]') as HTMLElement
+      return target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
     })
+    expect(offset).toBeGreaterThanOrEqual(-4)
+    expect(offset).toBeLessThan(80)
+
     await setThemeViaStore(page, 'light')
-    await page.waitForTimeout(500)
-    await rows.first().scrollIntoViewIfNeeded()
-    await page.screenshot({ path: screenshotPath('subagent-parallel-light.png') })
-    await setThemeViaStore(page, 'dark')
-    await page.waitForTimeout(500)
-    await page.screenshot({ path: screenshotPath('subagent-parallel-dark.png') })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: screenshotPath('r20-turn-nav-light.png') })
   } finally {
     await morrow.close()
     await mock.close()
   }
 })
-
 })

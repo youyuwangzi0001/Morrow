@@ -263,6 +263,8 @@ test('Git 工作台：初始化、差异、暂存提交、放弃、分支与历�
     await page.getByRole('button', { name: '初始化 Git 仓库' }).click()
     await expect(page.getByText('文件夹干净')).toBeVisible({ timeout: 15_000 })
     expect(git(workspace, 'rev-parse', '--is-inside-work-tree')).toBe('true')
+    await expect(page.locator('.git-tab.is-active')).toHaveCSS('height', '24px')
+    await expect(page.locator('.git-tab.is-active')).toHaveCSS('border-radius', '5px')
 
     // 未跟踪文件：查看差异（工作区是全新的，先关闭引导通知再截图）
     writeFileSync(join(workspace, 'notes.md'), '# Notes\n\nHello from Morrow\n', 'utf8')

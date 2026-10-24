@@ -13,18 +13,13 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { basename, join, resolve, sep } from 'node:path'
+import { basename, join, resolve } from 'node:path'
+import { isPathInside } from './paths'
 import type { FileSearchResult, WorkspaceInfo } from '../../shared/types'
 import { dataPath, ensureDataDirs } from './paths'
 import { log } from './logger'
 
 const IGNORE_DIRS = new Set(['node_modules', '.git', '.morrow', 'dist', 'out', 'release', 'tmp', '.cache'])
-
-export function isPathInside(root: string, target: string): boolean {
-  const rel = resolve(target)
-  const rootResolved = resolve(root)
-  return rel === rootResolved || rel.startsWith(rootResolved + sep)
-}
 
 export async function pickWorkspace(): Promise<WorkspaceInfo | null> {
   const result = await dialog.showOpenDialog({
@@ -218,10 +213,6 @@ export async function readTextSafe(path: string, maxBytes = 512 * 1024): Promise
 }
 
 export function revealPath(path: string): void {
-  void revealInFileManager(path)
-}
-
-export function openInFolder(path: string): void {
   void revealInFileManager(path)
 }
 

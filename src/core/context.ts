@@ -76,8 +76,16 @@ export interface CompactionPlan {
   reason?: 'below-threshold' | 'no-safe-cut'
   /** 切点语义：user 边界 / 完整工具对之后的 assistant 边界 */
   cutKind?: CompactionCutKind
-  /** 额外保留在摘要之后的原始消息条数（当前实现最多 2 条：首条用户消息 + 被截断段的当前用户请求） */
+  /** 额外保留在摘要之后的原始消息条数（首条用户消息 + 被截断段的当前用户请求） */
   preserveCount?: number
+  /** 压缩后估算 token（含摘要本身） */
+  afterTokens?: number
+  /** 期望压缩到的 token 目标 */
+  targetTokens?: number
+  /** 压缩后仍高于目标（需要调用方做更激进的裁剪） */
+  overTarget?: boolean
+  /** 被裁掉段里已有的旧摘要，调用方应把它合并进新摘要 */
+  existingSummary?: string
 }
 
 /**
@@ -91,10 +99,11 @@ function messagesToPreserve(messages: ChatMessage[], cutIndex: number): ChatMess
   if (cutIndex <= 0) return []
   const kept = messages.slice(cutIndex)
   const preserved: ChatMessage[] = []
-  const first = messages[0]
-  if (first?.role === 'user') preserved.push(first)
+  // 第一次压缩后，消息 0 是摘要；真正的用户任务锚点可能在更后面，必须继续保留
+  const firstUser = messages.find((message) => message.role === 'user')
+  if (firstUser) preserved.push(firstUser)
   if (kept[0]?.role !== 'user') {
-    for (let index = cutIndex - 1; index > 0; index -= 1) {
+    for (let index = cutIndex - 1; index >= 0; index -= 1) {
       const candidate = messages[index]
       if (candidate?.role !== 'user') continue
       if (!preserved.includes(candidate)) preserved.push(candidate)
@@ -122,13 +131,15 @@ export function planCompaction(
   messages: ChatMessage[],
   system: string,
   contextLimit: number,
-  options: { keepRecent?: number; threshold?: number; force?: boolean } = {}
+  options: { keepRecent?: number; threshold?: number; force?: boolean; targetRatio?: number } = {}
 ): CompactionPlan {
   const keepRecent = Math.max(1, Math.floor(options.keepRecent ?? DEFAULT_KEEP_RECENT))
   const threshold = options.threshold ?? COMPACTION_THRESHOLD
   const force = options.force === true
+  const targetRatio = Math.min(0.8, Math.max(0.25, options.targetRatio ?? 0.45))
   const estimatedTokens = estimateMessagesTokens(messages, system)
   const thresholdTokens = Math.max(1000, Math.floor(contextLimit * threshold))
+  const targetTokens = Math.max(1200, Math.floor(contextLimit * targetRatio))
   const base: CompactionPlan = {
     shouldCompact: false,
     cutIndex: 0,
@@ -141,32 +152,76 @@ export function planCompaction(
   if (!force && estimatedTokens <= thresholdTokens) return { ...base, reason: 'below-threshold' }
   // 进行中的工具动作（tool_use 还没有 result）不能压缩：裁剪后可能产生非法请求
   if (hasDanglingToolUse(messages)) return { ...base, reason: 'no-safe-cut' }
-  // 目标切点：保留最近 keepRecent 条消息之后的位置
-  const target = messages.length - keepRecent
-  if (target <= 0) return { ...base, reason: 'no-safe-cut' }
-  // 从目标位置向前找最近的整消息边界（assistant/user 都安全，system 摘要消息不作为切点）
-  let cutIndex = -1
-  for (let index = target; index >= 1; index -= 1) {
-    const role = messages[index]?.role
-    if (role === 'user' || role === 'assistant') {
-      cutIndex = index
+
+  // 只在完整消息边界切；至少保留切点之后的内容，避免把当前任务全部折掉。
+  const candidates: number[] = []
+  const pushCandidates = (from: number): void => {
+    for (let index = from; index <= messages.length - 2; index += 1) {
+      const role = messages[index]?.role
+      if (role !== 'user' && role !== 'assistant') continue
+      if (hasDanglingToolUse(messages.slice(index))) continue
+      candidates.push(index)
+    }
+  }
+  pushCandidates(Math.max(1, messages.length - keepRecent))
+  // 历史很短或保留段本身过大时，允许从更早处切（仍然不能切到 0）
+  if (candidates.length === 0) pushCandidates(1)
+  if (candidates.length === 0) return { ...base, reason: 'no-safe-cut' }
+
+  const summaryTokens = Math.min(
+    4000,
+    Math.max(320, Math.floor(Math.min(contextLimit * 0.05, estimatedTokens * 0.25)))
+  )
+  const preservedMemo = new Map<number, ChatMessage[]>()
+  const preservedFor = (cutIndex: number): ChatMessage[] => {
+    const cached = preservedMemo.get(cutIndex)
+    if (cached) return cached
+    const next = messagesToPreserve(messages, cutIndex).map((message) => trimMessageForPreserve(message))
+    preservedMemo.set(cutIndex, next)
+    return next
+  }
+
+  let fittingCut = -1
+  let fallbackCut = -1
+  let fallbackAfter = 0
+  for (const cutIndex of candidates) {
+    const removed = messages.slice(0, cutIndex)
+    // 只有旧摘要、没有新增真实消息时，再压一次没有价值
+    if (!removed.some((message) => message.role !== 'system')) continue
+    const preserved = preservedFor(cutIndex)
+    const kept = messages.slice(cutIndex)
+    const removedTokens = estimateMessagesTokens(removed, '')
+    const preservedTokens = preserved.reduce((sum, message) => sum + estimateMessageTokens(message), 0)
+    if (removedTokens - preservedTokens <= 0) continue
+    const after = estimateMessagesTokens(kept, '') + preservedTokens + summaryTokens + SUMMARY_OVERHEAD_TOKENS
+    if (fallbackCut < 0 || cutIndex > fallbackCut) {
+      fallbackCut = cutIndex
+      fallbackAfter = after
+    }
+    if (after <= targetTokens) {
+      fittingCut = cutIndex
       break
     }
   }
+  const cutIndex = fittingCut >= 0 ? fittingCut : fallbackCut
   if (cutIndex <= 0) return { ...base, reason: 'no-safe-cut' }
-  // 二次防御：保留段里不能有未回填结果的工具调用
-  if (hasDanglingToolUse(messages.slice(cutIndex))) return { ...base, reason: 'no-safe-cut' }
-
-  const preserved = messagesToPreserve(messages, cutIndex)
+  const preserved = preservedFor(cutIndex)
   const removed = messages.slice(0, cutIndex)
-  // 若被裁掉的全是之前的摘要（没有新增真实消息），再压一次只是「摘要摘要」，没有价值
-  if (removed.every((message) => message.role === 'system')) return { ...base, reason: 'no-safe-cut' }
+  const kept = messages.slice(cutIndex)
   const removedTokens = estimateMessagesTokens(removed, '')
   const preservedTokens = preserved.reduce((sum, message) => sum + estimateMessageTokens(message), 0)
-  const savedTokens = Math.max(0, removedTokens - preservedTokens - SUMMARY_OVERHEAD_TOKENS)
-  // 省不下 token 就不值得压缩（例如强制压缩但历史很短）
-  if (savedTokens <= 0) return { ...base, reason: 'no-safe-cut' }
-
+  const afterTokens =
+    estimateMessagesTokens(kept, '') + preservedTokens + summaryTokens + SUMMARY_OVERHEAD_TOKENS
+  const savedTokens = Math.max(0, removedTokens - preservedTokens - summaryTokens - SUMMARY_OVERHEAD_TOKENS)
+  // 手动 /compact 允许「摘要成本接近历史本身」的短对话；自动压缩不做无收益的摘要摘要
+  if (savedTokens <= 0 && !force) return { ...base, reason: 'no-safe-cut' }
+  const existingSummary = removed
+    .filter((message) => message.role === 'system')
+    .flatMap((message) => message.content)
+    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text.replace(/^\[历史对话摘要[^\]]*\]\s*/, '').trim())
+    .filter(Boolean)
+    .join('\n\n')
   return {
     shouldCompact: true,
     cutIndex,
@@ -176,8 +231,109 @@ export function planCompaction(
     thresholdTokens,
     savedTokens,
     cutKind: messages[cutIndex]?.role === 'user' ? 'user' : 'tool-pair',
-    preserveCount: preserved.length
+    preserveCount: preserved.length,
+    afterTokens,
+    targetTokens,
+    overTarget: afterTokens > targetTokens,
+    ...(existingSummary ? { existingSummary } : {})
   }
+}
+
+/** 压缩时额外保留的消息也做长度上限，避免「保留最近」又把上下文撑满。 */
+function trimMessageForPreserve(message: ChatMessage, maxChars = 6000): ChatMessage {
+  let remaining = maxChars
+  const content = message.content.map((block) => {
+    if (block.type === 'text') {
+      const text = truncateText(block.text, Math.max(0, remaining))
+      remaining = Math.max(0, remaining - text.length)
+      return { ...block, text }
+    }
+    if (block.type === 'tool_use') {
+      return {
+        ...block,
+        ...(block.result
+          ? {
+              result: {
+                ...block.result,
+                output: truncateText(block.result.output ?? '', 1200),
+                error: truncateText(block.result.error ?? '', 1200)
+              }
+            }
+          : {})
+      }
+    }
+    return block
+  })
+  return { ...message, content }
+}
+
+/**
+ * 只折叠过大的工具输出/文本，不删除任何消息。
+ * 用于「没有可摘要切点」的短历史：宁可少省一点，也不能在没有摘要的情况下丢对话。
+ */
+export function shrinkToolOutputs(
+  messages: ChatMessage[],
+  resultChars = 2400,
+  textChars = 8000
+): ChatMessage[] {
+  return messages.map((message) => {
+    if (message.role === 'system') return message
+    return {
+      ...message,
+      content: message.content.map((block) => {
+        if (block.type === 'tool_use' && block.result) {
+          return {
+            ...block,
+            result: {
+              ...block.result,
+              output: truncateText(block.result.output ?? '', resultChars),
+              error: truncateText(block.result.error ?? '', resultChars)
+            }
+          }
+        }
+        if (block.type === 'text') {
+          return { ...block, text: truncateText(block.text, textChars) }
+        }
+        return block
+      })
+    }
+  })
+}
+
+/** 极端情况下再折一刀：压缩工具输出、丢弃过老消息，直到接近上限或只剩必要消息。 */
+export function aggressiveTrim(
+  messages: ChatMessage[],
+  system: string,
+  contextLimit: number,
+  keepRecent = 4
+): ChatMessage[] {
+  const budget = Math.max(1200, Math.floor(contextLimit * 0.72))
+  const shrink = (list: ChatMessage[], resultChars: number): ChatMessage[] =>
+    shrinkToolOutputs(list, resultChars, Math.max(3000, resultChars * 2))
+  let next = shrink(messages, 2400)
+  let keep = keepRecent
+  let lastTokens = estimateMessagesTokens(next, system)
+  while (lastTokens > budget) {
+    const summary = next.find((message) => message.role === 'system') ?? null
+    const rest = next.filter((message) => message !== summary)
+    if (rest.length <= 2) break
+    const firstUser = rest.find((message) => message.role === 'user')
+    const recent = rest.slice(-keep)
+    const head = firstUser && !recent.includes(firstUser) ? [firstUser] : []
+    const tail = [...recent]
+    // 保留用户锚点，只丢弃最旧的非用户消息；避免把唯一的 user 消息裁掉
+    if (tail.length > 2) {
+      if (firstUser && tail[0] === firstUser) tail.splice(1, 1)
+      else tail.shift()
+    }
+    next = shrink([...(summary ? [summary] : []), ...head, ...tail], 1200)
+    keep = Math.max(2, keep - 1)
+    const tokens = estimateMessagesTokens(next, system)
+    // 已经只剩必要消息/输出已无法再缩：明确结束，避免原地打转
+    if (tokens >= lastTokens) break
+    lastTokens = tokens
+  }
+  return next
 }
 
 /** 把较早的消息压成给「摘要模型」看的纯文本（有长度上限，避免压缩本身超限） */
@@ -191,18 +347,19 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
       chunks.push(`（附带 ${message.images.length} 张图片${names ? `：${names}` : ''}）`)
     }
     for (const block of message.content) {
-      if (block.type === 'text' && block.text.trim()) chunks.push(block.text.trim())
-      else if (block.type === 'thinking' && block.text.trim()) chunks.push(`（思考）${truncateText(block.text.trim(), 300)}`)
-      else if (block.type === 'tool_use') {
+      if (block.type === 'text' && block.text.trim()) {
+        chunks.push(truncateText(block.text.trim(), message.role === 'user' ? 6000 : 2000))
+      } else if (block.type === 'thinking' && block.text.trim()) {
+        chunks.push(`（思考）${truncateText(block.text.trim(), 240)}`)
+      } else if (block.type === 'tool_use') {
         const resultText = block.result
           ? block.result.ok
-            ? truncateText(block.result.output, 400)
-            : `失败：${block.result.error ?? '未知错误'}`
+            ? truncateText(block.result.output ?? '', 1600)
+            : `失败：${truncateText(block.result.error ?? '未知错误', 1200)}`
           : '（无结果）'
-        // 参数里通常有文件路径/命令，摘要必须保留这些可核对信息
         let inputText = ''
         try {
-          inputText = block.input ? truncateText(JSON.stringify(block.input), 320) : ''
+          inputText = block.input ? truncateText(JSON.stringify(block.input), 700) : ''
         } catch {
           inputText = ''
         }
@@ -213,17 +370,43 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
     parts.push(`【${roleLabel}】${chunks.join(' ')}`)
   }
   const joined = parts.join('\n\n')
-  return truncateText(joined, maxChars, '摘要输入已截断')
+  if (joined.length <= maxChars) return joined
+  // 保头保尾：开头通常是用户目标/约束，结尾是最近动作；中段只留标记
+  const head = Math.floor(maxChars * 0.38)
+  const tail = maxChars - head - 32
+  return `${joined.slice(0, head)}\n\n…（中段省略 ${joined.length - head - tail} 字符）…\n\n${joined.slice(-tail)}`
 }
 
-/** 本地兜底摘要：摘要模型不可用时不至于丢光上下文 */
+/**
+ * 本地兜底摘要：摘要模型不可用时不至于丢光上下文。
+ * 除了按时间保留要点，还从整段历史里抽取带约束/决策关键词的句子，
+ * 避免“密钥、端口、预算、禁止项”这类关键事实只在被裁掉的第 30 轮出现时丢失。
+ */
+const SUMMARY_KEY_PATTERN = /(必须|禁止|不要|不得|唯一|约束|定稿|决定|采用|选用|记住|预算|上限|端口|路径|密钥|token|url|api|截止)/i
+
 export function localExtractSummary(messages: ChatMessage[]): string {
   const points: string[] = []
+  const keyPoints: string[] = []
+  const seenKeys = new Set<string>()
   for (const message of messages) {
     const texts: string[] = []
     for (const block of message.content) {
-      if (block.type === 'text') texts.push(block.text)
-      else if (block.type === 'tool_use') {
+      if (block.type === 'text') {
+        texts.push(block.text)
+        // 只抽取用户约束/决定与已有摘要；助手复述（“我会…/已记录…”）不占用关键槽位。
+        if (message.role !== 'assistant') {
+          for (const rawLine of block.text.split(/\n|(?<=[。；;])/)) {
+            const line = rawLine.trim().replace(/^[-•]\s*/, '')
+            if (line.length < 4 || !SUMMARY_KEY_PATTERN.test(line)) continue
+            if (/历史对话摘要|关键约束与决策|本地摘要|较早对话/.test(line)) continue
+            if (/^(我会|已记录|已切换|已保留|收到)/.test(line)) continue
+            const normalized = line.replace(/\s+/g, ' ')
+            if (seenKeys.has(normalized) || keyPoints.length >= 12) continue
+            seenKeys.add(normalized)
+            keyPoints.push(truncateText(normalized, 180, '…'))
+          }
+        }
+      } else if (block.type === 'tool_use') {
         let input = ''
         try {
           input = block.input ? truncateText(JSON.stringify(block.input), 100) : ''
@@ -234,11 +417,13 @@ export function localExtractSummary(messages: ChatMessage[]): string {
       }
     }
     const joined = texts.join(' ').replace(/\s+/g, ' ').trim()
-    if (!joined) continue
+    if (!joined || points.length >= 20) continue
     points.push(`${message.role === 'user' ? '用户' : message.role === 'assistant' ? 'Morrow' : '系统'}：${truncateText(joined, 240, '…')}`)
-    if (points.length >= 20) break
   }
-  return `（本地摘要，较早对话的要点）\n${points.join('\n')}`
+  const sections: string[] = []
+  if (keyPoints.length > 0) sections.push(`（关键约束与决策）\n${keyPoints.map((line) => `- ${line}`).join('\n')}`)
+  sections.push(`（本地摘要，较早对话的要点）\n${points.join('\n')}`)
+  return sections.join('\n')
 }
 
 /**
@@ -250,19 +435,36 @@ export function localExtractSummary(messages: ChatMessage[]): string {
 export function applyCompaction(messages: ChatMessage[], cutIndex: number, summaryText: string): ChatMessage[] {
   const safeCut = Math.max(0, Math.min(cutIndex, messages.length))
   const kept = messages.slice(safeCut)
-  const preserved = messagesToPreserve(messages, safeCut)
+  const preserved = messagesToPreserve(messages, safeCut).map((message) => trimMessageForPreserve(message))
+  const before = estimateMessagesTokens(messages, '')
   const summary: ChatMessage = {
     id: newId('summary'),
     role: 'system',
     content: [
       {
         type: 'text',
-        text: `[历史对话摘要 — 更早的内容已压缩，后续回答可依赖以下要点]\n${summaryText}`
+        text: `[历史对话摘要 · 已压缩]\n${summaryText}`
       }
     ],
     createdAt: Date.now()
   }
-  return [summary, ...preserved, ...kept]
+  const result = [summary, ...preserved, ...kept]
+  // Anthropic 要求对话以 user 开始；极端情况下（旧摘要被再次压缩且无用户锚点）补一个明确的继续指令
+  if (!result.some((message) => message.role === 'user')) {
+    result.splice(1, 0, {
+      id: newId('msg'),
+      role: 'user',
+      content: [{ type: 'text', text: '继续完成之前尚未完成的任务；以摘要中的目标、约束和下一步为准。' }],
+      createdAt: Date.now()
+    })
+  }
+  const after = estimateMessagesTokens(result, '')
+  const saved = Math.max(0, before - after)
+  const header = summary.content[0]
+  if (header && header.type === 'text') {
+    header.text = `[历史对话摘要 · 已压缩 ${saved} tokens，任务继续]\n${summaryText}`
+  }
+  return result
 }
 
 /** 防御性检查：assistant 的每个 tool_use 都必须有 result（内部模型下正常不会缺） */

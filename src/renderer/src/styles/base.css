@@ -24,8 +24,8 @@ body {
   font-family: var(--font-ui);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
-  font-weight: 450;
-  letter-spacing: 0.005em;
+  font-weight: var(--fw-book);
+  letter-spacing: var(--ls-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -234,8 +234,9 @@ textarea {
 
 .mono {
   font-family: var(--font-mono);
+  font-weight: var(--code-font-weight, 400);
   font-size: var(--fs-micro);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-label);
 }
 
 .muted {
@@ -361,4 +362,14 @@ textarea {
   animation-duration: 1ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 1ms !important;
+}
+
+
+/* 代码字体可选项：默认 JetBrains Mono；另可选 IBM Plex Mono / 系统等宽 */
+:root[data-code-font='ibm-plex'] {
+  --font-code: 'IBM Plex Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, monospace;
+}
+
+:root[data-code-font='system'] {
+  --font-code: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Noto Sans SC', 'Microsoft YaHei UI', monospace;
 }

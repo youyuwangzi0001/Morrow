@@ -3,17 +3,13 @@ import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, ScanLine } from 'luc
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { IconButton } from '../../ui'
+import { errorText } from '../../lib'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 interface PdfPreviewProps {
   url: string
   title: string
-}
-
-function errorText(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }
 
 export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {

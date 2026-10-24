@@ -31,7 +31,8 @@ import {
   type BrowserDownloadRequest,
   type BrowserReadResult,
   type BrowserScreenshotResult,
-  type BrowserState
+  type BrowserState,
+  type BrowserTabInfo
 } from '../../core/browser-bridge'
 import { MORROW_SCROLLBAR_RULES } from '../../shared/scrollbar'
 import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview, isArtifactPreviewUrl } from './artifact-preview'
@@ -45,10 +46,13 @@ export const BROWSER_PRESENT_EVENT = 'feature:browser:present'
 export const BROWSER_CLOSED_EVENT = 'feature:browser:closed'
 
 interface SurfaceHandle {
+  id: string
   view: WebContentsView
   owner: BrowserWindow
   visible: boolean
   bounds: BrowserBounds | null
+  error: { code: string; message: string } | null
+  createdAt: number
 }
 
 interface PendingDownload {
@@ -75,7 +79,9 @@ function emptyState(): BrowserState {
     canGoBack: false,
     canGoForward: false,
     error: null,
-    automationActive: false
+    automationActive: false,
+    tabs: [],
+    activeTabId: null
   }
 }
 
@@ -138,12 +144,20 @@ export class BrowserService {
   private static instance: BrowserService | null = null
 
   private initialized = false
+  /** 活动标签（保持原有单 surface 代码路径） */
   private surface: SurfaceHandle | null = null
+  private tabs = new Map<string, SurfaceHandle>()
+  private tabOrder: string[] = []
+  private activeTabId: string | null = null
+  /** 窗口 resize 只绑定一次，不能按标签重复绑定 */
+  private ownerListeners: BrowserWindow | null = null
   private state: BrowserState = emptyState()
   private pendingDownloads = new Map<string, PendingDownload>()
   private actionCounts = new Map<string, number>()
   private ownsWebContents = new Set<number>()
   private scrollbarStyled = new Set<number>()
+  /** 隐藏/重新展开后必须先收到新的面板 bounds，再显示原生视图，避免旧边界盖住工具栏 */
+  private boundsStale = true
   private automationTimer: NodeJS.Timeout | null = null
 
   static getInstance(): BrowserService {
@@ -177,9 +191,8 @@ export class BrowserService {
       event.preventDefault()
       callback(false)
       log.warn('browser certificate error rejected', { url, error })
-      if (this.surface?.view.webContents.id === webContents.id) {
-        this.reportError({ code: `CERT_${error}`, message: `证书错误，已拒绝连接：${url}` })
-      }
+      const tab = this.tabForWebContents(webContents.id)
+      if (tab) this.reportTabError(tab, { code: `CERT_${error}`, message: `证书错误，已拒绝连接：${url}` })
     })
 
     app.on('before-quit', () => {
@@ -270,9 +283,209 @@ export class BrowserService {
     return view
   }
 
+  private bindOwner(owner: BrowserWindow): void {
+    if (this.ownerListeners === owner) return
+    this.unbindOwner()
+    this.ownerListeners = owner
+    owner.on('resize', this.onOwnerResize)
+    owner.on('enter-full-screen', this.onOwnerResize)
+    owner.on('leave-full-screen', this.onOwnerResize)
+  }
+
+  private unbindOwner(): void {
+    const owner = this.ownerListeners
+    this.ownerListeners = null
+    if (!owner || owner.isDestroyed()) return
+    owner.removeListener('resize', this.onOwnerResize)
+    owner.removeListener('enter-full-screen', this.onOwnerResize)
+    owner.removeListener('leave-full-screen', this.onOwnerResize)
+  }
+
+  private tabForWebContents(webContentsId: number): SurfaceHandle | null {
+    if (typeof webContentsId !== 'number') return null
+    for (const tab of this.tabs.values()) {
+      try {
+        const webContents = tab.view?.webContents
+        if (webContents && !webContents.isDestroyed() && webContents.id === webContentsId) return tab
+      } catch {
+        // 标签已销毁：跳过
+      }
+    }
+    return null
+  }
+
+  private tabInfo(tab: SurfaceHandle): BrowserTabInfo {
+    const webContents = tab.view.webContents
+    const liveUrl = webContents.isDestroyed() ? '' : webContents.getURL()
+    const url = !liveUrl || liveUrl === 'about:blank' ? '' : liveUrl
+    return {
+      id: tab.id,
+      url,
+      title: webContents.isDestroyed() ? '' : webContents.getTitle(),
+      loading: webContents.isDestroyed() ? false : webContents.isLoading(),
+      ...this.historyState(webContents),
+      error: tab.error
+    }
+  }
+
+  private tabInfos(): BrowserTabInfo[] {
+    return this.tabOrder
+      .map((id) => this.tabs.get(id))
+      .filter((tab): tab is SurfaceHandle => Boolean(tab) && !tab!.view.webContents.isDestroyed())
+      .map((tab) => this.tabInfo(tab))
+  }
+
+  private emitState(): void {
+    this.emitToOwner('feature:browser:state', this.getState())
+  }
+
+  private activateTabObject(tab: SurfaceHandle, emit = true): void {
+    if (this.surface === tab) {
+      this.state = { ...this.state, visible: tab.visible }
+      this.applySurfaceVisibility()
+      if (emit) this.emitState()
+      return
+    }
+    if (this.surface?.view?.webContents && !this.surface.view.webContents.isDestroyed()) this.surface.view.setVisible(false)
+    if (!tab.bounds) tab.bounds = this.surface?.bounds ?? null
+    if (tab.bounds) {
+      tab.view.setBounds(tab.bounds)
+      this.boundsStale = false
+    } else {
+      this.boundsStale = true
+    }
+    this.surface = tab
+    this.activeTabId = tab.id
+    const webContents = tab.view.webContents
+    const liveUrl = webContents.isDestroyed() ? '' : webContents.getURL()
+    this.state = {
+      open: true,
+      visible: tab.visible && !tab.error,
+      url: !liveUrl || liveUrl === 'about:blank' ? '' : liveUrl,
+      title: webContents.isDestroyed() ? '' : webContents.getTitle(),
+      loading: webContents.isDestroyed() ? false : webContents.isLoading(),
+      ...this.historyState(webContents),
+      error: tab.error,
+      automationActive: false,
+      tabs: [],
+      activeTabId: tab.id
+    }
+    this.applySurfaceVisibility()
+    if (emit) this.emitState()
+  }
+
+  private createTab(owner: BrowserWindow, url = '', bounds?: unknown, activate = true): SurfaceHandle {
+    const view = this.createView(owner)
+    const tab: SurfaceHandle = {
+      id: `browser-tab-${randomUUID().slice(0, 8)}`,
+      view,
+      owner,
+      visible: true,
+      bounds: sanitizeBrowserBounds(bounds) ?? this.surface?.bounds ?? null,
+      error: null,
+      createdAt: Date.now()
+    }
+    this.tabs.set(tab.id, tab)
+    this.tabOrder.push(tab.id)
+    this.bindOwner(owner)
+    if (tab.bounds) view.setBounds(tab.bounds)
+    view.setVisible(false)
+    if (activate) this.activateTabObject(tab, false)
+    if (url) {
+      this.state = { ...this.state, open: true, url, loading: true, error: null, visible: tab.visible }
+      void view.webContents.loadURL(url).catch((err: Error) => {
+        this.reportTabError(tab, { code: 'LOAD_FAILED', message: `页面加载失败：${err.message}` })
+      })
+    }
+    this.applySurfaceVisibility()
+    this.emitState()
+    return tab
+  }
+
+  private disposeTab(tab: SurfaceHandle): void {
+    this.tabs.delete(tab.id)
+    this.tabOrder = this.tabOrder.filter((id) => id !== tab.id)
+    try {
+      tab.view.setVisible(false)
+    } catch {
+      // 忽略
+    }
+    setImmediate(() => {
+      try {
+        if (!tab.owner.isDestroyed()) tab.owner.contentView.removeChildView(tab.view)
+        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close({ waitForBeforeUnload: false })
+      } catch (err) {
+        log.warn('browser tab dispose error', String(err))
+      }
+    })
+  }
+
+  private reportTabError(tab: SurfaceHandle, error: { code: string; message: string }): void {
+    tab.error = error
+    if (tab !== this.surface) {
+      log.warn('browser tab error (inactive)', { tabId: tab.id, ...error })
+      this.emitState()
+      return
+    }
+    this.state = { ...this.state, loading: false, error }
+    this.state.visible = false
+    this.emitState()
+    this.applySurfaceVisibility()
+  }
+
+  /** 新建一个空白标签并激活；url 为空时等待用户在地址栏输入。 */
+  newTab(event: Electron.IpcMainInvokeEvent, url = '', bounds?: unknown): BrowserState {
+    const owner = this.ownerFromEvent(event) ?? this.ownerWindow()
+    if (!owner) throw new Error('找不到主窗口，无法新建标签。')
+    let target = url.trim()
+    if (target) {
+      const check = normalizeBrowserAddress(target)
+      if (!check.allowed || !check.url) throw new Error(check.reason ?? '网址无效。')
+      target = check.url
+    }
+    if (this.surface && this.surface.owner.id !== owner.id) this.closeSurface()
+    this.createTab(owner, target, bounds, true)
+    this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'user' })
+    return this.getState()
+  }
+
+  activateTab(id: string): BrowserState {
+    const tab = this.tabs.get(id)
+    if (!tab) throw new Error('这个标签已经关闭。')
+    this.activateTabObject(tab)
+    this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'user' })
+    return this.getState()
+  }
+
+  closeTab(id: string): BrowserState {
+    const tab = this.tabs.get(id)
+    if (!tab) return this.getState()
+    const wasActive = tab === this.surface
+    const index = this.tabOrder.indexOf(id)
+    const owner = tab.owner
+    this.disposeTab(tab)
+    if (wasActive) {
+      const nextId = this.tabOrder[Math.min(index, this.tabOrder.length - 1)] ?? this.tabOrder[0] ?? null
+      if (nextId) this.activateTabObject(this.tabs.get(nextId)!, false)
+      else {
+        this.closeSurface()
+        if (!owner.isDestroyed()) owner.webContents.send(BROWSER_CLOSED_EVENT, {})
+        return this.getState()
+      }
+    }
+    this.emitState()
+    return this.getState()
+  }
+
   private attachNavigationGuards(webContents: WebContents): void {
     // 自动化与用户共用同一个 surface：加载/错误都写入同一个面板状态
-    const isSurface = (): boolean => this.surface?.view.webContents.id === webContents.id
+    const isSurface = (): boolean => {
+      try {
+        return Boolean(this.surface?.view?.webContents && !this.surface.view.webContents.isDestroyed() && this.surface.view.webContents.id === webContents.id)
+      } catch {
+        return false
+      }
+    }
     const blocked = (url: string, kind: string): void => {
       log.warn('browser navigation blocked', { url, kind })
       if (!isSurface()) return
@@ -321,8 +534,13 @@ export class BrowserService {
     })
     webContents.on('did-start-loading', () => {
       // 新的导航尝试意味着从上一个错误页恢复：清掉错误并重新显示视图
-      if (isSurface()) {
+      const tab = this.tabForWebContents(webContents.id)
+      if (!tab) return
+      if (tab === this.surface) {
         this.updateState({ loading: true, error: null, visible: this.surface?.visible ?? false })
+      } else {
+        tab.error = null
+        this.emitState()
       }
     })
     webContents.on('did-stop-loading', () => {
@@ -343,11 +561,12 @@ export class BrowserService {
   }
 
   getState(): BrowserState {
-    if (!this.surface) return { ...emptyState() }
-    return { ...this.state }
+    if (!this.surface) return { ...emptyState(), tabs: this.tabInfos(), activeTabId: this.activeTabId }
+    return { ...this.state, tabs: this.tabInfos(), activeTabId: this.activeTabId }
   }
 
   private updateState(patch: Partial<BrowserState>): void {
+    if (this.surface && 'error' in patch) this.surface.error = patch.error ?? null
     this.state = { ...this.state, ...patch }
     if (patch.error) this.state.visible = false
     this.emitToOwner('feature:browser:state', this.getState())
@@ -372,8 +591,18 @@ export class BrowserService {
     }
   }
 
-  private refreshStateFrom(webContents: WebContents): void {
-    if (!this.surface || webContents.id !== this.surface.view.webContents.id) return
+  private refreshStateFrom(webContents?: WebContents | null): void {
+    if (!webContents) return
+    try {
+      if (webContents.isDestroyed() || typeof webContents.id !== 'number') return
+    } catch {
+      return
+    }
+    const tab = this.tabForWebContents(webContents.id)
+    if (!tab || !this.surface || tab !== this.surface) {
+      if (tab) this.emitState()
+      return
+    }
     const history = this.historyState(webContents)
     this.state = {
       ...this.state,
@@ -383,7 +612,7 @@ export class BrowserService {
       loading: webContents.isLoading(),
       ...history
     }
-    this.emitToOwner('feature:browser:state', this.getState())
+    this.emitState()
   }
 
   private emitToOwner(channel: string, payload: unknown): void {
@@ -438,7 +667,7 @@ export class BrowserService {
     this.emitToOwner('feature:browser:state', this.getState())
   }
 
-  /** Agent 第一次操作时创建可见视图，并通知渲染层打开浏览器面板。 */
+  /** Agent 第一次操作时创建可见标签，并通知渲染层打开浏览器面板。 */
   private ensureSurfaceForAutomation(): SurfaceHandle {
     const existing = this.surface
     if (existing && !existing.owner.isDestroyed()) {
@@ -446,25 +675,27 @@ export class BrowserService {
         existing.visible = true
         this.state = { ...this.state, visible: true, error: null }
         this.applySurfaceVisibility()
-        this.emitToOwner('feature:browser:state', this.getState())
+        this.emitState()
       }
       this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'agent' })
       return existing
     }
     if (existing) this.closeSurface()
+    if (this.tabs.size > 0) {
+      const lastId = this.tabOrder[this.tabOrder.length - 1]
+      const last = lastId ? this.tabs.get(lastId) : null
+      if (last) {
+        this.activateTabObject(last)
+        this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'agent' })
+        return last
+      }
+    }
 
     const owner = this.ownerWindow()
     if (!owner) throw new Error('找不到 Morrow 主窗口，无法打开内置浏览器。')
-    const view = this.createView(owner)
-    const handle: SurfaceHandle = { view, owner, visible: true, bounds: null }
-    this.surface = handle
-    this.state = { ...emptyState(), open: true, visible: true }
-    owner.on('resize', this.onOwnerResize)
-    owner.on('enter-full-screen', this.onOwnerResize)
-    owner.on('leave-full-screen', this.onOwnerResize)
+    const handle = this.createTab(owner, '', undefined, true)
     this.emitToOwner(BROWSER_PRESENT_EVENT, { source: 'agent' })
-    this.emitToOwner('feature:browser:state', this.getState())
-    log.info('browser surface created for automation')
+    log.info('browser tab created for automation')
     return handle
   }
 
@@ -509,9 +740,11 @@ export class BrowserService {
   }
 
   private presentSurface(url: string, owner: BrowserWindow, bounds?: unknown): BrowserState {
-    // 已存在且属于同一窗口：直接导航
+    // 已存在且属于同一窗口：直接在当前标签导航
     if (this.surface && this.surface.owner.id === owner.id) {
+      this.activateTabObject(this.surface, false)
       this.clearAutomationIndicator()
+      this.surface.error = null
       this.state = {
         ...this.state,
         open: true,
@@ -527,42 +760,16 @@ export class BrowserService {
       return this.getState()
     }
     this.closeSurface()
-
-    const view = this.createView(owner)
-    const handle: SurfaceHandle = {
-      view,
-      owner,
-      visible: true,
-      bounds: sanitizeBrowserBounds(bounds) ?? null
-    }
-    this.surface = handle
-    this.state = {
-      ...emptyState(),
-      open: true,
-      url,
-      loading: true,
-      visible: true,
-      automationActive: false
-    }
-    if (handle.bounds) view.setBounds(handle.bounds)
-    view.setVisible(handle.bounds !== null)
-    owner.on('resize', this.onOwnerResize)
-    owner.on('enter-full-screen', this.onOwnerResize)
-    owner.on('leave-full-screen', this.onOwnerResize)
-    void view.webContents.loadURL(url).catch((err: Error) => {
-      this.reportError({ code: 'LOAD_FAILED', message: `页面加载失败：${err.message}` })
-    })
-    log.info('browser surface opened', { url })
+    this.createTab(owner, url, bounds, true)
+    log.info('browser tab opened', { url })
     return this.getState()
   }
 
   private onOwnerResize = (): void => {
-    const surface = this.surface
-    if (!surface) return
-    if (surface.bounds) this.setBounds(surface.bounds)
+    if (this.surface?.bounds) this.setBounds(this.surface.bounds)
   }
 
-  /** feature:browser:set-bounds { x,y,width,height } */
+  /** feature:browser:set-bounds { x,y,width,height }：所有标签共用同一个网页视口 */
   setBounds(rawBounds: unknown): BrowserBounds | null {
     const surface = this.surface
     if (!surface) return null
@@ -577,27 +784,40 @@ export class BrowserService {
     const width = Math.max(1, Math.min(sanitized.width, maxWidth - x))
     const height = Math.max(1, Math.min(sanitized.height, maxHeight - y))
     const bounds: BrowserBounds = { x, y, width, height }
-    surface.bounds = bounds
-    if (!surface.view.webContents.isDestroyed()) surface.view.setBounds(bounds)
+    this.boundsStale = false
+    for (const tab of this.tabs.values()) {
+      tab.bounds = bounds
+      if (!tab.view.webContents.isDestroyed()) tab.view.setBounds(bounds)
+    }
     this.applySurfaceVisibility()
     return bounds
   }
 
   setVisible(visible: boolean): void {
     if (!this.surface) return
-    this.surface.visible = visible
+    for (const tab of this.tabs.values()) tab.visible = visible
+    // 隐藏后重新展开时必须由渲染层重新上报 bounds，防止旧视图盖住地址栏。
+    if (!visible) this.boundsStale = true
     // 有致命错误时由渲染层错误页承载，原生视图保持隐藏
-    this.state = { ...this.state, visible: visible && !this.state.error }
+    this.state = { ...this.state, visible: visible && !(this.surface?.error ?? null) }
     this.applySurfaceVisibility()
-    this.emitToOwner('feature:browser:state', this.getState())
+    this.emitState()
   }
 
   private applySurfaceVisibility(): void {
-    const surface = this.surface
-    if (!surface || surface.view.webContents.isDestroyed()) return
-    // 视图必须等 bounds 到位且面板可见、且没有致命错误时才显示（错误由渲染层错误页承载）
-    const show = surface.visible && surface.bounds !== null && !this.state.error
-    surface.view.setVisible(show)
+    // 只有活动标签的原生视图可见；空标签/错误标签由渲染层空态或错误页承载。
+    for (const [id, tab] of this.tabs) {
+      if (tab.view.webContents.isDestroyed()) continue
+      const active = tab === this.surface && id === this.activeTabId
+      const show =
+        active &&
+        tab.visible &&
+        tab.bounds !== null &&
+        !this.boundsStale &&
+        !tab.error &&
+        (this.state.url !== '' || this.state.loading)
+      tab.view.setVisible(show)
+    }
   }
 
   navigate(url: string): BrowserState {
@@ -625,13 +845,17 @@ export class BrowserService {
     const surface = this.surface
     if (!surface) throw new Error('浏览器未打开。')
     this.clearAutomationIndicator()
-    const nav = surface.view.webContents.navigationHistory
+    const webContents = surface.view.webContents
+    const nav = webContents.navigationHistory
     const index = nav.getActiveIndex()
     const target = direction === 'back' ? index - 1 : index + 1
     if (index < 0 || target < 0) throw new Error('已经到第一页，无法后退。')
     if (target >= nav.length()) throw new Error('已经在最后一页，无法前进。')
     nav.goToIndex(target)
-    setTimeout(() => this.refreshStateFrom(surface.view.webContents), 300)
+    setTimeout(() => {
+      // 用户在 300ms 内关闭标签/面板是正常操作：定时器不能碰已销毁的视图
+      if (!webContents.isDestroyed()) this.refreshStateFrom(webContents)
+    }, 300)
     return this.getState()
   }
 
@@ -655,41 +879,17 @@ export class BrowserService {
       clearTimeout(this.automationTimer)
       this.automationTimer = null
     }
-    const surface = this.surface
-    if (!surface) {
-      this.state = emptyState()
-      return
-    }
+    const owner = this.surface?.owner ?? this.ownerListeners
     // 已批准的下载继续完成；未确认的请求随面板关闭取消，避免留下孤儿暂存文件
     for (const pending of [...this.pendingDownloads.values()]) {
       if (!pending.approved) this.cancelDownload(pending, '浏览器面板已关闭，未确认的下载已取消。')
     }
+    for (const tab of [...this.tabs.values()]) this.disposeTab(tab)
     this.surface = null
+    this.activeTabId = null
     this.state = emptyState()
-    const view = surface.view
-    try {
-      surface.owner.removeListener('resize', this.onOwnerResize)
-      surface.owner.removeListener('enter-full-screen', this.onOwnerResize)
-      surface.owner.removeListener('leave-full-screen', this.onOwnerResize)
-      // 关键：removeChildView / webContents.close 在 IPC handler 内同步调用会阻塞（实测卡住
-      // handler 与 app.quit）。先隐藏 view，再在下一轮事件循环做真正的移除与销毁。
-      try {
-        view.setVisible(false)
-      } catch {
-        // 忽略
-      }
-      setImmediate(() => {
-        try {
-          if (!surface.owner.isDestroyed()) surface.owner.contentView.removeChildView(view)
-          if (!view.webContents.isDestroyed()) view.webContents.close({ waitForBeforeUnload: false })
-        } catch (err) {
-          log.warn('browser surface dispose error', String(err))
-        }
-      })
-    } catch (err) {
-      log.warn('browser surface close error', String(err))
-    }
-    if (!surface.owner.isDestroyed()) surface.owner.webContents.send('feature:browser:state', this.getState())
+    this.unbindOwner()
+    if (owner && !owner.isDestroyed()) owner.webContents.send('feature:browser:state', this.getState())
     log.info('browser surface closed')
   }
 
@@ -701,11 +901,11 @@ export class BrowserService {
   /* ── 下载确认 ───────────────────────────────────────────────── */
 
   private handleDownload(event: Electron.Event, item: Electron.DownloadItem, webContents: WebContents): void {
-    const surface = this.surface
-    if (!surface || surface.owner.isDestroyed() || webContents?.id !== surface.view.webContents.id) {
-      // 只有用户看得见的内置浏览器才能发起下载，其它 webContents 不允许静默下载
+    const tab = webContents ? this.tabForWebContents(webContents.id) : null
+    if (!tab || tab.owner.isDestroyed()) {
+      // 只有内置浏览器标签才能发起下载，其它 webContents 不允许静默下载
       event.preventDefault()
-      log.warn('browser download rejected (no surface)', { filename: item.getFilename(), url: item.getURL().slice(0, 200) })
+      log.warn('browser download rejected (no tab)', { filename: item.getFilename(), url: item.getURL().slice(0, 200) })
       return
     }
 
@@ -948,7 +1148,9 @@ export class BrowserService {
       loading: webContents.isLoading(),
       ...history,
       error: this.state.error ?? null,
-      automationActive: this.state.automationActive
+      automationActive: this.state.automationActive,
+      tabs: this.tabInfos(),
+      activeTabId: this.activeTabId
     }
   }
 
@@ -1376,6 +1578,9 @@ export class BrowserService {
     /** 已成功向当前页面注入统一滚动条样式 */
     scrollbarCssApplied: boolean
     pendingDownloads: string[]
+    tabCount: number
+    tabs: BrowserTabInfo[]
+    activeTabId: string | null
   } {
     const surface = this.surface
     const url = surface?.view.webContents.getURL() ?? ''
@@ -1399,8 +1604,19 @@ export class BrowserService {
       automationOpen: Boolean(surface),
       automationUrl: url,
       automationTitle: title,
-      scrollbarCssApplied: surface ? this.scrollbarStyled.has(surface.view.webContents.id) : false,
-      pendingDownloads: [...this.pendingDownloads.keys()]
+      scrollbarCssApplied: (() => {
+        try {
+          return surface?.view?.webContents && !surface.view.webContents.isDestroyed()
+            ? this.scrollbarStyled.has(surface.view.webContents.id)
+            : false
+        } catch {
+          return false
+        }
+      })(),
+      pendingDownloads: [...this.pendingDownloads.keys()],
+      tabCount: this.tabs.size,
+      tabs: this.tabInfos(),
+      activeTabId: this.activeTabId
     }
   }
 
@@ -1408,7 +1624,9 @@ export class BrowserService {
   async debugSurfaceScript(script: string): Promise<unknown> {
     const surface = this.surface
     if (!surface) throw new Error('浏览器面板未打开。')
-    return surface.view.webContents.executeJavaScript(script)
+    const webContents = surface?.view?.webContents
+    if (!webContents || webContents.isDestroyed()) throw new Error('浏览器已经关闭。')
+    return webContents.executeJavaScript(script)
   }
 }
 

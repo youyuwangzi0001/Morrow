@@ -20,23 +20,16 @@ using System.IO;
 using System.IO.Compression;
 using System.IO.Pipes;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Morrow")]
-[assembly: AssemblyProduct("Morrow")]
-[assembly: AssemblyDescription("Morrow - 住在你电脑里的 AI 工作伙伴")]
-[assembly: AssemblyCompany("Morrow Studio")]
-[assembly: AssemblyVersion("0.1.0.0")]
-[assembly: AssemblyFileVersion("0.1.0.0")]
-[assembly: AssemblyInformationalVersion("0.1.0")]
-
 internal static class MorrowLauncher
 {
-    private const string Version = "0.1.0";
-    private const string AppFolderName = ".morrow-runtime-" + Version;
+    // 版本与运行时目录由打包脚本根据 package.json 生成，避免升级后启动器仍指向旧版本。
+    private const string AppFolderName = ".morrow-runtime-" + MorrowLauncherBuildInfo.Version + "-" + MorrowLauncherBuildInfo.RuntimeRevision;
     private const string AppExeName = "Morrow-app.exe";
     private const string ZipResourceName = "MorrowApp.zip";
     private const string RuntimeStampFile = ".morrow-runtime-complete";
@@ -99,6 +92,11 @@ internal static class MorrowLauncher
             string tempDir = Path.Combine(appDir, ".morrow-temp");
             Directory.CreateDirectory(tempDir);
 
+            // 交付目录若带 Low 完整性标签，解压出的应用也会继承 Low：COM 与 Explorer 都会被
+            // 系统拒绝。启动器此时已是 Medium，启动前把应用本体也标成 Medium，子进程才能正常
+            // 使用文件管理器定位/系统程序打开。
+            EnsureMediumIntegrity(appExe);
+
             // Electron 主进程在某些 Windows 会话/作业对象里无法创建 Explorer 等 GUI 子进程
             // （0xC0000142）。启动器自己留在应用外部，用主线程（STA）提供文件打开/定位代理。
             // 不能把代理放在后台线程：部分 Windows 会话会拒绝后台线程创建 Explorer 窗口。
@@ -147,7 +145,7 @@ internal static class MorrowLauncher
         catch (Exception ex)
         {
             MessageBox.Show(
-                "Morrow 启动失败：\n" + ex.Message + "\n\n可尝试删除 exe 同级的 .morrow-runtime-" + Version + " 文件夹后重试。",
+                "Morrow 启动失败：\n" + ex.Message + "\n\n可尝试删除 exe 同级的 " + AppFolderName + " 文件夹后重试。",
                 "Morrow 启动失败",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -214,6 +212,82 @@ internal static class MorrowLauncher
         }
     }
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
+
+    [DllImport("shell32.dll")]
+    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr[] apidl, uint dwFlags);
+
+    [DllImport("shell32.dll")]
+    private static extern void ILFree(IntPtr pidl);
+
+    /// <summary>由现有 Explorer 打开文件夹并选中目标；不创建新的 explorer.exe 进程。</summary>
+    private static bool RevealWithShell(string target)
+    {
+        IntPtr pidl = IntPtr.Zero;
+        uint attributes;
+        int hr = SHParseDisplayName(target, IntPtr.Zero, out pidl, 0, out attributes);
+        if (hr != 0 || pidl == IntPtr.Zero) return false;
+        try
+        {
+            return SHOpenFolderAndSelectItems(pidl, 0, null, 0) == 0;
+        }
+        finally
+        {
+            ILFree(pidl);
+        }
+    }
+
+    /// <summary>
+    /// 把应用本体标成 Medium 完整性。目录继承的 Low 标签会让进程无法激活 Shell COM，
+    /// 也无法启动 Explorer；这里只处理 exe 本身，失败时继续启动。
+    /// </summary>
+    private static void EnsureMediumIntegrity(string filePath)
+    {
+        try
+        {
+            ProcessStartInfo info = new ProcessStartInfo(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe"),
+                "\"" + filePath + "\" /setintegritylevel Medium")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            using (Process process = Process.Start(info))
+            {
+                if (process != null) process.WaitForExit(5000);
+            }
+        }
+        catch
+        {
+            // 普通目录下应用本来就以 Medium 运行；设置失败不应阻断启动。
+        }
+    }
+
+    /// <summary>通过 Shell.Application COM 打开文件夹；由已运行的 Explorer 处理，不新建进程。</summary>
+    private static bool ExploreWithShell(string folder)
+    {
+        object shell = null;
+        try
+        {
+            Type type = Type.GetTypeFromProgID("Shell.Application");
+            if (type == null) return false;
+            shell = Activator.CreateInstance(type);
+            if (shell == null) return false;
+            type.InvokeMember("Explore", BindingFlags.InvokeMethod, null, shell, new object[] { folder });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (shell != null && Marshal.IsComObject(shell)) Marshal.ReleaseComObject(shell);
+        }
+    }
+
     private static string HandleShellRequest(string line)
     {
         try
@@ -239,42 +313,25 @@ internal static class MorrowLauncher
 
             if (command == "OPEN")
             {
+                if (isDirectory)
+                {
+                    // 目录交给现有 Shell 打开；不要 Process.Start 目录，那会新建 explorer.exe。
+                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
+                }
                 Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
                 return "OK";
             }
 
             if (command == "REVEAL")
             {
-                try
+                if (isDirectory)
                 {
-                    Process explorer = Process.Start(new ProcessStartInfo(
-                        "explorer.exe",
-                        "/select,\"" + target + "\"")
-                    {
-                        UseShellExecute = false
-                    });
-                    if (explorer != null)
-                    {
-                        // Explorer 正常会把请求交给现有 shell 后退出；0xC0000142 表示根本没能初始化。
-                        Thread.Sleep(350);
-                        if (explorer.HasExited && explorer.ExitCode == unchecked((int)0xC0000142))
-                        {
-                            throw new InvalidOperationException("Explorer 无法在当前会话启动（0xC0000142）");
-                        }
-                    }
-                    return "OK";
+                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
                 }
-                catch
-                {
-                    // 极少数环境不允许启动 Explorer：退化为打开所在文件夹，至少让用户看到文件。
-                    string folder = isDirectory ? target : Path.GetDirectoryName(target);
-                    if (!string.IsNullOrEmpty(folder))
-                    {
-                        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-                        return "OK";
-                    }
-                    throw;
-                }
+                if (RevealWithShell(target)) return "OK";
+                string folder = Path.GetDirectoryName(target);
+                if (!string.IsNullOrEmpty(folder) && ExploreWithShell(folder)) return "OK";
+                return "ERR\t系统 Shell 无法打开目标文件夹";
             }
 
             return "ERR\t未知命令";
@@ -349,7 +406,7 @@ internal static class MorrowLauncher
         string fallbackDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Morrow",
-            "runtime-" + Version);
+            "runtime-" + MorrowLauncherBuildInfo.Version);
 
         if (InnerExtract(appDir))
         {

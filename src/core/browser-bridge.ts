@@ -67,20 +67,36 @@ export interface BrowserBounds {
   height: number
 }
 
-export interface BrowserState {
-  /** 当前是否已创建浏览器视图 */
-  open: boolean
-  /** 是否可见（面板打开且无致命错误） */
-  visible: boolean
+export interface BrowserTabInfo {
+  id: string
   url: string
   title: string
   loading: boolean
   canGoBack: boolean
   canGoForward: boolean
-  /** 最近一次致命错误（加载失败/被安全策略拦截）；成功后清空 */
+  /** 该标签最近一次致命错误；错误标签仍保留在标签栏，方便关闭或重试 */
+  error: { code: string; message: string } | null
+}
+
+export interface BrowserState {
+  /** 当前是否已创建浏览器视图（至少有一个标签） */
+  open: boolean
+  /** 是否可见（面板打开且无致命错误） */
+  visible: boolean
+  /** 当前活动标签的字段 */
+  url: string
+  title: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  /** 当前活动标签最近一次致命错误；成功后清空 */
   error: { code: string; message: string } | null
   /** Agent 正在操作这个页面（用于面板上的「Morrow 操作中」提示） */
   automationActive: boolean
+  /** 全部标签（按标签栏顺序） */
+  tabs: BrowserTabInfo[]
+  /** 当前活动标签 id；没有标签时为 null */
+  activeTabId: string | null
 }
 
 export interface BrowserDownloadRequest {

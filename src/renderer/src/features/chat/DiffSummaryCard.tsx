@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, File as FileIcon, FileDiff } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { DiffView } from '../../components/DiffView'
 import { extractDiff } from '../activity/tool-meta'
 

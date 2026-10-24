@@ -126,7 +126,7 @@
 
 .app-boot-text {
   color: var(--text-3);
-  letter-spacing: 0.18em;
+  letter-spacing: var(--ls-display);
   animation: fade-in 900ms var(--ease-out) both;
 }
 
@@ -151,14 +151,14 @@
 }
 
 .app-boot-error h1 {
-  font-size: 26px;
-  font-weight: 400;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-regular);
 }
 
 .app-boot-error p {
   color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-body);
 }
 
 /* 说明：M0 时期的占位样式已全部移除，各 feature 自带独立 CSS。 */

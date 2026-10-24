@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { formatBytes } from '../../shared/usage'
 import { estimateTokens } from '@core/context'
 import {
   MemoryService,
@@ -629,11 +630,6 @@ function truncateForBudget(body: string, availableTokens: number, suffix: string
   return null
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
-}
 
 /* ── 供主进程/Agent 集成使用的便捷函数 ───────────────────────── */
 

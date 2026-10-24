@@ -1,15 +1,15 @@
 /**
- * 自定义子代理角色（Swarm）。
+ * 自定义集群成员角色（Swarm）。
  *
  * 来源：<workspace>/.morrow/agents/*.md 与 ~/.morrow/agents/*.md。
- * frontmatter：description / title / tools（逗号或空格分隔）/ read-only（true/false）
+ * frontmatter：description / title；其余字段保留解析但不限制工具或权限。
  * 正文是角色专属系统提示。项目覆盖同名用户角色；内置角色名保留，不能被覆盖。
  */
 import { lstatSync, readdirSync, readFileSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import { BUILTIN_AGENT_ROLES } from '../../core/agent-roles'
-import type { SubagentRole } from '../../core/types'
+import type { SwarmMemberRole } from '../../core/types'
 
 const MAX_FILE_BYTES = 32 * 1024
 const MAX_BODY_CHARS = 8000
@@ -29,7 +29,7 @@ export function parseAgentFile(
   name: string,
   scope: 'project' | 'user',
   path: string
-): SubagentRole | null {
+): SwarmMemberRole | null {
   const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   const lines = text.split('\n')
   const meta: Record<string, string> = {}
@@ -46,29 +46,16 @@ export function parseAgentFile(
   }
   const systemPrompt = body.trim().slice(0, MAX_BODY_CHARS)
   if (!systemPrompt) return null
-  const tools = [
-    ...new Set(
-      (meta.tools ?? '')
-        .split(/[,\s]+/)
-        .map((tool) => tool.trim().toLowerCase())
-        .filter((tool) => /^[a-z][a-z0-9_]{0,60}$/.test(tool))
-        .slice(0, 40)
-    )
-  ]
-  const readOnly = (meta['read-only'] ?? meta.readonly ?? '').trim().toLowerCase()
   return {
     name: name.toLowerCase(),
     title: (meta.title || meta.name || name).slice(0, 40),
-    description: (meta.description || systemPrompt.split('\n').find(Boolean) || '自定义子代理').slice(0, 160),
+    description: (meta.description || systemPrompt.split('\n').find(Boolean) || '自定义集群成员').slice(0, 160),
     systemPrompt,
-    // 显式写了 tools 但全部无效/为空时保留空数组，表示「不允许任何工具」，避免退化成全部工具
-    ...(meta.tools !== undefined ? { tools } : {}),
-    ...(readOnly === 'true' || readOnly === 'yes' || readOnly === '1' ? { readOnly: true } : {}),
     source: scope
   }
 }
 
-function readAgentsFrom(dir: string, scope: 'project' | 'user', into: Map<string, SubagentRole>): void {
+function readAgentsFrom(dir: string, scope: 'project' | 'user', into: Map<string, SwarmMemberRole>): void {
   let entries: Dirent[]
   try {
     entries = readdirSync(dir, { withFileTypes: true })
@@ -115,8 +102,8 @@ function projectAgentsDir(workspace: string): string | null {
 }
 
 /** 内置角色 + 自定义角色；项目覆盖同名用户角色。 */
-export function loadAgentRoles(workspace: string | null, home = homedir()): SubagentRole[] {
-  const custom = new Map<string, SubagentRole>()
+export function loadAgentRoles(workspace: string | null, home = homedir()): SwarmMemberRole[] {
+  const custom = new Map<string, SwarmMemberRole>()
   readAgentsFrom(join(home, '.morrow', 'agents'), 'user', custom)
   if (workspace) {
     const dir = projectAgentsDir(workspace)
@@ -129,18 +116,14 @@ export interface AgentRoleSummary {
   name: string
   title: string
   description: string
-  readOnly: boolean
-  tools?: string[]
   source: 'builtin' | 'project' | 'user'
 }
 
-export function summarizeAgentRoles(roles: SubagentRole[]): AgentRoleSummary[] {
+export function summarizeAgentRoles(roles: SwarmMemberRole[]): AgentRoleSummary[] {
   return roles.map((role) => ({
     name: role.name,
     title: role.title,
     description: role.description,
-    readOnly: role.readOnly === true,
-    ...(role.tools ? { tools: role.tools } : {}),
     source: role.source ?? 'builtin'
   }))
 }

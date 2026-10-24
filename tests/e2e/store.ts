@@ -337,10 +337,11 @@ export async function configureMockProvider(
   page: Page,
   baseUrl: string,
   providerId = 'mock-e2e',
-  contextWindow = 32_000
+  contextWindow = 32_000,
+  supportsVision = false
 ): Promise<{ providerId: string; modelId: string }> {
   return page.evaluate(
-    async (arg: { providerId: string; baseUrl: string; contextWindow: number }) => {
+    async (arg: { providerId: string; baseUrl: string; contextWindow: number; supportsVision: boolean }) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       const config = {
         id: arg.providerId,
@@ -354,6 +355,7 @@ export async function configureMockProvider(
             contextWindow: arg.contextWindow,
             supportsTools: true,
             supportsReasoning: true,
+            ...(arg.supportsVision ? { supportsVision: true } : {}),
             reasoningStyle: 'effort',
             pricing: { inputPerMTok: 1, outputPerMTok: 2 }
           }
@@ -367,7 +369,7 @@ export async function configureMockProvider(
       if (!saved) throw new Error('mock provider 保存失败')
       return { providerId: arg.providerId, modelId: 'mock-model' }
     },
-    { providerId, baseUrl, contextWindow }
+    { providerId, baseUrl, contextWindow, supportsVision }
   )
 }
 

@@ -12,6 +12,7 @@ import type { ChatMessage, ProviderConfig, Usage } from '../../shared/types'
 import type { Provider, ProviderStreamEvent, ProviderStreamRequest, ToolDefinition } from '../types'
 import { newId, parseToolArgs } from '../util'
 import { iterateSSEData } from './sse'
+import { toolResultTextForModel as toolResultText } from './tool-result-text'
 import {
   DEFAULT_RETRY,
   ProviderError,
@@ -69,17 +70,6 @@ function textOf(message: ChatMessage): string {
     .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('')
-}
-
-function toolResultText(result: Extract<ChatMessage['content'][number], { type: 'tool_use' }>): string {
-  if (!result.result) return '[该工具调用没有返回结果]'
-  if (result.result.ok) {
-    return result.result.output || '(命令执行成功，没有输出)'
-  }
-  const parts = [`[工具执行失败] ${result.result.error ?? result.result.output ?? '未知错误'}`]
-  if (result.result.hint) parts.push(`提示：${result.result.hint}`)
-  if (result.result.output) parts.push(result.result.output)
-  return parts.join('\n')
 }
 
 /**

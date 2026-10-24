@@ -197,7 +197,7 @@
   margin: 0;
   max-width: 260px;
   font-size: var(--fs-ui);
-  line-height: 1.6;
+  line-height: var(--lh-readable);
 }
 
 .skills-list-empty svg {
@@ -252,7 +252,7 @@
 
 .skills-card-name {
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text);
   max-width: 100%;
   overflow: hidden;
@@ -267,13 +267,13 @@
   overflow: hidden;
   color: var(--text-2);
   font-size: var(--fs-micro);
-  line-height: 1.5;
+  line-height: var(--lh-copy);
 }
 
 .skills-card-meta {
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -346,7 +346,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--fs-h2);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--text-2);
 }
 
@@ -354,7 +354,7 @@
   margin: 0;
   max-width: 300px;
   font-size: var(--fs-ui);
-  line-height: 1.6;
+  line-height: var(--lh-readable);
 }
 
 .skills-detail-head {
@@ -376,8 +376,8 @@
 .skills-detail-title h3 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 500;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-medium);
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -400,7 +400,7 @@
   margin: 0;
   color: var(--text-2);
   font-size: var(--fs-ui);
-  line-height: 1.6;
+  line-height: var(--lh-readable);
   flex: 0 0 auto;
 }
 
@@ -423,7 +423,7 @@
   white-space: nowrap;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .skills-hint {
@@ -433,7 +433,7 @@
   background: var(--gold-ghost);
   color: var(--text-3);
   font-size: var(--fs-micro);
-  line-height: 1.55;
+  line-height: var(--lh-copy);
   flex: 0 0 auto;
 }
 
@@ -461,14 +461,14 @@
   color: var(--text-2);
   font-family: var(--font-ui);
   font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
 }
 
 .skills-section-note {
   color: var(--text-3);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -483,8 +483,8 @@
   background: var(--code-bg);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -508,7 +508,7 @@
   padding: 3px 4px;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-2);
 }
 
@@ -562,7 +562,7 @@
   background: var(--surface-inset);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm-plus);
   outline: none;
 }
 
@@ -605,7 +605,7 @@
   margin: 0;
   color: var(--text-3);
   font-size: var(--fs-micro);
-  line-height: 1.6;
+  line-height: var(--lh-readable);
 }
 
 .skills-install-hint code {
@@ -646,7 +646,7 @@
   white-space: nowrap;
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .skills-footnote-actions {

@@ -9,6 +9,9 @@
  *   feature:browser:open             { url, bounds? } → BrowserState
  *   feature:browser:open-preview     { url } → BrowserState（画布 HTML 成品，仅接受 morrow-artifact 预览地址）
  *   feature:browser:navigate         { url } → BrowserState
+ *   feature:browser:tab-new          { url?, bounds? } → BrowserState
+ *   feature:browser:tab-activate     { id } → BrowserState
+ *   feature:browser:tab-close        { id } → BrowserState
  *   feature:browser:set-bounds       { x,y,width,height } → BrowserBounds | null
  *   feature:browser:set-visible      { visible } → BrowserState
  *   feature:browser:back             → BrowserState
@@ -94,6 +97,19 @@ export function installBrowserFeature(service: BrowserService = browserService):
     const data = asRecord(payload)
     return service.navigate(readString(data, 'url'))
   })
+  registerFeatureHandler('feature:browser:tab-new', (payload, event) => {
+    const data = asRecord(payload ?? {})
+    const url = typeof data.url === 'string' ? data.url : ''
+    return service.newTab(event, url, data.bounds)
+  })
+  registerFeatureHandler('feature:browser:tab-activate', (payload) => {
+    const data = asRecord(payload)
+    return service.activateTab(readString(data, 'id'))
+  })
+  registerFeatureHandler('feature:browser:tab-close', (payload) => {
+    const data = asRecord(payload)
+    return service.closeTab(readString(data, 'id'))
+  })
   registerFeatureHandler('feature:browser:set-bounds', (payload) => {
     const data = asRecord(payload)
     return service.setBounds(data)
@@ -128,7 +144,7 @@ export function installBrowserFeature(service: BrowserService = browserService):
     return service.debugInfo()
   })
 
-  log.info('browser feature installed', { channels: 14 })
+  log.info('browser feature installed', { channels: 17 })
 }
 
 // 由 Lead 的 features/index.ts 在 app ready 后调用 registerFeatureModules()，

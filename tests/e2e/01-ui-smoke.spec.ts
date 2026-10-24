@@ -142,6 +142,23 @@ test.describe('Morrow 桌面冒烟', () => {
         page.getByRole('radiogroup', { name: '主题' }).getByRole('radio', { name: '浅色' })
       ).toHaveAttribute('aria-checked', 'true')
 
+      const appSizes = page.getByRole('radiogroup', { name: '应用字号' }).getByRole('radio')
+      const codeSizes = page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio')
+      await expect(appSizes).toHaveCount(4)
+      await expect(codeSizes).toHaveCount(4)
+      await expect(appSizes.nth(0)).toHaveAccessibleName('12')
+      await expect(appSizes.nth(3)).toHaveAccessibleName('15')
+      await expect(codeSizes.nth(0)).toHaveAccessibleName('11')
+      await expect(codeSizes.nth(3)).toHaveAccessibleName('14')
+      await expect(page.getByRole('radiogroup', { name: '应用字号' }).getByRole('radio', { name: '14' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      await expect(page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio', { name: '12' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+
       await page.getByRole('radiogroup', { name: '应用字号' }).getByRole('radio', { name: '15' }).click()
       await expect(
         page.getByRole('radiogroup', { name: '应用字号' }).getByRole('radio', { name: '15' })
@@ -152,26 +169,44 @@ test.describe('Morrow 桌面冒烟', () => {
         )
         .toBe('15px')
 
-      await page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio', { name: '15' }).click()
+      await expect(page.locator('html')).toHaveAttribute('data-code-font', 'jetbrains')
+      await expect
+        .poll(() =>
+          page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-code').trim())
+        )
+        .toContain('JetBrains Mono')
+
+      await page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio', { name: '14' }).click()
       await expect(
-        page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio', { name: '15' })
+        page.getByRole('radiogroup', { name: '代码字号' }).getByRole('radio', { name: '14' })
       ).toHaveAttribute('aria-checked', 'true')
       await expect
         .poll(() =>
           page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fs-code').trim())
         )
-        .toBe('15px')
+        .toBe('14px')
       await expect
         .poll(() =>
           page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fs-body').trim())
         )
         .toBe('15px')
 
+      await page.getByRole('button', { name: '代码字体' }).click()
+      await page.getByRole('option', { name: /IBM Plex Mono/ }).click()
+      await expect(page.locator('html')).toHaveAttribute('data-code-font', 'ibm-plex')
+      await page.getByRole('button', { name: '代码字体' }).click()
+      await page.getByRole('option', { name: /JetBrains Mono/ }).click()
+      await expect(page.locator('html')).toHaveAttribute('data-code-font', 'jetbrains')
+      await expect
+        .poll(() => page.locator('.st-code-preview').evaluate((element) => getComputedStyle(element).fontWeight))
+        .toBe('400')
+
       const motion = page.getByRole('switch', { name: '减少动效' })
       await motion.click()
       await expect(motion).toHaveAttribute('aria-checked', 'true')
       await expect(page.locator('html')).toHaveAttribute('data-reduce-motion', 'true')
 
+      await page.locator('.st-panel').evaluate((element) => element.scrollTo({ top: 0 }))
       await page.waitForTimeout(260)
       await page.screenshot({ path: screenshotPath('settings-appearance-light.png') })
     } finally {
@@ -391,7 +426,7 @@ test.describe('桌面灵动岛', () => {
   test('置顶胶囊可拖拽记忆位置，运行中显示真实进度并可从岛内快速发消息', async () => {
     test.setTimeout(180_000)
     mock = await startMockLLM({
-      scripts: [{ text: '好，我在主窗口开始做了。', delayMs: 5500, chunkDelayMs: 90 }]
+      scripts: [{ text: '好，我在主窗口开始做了。', delayMs: 9000, chunkDelayMs: 90 }]
     })
     morrow = await launchMorrow({ name: 'island', env: { MORROW_ISLAND: '1' }, timeoutMs: 90_000 })
     const main = morrow.page
@@ -410,7 +445,8 @@ test.describe('桌面灵动岛', () => {
     await installEventCollector(main)
 
     const island = await findIslandPage(morrow.app)
-    await expect(island.locator('.island-title')).toHaveText('Morrow 小伙伴')
+    // 灵动岛跟随主窗口当前会话：已有会话时显示会话名，而不是固定的「Morrow 小伙伴」。
+    await expect(island.locator('.island-title')).toHaveText('桌面上的小事')
     await expect(island.locator('.island-detail')).toContainText('在桌面陪你待命')
     await island.screenshot({ path: screenshotPath('island-collapsed.png'), omitBackground: true })
 
@@ -436,7 +472,7 @@ test.describe('桌面灵动岛', () => {
     // 展开面板：尺寸变化，显示最近对话与任务区
     await expandPanel(island)
     await expect(island.locator('.island-status-chip')).toContainText('待命')
-    await expect(island.locator('.island-task-title')).toHaveText('桌面伙伴，随时待命')
+    await expect(island.locator('.island-task-title')).toHaveText('桌面上的小事')
     await expect(island.locator('.island-recent')).toContainText('桌面上的小事')
     const expanded = await islandWindowState(morrow.app)
     expect(expanded!.bounds.width).toBe(396)
@@ -468,6 +504,37 @@ test.describe('桌面灵动岛', () => {
     await expect(island.locator('.island-task-title')).toHaveText('桌面上的小事')
     await island.screenshot({ path: screenshotPath('island-panel-running.png'), omitBackground: true })
 
+    // 灵动岛跟随主窗口：切到另一个对话后显示该对话（没有运行时为待命），不能继续锁在原会话。
+    const otherSession = await createSession(main, {
+      workspace,
+      ...provider,
+      permissionMode: 'auto',
+      title: '切换后的另一个对话'
+    })
+    await waitUntil(async () => {
+      const result = await island.evaluate(async () => {
+        const snapshot = await window.morrow.island.snapshot()
+        return snapshot.ok ? snapshot.data : null
+      })
+      return result?.sessionId === otherSession && result.status === 'idle' ? result : null
+    }, 10_000, '灵动岛跟随切换到另一个对话')
+    await expect(island.locator('.island-status-chip')).toContainText('待命')
+
+    // 切回原运行会话后，灵动岛恢复该会话的运行状态、开始时间与计划。
+    await main.evaluate(async (id: string) => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      await store.getState().selectSession(id)
+    }, sessionId)
+    const backToRunning = await waitUntil(async () => {
+      const result = await island.evaluate(async () => {
+        const snapshot = await window.morrow.island.snapshot()
+        return snapshot.ok ? snapshot.data : null
+      })
+      return result?.sessionId === sessionId && result.status === 'running' ? result : null
+    }, 10_000, '灵动岛跟随切回运行会话')
+    expect(backToRunning.startedAt).toBeGreaterThan(0)
+    await expect(island.locator('.island-status-chip')).toContainText('进行中')
+
     await waitForRunFinished(main, 90_000)
     await expect(island.locator('.island-status-chip')).toContainText('已完成', { timeout: 20_000 })
     await expect(island.locator('.island-task-detail')).toHaveText('这件事做好了')
@@ -477,13 +544,15 @@ test.describe('桌面灵动岛', () => {
     await island.keyboard.press('Escape')
     await island.waitForTimeout(350)
     const collapsed = await islandWindowState(morrow.app)
-    expect(collapsed!.bounds.width).toBe(356)
+    // 高 DPI 下窗口宽度有 1px 舍入，允许 356±1
+    expect(collapsed!.bounds.width).toBeGreaterThanOrEqual(355)
+    expect(collapsed!.bounds.width).toBeLessThanOrEqual(357)
     expect(collapsed!.alwaysOnTop).toBe(true)
 
     // 主窗口里能看到完整回复
     await expect(main.getByText('好，我在主窗口开始做了。')).toBeVisible({ timeout: 30_000 })
 
-    // 会话被删除后，岛不能继续指向它；用旧 sessionId 快速发送必须被拒绝，不能落到别的会话
+    // 删除当前会话后主窗口会切到另一个会话；灵动岛要跟过去，不能继续指向已删除会话。
     await main.evaluate(async (id: string) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       await store.getState().deleteSession(id)
@@ -493,8 +562,8 @@ test.describe('桌面灵动岛', () => {
         const result = await window.morrow.island.snapshot()
         return result.ok ? result.data : null
       })
-      return current?.sessionId === null && current.status === 'idle' ? current : null
-    }, 10_000, '会话删除后灵动岛复位')
+      return current?.sessionId === otherSession && current.status === 'idle' ? current : null
+    }, 10_000, '会话删除后灵动岛跟随到另一个会话')
     expect(reset.detail).toContain('待命')
 
     const stale = await island.evaluate(
@@ -506,7 +575,7 @@ test.describe('桌面灵动岛', () => {
     )
     expect(stale.ok).toBe(false)
     if (!stale.ok) expect(stale.error).toContain('不存在')
-    expect((await readStore(main)).session).toBeNull()
+    expect((await readStore(main)).session?.id).toBe(otherSession)
   })
 
   test('灵动岛跟随明暗主题', async () => {
@@ -1006,15 +1075,20 @@ test.describe('R5 UI 交互', () => {
     await dialog.getByRole('button', { name: '选择模型服务' }).click()
     const providerOptions = dialog.getByRole('option')
     expect(await providerOptions.count()).toBeGreaterThanOrEqual(14)
-    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', '小米 MiMo', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'Meta（Muse）', 'OpenRouter（模型聚合）', 'Ollama（本地）', 'LM Studio（本地）']) {
+    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', '小米 MiMo', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'Meta（Muse）', 'llama.cpp（本地）', 'Ollama（本地）', 'LM Studio（本地）']) {
       await expect(dialog.getByText(provider, { exact: true }).first()).toBeVisible()
     }
+    // OpenRouter 是中转聚合，不是官方或本地模型，不再出现在服务列表
+    await expect(providerOptions.filter({ hasText: 'OpenRouter' })).toHaveCount(0)
     await dialog.getByRole('button', { name: '选择模型服务' }).click()
     await expect(dialog.getByText(/填上 API Key 就能用/)).toBeVisible()
     await expect(dialog.getByText('DeepSeek V4.1 Flash').first()).toBeVisible()
     await expect(dialog.locator('.st-provider')).toHaveCount(1)
     await page.waitForTimeout(450)
     await page.screenshot({ path: screenshotPath('r5-final-settings-models.png') })
+    // 主题切换同步窗口/托盘图标（深色/浅色两套资产）
+    expect((await page.evaluate(() => window.morrow.app.setTheme('light'))).ok).toBe(true)
+    expect((await page.evaluate(() => window.morrow.app.setTheme('dark'))).ok).toBe(true)
     await page.evaluate(() => {
       const store = (window as unknown as {
         __morrowStore: { getState: () => { setTheme: (value: string) => void } }
@@ -1039,7 +1113,8 @@ test.describe('R5 UI 交互', () => {
     const latestByProvider: Array<[string, string[]]> = [
       ['OpenAI', ['GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']],
       ['智谱 GLM（Z.AI）', ['GLM-5.3', 'GLM-5.3 Flash']],
-      ['xAI Grok', ['Grok 4.7']],
+      ['xAI Grok', ['Grok 4.7', 'Grok 4.6']],
+      ['Kimi（月之暗面）', ['Kimi K3.1 Pro', 'Kimi K3', 'Kimi K2.8 Preview']],
       ['Google Gemini', ['Gemini 4 Argon', 'Gemini 3.8 Flash']],
       ['DeepSeek', ['DeepSeek V4.1 Flash', 'DeepSeek V4 Pro']],
       ['Anthropic Claude', ['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']],
@@ -1056,6 +1131,14 @@ test.describe('R5 UI 交互', () => {
       if (provider === 'OpenAI') {
         await page.waitForTimeout(300)
         await page.screenshot({ path: screenshotPath('r5-final-settings-models-openai.png') })
+      }
+      if (provider === 'xAI Grok') {
+        await expect(dialog.getByText(/Grok 4\.1/)).toHaveCount(0)
+      }
+      if (provider === 'Kimi（月之暗面）') {
+        await expect(dialog.getByText(/Kimi K2\.7|Kimi K2\.6/)).toHaveCount(0)
+        await page.waitForTimeout(250)
+        await page.screenshot({ path: screenshotPath('r25-settings-xai-models.png') })
       }
     }
     await expect(dialog.getByText('Qwen Plus')).toHaveCount(0)

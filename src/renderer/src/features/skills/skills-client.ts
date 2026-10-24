@@ -49,6 +49,7 @@ export interface SkillsSnapshot {
 export interface InstallResult {
   installed: SkillView
   snapshot: SkillsSnapshot
+  skipped: string[]
 }
 
 export interface SkillsPickResult {

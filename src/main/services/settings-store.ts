@@ -1,9 +1,10 @@
 import { safeStorage } from 'electron'
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { DEFAULT_MODEL, builtinProviders, defaultSettings, findModel, normalizeReasoningStyle } from '../../shared/models'
+import { DEFAULT_MODEL, RETIRED_MODEL_IDS, builtinProviders, defaultSettings, findModel, normalizeReasoningStyle } from '../../shared/models'
 import type {
   HookConfig,
   HookEvent,
+  MediaEngineSettings,
   ModelInfo,
   ProviderCategory,
   ProviderConfig,
@@ -15,7 +16,7 @@ import type {
 import { dataPath, ensureDataDirs } from './paths'
 import { log } from './logger'
 import { LEGACY_FALLBACK_PREFIX, decodeSecret, encodeSecret, type SecretCrypto } from './secret-codec'
-import { isHookEvent, MAX_ENABLED_HOOKS_PER_EVENT, MAX_HOOKS } from '../../shared/hooks'
+import { isHookEvent, MAX_ENABLED_HOOKS_PER_EVENT, MAX_HOOKS } from '../../shared/types'
 import { isReasoningEffort } from '../../shared/models'
 import {
   ANSWER_STYLE_MAX_CUSTOM,
@@ -33,10 +34,10 @@ interface SecretsFile {
 const PROVIDER_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 const PROVIDER_KINDS: ReadonlySet<ProviderKind> = new Set(['openai-compat', 'anthropic', 'demo'])
-const PROVIDER_CATEGORIES: ReadonlySet<ProviderCategory> = new Set(['cn', 'global', 'aggregator', 'local', 'custom'])
+const PROVIDER_CATEGORIES: ReadonlySet<ProviderCategory> = new Set(['cn', 'global', 'local', 'custom'])
 const MAX_MODELS = 200
 const MAX_HEADERS = 32
-const WEB_SEARCH_PROVIDERS: ReadonlySet<WebSearchProvider> = new Set(['tavily', 'brave', 'serper', 'searxng'])
+const WEB_SEARCH_PROVIDERS: ReadonlySet<WebSearchProvider> = new Set(['builtin', 'tavily', 'brave', 'serper', 'searxng'])
 
 /** 从磁盘/设置页读入的钩子做宽松归一化；执行前仍由 HookService 过滤。 */
 export function normalizeHooks(raw: unknown): HookConfig[] {
@@ -67,12 +68,51 @@ function normalizeWebSearch(raw: unknown, fallback: WebSearchSettings): WebSearc
   const maxResults = typeof raw.maxResults === 'number' && Number.isFinite(raw.maxResults)
     ? Math.min(10, Math.max(1, Math.round(raw.maxResults)))
     : fallback.maxResults
+  // R27：内置搜索默认开启；旧版本未配置过外部搜索服务的用户自动迁移到 builtin。
+  const legacyUnconfigured = provider !== 'builtin' && raw.apiKeyStored !== true
+  const enabled = legacyUnconfigured ? true : raw.enabled === true
   return {
-    enabled: raw.enabled === true,
-    provider,
+    enabled,
+    provider: legacyUnconfigured ? 'builtin' : provider,
     ...(typeof raw.baseUrl === 'string' && raw.baseUrl.trim() ? { baseUrl: raw.baseUrl.trim().slice(0, 2048) } : {}),
     apiKeyStored: raw.apiKeyStored === true,
     maxResults
+  }
+}
+
+function normalizeMediaEngine(raw: unknown, fallback: MediaEngineSettings): MediaEngineSettings {
+  if (!isRecord(raw)) return fallback
+  let comfyuiUrl = fallback.comfyuiUrl
+  if (typeof raw.comfyuiUrl === 'string' && raw.comfyuiUrl.trim()) {
+    try {
+      const url = new URL(raw.comfyuiUrl.trim())
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password) {
+        comfyuiUrl = raw.comfyuiUrl.trim().slice(0, 2_048)
+      }
+    } catch {
+      // 保留旧值
+    }
+  }
+  const pathValue = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim().slice(0, 2_000) : null
+  const clamp = (value: unknown, min: number, max: number, fallbackValue: number): number => {
+    const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallbackValue
+  }
+  const rawOutput = typeof raw.outputDir === 'string' ? raw.outputDir.trim().replace(/\\/g, '/') : ''
+  const outputDir =
+    rawOutput && !rawOutput.startsWith('.') && !rawOutput.includes('..') && !/^([a-zA-Z]:|\/)/.test(rawOutput)
+      ? rawOutput.slice(0, 120)
+      : fallback.outputDir
+  return {
+    enabled: raw.enabled !== false,
+    comfyuiUrl,
+    comfyuiDir: pathValue(raw.comfyuiDir),
+    ffmpegPath: pathValue(raw.ffmpegPath),
+    autoStart: raw.autoStart !== false,
+    imageTimeoutSec: clamp(raw.imageTimeoutSec, 60, 3_600, fallback.imageTimeoutSec),
+    videoTimeoutSec: clamp(raw.videoTimeoutSec, 120, 7_200, fallback.videoTimeoutSec),
+    outputDir
   }
 }
 
@@ -150,6 +190,7 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ...(maxOutput !== undefined ? { maxOutput } : {}),
       supportsTools: item.supportsTools !== false,
       ...(typeof item.supportsReasoning === 'boolean' ? { supportsReasoning: item.supportsReasoning } : {}),
+      ...(typeof item.supportsVision === 'boolean' ? { supportsVision: item.supportsVision } : {}),
       ...(reasoningStyle ? { reasoningStyle } : {}),
       ...(pricing ? { pricing } : {}),
       ...(typeof item.note === 'string' && item.note.trim() ? { note: item.note.trim().slice(0, 200) } : {})
@@ -228,6 +269,8 @@ export class SettingsStore {
   private settings: Settings
   private secrets: SecretsFile
   private encryptionAvailable = false
+  /** 合并内置目录时丢弃了已下线的 Provider/模型，需要立即写回磁盘。 */
+  private mergeDropped = false
 
   constructor() {
     ensureDataDirs()
@@ -238,7 +281,7 @@ export class SettingsStore {
     this.settings = this.mergeBuiltinProviders(migrated.settings)
     const defaultRepaired = this.ensureDefaultModel()
     this.syncKeyFlags()
-    if (migrated.changed || defaultRepaired) this.persist()
+    if (migrated.changed || defaultRepaired || this.mergeDropped) this.persist()
     log.info('settings loaded', { encryptionAvailable: this.encryptionAvailable })
   }
 
@@ -257,20 +300,45 @@ export class SettingsStore {
     if (!existsSync(file)) return fallback
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<Settings>
-      // 旧版本允许 11–20；范围收敛后把历史值夹到 12–15，避免设置页无选中项。
-      const savedCodeFontSize =
-        typeof parsed.codeFontSize === 'number' && Number.isFinite(parsed.codeFontSize)
-          ? Math.min(15, Math.max(12, Math.round(parsed.codeFontSize)))
-          : fallback.codeFontSize
+      // 旧版本允许更大范围；收敛后把历史值夹进当前区间，避免设置页没有选中项。
+      const clampFontSize = (value: unknown, min: number, max: number, fallbackValue: number): number =>
+        typeof value === 'number' && Number.isFinite(value)
+          ? Math.min(max, Math.max(min, Math.round(value)))
+          : fallbackValue
+      const savedFontSize = clampFontSize(parsed.fontSize, 12, 15, fallback.fontSize)
+      const savedCodeFontSize = clampFontSize(parsed.codeFontSize, 11, 14, fallback.codeFontSize)
+      const codeFonts = ['ibm-plex', 'jetbrains', 'system'] as const
+      const savedCodeFont = codeFonts.includes(parsed.codeFont as (typeof codeFonts)[number])
+        ? (parsed.codeFont as (typeof codeFonts)[number])
+        : fallback.codeFont
+      // E2E / 打包冒烟会运行大量带固定脚本的任务；默认关闭自动复盘，避免额外的模型请求插队。
+      const testMode = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
+      const evolutionEnabled =
+        typeof parsed.evolutionEnabled === 'boolean'
+          ? parsed.evolutionEnabled
+          : testMode
+            ? false
+            : fallback.evolutionEnabled
+      const episodeMemoryEnabled =
+        typeof parsed.episodeMemoryEnabled === 'boolean'
+          ? parsed.episodeMemoryEnabled
+          : testMode
+            ? false
+            : fallback.episodeMemoryEnabled
       return {
         ...fallback,
         ...parsed,
+        fontSize: savedFontSize,
         codeFontSize: savedCodeFontSize,
+        codeFont: savedCodeFont,
+        evolutionEnabled,
+        episodeMemoryEnabled,
         // 显式保留旧配置的 layoutVersion（缺失视为第 1 版），供构造器做一次性布局迁移
         layoutVersion: parsed.layoutVersion ?? 1,
         // provider 列表始终以代码内预设为基准做合并，避免旧版本缺失新 provider
         providers: parsed.providers?.length ? parsed.providers : fallback.providers,
         webSearch: normalizeWebSearch(parsed.webSearch, fallback.webSearch),
+        mediaEngine: normalizeMediaEngine(parsed.mediaEngine, fallback.mediaEngine),
         answerStyle: normalizeAnswerStyle(parsed.answerStyle),
         answerStyleCustom: normalizeAnswerStyleCustom(parsed.answerStyleCustom),
         hooks: normalizeHooks(parsed.hooks)
@@ -332,7 +400,11 @@ export class SettingsStore {
    * 模型列表与上下文窗口。自定义 provider 原样保留。
    */
   private mergeBuiltinProviders(settings: Settings): Settings {
+    this.mergeDropped = false
     const builtins = builtinProviders()
+    for (const provider of settings.providers) {
+      if (provider.isBuiltin && !builtins.some((preset) => preset.id === provider.id)) this.mergeDropped = true
+    }
     const providers: ProviderConfig[] = builtins.map((preset) => {
       const existing = settings.providers.find((p) => p.id === preset.id)
       if (!existing) return preset
@@ -348,6 +420,8 @@ export class SettingsStore {
           const savedModels = existing.models ?? []
           const savedById = new Map(savedModels.map((model) => [model.id, model]))
           const presetIds = new Set(preset.models.map((model) => model.id))
+          const retired = new Set(RETIRED_MODEL_IDS[preset.id] ?? [])
+          if (savedModels.some((model) => retired.has(model.id))) this.mergeDropped = true
           const merged = preset.models.map((model) => {
             if (!existing.modelsSyncedAt) return model
             const saved = savedById.get(model.id)
@@ -362,7 +436,7 @@ export class SettingsStore {
               preset.kind
             )
           })
-          return [...merged, ...savedModels.filter((model) => !presetIds.has(model.id))]
+          return [...merged, ...savedModels.filter((model) => !presetIds.has(model.id) && !retired.has(model.id))]
         })(),
         baseUrl: existing.baseUrl?.trim() || preset.baseUrl,
         // demo provider 的端点不允许改坏
@@ -478,6 +552,7 @@ export class SettingsStore {
       'theme',
       'fontSize',
       'codeFontSize',
+      'codeFont',
       'reduceMotion',
       'permissionMode',
       'sendKey',
@@ -495,6 +570,8 @@ export class SettingsStore {
       'canvasWidth',
       'composerHeight',
       'autoTitle',
+      'evolutionEnabled',
+      'episodeMemoryEnabled',
       'closeAction',
       'notifyOnFinish',
       'islandEnabled',
@@ -503,14 +580,15 @@ export class SettingsStore {
       'answerStyle',
       'answerStyleCustom',
       'hooks',
-      'terminalShell'
+      'terminalShell',
+      'mediaEngine'
     ])
     for (const key of Object.keys(patch)) {
       if (key === 'providers' || key === 'version') continue
       if (!allowed.has(key)) failValidation(`不支持的设置项：${key}`)
     }
     const next: Settings = { ...this.settings }
-    const bool = (key: 'reduceMotion' | 'onboardingDone' | 'sidebarCollapsed' | 'demoSeen' | 'showTokenMeter' | 'autoCompact' | 'autoTitle' | 'notifyOnFinish' | 'islandEnabled'): void => {
+    const bool = (key: 'reduceMotion' | 'onboardingDone' | 'sidebarCollapsed' | 'demoSeen' | 'showTokenMeter' | 'autoCompact' | 'autoTitle' | 'evolutionEnabled' | 'episodeMemoryEnabled' | 'notifyOnFinish' | 'islandEnabled'): void => {
       const value = patch[key]
       if (typeof value !== 'boolean') failValidation(`设置项 ${key} 必须是布尔值。`)
       next[key] = value
@@ -521,17 +599,24 @@ export class SettingsStore {
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'fontSize')) {
       const value = patch.fontSize
-      if (typeof value !== 'number' || !Number.isInteger(value) || value < 13 || value > 16) {
-        failValidation('字号需在 13–16 之间。')
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 12 || value > 15) {
+        failValidation('字号需在 12–15 之间。')
       }
       next.fontSize = value
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'codeFontSize')) {
       const value = patch.codeFontSize
-      if (typeof value !== 'number' || !Number.isInteger(value) || value < 12 || value > 15) {
-        failValidation('代码字号需在 12–15 之间。')
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 11 || value > 14) {
+        failValidation('代码字号需在 11–14 之间。')
       }
       next.codeFontSize = value
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'codeFont')) {
+      const value = patch.codeFont
+      if (value !== 'ibm-plex' && value !== 'jetbrains' && value !== 'system') {
+        failValidation('代码字体设置不合法。')
+      }
+      next.codeFont = value
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'permissionMode')) {
       if (patch.permissionMode !== 'read-only' && patch.permissionMode !== 'ask' && patch.permissionMode !== 'auto') {
@@ -549,7 +634,7 @@ export class SettingsStore {
       }
       next.runningSendMode = patch.runningSendMode
     }
-    for (const key of ['reduceMotion', 'onboardingDone', 'sidebarCollapsed', 'demoSeen', 'showTokenMeter', 'autoCompact', 'autoTitle', 'notifyOnFinish', 'islandEnabled'] as const) {
+    for (const key of ['reduceMotion', 'onboardingDone', 'sidebarCollapsed', 'demoSeen', 'showTokenMeter', 'autoCompact', 'autoTitle', 'evolutionEnabled', 'episodeMemoryEnabled', 'notifyOnFinish', 'islandEnabled'] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key)) bool(key)
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'closeAction')) {
@@ -650,6 +735,10 @@ export class SettingsStore {
         hooks.push({ id, event, command, enabled })
       }
       next.hooks = hooks
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'mediaEngine')) {
+      if (!isRecord(patch.mediaEngine)) failValidation('多媒体设置格式不正确。')
+      next.mediaEngine = normalizeMediaEngine(patch.mediaEngine, this.settings.mediaEngine)
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'lastWorkspace')) {
       const value = patch.lastWorkspace
@@ -764,7 +853,7 @@ export class SettingsStore {
       }
     }
     const keyStored = Boolean(this.secrets.keys[keyId])
-    if (input.provider !== 'searxng' && input.enabled && !keyStored) {
+    if (input.provider !== 'searxng' && input.provider !== 'builtin' && input.enabled && !keyStored) {
       failValidation('启用联网搜索前，请先填写搜索服务的 API Key。')
     }
     this.settings.webSearch = {
@@ -797,7 +886,10 @@ export class SettingsStore {
   }
 
   hasAnyApiKey(): boolean {
-    return this.settings.providers.some((p) => p.kind !== 'demo' && Boolean(this.secrets.keys[p.id]))
+    // 本地服务（llama.cpp / Ollama / LM Studio）不需要 Key，启用即视为已连接
+    return this.settings.providers.some(
+      (p) => p.enabled && p.kind !== 'demo' && (p.category === 'local' || Boolean(this.secrets.keys[p.id]))
+    )
   }
 }
 

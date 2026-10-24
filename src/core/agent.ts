@@ -28,6 +28,7 @@ import type {
   RuntimeEvent,
   SessionMode,
   SessionPlan,
+  SwarmOperation,
   ThinkingBlock,
   TextBlock,
   TodoItem,
@@ -38,13 +39,16 @@ import type {
 } from '../shared/types'
 import {
   addUsage,
+  aggressiveTrim,
   applyCompaction,
   estimateMessagesTokens,
   localExtractSummary,
   planCompaction,
+  shrinkToolOutputs,
   serializeMessagesForSummary
 } from './context'
 import { buildChatModePromptSection, buildGoalPromptSection, buildPlanModePromptSection, buildSystemPrompt } from './prompt'
+import { ROLE_SKILL_BOUNDARY } from './agent-roles'
 import { validateGoalEvidence } from './tools/meta-tools'
 import {
   deniedMessage,
@@ -60,12 +64,13 @@ import type {
   Provider,
   ProviderStreamRequest,
   RuntimeEventPayload,
-  SubagentRequest,
-  SubagentResult,
-  SubagentRole,
+  SwarmMemberRequest,
+  SwarmMemberResult,
+  SwarmMemberRole,
   ToolContext,
   ToolDefinition,
   TerminalToolHandler,
+  MediaToolHandler,
   WebSearchHandler
 } from './types'
 import { ProviderError, toProviderError } from './providers/types'
@@ -137,12 +142,22 @@ export interface RunAgentOptions {
   ocrPdf?: import('./types').PdfOcrHandler
   /** 终端/后台任务处理器（主进程注入） */
   terminal?: TerminalToolHandler
+  /** 本地多媒体引擎处理器（主进程注入） */
+  media?: MediaToolHandler
+  /** 当前对话 Provider/模型（主进程注入；用于优先使用自带视觉能力） */
+  vision?: { provider: Provider; model: ModelInfo }
+  /** 写入记忆中心（由主进程注入；未注入时 remember 回退 MEMORY.md） */
+  remember?: (input: {
+    text: string
+    scope: 'project' | 'global'
+    tags?: string[]
+  }) => Promise<{ scope: 'project' | 'global'; text: string }>
   /** 工作区持久化权限规则 */
   permissionRules?: PermissionRule[]
   /** 推理强度；仅在模型声明 reasoningStyle 时映射到 provider */
   reasoningEffort?: import('../shared/types').ReasoningEffort
-  /** 可用的子代理角色（主进程加载内置 + 自定义） */
-  agents?: SubagentRole[]
+  /** 可用的集群成员角色（主进程加载内置 + 自定义） */
+  agents?: SwarmMemberRole[]
   signal: AbortSignal
   emit: (event: RuntimeEvent) => void
   onPermission: (request: PermissionRequest) => Promise<PermissionDecision>
@@ -268,7 +283,7 @@ interface RunContext {
   usedToolUseIds: Set<string>
   /** 工具参数解析失败（如输出被截断）的 tool_use id → 错误原因，执行前转成可自修复的工具错误 */
   toolParseErrors: Map<string, string>
-  /** 审批/提问串行链：并行子代理不能同时弹出多个审批卡 */
+  /** 审批/提问串行链：并行集群成员不能同时弹出多个审批卡 */
   permissionChain: Promise<void>
 }
 
@@ -277,10 +292,6 @@ interface RunContext {
  * 仍保留显式 maxSteps 支持（计划模式、测试与高级调用方可以设硬上限）。
  */
 const DEFAULT_MAX_STEPS = Number.POSITIVE_INFINITY
-const SUBAGENT_MAX_STEPS = 12
-const SUBAGENT_MAX_OUTPUT = 4096
-/** 同一轮最多同时推进的子代理数（集群一次最多 8 个） */
-const MAX_PARALLEL_SUBAGENTS = 8
 const DEFAULT_COMPACT_THRESHOLD = 0.8
 const MIN_COMPACT_THRESHOLD = 0.5
 const MAX_COMPACT_THRESHOLD = 0.98
@@ -440,6 +451,14 @@ function toResultError(err: unknown): ResultError {
 }
 
 /* ── 对外主入口 ───────────────────────────────────────────────── */
+
+/** 判断是否是「上下文窗口已满」类错误：这类错误应压缩后重试，而不是结束任务。 */
+function isContextOverflowError(error: { code?: string; message?: string }): boolean {
+  const text = `${error.code ?? ''} ${error.message ?? ''}`
+  return /context[_ -]?length|context.{0,24}(too|exceed|limit|full)|maximum.{0,20}context|prompt.{0,20}too long|reduce.{0,20}(length|token)|too many tokens|input.{0,16}too long|上下文.{0,16}(超|满|限制|过长)/i.test(
+    text
+  )
+}
 
 export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult> {
   const opts = normalizeOptions(options)
@@ -604,12 +623,13 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
     /(专业|高质量|精致|完美|拿得出手|直接交付|可交付|尽可能好|像作品|打磨|精品|正式|汇报|惊艳|高级感|有质感|有氛围|视觉冲击|好看|漂亮|美术|酷炫)/.test(
       userText
     )
+  let overflowRetries = 0
   for (;;) {
     if (ctx.opts.signal.aborted) {
       finalizeInterrupted(ctx)
       return { reason: 'cancelled' }
     }
-    // 上下文压缩（超过阈值才真正调用摘要模型）
+    // 上下文压缩：每次达到阈值都必须压缩，不能靠冷却跳过；长任务可以反复压缩
     await maybeCompact(ctx)
     if (ctx.opts.signal.aborted) {
       finalizeInterrupted(ctx)
@@ -624,6 +644,27 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
       return { reason: 'cancelled' }
     }
     if (streamed.error) {
+      if (overflowRetries < 2 && isContextOverflowError(streamed.error)) {
+        overflowRetries += 1
+        // 上一次失败回合不进入历史：清理后强制压缩，再用同一目标重试
+        ctx.messages = ctx.messages.filter((message) => message.id !== streamed.message.id)
+        ctx.newMessages = ctx.newMessages.filter((message) => message.id !== streamed.message.id)
+        const compacted = await maybeCompact(ctx, { force: true, targetRatio: 0.35 })
+        if (!compacted) {
+          ctx.messages = aggressiveTrim(ctx.messages, ctx.systemPrompt, ctx.opts.model.contextWindow, 4)
+          ctx.compacted = true
+          ctx.lastRequestUsage = null
+          ctx.emit({ type: 'messages_replaced', messages: ctx.messages })
+          ctx.emit({
+            type: 'notice',
+            level: 'warn',
+            message: '上下文已满，已折叠较早内容并重试本步。'
+          })
+        }
+        assistantId = newId('msg')
+        continue
+      }
+      ctx.emit({ type: 'error', error: streamed.error })
       return { reason: 'error', error: streamed.error }
     }
     if (streamed.toolCalls.length === 0) {
@@ -886,6 +927,7 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
   let thinkingStartedAt: number | null = null
   let thinkingLastAt: number | null = null
   const pendingCalls = new Map<number, { id: string; name: string; args: string }>()
+  const seenProviderCallIds = new Set<string>()
 
   const finalizeThinkingDuration = (): void => {
     if (!thinkingBlock || thinkingStartedAt === null) return
@@ -951,6 +993,14 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
           break
         }
         case 'tool_call_end': {
+          // 同一轮里重复的 end 帧（同 index + provider id）只处理一次；
+          // 不同 index 复用同一 id 属于两个不同调用，仍交给 allocateToolUseId 重映射。
+          const frameKey = `${event.index}:${event.id}`
+          if (event.id && seenProviderCallIds.has(frameKey)) {
+            pendingCalls.delete(event.index)
+            break
+          }
+          if (event.id) seenProviderCallIds.add(frameKey)
           // 用 end 事件的权威信息建 block（有些网关 start 帧缺 id/name）
           const input = event.input ?? {}
           const toolUseId = allocateToolUseId(ctx, event.id)
@@ -993,6 +1043,9 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
     // 兜底：只发了 start/delta 没有 end 的工具调用，用累积参数补齐
     for (const [index, call] of pendingCalls) {
       if (!call.name) continue
+      const frameKey = `${index}:${call.id}`
+      if (call.id && seenProviderCallIds.has(frameKey)) continue
+      if (call.id) seenProviderCallIds.add(frameKey)
       const parsed = parseToolArgs(call.args)
       const toolUseId = allocateToolUseId(ctx, call.id)
       if (!parsed && call.args) {
@@ -1013,7 +1066,7 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
 
     commitRequestUsage(ctx)
     if (message.content.length === 0) message.content.push({ type: 'text', text: '（模型没有返回内容）' })
-    const toolCalls = message.content.filter((block): block is ToolUseBlock => block.type === 'tool_use')
+    const toolCalls = dedupeMessageToolCalls(message)
     if (toolCalls.length === 0) {
       // 没有工具的回合：在完成事件前再刷新一次 usage，确保 UI 上下文条准确
       ctx.emit({ type: 'usage_updated', usage: currentUsage(ctx) })
@@ -1028,7 +1081,9 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
     }
     const providerError = err instanceof ProviderError ? err : toProviderError(err, 'agent')
     const resultError = providerError.toResultError()
-    ctx.emit({ type: 'error', error: resultError })
+    // 上下文溢出会被主循环压缩后重试，先不向用户弹错误；重试耗尽时由循环统一报告
+    const recoverableOverflow = isContextOverflowError(resultError)
+    if (!recoverableOverflow) ctx.emit({ type: 'error', error: resultError })
     message.error = resultError
     if (message.content.length === 0) {
       message.content.push({ type: 'error', message: resultError.message, code: resultError.code })
@@ -1036,6 +1091,46 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
     ctx.emit({ type: 'message_completed', messageId, message: cloneMessage(message) })
     return { message, toolCalls: [], interrupted: false, error: resultError }
   }
+}
+
+/** 流式网关可能重复发送同一个 tool_call_end（同 id）：只保留参数更完整的一份，避免重复执行。 */
+function dedupeToolCalls(calls: ToolUseBlock[]): ToolUseBlock[] {
+  const order: string[] = []
+  const byId = new Map<string, ToolUseBlock>()
+  for (const call of calls) {
+    const existing = byId.get(call.id)
+    if (!existing) {
+      byId.set(call.id, call)
+      order.push(call.id)
+      continue
+    }
+    let existingSize = 0
+    let nextSize = 0
+    try {
+      existingSize = JSON.stringify(existing.input ?? {}).length
+      nextSize = JSON.stringify(call.input ?? {}).length
+    } catch {
+      // 不可序列化时保留先到的
+    }
+    if (nextSize >= existingSize) byId.set(call.id, call)
+  }
+  return order.map((id) => byId.get(id)!).filter(Boolean)
+}
+
+function dedupeMessageToolCalls(message: ChatMessage): ToolUseBlock[] {
+  const calls = message.content.filter((block): block is ToolUseBlock => block.type === 'tool_use')
+  const unique = dedupeToolCalls(calls)
+  if (unique.length !== calls.length) {
+    const uniqueIds = new Set(unique.map((call) => call.id))
+    const seen = new Set<string>()
+    message.content = message.content.filter((block) => {
+      if (block.type !== 'tool_use') return true
+      if (!uniqueIds.has(block.id) || seen.has(block.id)) return false
+      seen.add(block.id)
+      return true
+    })
+  }
+  return unique
 }
 
 function extractToolCalls(message: ChatMessage): ToolUseBlock[] {
@@ -1051,18 +1146,18 @@ const INTERRUPTED_RESULT: ToolResult = {
   meta: { interrupted: true }
 }
 
-/* ── 工具执行（审批 → 执行）：主代理与子代理共用同一条链 ─────── */
+/* ── 工具执行（审批 → 执行）：主代理与集群成员共用同一条链 ─────── */
 
 type ToolCallMode = 'main' | 'subagent'
 
 interface ToolCallRunOptions {
   mode: ToolCallMode
-  /** main：父 assistant 消息 id；subagent：父 task 所在的 assistant 消息 id */
+  /** main：父 assistant 消息 id；subagent：父 swarm 所在的 assistant 消息 id */
   parentMessageId: string
-  /** subagent：父 task 的 toolUseId（子代理工具进度挂到父 task 卡片下） */
+  /** subagent：父 swarm 的 toolUseId（集群成员工具进度挂到父 swarm 卡片下） */
   parentToolUseId?: string
   /** swarm：当前子任务身份，用于把进度写到对应任务行 */
-  swarmTask?: SubagentRequest['swarmTask']
+  swarmTask?: SwarmMemberRequest['swarmTask']
   /** subagent 的工具上下文覆盖（工作区/snapshot/权限与主代理一致，仅禁止嵌套与改 Goal） */
   toolContextOverrides?: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean; planMode?: boolean }
 }
@@ -1072,7 +1167,7 @@ interface ToolCallRunResult {
   result?: ToolResult
 }
 
-/** 审批/提问串行化：多个并行子代理不会同时弹出多个审批卡 */
+/** 审批/提问串行化：多个并行集群成员不会同时弹出多个审批卡 */
 async function runSerialized<T>(ctx: RunContext, fn: () => Promise<T>): Promise<T> {
   const previous = ctx.permissionChain
   let release: () => void = () => undefined
@@ -1108,8 +1203,8 @@ function emitSubagentProgress(
 
 /**
  * 执行单个工具调用（权限判定 → 审批 → 真实执行）。
- * 主代理与子代理共用：子代理与主代理使用同一套 evaluatePermission / onPermission / sessionGrants / 工作区 / snapshot，
- * 区别只在事件呈现：主代理发 tool_started/finished；子代理只发 tool_progress（挂到父 task 卡片），
+ * 主代理与集群成员共用：集群成员与主代理使用同一套 evaluatePermission / onPermission / sessionGrants / 工作区 / snapshot，
+ * 区别只在事件呈现：主代理发 tool_started/finished；集群成员只发 tool_progress（挂到父 swarm 卡片），
  * 但 permission_requested/resolved 原样发给父级 UI，由用户在主界面审批。
  */
 async function runToolCallWithPermissions(
@@ -1221,7 +1316,7 @@ async function runToolCallWithPermissions(
     }
     let decision: PermissionDecision
     try {
-      // 请求事件也必须在串行区内：多个并行子代理不能同时往 UI 推两张审批卡
+      // 请求事件也必须在串行区内：多个并行集群成员不能同时往 UI 推两张审批卡
       decision = await runSerialized(ctx, async () => {
         if (ctx.opts.signal.aborted) throw abortError()
         ctx.emit({ type: 'permission_requested', request })
@@ -1300,25 +1395,6 @@ async function executeToolCalls(ctx: RunContext, message: ChatMessage, toolCalls
       return true
     }
     const call = toolCalls[index]
-    // R9.1：同一 assistant 消息里的多个 task 调用真正并发（Promise.all），互不阻塞
-    if (call.name === 'task') {
-      const batch: ToolUseBlock[] = []
-      while (index < toolCalls.length && toolCalls[index].name === 'task') {
-        batch.push(toolCalls[index])
-        index += 1
-      }
-      for (let offset = 0; offset < batch.length; offset += MAX_PARALLEL_SUBAGENTS) {
-        const chunk = batch.slice(offset, offset + MAX_PARALLEL_SUBAGENTS)
-        const results = await Promise.all(
-          chunk.map((item) => runToolCallWithPermissions(ctx, item, { mode: 'main', parentMessageId: message.id }))
-        )
-        if (ctx.opts.signal.aborted || results.some((item) => item.interrupted)) {
-          markPendingInterrupted(ctx, message, toolCalls)
-          return true
-        }
-      }
-      continue
-    }
     const result = await runToolCallWithPermissions(ctx, call, { mode: 'main', parentMessageId: message.id })
     if (result.interrupted) {
       markPendingInterrupted(ctx, message, toolCalls)
@@ -1502,11 +1578,14 @@ function createToolContext(
       ctx.emit({ type: 'artifacts_updated', artifacts: ctx.artifacts, artifactId: artifact.id })
     },
     ...(opts.webSearch ? { searchWeb: opts.webSearch } : {}),
+    ...(opts.remember ? { remember: opts.remember } : {}),
     ...(opts.ocrPdf ? { ocrPdf: opts.ocrPdf } : {}),
     ...(opts.terminal ? { terminal: opts.terminal } : {}),
+    ...(opts.media ? { media: opts.media } : {}),
+    ...(opts.vision ? { vision: opts.vision } : {}),
     ...(opts.commandShell ? { commandShell: opts.commandShell } : {}),
     askUser: async (request) => {
-      // 与审批共用同一条串行队列：并行子代理一次只弹一张交互卡
+      // 与审批共用同一条串行队列：并行集群成员一次只弹一张交互卡
       return runSerialized(ctx, async () => {
         if (opts.signal.aborted) throw abortError()
         ctx.emit({ type: 'question_asked', request })
@@ -1532,20 +1611,21 @@ function createToolContext(
         note,
         ...(progressOpts?.status ? { status: progressOpts.status } : {}),
         ...(progressOpts?.title ? { title: progressOpts.title } : {}),
+        ...(typeof progressOpts?.percent === 'number' ? { percent: Math.min(100, Math.max(0, Math.round(progressOpts.percent))) } : {}),
         ...(progressOpts?.swarmTask ? { swarmTask: progressOpts.swarmTask } : {})
       })
     },
     agents: opts.agents ?? [],
-    runSubagent:
+    runSwarmMember:
       overrides.allowSubagent === false
         ? async () => ({
             status: 'failed' as const,
             summary: '',
             steps: 0,
             usage: { inputTokens: 0, outputTokens: 0 },
-            error: '子代理不能再创建子代理。'
+            error: '集群成员不能再启动集群。'
           })
-        : (request) => runSubagentLoop(ctx, request, messageId, block.id)
+        : (request) => runSwarmMemberLoop(ctx, request, messageId, block.id)
   }
 }
 
@@ -1591,27 +1671,32 @@ function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   return next
 }
 
-/* ── 子代理（与主代理同权限链、深度 1） ───────────────────────── */
+/* ── 集群成员（与主代理同权限链、深度 1） ───────────────────────── */
 
 /**
- * 子代理循环（R9.1：与主代理**权限完全一致**）：
- * - 工具集 = 主代理当前工具集 - task（防嵌套）- update_goal（防篡改父目标）；
+ * 集群成员循环（R9.1：与主代理**权限完全一致**）：
+ * - 工具集 = 主代理当前工具集 - swarm（防嵌套）- update_goal（防篡改父目标）- todo_write（防改主计划）；
  * - 同一 permissionMode/mode/工作区/snapshot/MCP 配置；
  * - 写文件/跑命令/mcp_call 走主代理同一套 evaluatePermission + onPermission（审批卡出现在父级 UI）；
- * - read-only 父任务或 chat 模式仍只读（权限层会拒绝/工具集已过滤）；
- * - 终态 failed/exhausted/cancelled 由 task 工具转成 ok=false，不被文字完成覆盖。
+ * - 成员与主代理同权限：父任务只读时成员也只读；角色不再限制工具或只读；
+ * - 终态 failed/exhausted/cancelled 由 swarm 工具转成 ok=false，不被文字完成覆盖。
  */
-async function runSubagentLoop(
+async function runSwarmMemberLoop(
   parent: RunContext,
-  request: SubagentRequest,
+  request: SwarmMemberRequest,
   messageId: string,
   toolUseId: string
-): Promise<SubagentResult> {
+): Promise<SwarmMemberResult> {
   const opts = parent.opts
-  const role: SubagentRole | undefined =
+  const role: SwarmMemberRole | undefined =
     request.role ?? parent.opts.agents?.find((item) => item.name === 'general')
-  const roleTitle = role?.title ?? '子代理'
-  const emitProgress = (note: string, status: ToolStatus = 'running', stepCount?: number): void => {
+  const roleTitle = role?.title ?? '集群成员'
+  const emitProgress = (
+    note: string,
+    status: ToolStatus = 'running',
+    stepCount?: number,
+    operations?: SwarmOperation[]
+  ): void => {
     parent.emit({
       type: 'tool_progress',
       messageId,
@@ -1625,21 +1710,17 @@ async function runSubagentLoop(
               ...request.swarmTask,
               status: 'running' as const,
               note,
-              ...(typeof stepCount === 'number' ? { stepCount } : {})
+              ...(typeof stepCount === 'number' ? { stepCount } : {}),
+              ...(operations && operations.length > 0 ? { operations: operations.map((op) => ({ ...op })) } : {})
             }
           }
         : {})
     })
   }
-  // 与主代理一致的工具集；去掉嵌套 task/swarm、update_goal、todo_write，再按角色白名单过滤
-  const allowed = role?.tools ? new Set(role.tools) : null
-  const subagentTools = parent.tools.filter(
-    (tool) =>
-      tool.name !== 'task' &&
-      tool.name !== 'swarm' &&
-      tool.name !== 'update_goal' &&
-      tool.name !== 'todo_write' &&
-      (!allowed || allowed.has(tool.name))
+  // 与主代理完全一致的工具集；只去掉会破坏父任务的嵌套集群/目标/计划工具。
+  // 角色只改变工作重点和提示，不再限制工具或只读。
+  const memberTools = parent.tools.filter(
+    (tool) => tool.name !== 'swarm' && tool.name !== 'update_goal' && tool.name !== 'todo_write'
   )
   const systemPrompt = [
     buildSystemPrompt({
@@ -1648,15 +1729,14 @@ async function runSubagentLoop(
       mode: opts.mode,
       projectContext: opts.projectContext ?? opts.projectMemory,
       modelLabel: opts.model.label,
-      tools: subagentTools
+      tools: memberTools
     }),
-    `## 子代理：${roleTitle}`,
+    `## 集群成员：${roleTitle}`,
     role?.systemPrompt ??
-      '你是主代理派出的子代理。你拥有与主代理相同的工具与权限：可以读文件、写文件、运行命令、调用 MCP；涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批。',
-    role?.readOnly
-      ? '当前角色是只读的：只分析、检索和给出结论，不要尝试写文件、执行命令或调用外部 MCP。'
-      : '涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批，审批记录归属本轮主任务。',
-    '你不能创建新的子代理、不能更新父任务的目标状态，也不要改动主任务的计划面板；请把结论与真实产出路径返回给主代理。'
+      '你是主代理派出的集群成员。你拥有与主代理相同的工具和工作区访问权限：可以读文件、写文件、运行命令、调用 MCP；涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批。',
+    '角色只决定你的工作重点，不限制工具或权限。涉及写入/命令/MCP 的操作会按主代理当前的权限模式向用户请求审批，审批记录归属本轮主任务。',
+    ROLE_SKILL_BOUNDARY,
+    '你不能启动新的集群、不能更新父任务的目标状态，也不要改动主任务的计划面板；请把结论与真实产出路径返回给主代理。'
   ].join('\n\n')
   const firstMessage: ChatMessage = {
     id: newId('msg'),
@@ -1680,27 +1760,104 @@ async function runSubagentLoop(
   let summary = ''
   let steps = 0
   let lastError: string | undefined
-  let outcome: SubagentResult['status'] = 'exhausted'
+  let outcome: SwarmMemberResult['status'] = 'failed'
   const failedTools: string[] = []
   const changedFiles = new Map<string, Record<string, unknown>>()
+  const operations: SwarmOperation[] = []
+  const recordOperation = (call: ToolUseBlock, startedAt: number): void => {
+    const result = call.result
+    const input = (() => {
+      try {
+        return truncateText(JSON.stringify(call.input ?? {}), 220)
+      } catch {
+        return ''
+      }
+    })()
+    operations.push({
+      id: call.id,
+      name: call.name,
+      title: call.title,
+      status: call.status,
+      ...(input ? { input } : {}),
+      ...(result?.ok ? { output: truncateText(result.output ?? '', 320) } : {}),
+      ...(result && result.ok === false
+        ? { error: truncateText(result.error ?? result.output ?? '未知错误', 320) }
+        : {}),
+      startedAt,
+      finishedAt: call.finishedAt ?? Date.now()
+    })
+    emitProgress(
+      `${call.status === 'error' || call.status === 'denied' ? '未完成' : '完成'}：${call.title || call.name}`,
+      call.status,
+      steps,
+      operations
+    )
+  }
 
   try {
-  for (let step = 1; step <= SUBAGENT_MAX_STEPS; step += 1) {
+  let repeatedSignature = ''
+  let repeatedCount = 0
+  let memberOverflowRetries = 0
+  for (let step = 1; ; step += 1) {
     if (opts.signal.aborted) throw abortError()
     steps = step
-    // 子代理没有主代理的模型摘要通道：上下文过长时用本地摘要折叠早期步骤，避免直接超窗
-    const localPlan = planCompaction(messages, systemPrompt, opts.model.contextWindow, { keepRecent: 6 })
+    // 与主代理同款压缩：优先模型摘要，失败再退回本地摘要；不设步数上限，靠死循环检测收口
+    const compactPlan = planCompaction(messages, systemPrompt, opts.model.contextWindow, {
+      threshold: opts.compactThreshold,
+      keepRecent: opts.keepRecent
+    })
     let compactedStep = false
-    if (localPlan.shouldCompact) {
-      const older = messages.slice(0, localPlan.cutIndex)
+    let compactSaved = 0
+    if (compactPlan.shouldCompact) {
+      const older = messages.slice(0, compactPlan.cutIndex)
+      let compactSummary = ''
+      try {
+        const summarized = await summarizeHistory({
+          provider: opts.provider,
+          model: opts.model,
+          signal: opts.signal,
+          older,
+          ...(compactPlan.existingSummary ? { previousSummary: compactPlan.existingSummary } : {})
+        })
+        compactSummary = summarized.text
+        if (!compactSummary.trim()) throw new Error('摘要为空')
+        if (summarized.usage) {
+          usage.inputTokens += summarized.usage.inputTokens
+          usage.outputTokens += summarized.usage.outputTokens
+          if (typeof summarized.usage.cacheReadTokens === 'number') {
+            usage.cacheReadTokens = (usage.cacheReadTokens ?? 0) + summarized.usage.cacheReadTokens
+          }
+        }
+      } catch (err) {
+        if (isAbortError(err) || opts.signal.aborted) throw err
+        compactSummary = localExtractSummary(older)
+      }
+      const before = estimateMessagesTokens(messages, systemPrompt)
       messages.splice(
         0,
         messages.length,
-        ...applyCompaction(messages, localPlan.cutIndex, localExtractSummary(older))
+        ...applyCompaction(messages, compactPlan.cutIndex, compactSummary)
       )
+      if (
+        compactPlan.overTarget ||
+        estimateMessagesTokens(messages, systemPrompt) > opts.model.contextWindow * 0.9
+      ) {
+        messages.splice(
+          0,
+          messages.length,
+          ...aggressiveTrim(messages, systemPrompt, opts.model.contextWindow, 4)
+        )
+      }
+      compactSaved = Math.max(0, before - estimateMessagesTokens(messages, systemPrompt))
       compactedStep = true
     }
-    emitProgress(`第 ${step} 步：${compactedStep ? '已折叠早期步骤，继续分析…' : '分析中…'}`, 'running', step)
+    emitProgress(
+      compactedStep
+        ? `第 ${step} 步：上下文已压缩${compactSaved > 0 ? `（约 ${Math.round(compactSaved / 1000)}k tokens）` : ''}，继续分析…`
+        : `第 ${step} 步：分析中…`,
+      'running',
+      step
+    )
     const assistant: ChatMessage = {
       id: newId('msg'),
       role: 'assistant',
@@ -1710,16 +1867,17 @@ async function runSubagentLoop(
     }
     let text = ''
     const streamedCalls: ToolUseBlock[] = []
+    const seenProviderCallIds = new Set<string>()
     let requestUsage: Usage = { inputTokens: 0, outputTokens: 0 }
     try {
       for await (const event of iterateWithAbort(
         opts.provider.stream({
           system: systemPrompt,
           messages: [...messages],
-          tools: subagentTools,
+          tools: memberTools,
           signal: opts.signal,
           workspace: opts.workspace,
-          maxTokens: Math.min(opts.model.maxOutput ?? SUBAGENT_MAX_OUTPUT, SUBAGENT_MAX_OUTPUT),
+          maxTokens: opts.model.maxOutput,
           ...(opts.reasoningEffort && opts.reasoningEffort !== 'auto' && opts.model.reasoningStyle
             ? { reasoning: { effort: opts.reasoningEffort, style: opts.model.reasoningStyle } }
             : {})
@@ -1731,8 +1889,11 @@ async function runSubagentLoop(
             text += event.text
             break
           case 'tool_call_end': {
+            const frameKey = `${event.index}:${event.id}`
+            if (event.id && seenProviderCallIds.has(frameKey)) break
+            if (event.id) seenProviderCallIds.add(frameKey)
             const input = event.input ?? {}
-            // 与主代理共用唯一 id 分配：并行子代理/主代理的工具 id 不会撞到同一快照目录
+            // 与主代理共用唯一 id 分配：并行集群成员/主代理的工具 id 不会撞到同一快照目录
             const toolUseId = allocateToolUseId(parent, event.id)
             if (event.parseError) parent.toolParseErrors.set(toolUseId, event.parseError)
             streamedCalls.push({
@@ -1764,9 +1925,63 @@ async function runSubagentLoop(
       }
     } catch (err) {
       if (isAbortError(err) || opts.signal.aborted) throw err
+      const overflow =
+        err instanceof ProviderError
+          ? isContextOverflowError(err.toResultError())
+          : isContextOverflowError({ message: err instanceof Error ? err.message : String(err) })
+      if (overflow && memberOverflowRetries < 2) {
+        memberOverflowRetries += 1
+        const emergency = planCompaction(messages, systemPrompt, opts.model.contextWindow, {
+          force: true,
+          targetRatio: 0.35
+        })
+        if (emergency.shouldCompact) {
+          let emergencySummary = ''
+          try {
+            const summarized = await summarizeHistory({
+              provider: opts.provider,
+              model: opts.model,
+              signal: opts.signal,
+              older: messages.slice(0, emergency.cutIndex),
+              ...(emergency.existingSummary ? { previousSummary: emergency.existingSummary } : {})
+            })
+            emergencySummary = summarized.text
+          } catch (summaryError) {
+            if (isAbortError(summaryError) || opts.signal.aborted) throw summaryError
+            emergencySummary = localExtractSummary(messages.slice(0, emergency.cutIndex))
+          }
+          messages.splice(
+            0,
+            messages.length,
+            ...applyCompaction(messages, emergency.cutIndex, emergencySummary || localExtractSummary([]))
+          )
+        }
+        messages.splice(
+          0,
+          messages.length,
+          ...aggressiveTrim(messages, systemPrompt, opts.model.contextWindow, 4)
+        )
+        emitProgress('上下文已满，已折叠历史后重试本步…', 'running', step)
+        continue
+      }
       lastError = err instanceof Error ? err.message : String(err)
       outcome = 'failed'
       break
+    }
+    // 重复 end 帧只执行一次
+    if (streamedCalls.length > 1) {
+      const unique = dedupeToolCalls(streamedCalls)
+      if (unique.length !== streamedCalls.length) {
+        streamedCalls.splice(0, streamedCalls.length, ...unique)
+        const ids = new Set(unique.map((call) => call.id))
+        const seen = new Set<string>()
+        assistant.content = assistant.content.filter((block) => {
+          if (block.type !== 'tool_use') return true
+          if (!ids.has(block.id) || seen.has(block.id)) return false
+          seen.add(block.id)
+          return true
+        })
+      }
     }
     usage.inputTokens += requestUsage.inputTokens
     usage.outputTokens += requestUsage.outputTokens
@@ -1776,7 +1991,7 @@ async function runSubagentLoop(
 
     if (text.trim()) assistant.content.push({ type: 'text', text })
     for (const call of streamedCalls) assistant.content.push(call)
-    if (assistant.content.length === 0) assistant.content.push({ type: 'text', text: '（子代理没有返回内容）' })
+    if (assistant.content.length === 0) assistant.content.push({ type: 'text', text: '（集群成员没有返回内容）' })
     messages.push(assistant)
     summary = text.trim() || summary
     if (text.trim()) {
@@ -1787,56 +2002,47 @@ async function runSubagentLoop(
       if (text.trim()) outcome = 'completed'
       else {
         outcome = 'failed'
-        lastError = lastError ?? '子代理没有返回任何结论'
+        lastError = lastError ?? '集群成员没有返回任何结论'
       }
       break
     }
-    // 与主代理完全相同的权限/执行链；子代理不能嵌套 task、不能 update_goal
+    // 与主代理完全相同的权限/执行链；集群成员不能嵌套 swarm、不能 update_goal
     for (const call of streamedCalls) {
       if (opts.signal.aborted) throw abortError()
-      if (call.name === 'task') {
-        call.result = {
-          ok: false,
-          output: '',
-          error: '子代理不能再创建子代理。',
-          hint: '请直接使用现有工具完成任务，或把任务交回主代理拆分。'
-        }
-        call.status = 'error'
-        call.finishedAt = Date.now()
-        failedTools.push('task：子代理不能再创建子代理')
-        continue
-      }
       if (call.name === 'update_goal') {
         call.result = {
           ok: false,
           output: '',
-          error: '子代理不能更新父任务的目标状态。',
+          error: '集群成员不能更新父任务的目标状态。',
           hint: '请把结论返回给主代理，由主代理决定是否 update_goal。'
         }
         call.status = 'error'
         call.finishedAt = Date.now()
         failedTools.push('update_goal：仅主代理可用')
+        recordOperation(call, call.finishedAt)
         continue
       }
       if (call.name === 'todo_write') {
         call.result = {
           ok: false,
           output: '',
-          error: '子代理不能修改主任务的计划面板。',
+          error: '集群成员不能修改主任务的计划面板。',
           hint: '请把步骤进展写进最终结论，由主代理更新计划。'
         }
         call.status = 'error'
         call.finishedAt = Date.now()
         failedTools.push('todo_write：仅主代理可用')
+        recordOperation(call, call.finishedAt)
         continue
       }
+      const operationStarted = Date.now()
       const runResult = await runToolCallWithPermissions(parent, call, {
         mode: 'subagent',
         parentMessageId: messageId,
         parentToolUseId: toolUseId,
         ...(request.swarmTask ? { swarmTask: request.swarmTask } : {}),
         toolContextOverrides: {
-          readOnly: parent.readOnly || role?.readOnly === true,
+          readOnly: parent.readOnly,
           depth: parent.depth + 1,
           goal: null,
           allowSubagent: false,
@@ -1844,6 +2050,7 @@ async function runSubagentLoop(
         }
       })
       if (runResult.interrupted || opts.signal.aborted) throw abortError()
+      recordOperation(call, operationStarted)
       if (call.result && call.result.ok === false) {
         failedTools.push(`${call.name}：${call.result.error ?? call.result.output ?? '未知错误'}`)
       }
@@ -1857,7 +2064,7 @@ async function runSubagentLoop(
         const added = typeof meta.diffAdded === 'number' ? meta.diffAdded : 0
         const removed = typeof meta.diffRemoved === 'number' ? meta.diffRemoved : 0
         const existing = changedFiles.get(meta.absolutePath)
-        // 子代理本轮新建后删除：净零，不把临时文件带回父检查点。
+        // 集群成员本轮新建后删除：净零，不把临时文件带回父检查点。
         if (deleted && existing?.created === true) {
           changedFiles.delete(meta.absolutePath)
           continue
@@ -1881,10 +2088,24 @@ async function runSubagentLoop(
         }
       }
     }
+
+    const callSignature = streamedCalls
+      .map((call) => `${call.name}:${JSON.stringify(call.input ?? {})}`)
+      .join('|')
+    if (callSignature === repeatedSignature) repeatedCount += 1
+    else {
+      repeatedSignature = callSignature
+      repeatedCount = 1
+    }
+    if (repeatedCount >= 4) {
+      lastError = '集群成员连续重复相同的工具调用，已停止以避免死循环。'
+      outcome = 'failed'
+      break
+    }
   }
 
   } finally {
-    // 子代理的 token 也属于本次用户运行；计入父用量，避免并行子代理的成本/计费不可见
+    // 集群成员的 token 也属于本次用户运行；计入父用量，避免并行集群成员的成本/计费不可见
     if (usage.inputTokens > 0 || usage.outputTokens > 0) {
       parent.usage = addUsage(parent.usage, {
         inputTokens: usage.inputTokens,
@@ -1894,38 +2115,54 @@ async function runSubagentLoop(
     }
   }
 
-  if (outcome === 'exhausted') {
-    lastError = `子代理达到原生最大步数（${SUBAGENT_MAX_STEPS} 步）仍未给出最终结论`
-  }
+  if (!lastError && !summary.trim()) lastError = '集群成员没有返回最终结论'
   return {
     status: outcome,
-    summary: truncateText(summary || '（子代理没有给出最终结论）', 4000),
+    summary: truncateText(summary || '（集群成员没有给出最终结论）', 4000),
     steps,
     usage,
     ...(role ? { role: role.name } : {}),
     ...(lastError ? { error: lastError } : {}),
     ...(failedTools.length > 0 ? { failedTools: failedTools.slice(0, 20) } : {}),
+    ...(operations.length > 0 ? { operations } : {}),
     ...(changedFiles.size > 0 ? { changedFiles: [...changedFiles.values()].slice(0, 100) } : {})
   }
 }
 
 /* ── 上下文压缩 ───────────────────────────────────────────────── */
 
-async function maybeCompact(ctx: RunContext): Promise<void> {
-  if (ctx.opts.autoCompact === false) return
+async function maybeCompact(
+  ctx: RunContext,
+  options: { force?: boolean; targetRatio?: number } = {}
+): Promise<boolean> {
+  if (!options.force && ctx.opts.autoCompact === false) return false
   const plan = planCompaction(ctx.messages, ctx.systemPrompt, ctx.opts.model.contextWindow, {
     threshold: ctx.opts.compactThreshold,
-    keepRecent: ctx.opts.keepRecent
+    keepRecent: ctx.opts.keepRecent,
+    targetRatio: options.targetRatio,
+    force: options.force
   })
   if (!plan.shouldCompact) {
     if (plan.reason === 'no-safe-cut' && plan.estimatedTokens > plan.thresholdTokens) {
-      ctx.emit({
-        type: 'notice',
-        level: 'warn',
-        message: '上下文接近上限，但当前这一轮对话较长，暂时无法安全压缩历史。建议先完成手头任务。'
-      })
+      // 短历史/只有摘要时无法安全切段：只折叠过大的工具输出，绝不删除任何消息，
+      // 也不设置 compacted（否则主进程会把不完整历史写回会话）。
+      const before = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
+      const shrunk = shrinkToolOutputs(ctx.messages)
+      const after = estimateMessagesTokens(shrunk, ctx.systemPrompt)
+      if (after < before) {
+        ctx.messages = shrunk
+        ctx.lastRequestUsage = null
+        ctx.emit({ type: 'usage_updated', usage: currentUsage(ctx) })
+        ctx.emit({ type: 'notice', level: 'info', message: '已折叠过大的工具输出，对话本身保持不变。' })
+      } else {
+        ctx.emit({
+          type: 'notice',
+          level: 'warn',
+          message: '上下文接近上限，但当前没有可安全压缩的历史；已保留全部对话，继续当前步骤。'
+        })
+      }
     }
-    return
+    return false
   }
   ctx.emit({ type: 'compaction', phase: 'started' })
   const older = ctx.messages.slice(0, plan.cutIndex)
@@ -1935,7 +2172,8 @@ async function maybeCompact(ctx: RunContext): Promise<void> {
       provider: ctx.opts.provider,
       model: ctx.opts.model,
       signal: ctx.opts.signal,
-      older
+      older,
+      ...(plan.existingSummary ? { previousSummary: plan.existingSummary } : {})
     })
     summaryText = summary.text
     if (!summaryText.trim()) throw new Error('摘要为空')
@@ -1952,13 +2190,33 @@ async function maybeCompact(ctx: RunContext): Promise<void> {
     summaryText = localExtractSummary(older)
     ctx.emit({ type: 'notice', level: 'warn', message: '自动摘要失败，已用本地摘要压缩历史，对话可以继续。' })
   }
+  const beforeTokens = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
   ctx.messages = applyCompaction(ctx.messages, plan.cutIndex, summaryText)
+  let afterTokens = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
+  // 摘要模型偶尔会写长，或保留段本身过大：再折一刀工具输出/过老消息，绝不让下一步撞上下文上限。
+  if (plan.overTarget || afterTokens > plan.thresholdTokens || afterTokens > ctx.opts.model.contextWindow * 0.9) {
+    ctx.messages = aggressiveTrim(ctx.messages, ctx.systemPrompt, ctx.opts.model.contextWindow, 4)
+    afterTokens = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
+    ctx.emit({
+      type: 'notice',
+      level: 'info',
+      message: `上下文已深度折叠到约 ${Math.round(afterTokens / 1000)}k tokens，继续执行。`
+    })
+  }
   ctx.compacted = true
   // 压缩后旧的 provider usage 已不代表当前上下文，改用新消息估算，避免上下文条停留在压缩前
   ctx.lastRequestUsage = null
-  const after = estimateMessagesTokens(ctx.messages, ctx.systemPrompt)
-  ctx.emit({ type: 'compaction', phase: 'finished', savedTokens: Math.max(0, plan.estimatedTokens - after) })
+  ctx.emit({
+    type: 'compaction',
+    phase: 'finished',
+    savedTokens: Math.max(0, beforeTokens - afterTokens),
+    beforeTokens,
+    afterTokens
+  })
+  // 压缩摘要立即出现在当前对话里，而不是等本轮结束才替换历史
+  ctx.emit({ type: 'messages_replaced', messages: ctx.messages })
   ctx.emit({ type: 'usage_updated', usage: currentUsage(ctx) })
+  return true
 }
 
 interface SummarizeHistoryOptions {
@@ -1969,18 +2227,41 @@ interface SummarizeHistoryOptions {
 }
 
 /** 用模型把较早的历史压成结构化摘要（供自动压缩与手动 /compact 共用） */
-async function summarizeHistory(options: SummarizeHistoryOptions): Promise<{ text: string; usage?: Usage }> {
-  // 摘要请求本身也要装进上下文：小窗口模型（8k/16k）不能直接塞 24k 字符
+async function summarizeHistory(
+  options: SummarizeHistoryOptions & { previousSummary?: string }
+): Promise<{ text: string; usage?: Usage }> {
+  // 摘要请求本身也要装进上下文：按窗口给足细节，同时给小窗口留出余量
   const contextWindow = options.model.contextWindow > 0 ? options.model.contextWindow : 32_000
-  const summaryInputChars = Math.max(2_000, Math.min(24_000, Math.floor(contextWindow * 0.35)))
+  const summaryInputChars = Math.max(12_000, Math.min(60_000, Math.floor(contextWindow * 0.5)))
   const serialized = serializeMessagesForSummary(options.older, summaryInputChars)
-  const system =
-    '你是对话压缩器。把给定的历史对话压缩成结构化的中文摘要，必须保留：用户的目标与偏好、已确认的事实和数字、已创建/修改的文件路径与改动、未完成的事项、重要约束。' +
-    '不要编造信息，不要评论，不要调用工具。直接输出摘要正文。'
+  const system = [
+    '你是对话压缩器，也是长任务交接摘要器。把历史对话压缩成一份让另一个同款代理不看原文也能继续工作的结构化交接摘要。',
+    '严格按以下标题输出；没有内容写“无”：',
+    '## 目标与用户意图',
+    '## 硬约束与偏好（逐字保留用户明确要求与禁止项）',
+    '## 已完成与关键决策',
+    '## 文件与改动（路径、用途、关键改动结论）',
+    '## 命令、测试与真实结果',
+    '## 错误与修复',
+    '## 当前状态（进行到哪一步，哪些动作已经执行）',
+    '## 未完成与下一步',
+    '## 必须保留的数据（数字、ID、URL、引用）',
+    '规则：路径、命令、数字、错误信息原文照抄；不编造；不调用工具；不向用户提问；只输出摘要正文。',
+    '如果给了“已有摘要”，请把它与新增历史合并成更新后的完整摘要，保留仍有效的约束、文件状态和待办，不要简单复述旧摘要。'
+  ].join('\n')
   const message: ChatMessage = {
     id: newId('msg'),
     role: 'user',
-    content: [{ type: 'text', text: `请压缩下面这段历史对话：\n\n${serialized}` }],
+    content: [
+      {
+        type: 'text',
+        text: [
+          ...(options.previousSummary ? [`【已有摘要】\n${options.previousSummary}`, ''] : []),
+          '【新增历史】',
+          serialized
+        ].join('\n')
+      }
+    ],
     createdAt: Date.now()
   }
   let text = ''
@@ -1992,14 +2273,16 @@ async function summarizeHistory(options: SummarizeHistoryOptions): Promise<{ tex
       tools: [],
       signal: options.signal,
       workspace: null,
-      maxTokens: Math.min(1200, options.model.maxOutput ?? 1200)
+      maxTokens: Math.min(4000, Math.max(1200, Math.floor(contextWindow * 0.06)))
     }),
     options.signal
   )) {
     if (event.type === 'text_delta') text += event.text
     else if (event.type === 'usage') usage = event.usage
   }
-  return { text: truncateText(text.trim(), 6000), usage }
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('摘要为空')
+  return { text: truncateText(trimmed, 12_000), usage }
 }
 
 /* ── 手动 /compact 入口（主进程可直接调用） ───────────────────── */
@@ -2048,7 +2331,13 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
   let summaryText: string
   let summaryUsage: Usage | undefined
   try {
-    const summary = await summarizeHistory({ provider, model, signal, older })
+    const summary = await summarizeHistory({
+      provider,
+      model,
+      signal,
+      older,
+      ...(plan.existingSummary ? { previousSummary: plan.existingSummary } : {})
+    })
     summaryText = summary.text
     summaryUsage = summary.usage
     if (!summaryText.trim()) throw new Error('摘要为空')
@@ -2058,7 +2347,10 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
     }
     summaryText = localExtractSummary(older)
   }
-  const compactedMessages = applyCompaction(messages, plan.cutIndex, summaryText)
+  let compactedMessages = applyCompaction(messages, plan.cutIndex, summaryText)
+  if (plan.overTarget || estimateMessagesTokens(compactedMessages, systemPrompt) > contextLimit * 0.9) {
+    compactedMessages = aggressiveTrim(compactedMessages, systemPrompt, contextLimit, 4)
+  }
   const after = estimateMessagesTokens(compactedMessages, systemPrompt)
   return {
     messages: compactedMessages,

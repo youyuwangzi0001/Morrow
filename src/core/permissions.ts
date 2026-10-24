@@ -7,7 +7,7 @@
  * - auto（完全访问）：写入、命令、危险操作、外部动作与越界一律自动执行，不弹审批。
  *
  * 显式会话模式（审计报告第 5 项）叠加在权限档位之上：
- * - chat：只允许只读工具 + ask_user；写文件/跑命令/写记忆/目标/计划/子代理等一律**直接拒绝**，
+ * - chat：只允许只读工具 + ask_user；写文件/跑命令/写记忆/目标/计划/集群等一律**直接拒绝**，
  *   即使会话权限档位是 auto 也一样。这是内核硬拦截，不是提示词约束。
  * - work（缺省）：行为与上面三档完全一致。
  *
@@ -99,6 +99,49 @@ export function detectDangerousCommand(command: string): DangerousCommandInfo | 
   for (const rule of DANGER_RULES) {
     for (const segment of candidates) {
       if (rule.pattern.test(segment)) return { level: 'high', reason: rule.reason }
+    }
+  }
+  return null
+}
+
+export interface ExternalCommandInfo {
+  reason: string
+}
+
+/**
+ * 外部副作用命令：本身不是「危险命令」（不会毁本机数据），但会改变远端/外部世界。
+ * ask 档下必须逐次确认；auto（完全访问）下直接执行；只读模式已在前面拒绝。
+ */
+const EXTERNAL_COMMAND_RULES: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\bgit\s+push\b(?![^\n]*--dry-run)/i, reason: '推送会修改远端仓库' },
+  { pattern: /\bgit\s+(?:remote\s+(?:add|remove|set-url)|tag\s+-d|branch\s+-D)\b/i, reason: '会修改远端/本地分支与标签' },
+  { pattern: /\b(?:npm|pnpm|yarn|bun)\s+publish\b/i, reason: '发布会向公共仓库发布软件包' },
+  { pattern: /\bgh\s+(?:pr|issue|release|repo)\s+(?:create|merge|close|delete|edit|comment|review)\b/i, reason: '会在 GitHub 上创建或修改公开内容' },
+  { pattern: /\b(?:ssh|scp|sftp)\b/i, reason: '会连接或传输数据到远程主机' },
+  { pattern: /\brsync\b[^\n]*(?::|::)/i, reason: '会同步数据到远程主机' },
+  { pattern: /\b(?:docker|podman)\s+push\b/i, reason: '会推送镜像到远端仓库' },
+  { pattern: /\b(?:kubectl|helm)\s+(?:apply|delete|upgrade|install|rollout)\b/i, reason: '会修改集群资源' },
+  { pattern: /\bterraform\s+(?:apply|destroy)\b/i, reason: '会创建或销毁云资源' },
+  {
+    pattern: /\b(?:aws|az|gcloud|aliyun|tccli)\b[^\n]*\b(?:create|delete|update|put|deploy|publish|send|invoke|start|stop|terminate)\b/i,
+    reason: '会修改云上资源或发送外部请求'
+  },
+  {
+    pattern: /\b(?:curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^\n]*(?:-X\s*(?:POST|PUT|PATCH|DELETE)|--request\s*(?:POST|PUT|PATCH|DELETE)|-Method\s*(?:Post|Put|Patch|Delete)|--data\b|-d\s|--upload-file|-T\s)/i,
+    reason: '会向外部服务发送数据或修改远端状态'
+  },
+  { pattern: /\b(?:sendmail|mailx)\b/i, reason: '会发送邮件到外部' }
+]
+
+export function detectExternalCommandSideEffect(command: string): ExternalCommandInfo | null {
+  if (!command) return null
+  const segments = command
+    .split(/\r?\n|;|&&|\|\|/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+  for (const rule of EXTERNAL_COMMAND_RULES) {
+    for (const segment of segments) {
+      if (rule.pattern.test(segment)) return { reason: rule.reason }
     }
   }
   return null
@@ -211,9 +254,9 @@ export interface PermissionPolicyContext {
 }
 
 /** 聊天模式额外放行的非 read 类工具（唯一一个：向用户提问，不做任何副作用） */
-export const CHAT_MODE_ALLOWED_META_TOOLS: ReadonlySet<string> = new Set(['ask_user'])
+export const CHAT_MODE_ALLOWED_META_TOOLS: ReadonlySet<string> = new Set(['ask_user', 'web_search'])
 
-/** 研究模式：只读资料 + 联网查证 + 计划/画布，不允许写文件、跑命令、MCP、子代理或目标。 */
+/** 研究模式：只读资料 + 联网查证 + 计划/画布，不允许写文件、跑命令、MCP、集群或目标。 */
 export const RESEARCH_MODE_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
   'web_search',
   'web_fetch',
@@ -387,6 +430,16 @@ export type ComputerToolName = (typeof COMPUTER_TOOL_NAMES)[number]
  * 即使 `permissionMode=auto` 也必须逐次审批；只读模式由 writeLike 分支直接拒绝。
  * sessionGrants 不参与外部动作——一次授权不能复用于其它 URL/server/tool。
  */
+/** 内置浏览器的非交互动作：打开/读取/截图/滚动/刷新/关闭，不会提交表单或外发数据。 */
+export const BROWSER_PASSIVE_TOOLS: ReadonlySet<string> = new Set([
+  'browser_open',
+  'browser_read',
+  'browser_screenshot',
+  'browser_reload',
+  'browser_scroll',
+  'browser_close'
+])
+
 export const EXTERNAL_ACTION_TOOLS: ReadonlySet<string> = new Set([
   'web_fetch',
   'mcp_list',
@@ -465,6 +518,15 @@ export function permissionSignature(target: PermissionTarget, ctx: PermissionPol
         return `${toolName}:write:${id}:${sha256(data).slice(0, 16)}`
       }
       return `${toolName}:${action}:${id}`
+    }
+    if (toolName === 'web_fetch') {
+      const url = typeof target.input.url === 'string' ? target.input.url : ''
+      try {
+        // 按主机授权：同一站点读多篇资料不必逐条确认，但不能跨站复用
+        return `web_fetch:${new URL(url).host.toLowerCase()}`
+      } catch {
+        return 'web_fetch:invalid'
+      }
     }
     if (PATH_TOOLS.has(toolName)) {
       const raw = extractToolPath(target.input)
@@ -603,7 +665,7 @@ function buildWritePreview(target: PermissionTarget, ctx: PermissionPolicyContex
 function buildPreview(target: PermissionTarget, ctx: PermissionPolicyContext): PermissionPreview | undefined {
   const escape = inspectEscape(target, ctx.workspace, ctx.attachedFiles)
   if (escape.escaped && escape.absolute) {
-    return { kind: 'path', content: `工作区外路径：${escape.absolute}` }
+    return { kind: 'path', content: `文件夹外路径：${escape.absolute}` }
   }
   switch (target.toolName) {
     case 'run_command': {
@@ -643,10 +705,6 @@ function buildPreview(target: PermissionTarget, ctx: PermissionPolicyContext): P
       const text = typeof target.input.text === 'string' ? target.input.text : ''
       return { kind: 'text', content: text }
     }
-    case 'task': {
-      const prompt = typeof target.input.prompt === 'string' ? target.input.prompt : ''
-      return { kind: 'text', content: previewContentPreview(prompt) }
-    }
     default:
       return undefined
   }
@@ -680,7 +738,7 @@ function summarize(target: PermissionTarget, ctx: PermissionPolicyContext): stri
     if (action === 'restart') return '重新启动终端/后台任务'
   }
   const escape = inspectEscape(target, ctx.workspace, ctx.attachedFiles)
-  if (escape.escaped && escape.absolute) return `访问工作区外的路径：${escape.absolute}`
+  if (escape.escaped && escape.absolute) return `访问当前文件夹以外的路径：${escape.absolute}`
   const raw = extractToolPath(target.input)
   const shown = raw ? escape.display ?? raw : ''
   switch (target.toolName) {
@@ -703,8 +761,6 @@ function summarize(target: PermissionTarget, ctx: PermissionPolicyContext): stri
     }
     case 'remember':
       return '记录一条项目记忆（写入 .morrow/MEMORY.md）'
-    case 'task':
-      return `启动子代理：${typeof target.input.description === 'string' ? target.input.description : '处理子任务'}`
     default:
       return target.title
   }
@@ -807,7 +863,7 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
       action: 'ask',
       title: target.title,
       risk: 'high',
-      summary: `需要访问工作区以外的位置：${escape.absolute}`,
+      summary: `需要访问当前文件夹以外的位置：${escape.absolute}`,
       signature,
       escape: true,
       allowAlways: false,
@@ -823,7 +879,7 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
     return {
       action: 'deny',
       reason: `工作区规则禁止这个操作（${deniedByRule.kind === 'prefix' ? '命令前缀' : deniedByRule.kind === 'path' ? '路径' : '工具'}：${deniedByRule.pattern}）。`,
-      hint: '如果确实需要执行，请到设置 → 权限 → 工作区规则里删除或调整这条规则。'
+      hint: '如果确实需要执行，请到设置 → 权限 → 文件夹权限规则里删除或调整这条规则。'
     }
   }
 
@@ -831,16 +887,19 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
   if (target.category === 'read') return { action: 'allow' }
 
   // R8 外部动作：web_fetch / mcp_call。只读已在 writeLike 分支拒绝；
-  // ask 下必须逐次审批（不查 sessionGrants），避免在「询问」档静默外发/启动外部进程。
+  // ask 下默认逐次审批；web_fetch 可按站点记住到本会话，避免查资料时每条链接都打断。
   if (EXTERNAL_ACTION_TOOLS.has(target.toolName)) {
     if (ctx.mode === 'auto') return { action: 'allow' }
+    // 内置浏览器是被托管的只读浏览：打开/读取/截图等不弹审批，点击/输入仍逐次确认
+    if (BROWSER_PASSIVE_TOOLS.has(target.toolName)) return { action: 'allow' }
+    if (target.toolName === 'web_fetch' && ctx.sessionGrants.has(signature)) return { action: 'allow' }
     return {
       action: 'ask',
       title: target.title,
       risk: target.baseRisk,
       summary: summarizeExternalAction(target),
       signature,
-      allowAlways: false,
+      allowAlways: target.toolName === 'web_fetch',
       preview: buildPreview(target, ctx)
     }
   }
@@ -891,7 +950,20 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
         action: 'ask',
         title: target.title,
         risk: 'high',
-        summary: `命令引用了工作区外的路径：${outsidePath}`,
+        summary: `命令引用了当前文件夹以外的路径：${outsidePath}`,
+        signature,
+        allowAlways: false,
+        preview: buildPreview(target, ctx)
+      }
+    }
+    const externalEffect = detectExternalCommandSideEffect(command)
+    if (externalEffect) {
+      if (ctx.mode === 'auto') return { action: 'allow' }
+      return {
+        action: 'ask',
+        title: target.title,
+        risk: 'high',
+        summary: `外部动作（${externalEffect.reason}）：${command.replace(/\s+/g, ' ').slice(0, 160)}`,
         signature,
         allowAlways: false,
         preview: buildPreview(target, ctx)

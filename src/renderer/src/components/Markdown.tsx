@@ -3,8 +3,10 @@ import ReactMarkdown, { type Components, type UrlTransform } from 'react-markdow
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
 import { ExternalLink, ImageOff } from 'lucide-react'
-import { useAppStore } from '../state/store'
+import { parseFilePath } from '@shared/file-path'
+import { useAppStore } from '../store'
 import { CodeBlock } from './CodeBlock'
+import { FilePathLink } from './FilePathLink'
 import './Markdown.css'
 
 export interface MarkdownProps {
@@ -77,6 +79,16 @@ function createComponents(streaming: boolean): Components {
   del: ({ children }) => <del className="md-del">{children}</del>,
   a: ({ href, children, title, node: _node, ...rest }: ComponentPropsWithoutRef<'a'> & { node?: unknown }) => {
     const external = typeof href === 'string' && /^https?:\/\//i.test(href)
+    if (!streaming && typeof href === 'string') {
+      let decoded = href
+      try {
+        decoded = decodeURIComponent(href)
+      } catch {
+        // 保留原始 href
+      }
+      const file = parseFilePath(decoded, { allowBare: true })
+      if (file) return <FilePathLink raw={file.display} label={extractText(children) || undefined} allowBare />
+    }
     return (
       <a
         href={href}
@@ -155,7 +167,10 @@ function createComponents(streaming: boolean): Components {
     const raw = extractText(children)
     // 围栏代码块在 mdast 里以换行结尾；行内代码不含换行
     const isBlock = Boolean(language) || raw.includes('\n')
-    if (!isBlock) return <code className="md-inline-code">{children}</code>
+    if (!isBlock) {
+      if (!streaming && parseFilePath(raw)) return <FilePathLink raw={raw} />
+      return <code className="md-inline-code">{children}</code>
+    }
     return <CodeBlock code={raw.replace(/\n$/, '')} language={language ?? null} streaming={streaming} />
   },
   input: ({ type, checked, disabled, node: _node }) => {

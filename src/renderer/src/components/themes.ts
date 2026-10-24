@@ -111,6 +111,3 @@ export const morrowLight: ThemeRegistration = {
     deleted: '#A2543F'
   })
 }
-
-export const MORROW_THEME_DARK = morrowDark.name
-export const MORROW_THEME_LIGHT = morrowLight.name

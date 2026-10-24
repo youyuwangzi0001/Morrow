@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { ANSWER_STYLES, ANSWER_STYLE_MAX_CUSTOM } from '@shared/answer-style'
 import type { AnswerStyleId } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, Segmented, Switch } from '../../ui'
 import './AnswerStyle.css'
 
@@ -98,12 +98,9 @@ export function AnswerStyleTab(): React.JSX.Element {
             rows={3}
             placeholder="例如：像给同事讲方案一样，先说结论；涉及数字时给出处；不要用客套话。"
             onChange={(event) => setCustom(event.target.value)}
-            onBlur={() => {
-              if (customDirty) void saveCustom()
-            }}
           />
           <div className="st-style-custom-foot">
-            <p className="st-hint">留空时按「平衡」风格回答。</p>
+            <p className="st-hint">留空时按「平衡」风格回答；修改后点「保存偏好」。</p>
             <Button size="sm" variant="primary" onClick={() => void saveCustom()} disabled={!customDirty || saving}>
               {saving ? '保存中…' : '保存偏好'}
             </Button>

@@ -4,7 +4,7 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, copyFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { WorkspaceFileError, createWorkspaceEntry, deleteWorkspaceEntry, inspectWorkspaceEntry, listWorkspaceEntries, moveWorkspaceEntry, readWorkspaceFile, renameWorkspaceEntry, statWorkspaceFile, writeWorkspaceFile } from '../../../src/main/services/workspace-files'
 import { buildUserMessage, describeAttachment } from '../../../src/main/services/attachments'
@@ -1436,7 +1436,7 @@ describe('checkpoint.test.ts', () => {
  * - 冲突检测拒绝覆盖外部修改；
  * - 对话回退截断消息并恢复 todos/artifacts/plan；
  * - 只回退代码保留对话且幂等；
- * - 保留策略最多 30 轮；子代理 changedFiles 批量登记。
+ * - 保留策略最多 30 轮；集群成员 changedFiles 批量登记。
  */
 
 const MODEL = { providerId: 'mock', modelId: 'mock' }
@@ -1671,7 +1671,7 @@ describe('checkpoint rewind', () => {
     const h = setup()
     try {
       const session = h.store.get(h.sessionId)!
-      const u1 = message('u1', 'user', '交给子代理')
+      const u1 = message('u1', 'user', '交给集群成员')
       const a1 = message('a1', 'assistant', '完成')
       session.messages = [u1, a1]
       h.store.save(session)
@@ -1837,6 +1837,58 @@ describe('checkpoint rewind', () => {
     } finally {
       h.cleanup()
     }
+  })
+})
+
+describe('app-icon.test.ts', () => {
+  const projectRoot = resolve(__dirname, '..', '..', '..')
+  const buildFile = (name: string): string => resolve(projectRoot, 'build', name)
+
+  describe('双主题应用图标资产', () => {
+    it('深色/浅色 1024 图标、窗口 256 与托盘 16/32 资产齐全且两套主题不同', () => {
+      for (const name of [
+        'icon-dark.png',
+        'icon-light.png',
+        'icon-dark-256.png',
+        'icon-light-256.png',
+        'tray-dark.png',
+        'tray-light.png',
+        'icon.ico',
+        'installerIcon.ico',
+        'icon-light.ico'
+      ]) {
+        expect(existsSync(buildFile(name)), name).toBe(true)
+      }
+      const dark = readFileSync(buildFile('icon-dark.png'))
+      const light = readFileSync(buildFile('icon-light.png'))
+      expect(dark.length).toBeGreaterThan(50_000)
+      expect(light.length).toBeGreaterThan(50_000)
+      expect(createHash('sha256').update(dark).digest('hex')).not.toBe(
+        createHash('sha256').update(light).digest('hex')
+      )
+      // ICO 至少包含 16/24/32/48/64/128/256 七个尺寸
+      const ico = readFileSync(buildFile('icon.ico'))
+      expect(ico.readUInt16LE(4)).toBeGreaterThanOrEqual(7)
+      // 深色版同时是可执行文件/安装包的静态图标
+      expect(createHash('sha256').update(readFileSync(buildFile('icon.png'))).digest('hex')).toBe(
+        createHash('sha256').update(dark).digest('hex')
+      )
+    })
+
+    it('运行时品牌 mark 与深色图标一致，旧 SVG 源已移除', () => {
+      const dark = readFileSync(buildFile('icon-dark.png'))
+      const light = readFileSync(buildFile('icon-light.png'))
+      const darkMark = readFileSync(resolve(projectRoot, 'src/renderer/src/assets/brand-mark-dark.png'))
+      const lightMark = readFileSync(resolve(projectRoot, 'src/renderer/src/assets/brand-mark-light.png'))
+      expect(createHash('sha256').update(darkMark).digest('hex')).toBe(
+        createHash('sha256').update(dark).digest('hex')
+      )
+      expect(createHash('sha256').update(lightMark).digest('hex')).toBe(
+        createHash('sha256').update(light).digest('hex')
+      )
+      expect(existsSync(buildFile('icon-dark.svg'))).toBe(false)
+      expect(existsSync(resolve(projectRoot, 'src/renderer/src/assets/brand-mark.svg'))).toBe(false)
+    })
   })
 })
 })

@@ -14,8 +14,9 @@ import {
 import type { ChatMessage, SessionPlan, TodoItem, Artifact } from '../../../src/shared/types'
 import { messagePlainText, replaceUserMessageText, userMessageDisplayText } from '../../../src/shared/message'
 import { planStepKey, planStepsCompleted, todoMatchesPlanStep, todosFromPlan } from '../../../src/shared/plan'
+import { swarmTasksFromMeta } from '../../../src/shared/swarm'
 import { estimateUsageCost } from '../../../src/shared/usage'
-import { builtinProviders, pricingForModel } from '../../../src/shared/models'
+import { builtinProviders, isLocalServiceUrl, isPrivateNetworkHost, pricingForModel } from '../../../src/shared/models'
 import { buildOpenAIRequestBody } from '../../../src/core/providers/openai-compat'
 import { buildAnthropicRequestBody } from '../../../src/core/providers/anthropic'
 import type { ProviderStreamRequest } from '../../../src/core/types'
@@ -42,6 +43,7 @@ import {
   parseTextToolCalls,
   stripToolProtocol,
 } from '../../../src/shared/tool-protocol'
+import { isTextFilePath, parseFilePath } from '../../../src/shared/file-path'
 
 describe('connector-catalog.test.ts', () => {
   describe('连接器目录', () => {
@@ -310,6 +312,22 @@ describe('reasoning-cost.test.ts', () => {
         }
       }
       expect(pricingForModel('unknown-model')).toBeUndefined()
+    })
+
+    it('classifies loopback and private LAN services without treating public hosts as local', () => {
+      expect(isLocalServiceUrl('http://127.0.0.1:11434/v1')).toBe(true)
+      expect(isLocalServiceUrl('http://localhost:1234/v1')).toBe(true)
+      expect(isLocalServiceUrl('http://[::1]:8188')).toBe(true)
+      expect(isLocalServiceUrl('http://192.168.1.20:11434/v1', { allowPrivate: true })).toBe(true)
+      expect(isLocalServiceUrl('http://192.168.1.20:11434/v1')).toBe(false)
+      expect(isLocalServiceUrl('http://10.0.0.8:1234/v1', { allowPrivate: true })).toBe(true)
+      expect(isLocalServiceUrl('http://172.16.4.2:1234/v1', { allowPrivate: true })).toBe(true)
+      expect(isLocalServiceUrl('http://172.32.4.2:1234/v1', { allowPrivate: true })).toBe(false)
+      expect(isLocalServiceUrl('https://api.example.com/v1', { allowPrivate: true })).toBe(false)
+      expect(isLocalServiceUrl('not a url', { allowPrivate: true })).toBe(false)
+      expect(isPrivateNetworkHost('ollama.local')).toBe(true)
+      expect(isPrivateNetworkHost('fd00::1')).toBe(true)
+      expect(isPrivateNetworkHost('8.8.8.8')).toBe(false)
     })
   })
 
@@ -759,5 +777,70 @@ describe('tool-protocol.test.ts', () => {
       const text = `答案在这里：\n<tool_call>{"name":"edit_file","arguments":{"path":"a.html"}}`
       expect(stripToolProtocol(text)).toBe('答案在这里：')
     })
+  })
+})
+
+describe('file-path.test.ts', () => {
+  describe('file-path：对话里的文件路径识别', () => {
+    it('识别工作区相对路径、Windows 绝对路径与行号', () => {
+      expect(parseFilePath('deliver/Morrow-0.1.0-portable.exe')).toEqual({
+        display: 'deliver/Morrow-0.1.0-portable.exe',
+        path: 'deliver/Morrow-0.1.0-portable.exe'
+      })
+      expect(parseFilePath('src/main/ipc.ts:1369')).toEqual({
+        display: 'src/main/ipc.ts:1369',
+        path: 'src/main/ipc.ts',
+        line: '1369'
+      })
+      expect(parseFilePath('C:\\交付成品\\Morrow\\deliver\\报告 1.html')).toMatchObject({
+        path: 'C:\\交付成品\\Morrow\\deliver\\报告 1.html'
+      })
+      expect(parseFilePath('package.json', { allowBare: true })).toMatchObject({ path: 'package.json' })
+      expect(parseFilePath('../out/report.html')).toMatchObject({ path: '../out/report.html' })
+    })
+
+    it('不把命令、URL、版本号、目录或不支持的字符串变成文件链接', () => {
+      for (const value of [
+        'npm run test:unit',
+        'https://example.com/report.md',
+        'morrow-file://artifact/index.html',
+        '1.2.3',
+        'src/main',
+        'report',
+        '--flag',
+        'a/b',
+        'README',
+        'package.json',
+        'console.log',
+        "require('./a.js')"
+      ]) {
+        expect(parseFilePath(value), value).toBeNull()
+      }
+    })
+
+    it('区分文本与二进制文件，供复制内容使用', () => {
+      expect(isTextFilePath('report.md')).toBe(true)
+      expect(isTextFilePath('src/main/ipc.ts')).toBe(true)
+      expect(isTextFilePath('Morrow-0.1.0-portable.exe')).toBe(false)
+      expect(isTextFilePath('assets/logo.png')).toBe(false)
+      expect(isTextFilePath('report.pdf')).toBe(false)
+    })
+  })
+})
+
+describe('swarm 任务操作回放', () => {
+  it('成员操作不再截断到 30 条，重新加载会话也能全部展开', () => {
+    const operations = Array.from({ length: 35 }, (_, index) => ({
+      id: `op-${index}`,
+      name: 'read_file',
+      title: `读取第 ${index + 1} 个文件`,
+      status: 'success'
+    }))
+    const tasks = swarmTasksFromMeta({
+      tasks: [{ index: 0, title: '检查', agent: 'explore', status: 'completed', operations }]
+    })
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].operations).toHaveLength(35)
+    expect(tasks[0].operations?.at(-1)?.title).toBe('读取第 35 个文件')
   })
 })

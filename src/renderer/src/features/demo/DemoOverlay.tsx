@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { DemoStepState } from '../../state/store'
-import { useAppStore } from '../../state/store'
+import type { DemoStepState } from '../../store'
+import { useAppStore } from '../../store'
 import './DemoOverlay.css'
 
 const LEAVE_DURATION = 420

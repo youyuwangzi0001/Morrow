@@ -2,7 +2,7 @@
  * 合并自 3 个 E2E spec：command-palette.spec.ts、ipc-boundary.spec.ts、swarm.spec.ts
  * 每个原 spec 整体包在独立 test.describe 中，hooks 与局部变量互不污染。
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { launchMorrow, root, screenshotPath } from './launch'
@@ -387,8 +387,8 @@ test('IPC 路径边界、错误归一化、CSP 与导航限制', async () => {
 // ── 原文件：swarm.spec.ts ──────────────────────────────────────────────
 test.describe('swarm.spec.ts', () => {
 /**
- * 集群 E2E：/swarm 触发模型拆解 → swarm 工具并行派发 8 个子代理 → 汇总。
- * 离线 mock LLM 按系统提示区分主代理与探索/审查子代理。
+ * 集群 E2E：/swarm 触发模型拆解 → swarm 工具并行派发 10 个成员 → 汇总。
+ * 离线 mock LLM 按系统提示区分主代理与探索/审查成员。
  */
 
 function workspaceAt(name: string): string {
@@ -397,10 +397,10 @@ function workspaceAt(name: string): string {
   return path
 }
 
-test('集群：拆解为八个子代理并行执行并汇总', async () => {
+test('集群：拆解为十个成员并行执行并汇总', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
-  const tasks = Array.from({ length: 8 }, (_, index) => ({
+  const tasks = Array.from({ length: 10 }, (_, index) => ({
     title: `并行检查 ${index + 1}`,
     prompt: `检查登录流程的第 ${index + 1} 个部分并给出结论`,
     agent: index % 2 === 0 ? 'explore' : 'review'
@@ -408,16 +408,16 @@ test('集群：拆解为八个子代理并行执行并汇总', async () => {
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown; lastUserMessageText?: string }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (raw.includes('你是只读探索子代理')) {
+      if (raw.includes('你是代码侦察型集群成员')) {
         return { text: '探索完成：登录入口在 src/auth/login.ts。', delayMs: 400 }
       }
-      if (raw.includes('你是只读代码审查子代理')) {
+      if (raw.includes('你是代码审查型集群成员')) {
         return { text: '审查完成：未发现高危问题，建议补一个锁定测试。', delayMs: 400 }
       }
       mainCalls += 1
       if (mainCalls === 1) {
         return {
-          text: '我把任务拆成八块并行检查。',
+          text: '我把任务拆成十块并行检查。',
           toolCalls: [
             {
               name: 'swarm',
@@ -429,7 +429,7 @@ test('集群：拆解为八个子代理并行执行并汇总', async () => {
           ]
         }
       }
-      return { text: '八个子任务都完成：登录入口已定位，未发现高危问题。' }
+      return { text: '十个子任务都完成：登录入口已定位，未发现高危问题。' }
     }
   })
   const workspace = workspaceAt('e2e-swarm')
@@ -454,32 +454,34 @@ test('集群：拆解为八个子代理并行执行并汇总', async () => {
     // 实时任务板：不等整批结束就能看到每个子任务在做什么
     const swarmRow = page.locator('.spine-row').filter({ hasText: '集群' }).first()
     await expect(swarmRow).toBeVisible({ timeout: 15_000 })
-    await expect(swarmRow.locator('.spine-swarm-task')).toHaveCount(8, { timeout: 20_000 })
+    await expect(swarmRow.locator('.spine-swarm-task')).toHaveCount(10, { timeout: 20_000 })
     await expect(swarmRow.locator('.spine-swarm-status.is-running').first()).toBeVisible({ timeout: 15_000 })
 
     await waitUntil(
       async () => {
         const state = await readStore(page)
         const last = state.session?.messages.at(-1)
-        return state.run === null && last?.role === 'assistant' && last.text.includes('八个子任务都完成') ? true : null
+        return state.run === null && last?.role === 'assistant' && last.text.includes('十个子任务都完成') ? true : null
       },
       90_000,
       'swarm 运行结束'
     )
 
     const bodies = mock.requests.map((request: { body?: unknown }) => JSON.stringify(request.body ?? {}))
-    expect(bodies.some((body: string) => body.includes('你是只读探索子代理'))).toBe(true)
-    expect(bodies.some((body: string) => body.includes('你是只读代码审查子代理'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('你是代码侦察型集群成员'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('你是代码审查型集群成员'))).toBe(true)
     expect(bodies.some((body: string) => body.includes('"name":"swarm"') || body.includes('"name": "swarm"'))).toBe(true)
 
     await expect(swarmRow).toBeVisible()
-    await expect(swarmRow.getByText('小助手', { exact: true })).toBeVisible()
-    await expect(swarmRow.locator('.spine-swarm-task')).toHaveCount(8)
-    await expect(swarmRow.locator('.spine-swarm-status.is-completed')).toHaveCount(8)
-    await expect(swarmRow.locator('.spine-swarm-task').filter({ hasText: '并行检查 1' })).toContainText('explore')
-    await expect(swarmRow.locator('.spine-swarm-task').filter({ hasText: '并行检查 2' })).toContainText('review')
-    await expect(swarmRow.locator('.spine-swarm-task').filter({ hasText: '并行检查 1' })).toContainText('探索完成')
-    await expect(swarmRow.locator('.spine-swarm-task').filter({ hasText: '并行检查 2' })).toContainText('审查完成')
+    await expect(swarmRow.getByText('集群成员', { exact: true })).toBeVisible()
+    await expect(swarmRow.locator('.spine-swarm-task')).toHaveCount(10)
+    await expect(swarmRow.locator('.spine-swarm-status.is-completed')).toHaveCount(10)
+    await expect(swarmRow.locator('.spine-swarm-task').nth(0)).toContainText('并行检查 1')
+    await expect(swarmRow.locator('.spine-swarm-task').nth(0)).toContainText('代码侦察')
+    await expect(swarmRow.locator('.spine-swarm-task').nth(1)).toContainText('并行检查 2')
+    await expect(swarmRow.locator('.spine-swarm-task').nth(1)).toContainText('代码审查')
+    await expect(swarmRow.locator('.spine-swarm-task').nth(0)).toContainText('探索完成')
+    await expect(swarmRow.locator('.spine-swarm-task').nth(1)).toContainText('审查完成')
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
     })
@@ -490,6 +492,75 @@ test('集群：拆解为八个子代理并行执行并汇总', async () => {
     await setThemeViaStore(page, 'light')
     await page.waitForTimeout(350)
     await page.screenshot({ path: screenshotPath('swarm-light.png') })
+  } finally {
+    await morrow.close()
+    await mock.close()
+  }
+})
+
+test('集群：单个成员拥有完整工作区权限，可直接写文件', async () => {
+  test.setTimeout(180_000)
+  let mainCalls = 0
+  let memberCalls = 0
+  const mock = await startMockLLM({
+    respond: (ctx: { body: unknown }) => {
+      const raw = JSON.stringify(ctx.body ?? {})
+      if (raw.includes('## 集群成员')) {
+        memberCalls += 1
+        if (memberCalls === 1) {
+          return {
+            text: '我来写文件。',
+            toolCalls: [{ name: 'write_file', arguments: { path: 'out.txt', content: 'ok' } }]
+          }
+        }
+        return { text: '成员完成。' }
+      }
+      mainCalls += 1
+      if (mainCalls === 1) {
+        return {
+          text: '派一个成员完成。',
+          toolCalls: [
+            {
+              name: 'swarm',
+              arguments: {
+                goal: '写文件',
+                tasks: [{ title: '写文件', prompt: '创建 out.txt，内容为 ok' }]
+              }
+            }
+          ]
+        }
+      }
+      return { text: '集群完成。' }
+    }
+  })
+  const workspace = workspaceAt('e2e-swarm-full-access')
+  const morrow = await launchMorrow({ name: 'swarm-full-access', timeoutMs: 90_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+    await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '集群单成员权限' })
+    await installEventCollector(page)
+
+    const input = page.locator('.composer-input')
+    await input.click()
+    await input.fill('/swarm 写文件')
+    await page.keyboard.press('Enter')
+    await waitForRunFinished(page, 90_000)
+
+    expect(existsSync(join(workspace, 'out.txt'))).toBe(true)
+    expect(readFileSync(join(workspace, 'out.txt'), 'utf8')).toBe('ok')
+    const swarmRow = page.locator('.spine-row').filter({ hasText: '集群' }).first()
+    await expect(swarmRow).toBeVisible()
+    await expect(swarmRow.locator('.spine-swarm-task')).toHaveCount(1)
+    await expect(swarmRow.locator('.spine-swarm-status.is-completed')).toHaveCount(1)
+    // 展开成员后可看到真实执行的工具、参数与结果摘要
+    await swarmRow.locator('.spine-swarm-task-toggle').first().click()
+    await expect(swarmRow.locator('.spine-swarm-op')).toHaveCount(1)
+    await expect(swarmRow.locator('.spine-swarm-op').first()).toContainText('write_file')
+    await expect(swarmRow.locator('.spine-swarm-op').first()).toContainText('out.txt')
+    await expect(page.getByText('集群完成。')).toBeVisible()
   } finally {
     await morrow.close()
     await mock.close()

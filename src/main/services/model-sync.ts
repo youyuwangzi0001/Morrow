@@ -1,4 +1,5 @@
 import type { ModelInfo, ProviderConfig } from '../../shared/types'
+import { isLocalServiceUrl } from '../../shared/models'
 import { resolveAnthropicMessagesUrl, resolveChatCompletionsUrl } from '../../core/providers/types'
 
 export interface SyncModelsOutcome {
@@ -37,13 +38,7 @@ function explain(status: number): string {
  * 服务商未提供的字段保留本地调研值。
  */
 function isLocalProvider(config: ProviderConfig): boolean {
-  if (config.category === 'local') return true
-  try {
-    const url = new URL(config.baseUrl)
-    return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase())
-  } catch {
-    return false
-  }
+  return config.category === 'local' || isLocalServiceUrl(config.baseUrl, { allowPrivate: true })
 }
 
 export async function syncProviderModels(
@@ -52,8 +47,8 @@ export async function syncProviderModels(
 ): Promise<SyncModelsOutcome> {
   if (config.kind === 'demo') throw new Error('演示引擎不需要同步模型。')
   const local = isLocalProvider(config)
-  // 本地 Ollama / LM Studio 通常不需要 Key；远程服务仍需先保存密钥
-  if (!apiKey && !local) throw new Error('请先保存 API Key，再同步模型列表。')
+  // 本机 / 局域网 Ollama、LM Studio 通常不需要 Key；公网服务仍需先保存密钥
+  if (!apiKey && !local) throw new Error('请先保存 API Key（本机或局域网服务可留空），再同步模型列表。')
   const isAnthropic = config.kind === 'anthropic'
   // 与推理地址使用同一套归一化：兼容裸域名、/v1、以及粘贴完整 /chat/completions 或 /v1/messages
   const url = isAnthropic
@@ -129,6 +124,8 @@ export async function syncProviderModels(
     const supportsReasoning = existing?.supportsReasoning ?? true
     const reasoningStyle =
       existing?.reasoningStyle ?? (supportsReasoning ? (isAnthropic ? 'thinking' : 'effort') : undefined)
+    const visionRaw = item.supports_vision ?? item.supports_image_input ?? item.vision
+    const supportsVision = typeof visionRaw === 'boolean' ? visionRaw : existing?.supportsVision
     const info: ModelInfo = {
       id,
       label,
@@ -137,6 +134,7 @@ export async function syncProviderModels(
       supportsTools: existing?.supportsTools ?? true,
       supportsReasoning,
       ...(reasoningStyle ? { reasoningStyle } : {}),
+      ...(supportsVision !== undefined ? { supportsVision } : {}),
       ...(existing?.note ? { note: existing.note } : {})
     }
     if (existing) updated += 1

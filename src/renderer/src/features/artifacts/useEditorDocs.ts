@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
 import type { Artifact } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { languageForPath, type EditorLanguage } from '../../components/languages'
 import { dispatchFilesChanged, filesApi } from '../files/files-client'
 import {
@@ -34,6 +34,7 @@ import {
   type HistorySource,
   type HistoryVersion
 } from './editor-api'
+import { errorText } from '../../lib'
 
 export interface EditorDocument {
   id: string
@@ -89,9 +90,7 @@ function docIdFor(absPath: string): string {
   return `doc:${absPath.replace(/\\/g, '/').toLowerCase()}`
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
+
 
 export function useEditorDocs(): {
   docs: EditorDocument[]
@@ -211,7 +210,7 @@ export function useEditorDocs(): {
             : null
         }
       } catch (error) {
-        if (/二进制/.test(messageOf(error))) {
+        if (/二进制/.test(errorText(error))) {
           return {
             ...placeholder,
             loading: false,
@@ -371,7 +370,7 @@ export function useEditorDocs(): {
               if (generationRef.current === generation) replaceDoc(doc)
             })
             .catch((error: unknown) => {
-              if (generationRef.current === generation) replaceDoc({ ...existing, error: messageOf(error) })
+              if (generationRef.current === generation) replaceDoc({ ...existing, error: errorText(error) })
             })
           return
         }
@@ -412,7 +411,7 @@ export function useEditorDocs(): {
         void ensureBaseline(doc)
       } catch (error) {
         if (generationRef.current !== generation) return
-        replaceDoc({ ...placeholder, loading: false, error: messageOf(error) })
+        replaceDoc({ ...placeholder, loading: false, error: errorText(error) })
       }
     },
     [ensureBaseline, loadDoc, notify, replaceDoc, workspace]
@@ -523,7 +522,7 @@ export function useEditorDocs(): {
         }
         return stillCurrent
       } catch (error) {
-        const message = messageOf(error)
+        const message = errorText(error)
         if (isConflictError(error) || message.includes(CONFLICT_PREFIX)) {
           patchDoc(id, { conflict: message })
           notify('warning', '文件已被外部修改，未保存。请重新加载或覆盖保存。')
@@ -576,8 +575,8 @@ export function useEditorDocs(): {
         }
         return stillCurrent
       } catch (error) {
-        patchDoc(id, { conflict: messageOf(error) })
-        notify('error', messageOf(error))
+        patchDoc(id, { conflict: errorText(error) })
+        notify('error', errorText(error))
         return false
       }
     },
@@ -612,7 +611,7 @@ export function useEditorDocs(): {
         replaceDoc(next)
         void ensureBaseline(next)
       } catch (error) {
-        patchDoc(id, { loading: false, error: messageOf(error) })
+        patchDoc(id, { loading: false, error: errorText(error) })
       }
     },
     [ensureBaseline, loadDoc, patchDoc, replaceDoc]
@@ -924,7 +923,7 @@ export function useEditorDocs(): {
       setDocs((prev) => [...prev.filter((item) => item.id !== id), next])
       void ensureBaseline(next)
     } catch (error) {
-      notify('error', messageOf(error))
+      notify('error', errorText(error))
     } finally {
       setDialogBusy(false)
     }
@@ -973,9 +972,9 @@ export function useEditorDocs(): {
         notify('success', '已恢复到这个版本。')
         return true
       } catch (error) {
-        notify('error', messageOf(error))
+        notify('error', errorText(error))
         if (isConflictError(error)) {
-          patchDoc(doc.id, { conflict: messageOf(error) })
+          patchDoc(doc.id, { conflict: errorText(error) })
         }
         return false
       }

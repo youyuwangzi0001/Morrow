@@ -1,6 +1,7 @@
-import { ArrowUpRight, Sparkles } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
+import { BrandMark } from '../../components/BrandMark'
 import { SUGGESTIONS, findModel } from '@shared/models'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './Welcome.css'
 
 /* ── 编辑感问候：按时段变化 ───────────────────────────────────── */
@@ -66,7 +67,7 @@ export function Welcome(): React.JSX.Element {
         {demoAvailable ? (
           <div className="welcome-actions">
             <button type="button" className="welcome-demo" onClick={() => void startDemo()}>
-              <Sparkles size={15} strokeWidth={1.5} aria-hidden />
+              <BrandMark size={16} />
               <span>看一场演示</span>
               <span className="welcome-demo-meta mono">离线 · 约 40 秒</span>
             </button>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Kbd, hasOpenModal } from '../../ui'
 import { CodeBlock } from '../../components/CodeBlock'
 import { DiffView } from '../../components/DiffView'

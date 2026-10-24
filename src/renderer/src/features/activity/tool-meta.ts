@@ -4,7 +4,7 @@
  */
 import type { ChatMessage, PermissionRequest, ToolResult, ToolUseBlock } from '@shared/types'
 
-export type ToolVisual = 'read' | 'write' | 'edit' | 'search' | 'command' | 'list' | 'glob' | 'todo' | 'ask' | 'subagent' | 'artifact' | 'web' | 'memory' | 'other'
+export type ToolVisual = 'read' | 'write' | 'edit' | 'search' | 'command' | 'list' | 'glob' | 'todo' | 'ask' | 'artifact' | 'web' | 'memory' | 'media' | 'other'
 
 const BY_NAME: Record<string, ToolVisual> = {
   read_file: 'read',
@@ -21,7 +21,6 @@ const BY_NAME: Record<string, ToolVisual> = {
   run_command: 'command',
   todo_write: 'todo',
   ask_user: 'ask',
-  task: 'subagent',
   open_artifact: 'artifact',
   remember: 'memory',
   web_search: 'web',
@@ -34,7 +33,15 @@ const BY_NAME: Record<string, ToolVisual> = {
   browser_back: 'web',
   browser_forward: 'web',
   browser_reload: 'web',
-  browser_close: 'web'
+  browser_close: 'web',
+  generate_image: 'media',
+  generate_video: 'media',
+  generate_film: 'media',
+  render_animation: 'media',
+  edit_media: 'media',
+  inspect_media: 'media',
+  describe_media: 'media',
+  media_status: 'media'
 }
 
 export function toolVisual(block: Pick<ToolUseBlock, 'name' | 'category'>): ToolVisual {
@@ -75,8 +82,6 @@ export function toolSummary(block: Pick<ToolUseBlock, 'name' | 'input' | 'catego
       return Array.isArray(input.todos) ? `${input.todos.length} 项任务` : ''
     case 'ask_user':
       return pickString(input, ['question']) ?? ''
-    case 'task':
-      return pickString(input, ['description', 'prompt']) ?? ''
     case 'remember':
       return pickString(input, ['key', 'name']) ?? ''
     case 'move_file':
@@ -88,6 +93,15 @@ export function toolSummary(block: Pick<ToolUseBlock, 'name' | 'input' | 'catego
       return pickString(input, ['path']) ?? ''
     case 'open_artifact':
       return pickString(input, ['title', 'path']) ?? ''
+    case 'generate_image':
+    case 'generate_video':
+      return pickString(input, ['prompt']) ?? ''
+    case 'edit_media':
+      return [pickString(input, ['operation']), path].filter(Boolean).join(' · ')
+    case 'inspect_media':
+      return path ?? ''
+    case 'media_status':
+      return ''
     default:
       if (path) return path
       const first = Object.values(input).find((value) => typeof value === 'string')

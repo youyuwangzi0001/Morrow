@@ -29,10 +29,47 @@ import {
   type ScheduleKind,
   type ScheduleSpec
 } from '@shared/schedules'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, IconButton, Modal, Segmented, Spinner, Switch, TextArea, TextInput } from '../../ui'
-import { schedulesApi, type ScheduleState } from './schedules-api'
+import { errorText } from '../../lib'
 import './schedules.css'
+
+/* ── feature:schedules:* 客户端 ───────────────────────────────── */
+
+interface ScheduleState {
+  tasks: ScheduledTask[]
+  runningTaskIds: string[]
+}
+
+interface ScheduleMutation extends ScheduleState {
+  task: ScheduledTask
+}
+
+const SCHEDULES_PREFIX = 'feature:schedules:'
+
+async function invokeSchedules<T>(action: string, payload?: unknown): Promise<T> {
+  const result = await window.morrow.features.invoke<T>(`${SCHEDULES_PREFIX}${action}`, payload)
+  if (!result.ok) throw new Error(result.error.message || '定时任务操作失败')
+  return result.data
+}
+
+const schedulesApi = {
+  list: (): Promise<ScheduleState> => invokeSchedules('list'),
+  create: (input: ScheduledTaskInput): Promise<ScheduleMutation> => invokeSchedules('create', input),
+  update: (id: string, input: ScheduledTaskInput): Promise<ScheduleMutation> =>
+    invokeSchedules('update', { id, ...input }),
+  remove: (id: string): Promise<ScheduleState> => invokeSchedules('remove', { id }),
+  setEnabled: (id: string, enabled: boolean): Promise<ScheduleMutation> =>
+    invokeSchedules('set-enabled', { id, enabled }),
+  runNow: (id: string): Promise<ScheduleState> => invokeSchedules('run-now', { id }),
+  onChanged: (listener: (state: ScheduleState) => void): (() => void) => {
+    return window.morrow.features.on('feature:schedules:changed', (payload) => {
+      if (!payload || typeof payload !== 'object') return
+      const state = payload as ScheduleState
+      if (Array.isArray(state.tasks) && Array.isArray(state.runningTaskIds)) listener(state)
+    })
+  }
+}
 
 interface TaskForm {
   title: string
@@ -86,9 +123,7 @@ function buildSpec(form: TaskForm): ScheduleSpec {
   return { kind: 'daily', time: form.time }
 }
 
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
+
 
 function shortenPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)

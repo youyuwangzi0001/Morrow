@@ -34,8 +34,8 @@
   backdrop-filter: blur(20px) saturate(120%);
   box-shadow: var(--shadow-float);
   color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-copy);
   pointer-events: auto;
   animation: toast-in 200ms var(--ease-out) both;
   overflow: hidden;
@@ -87,8 +87,8 @@
   margin-top: -1px;
   padding: 2px 4px;
   color: var(--gold);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
   transition: color var(--dur-fast) ease;
 }

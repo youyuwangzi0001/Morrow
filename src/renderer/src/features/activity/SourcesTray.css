@@ -32,9 +32,9 @@
 .sources-title {
   flex: 0 0 auto;
   color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-label);
 }
 
 .sources-count {
@@ -44,7 +44,7 @@
   border-radius: var(--r-xs);
   background: var(--gold-ghost);
   color: var(--gold);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   line-height: 15px;
 }
 
@@ -52,13 +52,13 @@
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
 }
 
 .sources-hint {
   margin-left: auto;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
 }
 
 .sources-chevron {
@@ -100,15 +100,15 @@
 
 .sources-group-query {
   color: var(--text-2);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: var(--fs-xs-plus);
+  font-weight: var(--fw-medium);
 }
 
 .sources-group-provider {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caps);
 }
 
 .sources-group-list {
@@ -128,7 +128,7 @@
   flex: 0 0 auto;
   width: 24px;
   color: var(--gold);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   line-height: 18px;
   opacity: 0.9;
 }
@@ -143,8 +143,8 @@
   gap: 5px;
   max-width: 100%;
   color: var(--text);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-medium);
   text-align: left;
 }
 
@@ -170,8 +170,8 @@
   margin: 3px 0 2px;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-copy);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -180,7 +180,7 @@
   display: block;
   overflow: hidden;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

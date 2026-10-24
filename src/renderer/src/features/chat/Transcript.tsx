@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowDown } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
 import { userMessageDisplayText } from '@shared/message'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Kbd, HorizonLoader } from '../../ui'
 import { EXECUTION_GROUP_MIN_STEPS, ExecutionGroup } from './ExecutionGroup'
 import { MessageItem } from './MessageItem'
@@ -30,6 +30,12 @@ interface TurnSegment {
   all: ChatMessage[]
   /** 对话流真正渲染的消息 */
   visible: ChatMessage[]
+}
+
+interface TurnNavItem {
+  id: string
+  index: number
+  title: string
 }
 
 /** 计划续跑、目标续跑等控制消息不切分「本轮」；用户真正发来的新消息才另起一张改动卡。 */
@@ -61,11 +67,15 @@ export function Transcript(): React.JSX.Element {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const followRef = useRef(true)
   const jumpingRef = useRef(false)
   const lastMessageIdRef = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
   const [hasNew, setHasNew] = useState(false)
+  const [hasOverflow, setHasOverflow] = useState(false)
+  const [activeTurn, setActiveTurn] = useState(0)
+  const [turnTip, setTurnTip] = useState<{ index: number; top: number } | null>(null)
 
   const messages = session?.messages ?? EMPTY_MESSAGES
   const visibleMessages = useMemo(() => messages.filter((message) => !message.hidden), [messages])
@@ -107,6 +117,22 @@ export function Transcript(): React.JSX.Element {
     if (current && current.all.length > 0) segments.push(current)
     return segments
   }, [messages])
+  // 右侧轮次导航只取用户真正发起的轮次；计划批准、目标续跑等控制消息不单独成段。
+  const turnNav = useMemo(() => {
+    const items: TurnNavItem[] = []
+    for (const segment of turnSegments) {
+      const user = segment.visible.find((message) => message.role === 'user' && startsTurn(message))
+      if (!user) continue
+      const text = userMessageDisplayText(user).replace(/\s+/g, ' ').trim()
+      const clipped = text.length > 80 ? `${text.slice(0, 80)}…` : text
+      items.push({ id: user.id, index: items.length, title: clipped || '附件消息' })
+    }
+    return items
+  }, [turnSegments])
+  const turnIndexById = useMemo(
+    () => new Map(turnNav.map((item) => [item.id, item.index] as const)),
+    [turnNav]
+  )
   // 新建后又删除的文件在这一轮净变化为零：所有相关消息都不再显示 +N/−N。
   const diffSuppression = useMemo(() => {
     const map = new Map<string, ReadonlySet<string>>()
@@ -183,7 +209,22 @@ export function Transcript(): React.JSX.Element {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     setShowJump(false)
     setHasNew(false)
+    setActiveTurn(0)
+    setTurnTip(null)
   }, [sessionId])
+
+  /* 只有内容明显超过一屏时才出现右侧轮次导航，短对话不增加视觉噪音。 */
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current
+    if (!scroller) return undefined
+    const measure = (): void => setHasOverflow(scroller.scrollHeight > scroller.clientHeight + 160)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroller)
+    if (contentRef.current) observer.observe(contentRef.current)
+    return () => observer.disconnect()
+  }, [sessionId, messages.length])
 
   /* 全局搜索命中：等消息渲染后滚到原消息并短暂金色高亮 */
   useEffect(() => {
@@ -277,6 +318,42 @@ export function Transcript(): React.JSX.Element {
     }
   }, [sessionId])
 
+  const updateActiveTurn = useCallback((): void => {
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    if (!scroller || !content) return
+    const nodes = content.querySelectorAll<HTMLElement>('[data-turn-index]')
+    if (nodes.length === 0) return
+    const scrollerTop = scroller.getBoundingClientRect().top
+    let next = Number(nodes[0]?.dataset.turnIndex ?? 0)
+    nodes.forEach((node) => {
+      if (node.getBoundingClientRect().top - scrollerTop <= 140) {
+        next = Number(node.dataset.turnIndex ?? next)
+      }
+    })
+    setActiveTurn((previous) => (previous === next ? previous : next))
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!hasOverflow) return
+    updateActiveTurn()
+  }, [hasOverflow, turnNav.length, messages.length, updateActiveTurn])
+
+  /* 轮次过多时导航在固定高度内滚动；初始把可视窗口对准中间，保持上下对称扩散。 */
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    nav.scrollTop = Math.max(0, (nav.scrollHeight - nav.clientHeight) / 2)
+  }, [turnNav.length, hasOverflow])
+
+  const showTurnTip = useCallback((turn: TurnNavItem, element: HTMLElement): void => {
+    const root = element.closest('.transcript-root')
+    if (!root) return
+    const rect = element.getBoundingClientRect()
+    const rootRect = root.getBoundingClientRect()
+    setTurnTip({ index: turn.index, top: rect.top + rect.height / 2 - rootRect.top })
+  }, [])
+
   const onScroll = (): void => {
     if (jumpingRef.current) return
     const element = scrollRef.current
@@ -286,6 +363,7 @@ export function Transcript(): React.JSX.Element {
     followRef.current = following
     setShowJump(!following)
     setHasNew((previous) => (following ? false : previous))
+    updateActiveTurn()
   }
 
   const jumpToLatest = useCallback((): void => {
@@ -303,6 +381,27 @@ export function Transcript(): React.JSX.Element {
     }, 700)
   }, [])
 
+  const jumpToTurn = useCallback((turn: TurnNavItem): void => {
+    const scroller = scrollRef.current
+    const target = contentRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${turn.id}"]`
+    )
+    if (!scroller || !target) return
+    jumpingRef.current = true
+    followRef.current = false
+    setShowJump(true)
+    setHasNew(false)
+    setActiveTurn(turn.index)
+    const top =
+      scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 18
+    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    target.classList.add('is-turn-hit')
+    window.setTimeout(() => target.classList.remove('is-turn-hit'), 1_800)
+    window.setTimeout(() => {
+      jumpingRef.current = false
+    }, 700)
+  }, [])
+
   if (!session) {
     return (
       <div className="transcript-root">
@@ -315,6 +414,7 @@ export function Transcript(): React.JSX.Element {
 
   const streamingMessageId = streaming?.messageId ?? null
   const isEmpty = visibleMessages.length === 0 && !streaming
+  const showTurnNav = hasOverflow && turnNav.length >= 3
 
   return (
     <div className="transcript-root">
@@ -368,6 +468,7 @@ export function Transcript(): React.JSX.Element {
                   }
                   isTurnFinal={turnFinals.has(unit.message.id)}
                   rewindTargetUserMessageId={turnFinals.get(unit.message.id) ?? null}
+                  turnIndex={turnIndexById.get(unit.message.id)}
                 />
               )
             )
@@ -379,6 +480,36 @@ export function Transcript(): React.JSX.Element {
           {!isEmpty ? <div className="transcript-tail" aria-hidden /> : null}
         </div>
       </div>
+
+      {showTurnNav ? (
+        <nav ref={navRef} className="transcript-turn-nav" aria-label="轮次跳转">
+          {turnNav.map((turn) => (
+            <button
+              key={turn.id}
+              type="button"
+              className={`transcript-turn${activeTurn === turn.index ? ' is-active' : ''}`}
+              aria-label={`跳到第 ${turn.index + 1} 轮：${turn.title}`}
+              aria-current={activeTurn === turn.index ? 'true' : undefined}
+              onClick={() => jumpToTurn(turn)}
+              onMouseEnter={(event) => showTurnTip(turn, event.currentTarget)}
+              onFocus={(event) => showTurnTip(turn, event.currentTarget)}
+              onMouseLeave={() => setTurnTip(null)}
+              onBlur={() => setTurnTip(null)}
+            >
+              <span className="transcript-turn-tick" aria-hidden />
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
+      {turnTip && showTurnNav ? (
+        <div className="transcript-turn-tip" style={{ top: turnTip.top }} aria-hidden>
+          <span className="mono transcript-turn-no">
+            {String(turnTip.index + 1).padStart(2, '0')}
+          </span>
+          <span className="transcript-turn-title">{turnNav[turnTip.index]?.title}</span>
+        </div>
+      ) : null}
 
       {showJump ? (
         <div className="transcript-jump-bar">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Activity, ChevronDown, Square } from 'lucide-react'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './RunCenter.css'
 
 function elapsedLabel(startedAt: number): string {

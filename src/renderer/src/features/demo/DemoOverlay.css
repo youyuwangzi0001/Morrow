@@ -38,8 +38,8 @@
 .demo-pill-label {
   flex: 0 0 auto;
   color: var(--gold);
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-wide);
 }
 
 .demo-pill-sep {
@@ -54,8 +54,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

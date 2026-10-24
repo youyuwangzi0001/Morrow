@@ -12,7 +12,7 @@ import {
   RotateCcw,
   ScanLine
 } from 'lucide-react'
-import { formatBytes } from '@shared/format'
+import { formatBytes } from '@shared/usage'
 import { withMorrowScrollbar } from '@shared/scrollbar'
 import { IconButton } from '../../ui'
 import type { EditorDocument } from './useEditorDocs'

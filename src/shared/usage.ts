@@ -1,5 +1,13 @@
 import type { ModelPricing, Usage } from './types'
 
+/** 附件、预览与媒体结果的字节数显示。 */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 /** 按参考价格估算一次用量（美元）；没有价格返回 undefined。 */
 export function estimateUsageCost(usage: Pick<Usage, 'inputTokens' | 'outputTokens' | 'cacheReadTokens'>, pricing: ModelPricing | undefined): number | undefined {
   if (!pricing) return undefined

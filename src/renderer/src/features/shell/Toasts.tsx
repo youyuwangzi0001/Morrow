@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
-import { useAppStore, type Toast } from '../../state/store'
+import { useAppStore, type Toast } from '../../store'
 import './Toasts.css'
 
 const AUTO_DISMISS_MS = 4000

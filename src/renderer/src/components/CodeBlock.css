@@ -8,6 +8,7 @@
   background: var(--code-bg);
   overflow: hidden;
   font-family: var(--font-mono);
+  font-weight: var(--code-font-weight, 400);
 }
 
 .code-head {
@@ -30,14 +31,14 @@
 
 .code-lang {
   color: var(--text-2);
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
+  font-size: var(--fs-xs-plus);
+  letter-spacing: var(--ls-caps);
 }
 
 .code-meta {
   margin-left: 2px;
   color: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   opacity: 0.85;
 }
 
@@ -74,7 +75,7 @@
   background: transparent;
   font-family: var(--font-code);
   font-size: var(--fs-code);
-  line-height: 1.55;
+  line-height: var(--lh-copy);
   tab-size: 2;
 }
 
@@ -137,7 +138,7 @@
   padding: 6px 12px;
   border-top: 1px solid var(--line);
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs-plus);
   transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 

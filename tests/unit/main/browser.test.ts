@@ -11,7 +11,7 @@ import { BROWSER_TOOL_NAMES, browserTools } from '../../../src/core/tools/browse
 import { EXTERNAL_ACTION_TOOLS, evaluatePermission, type PermissionPolicyContext, type PermissionTarget } from '../../../src/core/permissions'
 import { makeToolContext } from '../core/helpers/tool-context'
 import { makeTempWorkspace, makeTempDir } from '../core/helpers/workspace'
-import { SearchService } from '../../../src/main/services/search-service'
+import { WorkspaceSearchService } from '../../../src/main/services/workspace-search-service'
 import { ScheduleStore } from '../../../src/main/services/schedule-store'
 import { type ScheduledTaskInput } from '../../../src/shared/schedules'
 import { TokenActivityService } from '../../../src/main/services/token-activity'
@@ -23,7 +23,7 @@ import { SensitiveGuard } from '../../../src/main/services/output-guard'
 import { createServer, type Server } from 'node:http'
 import { syncProviderModels } from '../../../src/main/services/model-sync'
 import { type AddressInfo } from 'node:net'
-import { WebSearchError, WebSearchService } from '../../../src/main/services/web-search'
+import { WebSearchError, WebSearchService, parseBingResults } from '../../../src/main/services/web-search'
 import { type SettingsStore } from '../../../src/main/services/settings-store'
 import { executeTool } from '../../../src/core/tools/registry'
 
@@ -57,7 +57,9 @@ class FakeBridge implements BrowserBridge {
     canGoBack: true,
     canGoForward: false,
     error: null,
-    automationActive: false
+    automationActive: false,
+    tabs: [],
+    activeTabId: null
   }
   failWith: Error | null = null
 
@@ -352,7 +354,7 @@ describe('K1 浏览器自动化工具（fake bridge）', () => {
     expect(bridge.calls.at(-1)).toMatchObject({ method: 'closeAutomation' })
   })
 
-  it('只读上下文（子代理）一律拒绝浏览器操作', async () => {
+  it('只读上下文（集群成员）一律拒绝浏览器操作', async () => {
     for (const name of ['browser_open', 'browser_screenshot', 'browser_back']) {
       const result = await tool(name).execute(
         name === 'browser_open' ? { url: 'https://example.com' } : {},
@@ -383,10 +385,12 @@ describe('浏览器工具权限契约（ask/auto 都必须审批）', () => {
     }
   })
 
-  it('ask：全部浏览器工具返回 ask', () => {
+  it('ask：被动浏览直接放行，点击/输入仍需审批', () => {
+    const passive = new Set(['browser_open', 'browser_read', 'browser_screenshot', 'browser_reload', 'browser_scroll', 'browser_close'])
     for (const name of BROWSER_TOOL_NAMES) {
       const gate = evaluatePermission(permissionTarget(name), policy('ask'))
-      expect(gate.action, name).toBe('ask')
+      expect(gate.action, name).toBe(passive.has(name) ? 'allow' : 'ask')
+      if (gate.action === 'ask') expect(gate.allowAlways).toBe(false)
     }
   })
 
@@ -466,7 +470,7 @@ function makeHarness() {
   const workspaces: string[] = []
   let now = 10_000
   let revision = 0
-  const service = new SearchService(
+  const service = new WorkspaceSearchService(
     {
       listSessions: () => [...sessions.values()].map(metaOf),
       getSession: (id) => sessions.get(id) ?? null,
@@ -1834,6 +1838,52 @@ describe('web_search core tool', () => {
     } finally {
       ws.cleanup()
     }
+  })
+})
+
+describe('search-web.test.ts', () => {
+  const HTML = `
+<ol id="b_results">
+  <li class="b_algo"><h2><a href="https://example.com/a">A &amp; B</a></h2><div class="b_caption"><p class="b_lineclamp2">Snippet <b>one</b></p></div></li>
+  <li class="b_algo"><h2><a href="https://www.bing.com/ck/a?x">Bing internal</a></h2><p>skip</p></li>
+  <li class="b_algo"><h2><a href="https://example.org/b">Second</a></h2><p>Second snippet</p></li>
+</ol>`
+
+  describe('内置搜索解析', () => {
+    it('解析标题、链接和摘要，忽略 Bing 内部跳转', () => {
+      const sources = parseBingResults(HTML, 5)
+      expect(sources).toHaveLength(2)
+      expect(sources[0]).toMatchObject({
+        rank: 1,
+        title: 'A & B',
+        url: 'https://example.com/a',
+        snippet: 'Snippet one'
+      })
+      expect(sources[1]).toMatchObject({ rank: 2, title: 'Second', url: 'https://example.org/b' })
+    })
+
+    it('builtin 无需 API Key 即可用；未启用时不可用', () => {
+      const settings = (enabled: boolean) =>
+        ({
+          webSearch: { enabled, provider: 'builtin', apiKeyStored: false, maxResults: 5 }
+        }) as never
+      const service = new WebSearchService({
+        get: () => settings(true),
+        getWebSearchKey: () => null
+      } as never)
+      expect(service.isConfigured()).toBe(true)
+      const disabled = new WebSearchService({
+        get: () => settings(false),
+        getWebSearchKey: () => null
+      } as never)
+      expect(disabled.isConfigured()).toBe(false)
+    })
+
+    it('限制结果数，空页面安全返回空数组', () => {
+      expect(parseBingResults(HTML, 1)).toHaveLength(1)
+      expect(parseBingResults('', 5)).toEqual([])
+      expect(parseBingResults('<p>no results</p>', 5)).toEqual([])
+    })
   })
 })
 })

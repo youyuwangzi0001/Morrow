@@ -259,6 +259,8 @@ test('常见文档、压缩包、表格与图形均可打开', async () => {
     await expect(page.getByTestId('xlsx-preview')).toContainText('Jan')
     await expect(page.getByTestId('xlsx-preview')).toContainText('100')
     await expect(page.locator('.office-sheet-tab')).toHaveCount(2)
+    await expect(page.locator('.office-sheet-tab.is-active')).toHaveCSS('height', '24px')
+    await expect(page.locator('.office-sheet-tab.is-active')).toHaveCSS('border-radius', '5px')
     await page.locator('.office-sheet-tab').nth(1).click()
     await expect(page.getByTestId('xlsx-preview')).toContainText('Note')
 
@@ -800,7 +802,7 @@ test('超大文本产物只读前缀并显示截断提示', async () => {
   const workspace = join(root, 'tmp', `e2e-artifact-large-${Date.now()}`)
   mkdirSync(workspace, { recursive: true })
   const filePath = join(workspace, 'large.txt')
-  writeFileSync(filePath, 'a'.repeat(2.2 * 1024 * 1024), 'utf8')
+  writeFileSync(filePath, 'a'.repeat(8.5 * 1024 * 1024), 'utf8')
   const morrow = await launchMorrow({ name: 'artifact-large' })
   try {
     const { page } = morrow
@@ -828,9 +830,9 @@ test('超大文本产物只读前缀并显示截断提示', async () => {
       })
     }, filePath)
 
-    await expect(page.locator('.canvas-truncated-note')).toContainText('只显示了前 2MB', { timeout: 20_000 })
+    await expect(page.locator('.canvas-truncated-note')).toContainText('只显示了前 8MB', { timeout: 30_000 })
     const length = await page.evaluate(() => document.querySelector('.canvas-text')?.textContent?.length ?? 0)
-    expect(length).toBe(2 * 1024 * 1024)
+    expect(length).toBe(8 * 1024 * 1024)
     await setThemeViaStore(page, 'dark')
     await page.waitForTimeout(400)
     await page.screenshot({ path: screenshotPath('artifact-truncated-dark.png') })

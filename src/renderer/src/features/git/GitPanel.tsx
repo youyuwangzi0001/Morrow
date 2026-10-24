@@ -25,7 +25,7 @@ import type {
   Result
 } from '@shared/types'
 import { Button, ErrorNote, IconButton, Modal } from '../../ui'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './git.css'
 
 async function call<T>(channel: string, payload?: unknown): Promise<T> {

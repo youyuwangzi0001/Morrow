@@ -130,7 +130,7 @@ export type {
   ProviderStreamRequest,
   RuntimeEventPayload,
   ToolContext,
-  SubagentRequest,
+  SwarmMemberRequest,
   TerminalToolHandler,
   TerminalToolInput,
   TerminalToolResponse

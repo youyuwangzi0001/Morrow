@@ -78,11 +78,6 @@ export function languageLabel(language: EditorLanguage): string {
   return LANGUAGE_LABEL[language] ?? '纯文本'
 }
 
-/** 是否适合用 Markdown / HTML 预览 */
-export function canPreview(language: EditorLanguage): boolean {
-  return language === 'markdown' || language === 'html'
-}
-
 type Loader = () => Promise<LanguageSupport>
 
 const LOADERS: Record<Exclude<EditorLanguage, 'text'>, Loader> = {

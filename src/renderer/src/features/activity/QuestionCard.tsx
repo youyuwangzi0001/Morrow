@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CornerDownLeft, MessageCircleQuestion } from 'lucide-react'
 import type { AskUserRequest } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Kbd } from '../../ui'
 import './activity.css'
 

@@ -12,7 +12,7 @@ import {
   Sun
 } from 'lucide-react'
 import type { FileSearchResult, SessionMeta } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { dispatchOpenFile } from '../files/files-client'
 import { relativeToWorkspace } from '../artifacts/editor-api'
 import { Kbd, Modal } from '../../ui'

@@ -297,13 +297,4 @@ export function getPermissionRulesService(explicitDataDir?: string): PermissionR
   return instance
 }
 
-export function getWorkspacePermissionRules(workspace: string | null | undefined): PermissionRule[] {
-  if (!workspace) return []
-  try {
-    return getPermissionRulesService().list(workspace)
-  } catch {
-    return []
-  }
-}
-
 export type { PermissionDecision }

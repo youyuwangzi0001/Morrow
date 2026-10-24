@@ -66,9 +66,13 @@ const deliverDir = process.env.MORROW_DELIVER_DIR
   ? resolve(root, process.env.MORROW_DELIVER_DIR)
   : join(root, 'deliver')
 const folderName = `Morrow-${version}-portable`
+// 运行时缓存目录随版本变化；同版本重建由内嵌 zip 的 SHA-256 戳记负责替换旧缓存。
+const runtimeRevision = process.env.MORROW_RUNTIME_REVISION || `r${version.replace(/\D/g, '')}`
+const runtimeFolderName = `.morrow-runtime-${version}-${runtimeRevision}`
 const folderDir = join(releaseDir, folderName)
 const zipPath = join(releaseDir, `${folderName}-win64.zip`)
 const portableExe = join(releaseDir, `${folderName}.exe`)
+let installerExe = join(releaseDir, `Morrow-${version}-setup.exe`)
 const usageFileName = '使用说明.txt'
 const sha256SumsFileName = 'SHA256SUMS.txt'
 // 中间解包目录放到 tmp：避免 release/win-unpacked 被索引/杀毒占用后卡死下一次打包
@@ -361,7 +365,7 @@ const mainOut = join(root, 'out', 'main', 'index.js')
 const rendererOut = join(root, 'out', 'renderer', 'index.html')
 const iconIco = join(root, 'build', 'icon.ico')
 if (!existsSync(mainOut) || !existsSync(rendererOut)) fail('缺少构建产物（out/main/index.js 或 out/renderer/index.html）。请先 npm run build。')
-if (!existsSync(iconIco)) fail('缺少 build/icon.ico。请先运行 python scripts/make-icons.py 生成图标。')
+if (!existsSync(iconIco)) fail('缺少 build/icon.ico。图标资产应随源码提交（build/icon.ico）。')
 const builderCli = join(root, 'node_modules', 'electron-builder', 'cli.js')
 if (!existsSync(builderCli)) fail('未找到 electron-builder（node_modules/electron-builder/cli.js）。请先 npm install。')
 if (['folder', 'all'].includes(mode) && !existsSync(sevenZip)) fail(`未找到 7za（zip 压缩需要）：${sevenZip}`)
@@ -378,6 +382,10 @@ mkdirSync(env.ELECTRON_CACHE, { recursive: true })
 // R9：打包缓存统一重定向到项目 tmp/，每次打包前删除，避免历史产物/缓存污染
 env.ELECTRON_BUILDER_CACHE ||= join(root, 'tmp', 'electron-builder-cache')
 if (env.MORROW_BUILDER_CACHE) env.ELECTRON_BUILDER_CACHE = env.MORROW_BUILDER_CACHE
+// Git Bash / 受限宿主常把 TEMP/TMP 指向 /tmp；NSIS 需要真实 Windows 临时目录。
+env.TEMP = join(root, 'tmp', 'win-temp')
+env.TMP = env.TEMP
+mkdirSync(env.TEMP, { recursive: true })
 
 /** 清掉上一次的产物、中间目录、zip 暂存与 electron-builder 打包缓存（保留 release 文档/截图/审计报告）。 */
 function cleanPackagingOutputs() {
@@ -385,7 +393,7 @@ function cleanPackagingOutputs() {
     folderDir,
     zipPath,
     // 只打文件夹版时保留现有单文件版（可能正在运行，Windows 不允许删除/覆盖）
-    ...(mode === 'folder' ? [] : [portableExe]),
+    ...(mode === 'folder' ? [] : [portableExe, installerExe]),
     builderOutputDir,
     // 兼容清理旧版脚本留在 release/ 的中间目录（被占用时下面会跳过）
     legacyWinUnpacked,
@@ -490,17 +498,9 @@ function dirSize(dir) {
 function organizeFolder() {
   if (!existsSync(winUnpacked)) fail('electron-builder --dir 未产出 win-unpacked（tmp/electron-builder-output）')
   rmSync(folderDir, { recursive: true, force: true })
-  try {
-    renameSync(winUnpacked, folderDir)
-  } catch {
-    // 极端情况（跨设备/被占用）退化为复制；中间目录被索引器占用时留给下次清理
-    cpSync(winUnpacked, folderDir, { recursive: true })
-    try {
-      rmSync(winUnpacked, { recursive: true, force: true })
-    } catch (err) {
-      logLine(`[dist] 中间目录暂时无法删除（可稍后手动清理）：${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
+  // 只复制、不移动：NSIS 安装包还要复用同一份 win-unpacked；移动后被索引/杀毒占用的文件
+  // 可能只删掉一半，留下缺少 exe/dll 的目录，安装包会在不报错的情况下缺主程序。
+  cpSync(winUnpacked, folderDir, { recursive: true })
   const exe = join(folderDir, 'Morrow.exe')
   if (!existsSync(exe)) fail(`文件夹版缺少 Morrow.exe：${folderDir}`)
   addPortableExtras(folderDir)
@@ -561,70 +561,58 @@ $psi.UseShellExecute = $false
 }
 
 /** 交付/文件夹内的短说明（UTF-8 BOM + CRLF，Windows 记事本/写字板可直接打开）。 */
-function buildUsageText(singleOnly = false) {
-  if (singleOnly) {
-    const highlights = [
-      `本次新版文件：${folderName}.exe（R20 构建）`,
-      '',
-      '本版重点',
-      '- 顶栏左半区恢复拖动；移除顶栏 Morrow 字样，品牌只保留在「设置 → 关于」。',
-      '- 终端改为紧凑行距与左对齐，继续统一 UTF-8，中文与中文路径不再出现菱形乱码。',
-      '- 内置浏览器左上角新增「返回主页面」，页面保持打开；主界面顶栏的地球按钮可随时切回上次页面。',
-      '- /plan 与目标模式对齐：先给出提示并保留输入，发送带任务的 /plan 后才进入计划模式；计划/目标提示词同步完善。',
-      '- 输入框按容器宽度智能收起上下文圆环、推理强度等次要控件，窄区域不再上下错位。',
-      '- 画布「在文件夹中显示」改走系统 Shell 打开所在目录，受限会话不再弹出 Explorer 0xC0000142 错误框。',
-      '- 隐私兜底：运行结束时重新扫描完整消息并遮蔽跨分片的邮箱/用户名/token，界面与落盘保持一致。',
-      '- 保留既有能力：真实终端、集群 ×8、联网搜索、画布成品、检查点回退、Git 面板、记忆/项目/定时任务/连接器等。',
-      ''
-    ]
-    return [
-      `Morrow ${version} · Windows 10/11 x64 单文件便携版`,
-      '================================================',
-      '',
-      ...highlights,
-      `1. 如果 ${folderName}.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
-      `2. 首次会在 exe 同级解压 .morrow-runtime-${version}（约 5–10 秒，带进度小窗），之后启动更快。`,
-      '3. 如果 Windows 弹出“Windows 已保护你的电脑”：点“更多信息” → “仍要运行”。',
-      '   这是因为 0.1.0 还没有代码签名（signed:false），不是病毒提示。',
-      '   解除锁定后通常不会再出现 SmartScreen；若仍出现，按上面的方式处理。',
-      '4. 数据默认保存在 exe 同级的 “Morrow Data” 文件夹；可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
-      '   交付包不包含任何用户数据、缓存或密钥。',
-      `5. 运行后不要删除 .morrow-runtime-${version}；删除后下次会重新解压。`,
-      '',
-      '完整性校验',
-      `- SHA-256 见同目录 ${sha256SumsFileName}。`,
-      '- Windows 校验：certutil -hashfile <文件名> SHA256；或 PowerShell Get-FileHash <文件名> -Algorithm SHA256。',
-      '- 当前版本未签名；如果以后提供受信任的代码签名证书，重新打包即可签名（SmartScreen 仍需一定下载信誉）。'
-    ].join('\r\n') + '\r\n'
-  }
+function buildUsageText(_singleOnly = false) {
+  const withInstaller = existsSync(installerExe)
+  const signed = signing.enabled && signing.certificate
+  const signatureLine = signed
+    ? `- 已签名：${signing.certificate.subject || '代码签名证书'}${signing.certificate.thumbprint ? `（${signing.certificate.thumbprint.slice(0, 12)}…）` : ''}。SmartScreen 仍可能需要下载信誉。`
+    : '- 当前版本未配置代码签名证书，产物未签名；首次运行可能触发 SmartScreen。'
+  const smartScreenLine = signed
+    ? '3. 已签名，但 Windows 仍可能在积累下载信誉前提示；点「更多信息」→「仍要运行」。'
+    : '3. 如果 Windows 弹出「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」；这是未签名提示，不是病毒提示。'
   return [
-    `Morrow ${version} · Windows 10/11 x64 便携版`,
-    '========================================',
+    `Morrow ${version} · Windows 10/11 x64（便携版 + 安装包）`,
+    '================================================',
     '',
-    '推荐：文件夹便携版',
-    `1. 如果 ${folderName}-win64.zip 是从浏览器或聊天工具下载的，先右键 zip → 属性 → 勾选“解除锁定” → 确定，再解压。`,
-    '2. 双击文件夹里的 Morrow.exe（Morrow-app.exe 是应用本体，不要直接双击）。',
-    '3. 如果 Windows 弹出“Windows 已保护你的电脑”：点“更多信息” → “仍要运行”。',
-    '   这是因为 0.1.0 还没有代码签名（signed:false），不是病毒提示。',
-    '4. 数据保存在 exe 同级的 “Morrow Data” 文件夹；把整个文件夹拷走即可换机继续。',
-    '   可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
+    '本次交付文件',
+    `- ${folderName}.exe：单文件便携版`,
+    ...(withInstaller ? [`- Morrow-${version}-setup.exe：安装包（推荐日常使用）`] : []),
+    '',
+    '本版重点',
+    '- 集群上限提升到 10 个成员；成员卡展开后可查看全部实际执行信息，不再截断为 30 条。',
+    '- 设置 → 订阅接入 10 条渠道：ChatGPT/Codex、Qoder、Kimi、GLM、MiniMax、Step、Command Code、Cline、Antigravity、OpenCode；每条都有真实登录/导入、加密存储、本地 Provider 与额度/账号状态。',
+    '- 设置 15 个子页统一标题规格；进入订阅详情会自动回到顶部。',
+    '- 多媒体新增「添加本机模型」：在应用内填名称/引擎/能力/模型文件即可注册 llama.cpp GGUF、Ollama、LM Studio 模型；llama.cpp 可一键「启动此模型」，无需外部 Agent。',
+    '- 长期记忆与自动任务经验分层协同；新增「Morrow 的建议」、会参考的内容预览与「保存为长期记忆」。',
+    '- 快捷键独立成页，列表与真实按键一一对应；新增 Ctrl+` 终端、浏览器 Ctrl+W / Ctrl+Tab。',
+    '- 长对话右侧轮次刻度：悬停看该轮问题，点击跳到对应位置；归档危险按钮统一为「清除全部」。',
+    '- 通用模型/引擎目录、多媒体（图片 / 视频 / 音频）、多引擎搜索、流式工具调用与失败回传保持可用。',
+    '- 本轮把记忆、多媒体、快捷键和集群说明改成普通中文；成员类型默认收起，需要时再展开。',
+    '- 代码字体只保留 IBM Plex Mono、JetBrains Mono 与系统等宽；代码字重固定为常规 400。',
+    '- UI 设计令牌收口：字号/字重/行高/字距统一走 tokens.css，设置页标题 20px / 分区 13px / 说明 12px；npm run audit:ui 防止裸值回退。',
+    '- 代码与测试继续扁平化：22 个单元套件 / 934 个用例，21 个 E2E 套件 / 204 个用例；源码与文档面向开源整理。',
+    '',
+    '安装包（推荐）',
+    ...(withInstaller ? [
+      `1. 如果 Morrow-${version}-setup.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定。`,
+      '2. 双击安装包，选择安装目录；默认按当前用户安装，并创建开始菜单/桌面快捷方式。',
+      '3. 安装版数据默认保存在 %APPDATA%\Morrow，可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
+      '4. 卸载：Windows 设置 → 应用 → Morrow → 卸载；用户数据默认保留，可在卸载后手动清理。'
+    ] : ['- 本次未生成安装包，请使用便携版。']),
+    '',
+    '单文件便携版',
+    `1. 如果 ${folderName}.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
+    `2. 首次会在 exe 同级解压 ${runtimeFolderName}（约 5–10 秒，带进度小窗），之后启动更快。`,
+    smartScreenLine,
+    '4. 便携版数据默认保存在 exe 同级的 “Morrow Data” 文件夹；可在「设置 → 关于」更改数据目录。',
     '   交付包不包含任何用户数据、缓存或密钥。',
+    `5. 运行后不要删除 ${runtimeFolderName}；删除后下次会重新解压。`,
     '',
-    '单文件版',
-    `- 如果 ${folderName}.exe 是从浏览器或聊天工具单独下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定，再双击。`,
-    `- 首次会在 exe 同级解压 .morrow-runtime-${version}（约 5–10 秒，带进度小窗）。`,
-    '- 解除锁定后通常不会再出现 SmartScreen；若仍出现，按上面的“更多信息 → 仍要运行”处理。',
-    `- 运行后不要删除 .morrow-runtime-${version}；删除后下次会重新解压。`,
-    '',
-    '桌面图标',
-    '- 右键 Morrow.exe → 发送到 → 桌面快捷方式。',
-    '- 也可以运行文件夹里的 “创建桌面快捷方式.cmd”。它通过系统 PowerShell 启动，能减少资源管理器的重复拦截；',
-    '  这只是启动方式，不是代码签名，安全软件仍可能拦截。',
-    '',
-    '完整性校验',
+    '签名与完整性',
+    signatureLine,
     `- SHA-256 见同目录 ${sha256SumsFileName}。`,
     '- Windows 校验：certutil -hashfile <文件名> SHA256；或 PowerShell Get-FileHash <文件名> -Algorithm SHA256。',
-    '- 当前版本未签名；如果以后提供受信任的代码签名证书，重新打包即可签名（SmartScreen 仍需一定下载信誉）。'
+    '- 代码签名只能改善“发布者未知”的一部分提示；SmartScreen 仍需要证书受信任并积累下载信誉。'
   ].join('\r\n') + '\r\n'
 }
 
@@ -668,16 +656,59 @@ function addPortableExtras(folderDir) {
 const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
 const launcherSrc = join(root, 'build', 'launcher', 'MorrowLauncher.cs')
 const launcherManifest = join(root, 'build', 'launcher', 'MorrowLauncher.manifest')
+const launcherBuildInfo = join(root, 'tmp', 'launcher-build-info.cs')
+
+/** 版本号只有一个来源（package.json）；启动器源码只读取生成的常量。 */
+function writeLauncherBuildInfo() {
+  mkdirSync(dirname(launcherBuildInfo), { recursive: true })
+  const assemblyVersion = version.includes('.') ? version.split('.').length >= 3 ? version : `${version}.0` : `${version}.0.0`
+  writeFileSync(
+    launcherBuildInfo,
+    `using System.Reflection;
+[assembly: AssemblyTitle("Morrow")]
+[assembly: AssemblyProduct("Morrow")]
+[assembly: AssemblyDescription("Morrow - 住在你电脑里的 AI 工作伙伴")]
+[assembly: AssemblyCompany("Morrow Studio")]
+[assembly: AssemblyVersion("${assemblyVersion}")]
+[assembly: AssemblyFileVersion("${assemblyVersion}")]
+[assembly: AssemblyInformationalVersion("${version}")]
+
+internal static class MorrowLauncherBuildInfo
+{
+    public const string Version = "${version}";
+    public const string RuntimeRevision = "${runtimeRevision}";
+}
+`,
+    'utf8'
+  )
+}
 
 /**
  * 编译 C# 启动器。
  * defineFolder=true：文件夹版启动器（启动同目录 Morrow-app.exe，无需内嵌 zip）
  * resourceZip：单文件版启动器要内嵌的应用 zip
  */
+/**
+ * 给 exe 打 Medium 完整性标签。
+ * 交付目录可能被宿主标成 Low（例如自动化工作区），从那里启动的进程会继承低完整性：
+ * COM 激活被拒绝、explorer.exe 以 0xC0000142 退出。exe 自身的 Medium 标签决定进程
+ * 完整性上限，覆盖目录继承的 Low 标签后，文件管理器定位与系统程序打开才能正常工作。
+ */
+function ensureMediumIntegrity(filePath) {
+  if (process.platform !== 'win32' || !existsSync(filePath)) return
+  const icacls = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'icacls.exe')
+  const result = spawnSync(icacls, [filePath, '/setintegritylevel', 'Medium'], { encoding: 'utf8' })
+  if (result.status !== 0) {
+    fail(`无法设置 Medium 完整性标签（${filePath}）：${(result.stdout || '') + (result.stderr || '')}`)
+  }
+  logLine(`[dist] 完整性标签 Medium：${relPath(filePath)}`)
+}
+
 function compileLauncher(outPath, options = {}) {
   if (!existsSync(cscPath)) fail('缺少 C# 编译器 csc.exe（Windows .NET Framework 4.x）')
   if (!existsSync(launcherSrc)) fail('缺少启动器源码 build/launcher/MorrowLauncher.cs')
   if (!existsSync(launcherManifest)) fail('缺少启动器清单 build/launcher/MorrowLauncher.manifest')
+  writeLauncherBuildInfo()
   const args = [
     '-nologo',
     '-target:winexe',
@@ -691,7 +722,8 @@ function compileLauncher(outPath, options = {}) {
     '-r:System.IO.Compression.FileSystem.dll',
     '-r:System.Windows.Forms.dll',
     '-r:System.Drawing.dll',
-    launcherSrc
+    launcherSrc,
+    launcherBuildInfo
   ]
   const result = spawnSync(cscPath, args, { encoding: 'utf8' })
   if (result.status !== 0) {
@@ -795,7 +827,8 @@ function stageDelivery() {
 
   for (const [name, src] of [
     ['portable-zip', zipPath],
-    ['portable-exe', portableExe]
+    ['portable-exe', portableExe],
+    ['installer', installerExe]
   ]) {
     if (singleOnly && name === 'portable-zip') continue
     if (!existsSync(src)) continue
@@ -810,6 +843,12 @@ function stageDelivery() {
     })
   }
 
+  // 复制到交付目录后再打一次标签：Windows 复制/继承可能把 Low 标签带回来。
+  ensureMediumIntegrity(join(deliverDir, `${folderName}.exe`))
+  ensureMediumIntegrity(join(deliverDir, `Morrow-${version}-setup.exe`))
+  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow-app.exe'))
+  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow.exe'))
+
   writeUsageFile(join(deliverDir, usageFileName), singleOnly)
   const licenseSrc = join(root, 'LICENSE')
   if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
@@ -817,6 +856,7 @@ function stageDelivery() {
   const checksumTargets = [
     join(deliverDir, `${folderName}-win64.zip`),
     join(deliverDir, `${folderName}.exe`),
+    join(deliverDir, `Morrow-${version}-setup.exe`),
     join(deliverDir, folderName, 'Morrow.exe'),
     join(deliverDir, folderName, 'Morrow-app.exe'),
     join(deliverDir, folderName, 'resources', 'app.asar'),
@@ -898,8 +938,12 @@ try {
     // 先签名应用本体和文件夹启动器，再压缩 zip：这样 zip 里携带的也是已签名 exe。
     const folderAppSig = signFile(join(winUnpacked, 'Morrow-app.exe'), 'Morrow-app.exe')
     const folderLauncherSig = signFile(join(winUnpacked, 'Morrow.exe'), 'Morrow.exe（文件夹版）')
+    ensureMediumIntegrity(join(winUnpacked, 'Morrow-app.exe'))
+    ensureMediumIntegrity(join(winUnpacked, 'Morrow.exe'))
 
     const folderExe = organizeFolder()
+    ensureMediumIntegrity(join(folderDir, 'Morrow-app.exe'))
+    ensureMediumIntegrity(folderExe)
     const folderStat = dirSize(folderDir)
     const folderAppExe = join(folderDir, 'Morrow-app.exe')
     artifacts.portableFolder = {
@@ -985,6 +1029,7 @@ try {
     rmSync(appZip, { force: true })
     if (!existsSync(portableExe)) fail(`未找到单文件产物：${portableExe}`)
     const portableSig = signFile(portableExe, 'Morrow 单文件 exe')
+    ensureMediumIntegrity(portableExe)
     steps.push({ name: 'portable', exitCode: 0, durationMs: Date.now() - packStarted, command: `launcher(${portableExe})` })
     artifacts.portableExe = {
       kind: 'portable-exe',
@@ -999,6 +1044,51 @@ try {
         '自动加 --no-sandbox 以兼容本机受限环境；未签名时首次运行仍可能被 SmartScreen 拦截。'
     }
     logLine(`[dist] 单文件 exe：${artifacts.portableExe.path} · ${artifacts.portableExe.sizeMB} MB · sha256=${artifacts.portableExe.sha256.slice(0, 16)}… · signed=${artifacts.portableExe.signed}`)
+
+    // NSIS 安装包：从同一份 win-unpacked 生成，便携版与安装包共享应用本体。
+    if (!existsSync(winUnpacked)) {
+      fail('生成安装包需要 tmp/electron-builder-output/win-unpacked；请先解除占用后重试。')
+    }
+    const nsisStarted = Date.now()
+    const nsisStep = await runBuilder(
+      [
+        '--win',
+        'nsis',
+        '--x64',
+        '--prepackaged',
+        winUnpacked,
+        '--publish',
+        'never',
+        `-c.directories.output=${releaseDir}`,
+        ...electronDistArgs
+      ],
+      'nsis'
+    )
+    steps.push({ name: 'nsis', ...nsisStep })
+    if (nsisStep.exitCode !== 0) fail(`electron-builder nsis 失败（exit ${nsisStep.exitCode}）`)
+    if (!existsSync(installerExe)) {
+      const found = [releaseDir, builderOutputDir]
+        .flatMap((dir) => (existsSync(dir) ? readdirSync(dir).map((name) => join(dir, name)) : []))
+        .find((path) => /-setup\.exe$/i.test(path) && statSync(path).isFile())
+      if (!found) fail('electron-builder nsis 完成但未找到安装包 -setup.exe')
+      installerExe = found
+    }
+    const installerSig = signFile(installerExe, 'Morrow 安装包')
+    ensureMediumIntegrity(installerExe)
+    artifacts.installer = {
+      kind: 'nsis-installer',
+      path: relPath(installerExe),
+      sizeBytes: statSync(installerExe).size,
+      sizeMB: Number((statSync(installerExe).size / 1024 / 1024).toFixed(2)),
+      sha256: sha256(installerExe),
+      signed: signatureSummary(installerSig).signed,
+      signature: signatureSummary(installerSig),
+      note:
+        'NSIS 安装包：可选安装目录、创建开始菜单/桌面快捷方式，按当前用户安装；安装版数据目录默认为 %APPDATA%\\Morrow，可在设置中更改。'
+    }
+    steps.push({ name: 'installer', exitCode: 0, durationMs: Date.now() - nsisStarted, command: `installer(${installerExe})` })
+    logLine(`[dist] 安装包：${artifacts.installer.path} · ${artifacts.installer.sizeMB} MB · sha256=${artifacts.installer.sha256.slice(0, 16)}… · signed=${artifacts.installer.signed}`)
+
     if (mode === 'all' && existsSync(winUnpacked)) {
       try {
         rmSync(winUnpacked, { recursive: true, force: true })
@@ -1043,10 +1133,9 @@ try {
       }
     }
     const singleDelivery = !delivery.folder && !delivery.artifacts.some((item) => item.name === 'portable-zip')
+    const deliveryFormat = artifacts.installer ? '便携版 exe + 安装包' : '单文件 exe'
     logLine(
-      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${
-        singleDelivery ? '单文件 exe + 使用说明 + SHA256SUMS + LICENSE' : '三份产物 + 使用说明 + SHA256SUMS + LICENSE'
-      }）${
+      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${deliveryFormat} + 使用说明 + SHA256SUMS + LICENSE）${
         delivery.localData
           ? `；另保留本机用户数据 Morrow Data（${delivery.localData.fileCount} 个文件，不计入分发）`
           : ''
@@ -1077,12 +1166,16 @@ try {
     Boolean(summary.delivery) &&
     !summary.delivery.folder &&
     !summary.delivery.artifacts.some((item) => item.name === 'portable-zip')
+  const hasInstaller = Boolean(artifacts.installer)
   summary.notes =
     `Morrow ${version} 打包完成：启动器嵌入完整 Win32 manifest；` +
+    (hasInstaller ? '交付便携版 exe 与安装包。' : '交付单文件 exe。') +
     (signing.enabled ? `已使用 ${signing.method} 证书签名并校验。` : '未配置代码签名证书，产物 signed:false。') +
     (singleDelivery
-      ? ' deliver/ 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。'
-      : ' deliver/ 只保留三份产物、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen，解除下载锁定或点「更多信息 → 仍要运行」。')
+      ? hasInstaller
+        ? ' deliver/ 保留便携版、安装包、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。'
+        : ' deliver/ 只保留单文件 exe、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。'
+      : ' deliver/ 保留三份便携产物、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。')
   summary.finishedAt = new Date().toISOString()
   summary.durationMs = Date.now() - startedAt
   writeFileSync(join(root, 'docs', 'verification', 'packaging.json'), JSON.stringify(summary, null, 2))

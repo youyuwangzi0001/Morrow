@@ -13,7 +13,7 @@ import {
   Trash2
 } from 'lucide-react'
 import type { SessionMeta } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import { Button, IconButton, Modal, WithTooltip } from '../../ui'
 import { FileTree } from '../files/FileTree'
 import { openWorkbench } from '../workbench/events'
@@ -139,7 +139,7 @@ function SessionRow({
           {session.pinned ? <Pin size={10} strokeWidth={1.8} className="sb-session-pin" aria-label="已置顶" /> : null}
           <span className="sb-session-title truncate">{session.title}</span>
           {session.demo && !session.temporary ? (
-            <span className="sb-session-demo mono" title="演示会话：只在一次性演示工作区运行">
+            <span className="sb-session-demo mono" title="演示会话：只在一次性演示文件夹里运行">
               演示
             </span>
           ) : null}
@@ -236,12 +236,12 @@ function CollapsedRail(): React.JSX.Element {
       </nav>
 
       <div className="sb-rail-foot">
-        <WithTooltip label={hasAnyApiKey ? '设置 · 模型 Key 已保存 (Ctrl+,)' : '设置 · 模型未连接 (Ctrl+,)'} side="right">
+        <WithTooltip label={hasAnyApiKey ? '设置 · 模型已连接 (Ctrl+,)' : '设置 · 模型未连接 (Ctrl+,)'} side="right">
           <button
             type="button"
             className={['sb-rail-settings', hasAnyApiKey ? 'is-on' : 'is-off'].join(' ')}
             onClick={openSettings}
-            aria-label={hasAnyApiKey ? '设置，模型 Key 已保存' : '设置，模型未连接'}
+            aria-label={hasAnyApiKey ? '设置，模型已连接' : '设置，模型未连接'}
           >
             <Settings size={15} strokeWidth={1.5} aria-hidden />
             <span className="sb-conn-dot" aria-hidden />
@@ -378,14 +378,14 @@ export function Sidebar(): React.JSX.Element {
           type="button"
           className="sb-foot-row"
           onClick={openSettings}
-          title={hasAnyApiKey ? '模型 Key 已保存 · 打开设置' : '模型未连接，打开设置去连接'}
-          aria-label={hasAnyApiKey ? '设置，模型 Key 已保存' : '设置，模型未连接'}
+          title={hasAnyApiKey ? '模型已连接 · 打开设置' : '模型未连接，打开设置去连接'}
+          aria-label={hasAnyApiKey ? '设置，模型已连接' : '设置，模型未连接'}
         >
           <Settings size={14} strokeWidth={1.5} aria-hidden />
           <span className="sb-foot-label">设置</span>
           <span className={['sb-foot-conn', hasAnyApiKey ? 'is-on' : 'is-off'].join(' ')}>
             <span className="sb-conn-dot" aria-hidden />
-            {hasAnyApiKey ? 'Key 已保存' : '未连接'}
+            {hasAnyApiKey ? '已连接' : '未连接'}
           </span>
           <span className="sb-foot-version mono" aria-hidden>
             v{version ?? '0.1.0'}

@@ -17,7 +17,7 @@ import {
   imageMediaTypeFor,
   isTextFileName
 } from '../../shared/file-types'
-import { formatBytes } from '../../shared/format'
+import { formatBytes } from '../../shared/usage'
 import { decodeTextBytes } from '../../shared/text-decode'
 
 export function describeAttachment(file: string): Attachment | null {

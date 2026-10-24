@@ -1,6 +1,6 @@
 import { ChevronDown, ListChecks } from 'lucide-react'
 import type { TodoItem } from '@shared/types'
-import { useAppStore } from '../../state/store'
+import { useAppStore } from '../../store'
 import './activity.css'
 
 /** 模块级常量：selector 必须返回稳定引用，避免 zustand 无限重渲染 */
