@@ -4,6 +4,7 @@ import { execFile, execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { log } from './logger'
 
 function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)
@@ -58,6 +59,8 @@ function launchViaCmdStart(url: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
     let timer: NodeJS.Timeout | undefined
+    let stdout = ''
+    let stderr = ''
     const finish = (ok: boolean): void => {
       if (settled) return
       settled = true
@@ -65,14 +68,26 @@ function launchViaCmdStart(url: string): Promise<boolean> {
       resolve(ok)
     }
     const child = spawn('cmd.exe', ['/c', 'start', '""', `"${url}"`], {
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
-      windowsHide: true
+      windowsHide: true,
+      windowsVerbatimArguments: true
     })
-    child.unref()
-    timer = setTimeout(() => finish(true), 800)
+    child.stdout?.on('data', (chunk) => { stdout += String(chunk) })
+    child.stderr?.on('data', (chunk) => { stderr += String(chunk) })
+    timer = setTimeout(() => {
+      try { child.kill() } catch { /* ignore */ }
+      finish(false)
+    }, 3_000)
     child.once('error', () => finish(false))
-    child.once('spawn', () => finish(true))
+    child.once('close', (code) => {
+      if (code === 0) finish(true)
+      else {
+        // 记录失败原因但不输出授权 URL；调用方会继续尝试独立浏览器配置。
+        log.warn('login browser cmd start failed', { code, stderr: stderr.trim().slice(0, 300), stdout: stdout.trim().slice(0, 300) })
+        finish(false)
+      }
+    })
   })
 }
 

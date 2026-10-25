@@ -69,7 +69,7 @@ describe('openExternalUrl', () => {
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { unref: () => void }
       child.unref = vi.fn()
-      process.nextTick(() => child.emit('spawn'))
+      process.nextTick(() => { child.emit('spawn'); child.emit('close', 0) })
       return child
     })
     const result = await openLoginUrl('https://example.com/auth?x=1')

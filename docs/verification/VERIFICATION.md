@@ -75,7 +75,7 @@
 | Feature 注册 | `discovery` / `permissions` / `git` / `subscriptions` / `schedules` 五个只被注册表引用的模块并入 `main/features/index.ts`，统一复用 `payloadOf` |
 | 死代码 | 删除 17 个无引用导出、5 个死频道常量、死常量/死兼容分支 |
 | 重复实现 | 统一 13 处 `errorText`、画布版本时间/大小格式化、`formatBytes`（core/project/renderer）、本机/私网 URL 判定、4 处 feature payload 解析 |
-| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,984 行**：ts 70,817 / tsx 29,174 / css 24,993）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
+| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,999 行**：ts 70,832 / tsx 29,174 / css 24,993）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
 
 ## 6. 验证门禁
 
@@ -93,12 +93,12 @@
 
 | 产物 | 大小 | SHA-256 |
 |---|---|---|
-| `Morrow-0.1.0-portable.exe` | 205,946,368 B / 196.41 MiB | `51a2a1369462cbdeae0b27e20366ce62b90a69a550bc23abbdf0357502e16659` |
-| `Morrow-0.1.0-setup.exe` | 156,644,060 B / 149.39 MiB | `b36470d1ecec32ac784eebe91daf0e27c3045e0735c01404b9e4f8a6f7e7fd4b` |
+| `Morrow-0.1.0-portable.exe` | 205,946,880 B / 196.41 MiB | `cc3b832e9d94766adbada79e089460e94af3de1710bd83d442705d8c452da577` |
+| `Morrow-0.1.0-setup.exe` | 156,644,089 B / 149.39 MiB | `afa5176ac893b553f01191bb7dd38f58d9cb775883c1585c459c01451f57547d` |
 | `使用说明.txt` | 3,138 B | `cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302` |
-| `SHA256SUMS.txt` | 338 B | `b6aa9deef15c34523e745207973f5c9ca241819ef666fee540d497641f9f6601` |
+| `SHA256SUMS.txt` | 338 B | `58d3eb924ce53a3479e341c86aaf31d631afe94d4dd4e655ff63afb4b7ab93b6` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **5 文件 / 362,594,974 B / 345.8 MiB** | 未签名（signed:false） |
+| **分发合计** | **5 文件 / 362,595,515 B / 345.8 MiB** | 未签名（signed:false） |
 
 安装包载荷：**331 个文件 / 55 个目录**，包含 `Morrow-app.exe`、`resources/app.asar`、`node-pty` 原生模块；与便携版共用同一份 `win-unpacked`。
 
