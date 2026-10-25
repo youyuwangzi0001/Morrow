@@ -334,7 +334,8 @@ const llamaCppModels: ModelInfo[] = [
     contextWindow: 65_536,
     maxOutput: 16_384,
     supportsTools: true,
-    note: 'llama-server 启动后可用；64K 上下文全显存，模型 ID 需与 --alias 一致'
+    supportsVision: true,
+    note: 'llama-server 启动后可用；视觉审看需带 --mmproj；模型 ID 需与 --alias 一致'
   }
 ]
 

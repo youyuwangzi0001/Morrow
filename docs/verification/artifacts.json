@@ -1,36 +1,40 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
-  "builtAt": "2026-10-25T18:43:47.135Z",
+  "builtAt": "2026-10-25T19:53:32.500Z",
   "platform": "win32-x64",
   "source": {
     "files": 314,
     "codeFiles": 293,
     "loc": {
-      "ts": 71382,
+      "ts": 71469,
       "tsx": 29228,
       "css": 25115,
-      "total": 125725
+      "total": 125812
     }
   },
   "tests": {
     "unit": {
       "suites": 14,
-      "cases": 951,
-      "passed": 943,
-      "skipped": 8
+      "cases": 952,
+      "passed": 944,
+      "skipped": 8,
+      "lines": 23070
     },
     "e2e": {
       "suites": 17,
       "cases": 209,
       "passed": 197,
       "skipped": 11,
-      "note": "上一轮全量基线 208 例；本轮新增模型元数据/上下文 1 例，未重跑全量",
+      "lines": 19236,
+      "fixturesLines": 1150,
+      "note": "上一轮全量基线；本轮未重跑完整套件，新增/修改用例已定向验证",
       "packaged": {
         "cases": 5,
         "passed": 5,
         "skipped": 0,
-        "date": "2026-10-26"
+        "date": "2026-10-26",
+        "durationMs": 18200
       }
     },
     "targeted": [
@@ -123,7 +127,7 @@
         "cases": 1,
         "passed": 1,
         "date": "2026-10-26",
-        "note": "原生 viewport 滚动条隐藏；自定义滑块 6px/999px/实色 rgb(138,111,66)；无渐变、无上下三角；空终端隐藏，输出 80 行后出现；复跑 1/1"
+        "note": "空终端隐藏、输出 80 行后显示；Git Bash 默认；6px/999px/实色，复跑 1/1"
       },
       {
         "name": "browser/iframe scrollbar",
@@ -137,20 +141,42 @@
         "cases": 5,
         "passed": 5,
         "date": "2026-10-26",
-        "note": "r017 便携包实际解压启动，5/5（17.3s）"
+        "note": "r019 便携包实际解压启动，5/5（18.2s；受限令牌下 PTY 显式用 PowerShell 7）"
+      },
+      {
+        "name": "media vision priority",
+        "cases": 2,
+        "passed": 2,
+        "date": "2026-10-26",
+        "note": "当前模型优先；关闭思考/2048 输出；无本地视觉模型时拒绝乱选文本模型；请求层单测通过"
+      },
+      {
+        "name": "terminal default gitbash",
+        "cases": 2,
+        "passed": 2,
+        "date": "2026-10-26",
+        "note": "Git Bash 默认且移除 Windows PowerShell 5.1/CMD；终端与 Shell 选择 E2E 各 1/1"
+      },
+      {
+        "name": "guide screenshots",
+        "cases": 11,
+        "passed": 11,
+        "date": "2026-10-26",
+        "note": "真实 Electron E2E 生成 12 张指南图，manifest 记录来源与尺寸"
       }
     ],
     "files": 66
   },
   "docs": {
-    "files": 31,
-    "markdown": 10,
+    "files": 15,
+    "markdown": 15,
+    "lines": 2142,
     "guideScreens": 12,
-    "verificationScreens": 0
+    "manifest": "docs/guide/screens/manifest.json"
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362610158,
+    "bytes": 362613074,
     "mib": 345.81
   },
   "artifacts": [
@@ -162,37 +188,57 @@
     },
     {
       "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205955584,
+      "bytes": 205956096,
       "mib": 196.41,
-      "sha256": "d6b45b53f79e8ec8b5a89e2bde2e7cf030dc03fffbc1cb7622b09ca137780a23"
+      "sha256": "c6276d60c5aad2a4c785576ce9b854e7ff96e1b92e0f96bd6aa5aaab56ba96e3"
     },
     {
       "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156649780,
+      "bytes": 156651619,
       "mib": 149.39,
-      "sha256": "f96432257cbf060acec3bfaadeec834b0a7ff1c11706bb7606060ffc1a7a567d"
+      "sha256": "17faadf2304d2312ca0d043a3fb92207433d87959b29060a56064c00a47a6141"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "77224e04e44c912b284c2221de2c4655667a46b1fe3b9b11430b343b18399a77"
+      "sha256": "2125265725f6a22f2b7f196e8eb10833560016375ad3d8b3bb7000f4e4f0e77f"
     },
     {
       "name": "使用说明.txt",
-      "bytes": 3386,
+      "bytes": 3951,
       "mib": 0,
-      "sha256": "3e08d67aaf664091ba784c50bec68bb5627a2818c639ab246f91a2baf4ce4e55"
+      "sha256": "9926e526ec2554abb8b574c18747c663efbe8c657396cc2542c6a27120d909a6"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.1.0-r017",
-  "generatedAt": "2026-10-25T18:43:47.135Z",
+  "runtimeCache": ".morrow-runtime-0.1.0-r019",
+  "generatedAt": "2026-10-26T00:00:00.000Z",
   "sourceArchive": {
     "name": "Morrow-0.1.0-source.zip",
-    "bytes": 12564440,
-    "mib": 11.98,
-    "sha256": "75635272870afc97fa84429189556a13250daeaf0f2140ae6ee2e5977357aa84",
+    "bytes": 0,
+    "mib": 0,
+    "sha256": "sidecar",
     "sidecar": "Morrow-0.1.0-source.zip.sha256",
-    "note": "源码包内验收文档为打包前快照；最终哈希以侧车文件为准"
+    "note": "源码包内文档为打包前快照；最终哈希以 release 侧车文件为准"
+  },
+  "code": {
+    "files": 391,
+    "lines": 172164,
+    "production": {
+      "files": 314,
+      "lines": 125812
+    },
+    "tests": {
+      "files": 66,
+      "lines": 43456
+    },
+    "e2e": {
+      "files": 20,
+      "lines": 19236
+    },
+    "scriptsBuild": {
+      "files": 11,
+      "lines": 2896
+    }
   }
 }

@@ -507,7 +507,9 @@ describe('media-describe-routing.test.ts', () => {
     vi.spyOn(service as unknown as { visionFrames: () => Promise<unknown> }, 'visionFrames').mockResolvedValue([
       { mediaType: 'image/png', dataBase64: 'AA==', name: 'sample.png' }
     ])
-    const stream = vi.fn(async function* (): AsyncGenerator<{ type: string; text?: string }> {
+    let request: Record<string, unknown> | undefined
+    const stream = vi.fn(async function* (req: Record<string, unknown>): AsyncGenerator<{ type: string; text?: string }> {
+      request = req
       yield { type: 'text_delta', text: '看到一只赤狐，构图稳定。' }
     })
     try {
@@ -523,13 +525,48 @@ describe('media-describe-routing.test.ts', () => {
             label: 'DeepSeek V4.1 Flash',
             contextWindow: 1_048_576,
             supportsTools: true,
-            supportsVision: true
+            supportsVision: true,
+            supportsReasoning: true,
+            reasoningStyle: 'effort',
+            reasoningEfforts: ['off', 'low', 'high', 'max']
           }
         }
       })
       expect(result).toMatchObject({ model: 'DeepSeek V4.1 Flash', text: '看到一只赤狐，构图稳定。' })
       expect(result.fallback).toBeUndefined()
       expect(stream).toHaveBeenCalledTimes(1)
+      expect(request?.maxTokens).toBe(2_048)
+      expect(request?.reasoning).toEqual({ effort: 'off', style: 'effort' })
+    } finally {
+      rmSync(workspace, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 })
+    }
+  })
+
+  it('当前模型无视觉能力且本地没有视觉模型时，返回真实失败而不是随便挑一个本地文本模型', async () => {
+    const service = new MediaService()
+    const workspace = mkdtempSync(join(tmpdir(), 'morrow-media-vision-fallback-'))
+    const image = join(workspace, 'sample.png')
+    writeFileSync(image, Buffer.alloc(16))
+    const settings = defaultSettings()
+    settings.providers = settings.providers.map((provider) =>
+      provider.id === 'llamacpp'
+        ? { ...provider, models: [{ id: 'text-only', label: '文本模型', contextWindow: 32_768, supportsTools: true }] }
+        : provider
+    )
+    vi.spyOn(service as unknown as { readSettings: () => ReturnType<typeof defaultSettings> }, 'readSettings').mockReturnValue(settings)
+    vi.spyOn(service as unknown as { probeFile: () => Promise<unknown> }, 'probeFile').mockResolvedValue({ kind: 'image', bytes: 16 })
+    vi.spyOn(service as unknown as { visionFrames: () => Promise<unknown> }, 'visionFrames').mockResolvedValue([
+      { mediaType: 'image/png', dataBase64: 'AA==', name: 'sample.png' }
+    ])
+    try {
+      await expect(
+        service.describeMedia({
+          workspace,
+          path: image,
+          signal: new AbortController().signal,
+          onProgress: () => undefined
+        })
+      ).rejects.toThrow('没有可用的本地视觉模型')
     } finally {
       rmSync(workspace, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 })
     }

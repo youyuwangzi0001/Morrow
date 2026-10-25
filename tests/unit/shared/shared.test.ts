@@ -277,6 +277,18 @@ describe('reasoning-cost.test.ts', () => {
       )
       expect(body.reasoning_effort).toBe('high')
       expect(buildOpenAIRequestBody(request(), 'gpt-6').reasoning_effort).toBeUndefined()
+      const deepseekOff = buildOpenAIRequestBody(
+        request({ reasoning: { effort: 'off', style: 'effort' } }),
+        'deepseek-flash',
+        'deepseek'
+      )
+      expect(deepseekOff.reasoning_effort).toBe('none')
+      const qoderOff = buildOpenAIRequestBody(
+        request({ reasoning: { effort: 'off', style: 'effort' } }),
+        'deepseek-v4.1-flash',
+        'qoder-subscription'
+      )
+      expect(qoderOff.reasoning_effort).toBe('off')
     })
 
     it('maps thinking style to Anthropic thinking budget with valid max_tokens/temperature', () => {

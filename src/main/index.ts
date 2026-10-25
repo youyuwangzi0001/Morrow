@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, protocol, screen, session } from 'electron'
+import { app, BrowserWindow, Menu, Tray, crashReporter, globalShortcut, nativeImage, protocol, screen, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
@@ -50,6 +50,23 @@ protocol.registerSchemesAsPrivileged([
 // 若先抢默认的 %APPDATA%\Morrow，多个便携副本会互相顶掉。
 const dataDir = resolveDataDir()
 app.setPath('userData', dataDir)
+
+// 本地崩溃转储与主进程兜底：闪退时至少能从日志/转储定位，而不是静默消失。
+if (app.isPackaged) {
+  try {
+    crashReporter.start({ productName: 'Morrow', uploadToServer: false, compress: false })
+  } catch (err) {
+    log.warn('crash reporter start failed', { error: String(err) })
+  }
+}
+process.on('uncaughtException', (error) => {
+  log.error('uncaught exception', { error: error.stack || error.message })
+})
+process.on('unhandledRejection', (reason) => {
+  log.error('unhandled rejection', {
+    error: reason instanceof Error ? reason.stack || reason.message : String(reason)
+  })
+})
 
 /** 单实例：同一份数据目录双击两次不应开两个窗口 */
 const gotLock = app.requestSingleInstanceLock()
@@ -121,6 +138,15 @@ function bootstrap(dataDir: string): void {
     // 关闭动作已由主窗口 close 事件处理：最小化会保留窗口，退出会设置 quitting。
     // 这里保持进程运行（托盘/灵动岛仍在），避免误退出后台任务。
     if (isAppQuitting()) return
+  })
+
+  app.on('child-process-gone', (_event, details) => {
+    log.warn('child process gone', {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      serviceName: 'serviceName' in details ? details.serviceName : undefined
+    })
   })
 
   app.on('web-contents-created', (_event, contents) => {
@@ -312,6 +338,29 @@ export function createWindow(): BrowserWindow {
     mainWindow = null
   })
   attachIconWindow(mainWindow)
+
+  let rendererRecoveries = 0
+  let lastRendererRecovery = 0
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error('main renderer process gone', { reason: details.reason, exitCode: details.exitCode })
+    const win = mainWindow
+    if (!win || win.isDestroyed() || details.reason === 'clean-exit') return
+    const now = Date.now()
+    if (now - lastRendererRecovery > 60_000) rendererRecoveries = 0
+    if (rendererRecoveries >= 2) {
+      log.warn('skip renderer reload after repeated crashes')
+      return
+    }
+    rendererRecoveries += 1
+    lastRendererRecovery = now
+    setTimeout(() => {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.reload()
+    }, 800)
+  })
+  mainWindow.on('unresponsive', () => log.warn('main window unresponsive'))
+  mainWindow.on('responsive', () => log.info('main window responsive'))
+  mainWindow.webContents.on('unresponsive', () => log.warn('main renderer unresponsive'))
+  mainWindow.webContents.on('responsive', () => log.info('main renderer responsive'))
 
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) {

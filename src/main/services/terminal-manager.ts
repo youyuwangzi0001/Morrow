@@ -157,39 +157,23 @@ function windowsSpecs(): ShellSpec[] {
     `${process.env.LOCALAPPDATA ?? ''}\\Programs\\Git\\bin\\bash.exe`
   ])
   const specs: ShellSpec[] = []
-  if (pwsh) {
-    specs.push({
-      id: 'pwsh',
-      label: 'PowerShell 7',
-      detail: '新版 PowerShell，推荐',
-      file: pwsh,
-      args: ['-NoLogo'],
-      isDefault: false
-    })
-  }
-  specs.push({
-    id: 'powershell',
-    label: 'Windows PowerShell',
-    detail: '系统自带',
-    file: 'powershell.exe',
-    args: ['-NoLogo'],
-    isDefault: false
-  })
-  specs.push({
-    id: 'cmd',
-    label: '命令提示符',
-    detail: '传统命令提示符',
-    file: 'cmd.exe',
-    args: ['/Q', '/K', 'chcp 65001>nul'],
-    isDefault: false
-  })
   if (gitBash) {
     specs.push({
       id: 'gitbash',
       label: 'Git Bash',
-      detail: 'Git 附带的 Bash',
+      detail: 'Git 附带的 Bash（推荐）',
       file: gitBash,
       args: ['--login', '-i'],
+      isDefault: false
+    })
+  }
+  if (pwsh) {
+    specs.push({
+      id: 'pwsh',
+      label: 'PowerShell 7',
+      detail: '新版 PowerShell',
+      file: pwsh,
+      args: ['-NoLogo'],
       isDefault: false
     })
   }
@@ -207,7 +191,21 @@ function windowsSpecs(): ShellSpec[] {
       disabled: wsl.distros.length === 0
     })
   }
-  const preferred = specs.find((spec) => spec.id === 'pwsh') ?? specs.find((spec) => spec.id === 'powershell')
+  // 极端环境下至少保留一个可用 Shell；正常安装 Git Bash 后不会出现该回退项。
+  if (specs.length === 0) {
+    specs.push({
+      id: 'cmd',
+      label: '命令提示符',
+      detail: '兼容回退（未检测到 Git Bash / PowerShell 7 / WSL）',
+      file: 'cmd.exe',
+      args: ['/Q', '/K', 'chcp 65001>nul'],
+      isDefault: false
+    })
+  }
+  const preferred =
+    specs.find((spec) => spec.id === 'gitbash') ??
+    specs.find((spec) => spec.id === 'pwsh') ??
+    specs.find((spec) => !spec.disabled)
   if (preferred) preferred.isDefault = true
   return specs
 }
@@ -332,7 +330,7 @@ export class TerminalManager {
   }
 
   private ptyArgs(spec: ShellSpec): string[] {
-    if (spec.id !== 'pwsh' && spec.id !== 'powershell') return spec.args
+    if (spec.id !== 'pwsh') return spec.args
     // PSReadLine 默认历史和系统里其他 PowerShell 共用同一个文件，权限/并发冲突会在终端里刷错误。
     // 给 Morrow 的终端一个独立历史文件，仍然保留上下键历史和跨启动记录。
     const base = process.env.MORROW_DATA_DIR || tmpdir()

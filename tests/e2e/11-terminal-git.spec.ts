@@ -57,6 +57,19 @@ test('真实终端、默认终端切换与后台任务', async () => {
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
+    const shellProfiles = await page.evaluate(async () => {
+      const result = await window.morrow.features.invoke('feature:terminal:profiles')
+      if (!result.ok) return { ids: [] as string[], defaultShell: '' }
+      const data = result.data as { profiles: Array<{ id: string }>; defaultShell: string }
+      return { ids: data.profiles.map((item) => item.id), defaultShell: data.defaultShell }
+    })
+    expect(shellProfiles.defaultShell).toBe('gitbash')
+    expect(shellProfiles.ids).not.toContain('powershell')
+    expect(shellProfiles.ids).not.toContain('cmd')
+    // 后续用例使用 PowerShell 语法；显式选择 PowerShell 7，同时保留上面的 Git Bash 默认断言。
+    await page.evaluate(async () => {
+      await window.morrow.settings.update({ terminalShell: 'pwsh' })
+    })
     await page.evaluate(async (ws) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       const state = store.getState()
@@ -129,23 +142,24 @@ test('真实终端、默认终端切换与后台任务', async () => {
     await page.keyboard.press('Control+K')
     await expect(page.locator('.palette')).toHaveCount(0)
 
-    // 设置里切到命令提示符，主界面不再出现终端类型选择
+    // 设置里切到 PowerShell 7，主界面不再出现终端类型选择
     await page.evaluate(async () => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
-      await store.getState().updateSettings({ terminalShell: 'cmd' })
+      await store.getState().updateSettings({ terminalShell: 'pwsh' })
     })
     await page.getByRole('button', { name: '新建终端' }).click()
     await expect(page.locator('.terminal-tab')).toHaveCount(2)
     const shells = await listShells(page)
-    const cmdShell = shells.find((shell) => shell.shellId === 'cmd')
-    expect(cmdShell).toBeTruthy()
+    const pwshShell = shells.filter((shell) => shell.shellId === 'pwsh').at(-1)
+    expect(pwshShell).toBeTruthy()
+    expect(pwshShell!.id).not.toBe(initialShells[0].id)
     await page.locator('.xterm-helper-textarea').last().focus()
-    await page.keyboard.type('echo %OS%_cmd_ok')
+    await page.keyboard.type("Write-Output 'pwsh_terminal_ok'")
     await page.keyboard.press('Enter')
-    await expect.poll(() => readTerminal(page, cmdShell!.id), { timeout: 30_000 }).toContain('Windows_NT_cmd_ok')
-    await page.keyboard.insertText('echo 中文终端_cmd_ok')
+    await expect.poll(() => readTerminal(page, pwshShell!.id), { timeout: 30_000 }).toContain('pwsh_terminal_ok')
+    await page.keyboard.insertText("Write-Output '中文终端_pwsh_ok'")
     await page.keyboard.press('Enter')
-    await expect.poll(() => readTerminal(page, cmdShell!.id), { timeout: 30_000 }).toContain('中文终端_cmd_ok')
+    await expect.poll(() => readTerminal(page, pwshShell!.id), { timeout: 30_000 }).toContain('中文终端_pwsh_ok')
 
     // 后台任务标签页
     const task = await page.evaluate(async (ws) => {
@@ -205,25 +219,27 @@ test('真实终端、默认终端切换与后台任务', async () => {
     })
     await page.getByRole('tab', { name: '终端', exact: true }).click()
     await expect(page.locator('.st-search')).toContainText('默认终端')
-    await expect(page.locator('.st-search')).toContainText('命令提示符')
     const shellSelect = page.getByRole('button', { name: '默认终端' })
     await shellSelect.click()
-    await page.getByRole('option', { name: /Windows PowerShell/ }).click()
-    await expect(shellSelect).toContainText('Windows PowerShell')
+    await expect(page.getByRole('option', { name: /Git Bash/ })).toBeVisible()
+    await expect(page.getByRole('option', { name: /Windows PowerShell/ })).toHaveCount(0)
+    await expect(page.getByRole('option', { name: /命令提示符/ })).toHaveCount(0)
+    await page.getByRole('option', { name: /Git Bash/ }).click()
+    await expect(shellSelect).toContainText('Git Bash')
     const savedShell = await page.evaluate(() => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       return store.getState().settings.terminalShell
     })
-    expect(savedShell).toBe('powershell')
-    await shellSelect.click()
-    await page.getByRole('option', { name: /命令提示符/ }).click()
-    await expect(shellSelect).toContainText('命令提示符')
+    expect(savedShell).toBe('gitbash')
     await page.waitForTimeout(250)
     await page.screenshot({ path: screenshotPath('terminal-settings-dark.png') })
     await setThemeViaStore(page, 'light')
     await page.waitForTimeout(350)
     await page.screenshot({ path: screenshotPath('terminal-settings-light.png') })
     await setThemeViaStore(page, 'dark')
+    await shellSelect.click()
+    await page.getByRole('option', { name: /PowerShell 7/ }).click()
+    await expect(shellSelect).toContainText('PowerShell 7')
 
     expect((await readStore(page)).session?.workspace).toBe(workspace)
   } finally {

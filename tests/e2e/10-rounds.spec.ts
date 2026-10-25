@@ -433,19 +433,17 @@ test('阶段节点只在计划步骤完成时出现，回退保留阶段边界',
 test.describe('r12-terminal-shell.spec.ts', () => {
 /**
  * R12 终端一致性：
- * 设置里选中的默认终端必须真正用于 Agent 的 run_command（而不是永远 Windows PowerShell）。
- * 逐个验证 PowerShell 7 / Windows PowerShell / cmd / Git Bash 的语法与输出。
+ * Git Bash 是默认终端；设置里选中的 Shell 必须真正用于 Agent 的 run_command。
+ * 系统自带 Windows PowerShell 5.1 与 cmd 选项已移除。
  */
 
 // Git Bash 在当前 DSH 受限令牌下无法创建 MSYS 共享内存（0xC0000022），
 // 其一次性命令与后台任务由 tests/unit/main/terminal.test.ts 在真实 Node 进程中覆盖。
 const cases = [
-  { id: 'pwsh', command: '$PSVersionTable.PSVersion.Major', expected: '7' },
-  { id: 'powershell', command: '$PSVersionTable.PSVersion.Major', expected: '5' },
-  { id: 'cmd', command: 'echo %OS%', expected: 'Windows_NT' }
+  { id: 'pwsh', command: '$PSVersionTable.PSVersion.Major', expected: '7' }
 ]
 
-test('Agent run_command 使用设置里选中的 PowerShell 7 / Windows PowerShell / cmd', async () => {
+test('Agent run_command 使用设置里选中的 Shell，且默认是 Git Bash', async () => {
   test.setTimeout(240_000)
   const workspace = join(root, 'tmp', `e2e-r12-shell-${Date.now()}`)
   mkdirSync(workspace, { recursive: true })
@@ -458,8 +456,16 @@ test('Agent run_command 使用设置里选中的 PowerShell 7 / Windows PowerShe
     const provider = await configureMockProvider(page, mock.openaiBaseUrl)
     const profiles = await page.evaluate(async () => {
       const result = await window.morrow.features.invoke('feature:terminal:profiles')
-      return result.ok ? (result.data as { profiles: Array<{ id: string }> }).profiles.map((item) => item.id) : []
+      return result.ok
+        ? {
+            ids: (result.data as { profiles: Array<{ id: string }> }).profiles.map((item) => item.id),
+            defaultShell: (result.data as { defaultShell: string }).defaultShell
+          }
+        : { ids: [] as string[], defaultShell: '' }
     })
+    if (profiles.ids.includes('gitbash')) expect(profiles.defaultShell).toBe('gitbash')
+    expect(profiles.ids).not.toContain('powershell')
+    expect(profiles.ids).not.toContain('cmd')
     await createSession(page, {
       workspace,
       ...provider,
@@ -468,7 +474,7 @@ test('Agent run_command 使用设置里选中的 PowerShell 7 / Windows PowerShe
     })
 
     for (const item of cases) {
-      if (!profiles.includes(item.id)) continue
+      if (!profiles.ids.includes(item.id)) continue
       await page.evaluate(async (shell) => {
         await window.morrow.settings.update({ terminalShell: shell })
       }, item.id)

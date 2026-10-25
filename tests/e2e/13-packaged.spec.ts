@@ -42,6 +42,22 @@ test('打包版：终端能创建真实 PTY 并执行命令', async () => {
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
+    const profiles = await page.evaluate(async () => {
+      const result = await window.morrow.features.invoke('feature:terminal:profiles')
+      return result.ok
+        ? {
+            ids: (result.data as { profiles: Array<{ id: string }> }).profiles.map((item) => item.id),
+            defaultShell: (result.data as { defaultShell: string }).defaultShell
+          }
+        : { ids: [] as string[], defaultShell: '' }
+    })
+    if (profiles.ids.includes('gitbash')) expect(profiles.defaultShell).toBe('gitbash')
+    expect(profiles.ids).not.toContain('powershell')
+    expect(profiles.ids).not.toContain('cmd')
+    // 当前测试宿主是受限令牌，Git Bash 的 MSYS 共享内存无法初始化；PTY 回归显式用 PowerShell 7。
+    await page.evaluate(async () => {
+      await window.morrow.settings.update({ terminalShell: 'pwsh' })
+    })
     await page.evaluate(async (ws) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       const state = store.getState()

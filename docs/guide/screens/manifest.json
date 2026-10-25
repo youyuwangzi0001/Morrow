@@ -1,21 +1,93 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
-  "capturedAt": "2026-10-25",
+  "capturedAt": "2026-10-26",
+  "runtime": "r019",
   "theme": "dark",
-  "viewport": "1600×900（09 为 1600×120 页签条）",
   "images": [
-    { "file": "01-onboarding-dark.png", "alt": "首次启动：全屏认识 Morrow、连接模型、选择文件夹", "source": "2026-10-25 guide capture" },
-    { "file": "02-chat-home-dark.png", "alt": "主界面：欢迎语、工作模式、建议任务与画布空态", "source": "2026-10-25 guide capture" },
-    { "file": "03-permission-card-dark.png", "alt": "审批卡：高风险命令、允许一次与拒绝", "source": "2026-10-25 guide capture" },
-    { "file": "04-editor-canvas-dark.png", "alt": "画布与编辑器：文件树、多标签文件与代码编辑", "source": "2026-10-25 guide capture" },
-    { "file": "05-settings-models-dark.png", "alt": "设置 · 模型：服务选择、API Key、当前默认模型卡", "source": "2026-10-25 guide capture" },
-    { "file": "06-subscriptions-dark.png", "alt": "设置 · 订阅：ChatGPT/Codex 详情页与统一排版", "source": "2026-10-25 guide capture" },
-    { "file": "07-settings-appearance-dark.png", "alt": "设置 · 外观：主题、字号、代码字体与微圆角开关", "source": "2026-10-25 guide capture" },
-    { "file": "08-media-models-dark.png", "alt": "设置 · 多媒体：ComfyUI 本机引擎、模型目录与添加模型入口", "source": "2026-10-25 guide capture" },
-    { "file": "09-browser-tabs-dark.png", "alt": "内置浏览器：多标签与微圆角悬浮页签", "source": "2026-10-25 guide capture" },
-    { "file": "10-terminal-dark.png", "alt": "终端：PowerShell 7、多标签与真实命令输出", "source": "2026-10-25 guide capture" },
-    { "file": "11-memory-center-dark.png", "alt": "记忆中心：项目记忆、长期记忆与自动检查", "source": "2026-10-25 guide capture" },
-    { "file": "12-projects-dark.png", "alt": "项目主页：项目背景、资料与会话", "source": "2026-10-25 guide capture" }
+    {
+      "file": "01-onboarding-dark.png",
+      "alt": "首次启动：认识 Morrow、连接模型、选择工作文件夹",
+      "width": 2100,
+      "height": 1200,
+      "source": "tests/e2e/01-ui-smoke.spec.ts · brand-onboarding-dark"
+    },
+    {
+      "file": "02-chat-home-dark.png",
+      "alt": "主界面：工作模式、建议任务、会话输入与画布入口",
+      "width": 2100,
+      "height": 1200,
+      "source": "tests/e2e/01-ui-smoke.spec.ts · r7-final-layout-dark"
+    },
+    {
+      "file": "03-permission-card-dark.png",
+      "alt": "审批卡：高风险写入的影响范围、允许一次与拒绝",
+      "width": 2102,
+      "height": 1203,
+      "source": "tests/e2e/14-journey.spec.ts · permission-card-dark"
+    },
+    {
+      "file": "04-editor-canvas-dark.png",
+      "alt": "画布与代码编辑器：多标签文件、语法高亮与只读状态",
+      "width": 2102,
+      "height": 1203,
+      "source": "tests/e2e/06-editor.spec.ts · r10-editor-open"
+    },
+    {
+      "file": "05-settings-models-dark.png",
+      "alt": "设置 · 模型：服务商、API Key、当前默认模型与思考档位",
+      "width": 1320,
+      "height": 966,
+      "source": "tests/e2e/08-settings.spec.ts · settings-title-models-dark"
+    },
+    {
+      "file": "06-subscriptions-dark.png",
+      "alt": "设置 · 订阅：ChatGPT/Codex 与 Qoder 等官方账号接入",
+      "width": 1322,
+      "height": 969,
+      "source": "tests/e2e/08-settings.spec.ts · subscription-detail-codex-dark"
+    },
+    {
+      "file": "07-settings-appearance-dark.png",
+      "alt": "设置 · 外观：主题、应用字号、代码字号与字体",
+      "width": 1320,
+      "height": 966,
+      "source": "tests/e2e/08-settings.spec.ts · settings-title-appearance-dark"
+    },
+    {
+      "file": "08-media-models-dark.png",
+      "alt": "设置 · 多媒体：本机引擎、模型目录与导入模型入口",
+      "width": 1320,
+      "height": 966,
+      "source": "tests/e2e/16-media.spec.ts · media-settings-models-dark"
+    },
+    {
+      "file": "09-browser-tabs-dark.png",
+      "alt": "内置浏览器：多标签、地址栏、页面内容与前进后退",
+      "width": 2100,
+      "height": 1200,
+      "source": "tests/e2e/07-browser.spec.ts · browser-tabs-dark"
+    },
+    {
+      "file": "10-terminal-dark.png",
+      "alt": "真实终端：PTY、多标签、命令输出与终端设置",
+      "width": 2100,
+      "height": 1200,
+      "source": "tests/e2e/11-terminal-git.spec.ts · terminal-dark"
+    },
+    {
+      "file": "11-memory-center-dark.png",
+      "alt": "记忆中心：项目记忆、长期记忆、任务经验与注入预览",
+      "width": 2100,
+      "height": 1200,
+      "source": "tests/e2e/09-panels.spec.ts · r10-memory-center-dark"
+    },
+    {
+      "file": "12-projects-dark.png",
+      "alt": "项目主页：项目背景、资料、会话与工作区入口",
+      "width": 1560,
+      "height": 990,
+      "source": "tests/e2e/09-panels.spec.ts · a1-project-home"
+    }
   ]
 }

@@ -1,54 +1,87 @@
-# Contributing to Morrow
+# 贡献指南
 
-感谢你愿意参与 Morrow。这个项目面向真实桌面场景：文件、命令、模型、媒体与权限都在本机发生，因此我们优先考虑 **可复现、可验证、可回退** 的改动。
+感谢参与 Morrow。提交前请先理解边界：这是本地桌面 Agent，任何新增能力都必须遵守工作区、权限与密钥边界。
 
-## 开发环境
+## 1. 开发环境
 
 - Windows 10/11 x64
-- Node.js 22+ / npm
-- 可选：NVIDIA 显卡、ComfyUI、ffmpeg（仅本地多媒体功能）；llama.cpp / Ollama / LM Studio（仅本地模型）
+- Node.js 22+
+- Git（默认终端使用 Git Bash）
+- 可选：PowerShell 7、WSL、ComfyUI、llama.cpp、Ollama、LM Studio、ffmpeg
 
-```bash
-npm ci
+```powershell
+npm install
 npm run dev
 ```
 
-## 提交前检查
+构建产物：
 
-```bash
+```powershell
+npm run build
+npm start
+```
+
+## 2. 目录
+
+```text
+src/main/        Electron 主进程、服务、IPC
+src/core/        Agent 循环、工具、权限、Provider
+src/preload/     白名单 contextBridge
+src/renderer/    React UI 与 Zustand store
+src/shared/      共享类型、模型、命令、协议常量
+tests/unit/      Vitest
+tests/e2e/       Playwright 真实 Electron
+docs/            用户/架构/设计/验收文档
+scripts/         构建、打包、截图、审计
+build/           图标、启动器、安装器资源
+```
+
+## 3. 开发边界
+
+- 文件工具、终端、媒体输入输出必须在工作区内；新增路径 API 要 realpath 校验。
+- 渲染层不能直接访问 Node/fs/child_process；通过 preload 白名单与 `Result<T>` IPC。
+- 密钥只进主进程加密存储；不要在日志、错误、渲染层或测试快照中出现明文。
+- 新增工具必须声明权限/风险/大小限制，并补单元测试；高风险操作走审批。
+- 不要为“让测试绿”而放宽路径、权限、网络或密钥边界。
+- 不要提交 `deliver/`、`tmp/`、构建产物、用户数据或真实 token。
+
+## 4. 提交前检查
+
+```powershell
 npm run typecheck
 npm run audit:ui
 npm run test:unit
-npm run test:e2e
 ```
 
-- `typecheck` 与 `audit:ui` 必须通过。
-- 单元测试按 `tests/unit` 的领域套件组织（当前 13 个）；新增测试请并入对应套件并保留原文件的独立 `describe`，不要新增散落的 spec 文件。
-- E2E 按设置、聊天、模式、文件、媒体等领域组织（当前 17 个）；小型 UI 契约优先并入同域 spec。
-- 涉及交互、持久化、权限、媒体或 Agent 行为的改动，请补充/更新 E2E。
-- 真实引擎、真实本地模型、打包与平台条件用例默认跳过；在 PR 中注明哪些可选测试未运行及原因。
+UI/桌面行为改动请跑受影响 E2E；发布前再跑全量：
 
-## 代码边界
+```powershell
+npx playwright test
+npm run dist:all
+npx playwright test tests/e2e/13-packaged.spec.ts
+```
 
-- `src/core/` 保持纯 TypeScript，不引入 Electron/React。
-- 渲染层只通过 preload 暴露的窄 API 访问主进程；不要在 `src/renderer` 直接使用 Node 或密钥。
-- 文件路径必须经过工作区边界校验；外部动作、MCP、浏览器与 computer-use 走权限审批。
-- 优先复用现有 Provider、工具、UI 组件与 IPC 注册方式，避免为单一场景新增平行抽象。
-- 目录保持扁平：`services`、`features`、`components`、`tools` 单层平铺；小模块优先并入语义内聚的邻近模块。
+## 5. 代码风格
 
-## 提交与 PR
+- TypeScript strict；共享类型优先；避免 `any` 和无意义抽象。
+- 注释只解释“为什么/隐藏约束”，不复述代码；不要写多段 docstring。
+- UI 只引用顶层 token；新增字号/圆角/颜色先加到 tokens，再改组件。
+- 视觉改动同时检查深/浅主题与窄屏。
+- 一个 PR 聚焦一个边界清晰的问题；不要混入无关格式化。
 
-1. 一个 PR 聚焦一个问题；说明背景、改动、验证方式与已知限制。
-2. UI 改动附浅色/深色截图；行为改动附关键日志或测试输出。
-3. 不提交 API Key、`Morrow Data`、`deliver/`、`tmp/`、`test-results/`、日志或截图缓存。
-4. 遵循现有提交信息风格，保持历史可读。
+## 6. 提交与 PR
 
-## 安全
+- 提交信息用祈使句，说明“为什么/影响”，例如 `fix: 修正终端滚动条按需显示`。
+- PR 描述包含：问题、方案、测试证据、风险/回滚。
+- 涉及 UI 的 PR 附截图；涉及协议/模型的 PR 附真实或 mock 断言。
+- 不要 force-push 已发布分支，不要修改 Git 配置或跳过 hooks。
 
-- 不要在 Issue/PR 中粘贴真实 API Key、邮箱、用户文件或会话内容。
-- 发现越界访问、命令注入、隐私泄漏、权限绕过等问题时，请先私下联系维护者，不要公开利用细节。
-- 安全相关改动必须附带回归测试，并说明误伤范围。
+## 7. 安全
 
-## License
+- 发现漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。
+- 不要提交或打印 Antigravity OAuth secret；该凭据需通过 `MORROW_ANTIGRAVITY_CLIENT_SECRET` 注入。
+- 不要在 issue/PR 中粘贴真实 API Key、订阅 token、工作区隐私内容。
 
-提交贡献即表示同意以 MIT License 发布。
+## 8. License
+
+贡献即同意以 MIT License 发布。见 [LICENSE](LICENSE)。

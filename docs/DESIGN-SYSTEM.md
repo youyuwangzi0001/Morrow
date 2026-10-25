@@ -1,336 +1,214 @@
 # Morrow 设计系统
 
-> 母题：**夜桌与地平线**。一个安静的深夜书房：石墨色的桌面上有一道温暖的天光。Morrow = 明天，界面语言始终指向「明天会更轻」。
-> 设计原则：**克制的奢华**（材料感、留白、细金线），**可读的行动**（Agent 的每一步都能看懂），**一个记忆点**（地平线 + 行动轨迹），其余全部安静。
+Morrow 的视觉母题是“夜桌与地平线”：深墨色工作台、暖纸色文字、克制的一线香槟金。金色只用于“明天”的暗示、关键动作与选中态，不用于大面积装饰。
 
----
+## 1. 审美判断
 
-## 1. 审美判断（与通用 AI 界面的区别）
+与常见 AI 界面区分：
 
-明确避开：奶油底 + 陶土橙、纯黑 + 荧光酸绿、报纸细线排版、一样的圆角卡片阵列、全大写小标签 + 中缀点元信息、每个按钮都带 →。
-Morrow 的记忆点只有两个：
-1. **地平线**：1px 香槟色渐变线，出现在品牌下方、Composer 聚焦、发送瞬间扫过。代表「明天」。
-2. **行动轨迹（Spine）**：工具调用不是卡片堆，而是一条垂直细线串起的菱形节点 + 等宽字体标签，像一份安静的执行日志。这是产品的灵魂可视化。
-其余元素（按钮、列表、弹窗）保持低对比、低装饰。
+- 不做满屏渐变、霓虹发光或玻璃卡片堆叠；
+- 层级靠 1px 线、色差与留白，而不是阴影；
+- 展示字体（Newsreader）承担标题与品牌，UI 字体（Manrope）承担操作，代码字体（JetBrains Mono）承担可验证内容；
+- 动效短、只服务反馈；减少动效时全部退化为即时状态；
+- 所有页签、开关、状态标签使用同一套微圆角语言，不用胶囊化表达。
 
 ## 2. 色彩 Token
 
-### 墨夜（默认，dark）
-| token | 值 | 用途 |
+### 2.1 墨夜（默认）
+
+| Token | 值 | 用途 |
 |---|---|---|
-| `--bg` | `#0B0D10` | 应用底色 |
-| `--bg-elev` | `#10141A` | 面板/侧栏 |
-| `--surface` | `#141922` | 卡片、输入区 |
-| `--surface-hover` | `#1A2029` | 悬停 |
-| `--surface-active` | `#202733` | 选中 |
-| `--line` | `rgba(237,231,218,0.075)` | 1px 分隔线 |
-| `--line-strong` | `rgba(237,231,218,0.14)` | 强调边界 |
-| `--text` | `#EDE7DA` | 主文字（暖纸白） |
-| `--text-2` | `#A39D91` | 次级 |
-| `--text-3` | `#6B675F` | 三级/占位 |
-| `--gold` | `#C8AE7D` | 主强调（香槟金） |
-| `--gold-bright` | `#E4CE9E` | 悬停/高光 |
-| `--gold-dim` | `rgba(200,174,125,0.14)` | 金色底纹 |
-| `--patina` | `#7FA292` | 成功/完成（铜绿） |
-| `--rust` | `#C2795F` | 危险/删除 |
-| `--amber` | `#C9A227` | 等待审批 |
-| `--mauve` | `#9A8FA8` | 思考/子代理 |
-| `--glow` | `radial-gradient(1200px 600px at 78% -10%, rgba(200,174,125,0.055), transparent 60%)` | 夜桌天光 |
+| `--bg` | `#0b0d10` | 应用背景 |
+| `--bg-elev` | `#10141a` | 抬升背景/标题栏 |
+| `--surface` | `#141922` | 卡片/面板 |
+| `--surface-hover` | `#1a2029` | 悬停 |
+| `--surface-active` | `#202733` | 按下/选中 |
+| `--surface-inset` | `#0e1217` | 输入框/凹陷区 |
+| `--line` | `rgba(237,231,218,.075)` | 常规分隔 |
+| `--line-strong` | `rgba(237,231,218,.145)` | 强分隔 |
+| `--line-gold` | `rgba(200,174,125,.32)` | 金色选中边 |
+| `--text` | `#ede7da` | 主文字 |
+| `--text-2` | `#a39d91` | 次要文字 |
+| `--text-3` | `#6b675f` | 元信息 |
+| `--gold` | `#c8ae7d` | 关键动作/选中 |
+| `--gold-bright` | `#e4ce9e` | hover/强调 |
+| `--gold-dim` | `rgba(200,174,125,.14)` | 金色底 |
+| `--patina` | `#7fa292` | 成功/完成 |
+| `--rust` | `#c2795f` | 危险/错误 |
+| `--amber` | `#c9a227` | 警告/进行中 |
+| `--mauve` | `#9a8fa8` | 辅助状态 |
 
-### 素纸（light 主题）
-| token | 值 |
-|---|---|
-| `--bg` | `#F1EDE4` |
-| `--bg-elev` | `#F6F2E9` |
-| `--surface` | `#FBF7EE` |
-| `--surface-hover` | `#EFE9DD` |
-| `--line` | `rgba(27,26,23,0.10)` |
-| `--text` | `#1B1A17` |
-| `--text-2` | `#5C574D` |
-| `--text-3` | `#8C867A` |
-| `--gold` | `#8A6A3C` |
-| `--gold-bright` | `#A8844F` |
-| `--patina` | `#4F7263` |
-| `--rust` | `#A2543F` |
+### 2.2 素纸（light）
 
-> 「金」只用于：地平线、主按钮发送态、焦点环、关键数字强调、可交互高亮。**任何界面里金色面积不超过 3%**。其余靠灰度层次。
+浅色主题把背景换为暖纸色（`#f1ede4` 系），文字反转为深墨；金色仍用于关键动作，但提高对比度。所有语义 token 不变，页面只通过 `data-theme="light"` 切换。
 
-### 桌面小伙伴（灵动岛）
+### 2.3 状态色
 
-独立透明窗口沿用同一套 tokens，只额外定义 `--island-*` 玻璃材质：夜间为墨色玻璃，日间切为米色玻璃；金色状态线、状态色和文字色都复用全局变量。主窗口切换主题后通过 `settings:changed` 实时同步，不重开窗口。
+- 成功/完成：patina；
+- 进行中/注意：amber；
+- 危险/拒绝：rust；
+- 信息/辅助：mauve；
+- 选中/关键：gold。
+
+状态色不能单独承载含义；必须同时有文字/图标/形状。
 
 ## 3. 字体
 
-| 角色 | 字体 | 用法 |
+| 角色 | 字体 | 用途 |
 |---|---|---|
-| 展示/编辑感标题 | **Newsreader** Variable（400/500，斜体 400） | 品牌字、欢迎语、助手大标题、画布标题 |
-| UI/正文 | **Manrope** Variable（400/500/600） | 按钮、菜单、正文、标签；字号 13–15px |
-| 等宽/仪器感 | **JetBrains Mono**（默认，400/500）；IBM Plex Mono 可选 | 工具轨迹、路径、代码、token 数字、快捷键 |
-| 中文正文 | 系统栈：`"Microsoft YaHei UI", "PingFang SC", "Noto Sans SC"` | 保证离线可用 |
-| 中文大标题 | 系统栈 Light 字重 + 0.02em 字距；可选 Noto Serif SC 子集（M4 打磨） | 标题的东方编辑感 |
+| UI | `Manrope Variable` + Noto Sans SC / 雅黑 | 按钮、正文、表单 |
+| Display | `Newsreader Variable` + Noto Serif SC | 品牌、页面标题、订阅详情标题 |
+| Code | `JetBrains Mono`（默认）/ IBM Plex Mono / 系统等宽 | 代码、终端、diff、数字、快捷键 |
 
-### 3.1 实现层字号阶梯（`src/renderer/src/styles/tokens.css`）
+字号阶梯（`tokens.css`）：`34 / 26 / 22 / 24 / 20 / 17 / 16 / 15 / 14 / 13.5 / 13 / 12.5 / 12 / 11.5 / 11 / 10.5 / 10 / 9.5 / 9`。
 
-| token | 值 | 用途 |
+规则：
+
+- 正文/按钮/表单不得低于 12px；9–11px 只用于元信息、快捷键、热力图等非阅读主体。
+- 代码字号默认 12px；行号、`+/-`、diff 统计与代码同字号、同字重（400）、0 字距。
+- 标题字距 `-0.01em`；标签/大写字母可到 `0.06em–0.14em`；正文不用夸张字距。
+
+### 3.1 语义排版角色
+
+| Token | 用途 | 值 |
 |---|---|---|
-| `--fs-display` | 34px | 品牌/欢迎语等最强装饰标题 |
-| `--fs-display-sm` | 26px | 大空态标题、装饰数字 |
-| `--fs-display-xs` | 22px | 大图标/局部展示标题 |
-| `--fs-h1` | 24px | 页面内一级标题 |
-| `--fs-title` | 20px | **设置页页面标题**、对话标题 |
-| `--fs-h2` | 17px | 卡片/分区大标题 |
-| `--fs-title-sm` | 16px | 小标题 |
-| `--fs-body-lg` | 15px | 强调正文 |
-| `--fs-body` | 14px | 正文默认（`body`） |
-| `--fs-ui` | 13px | 按钮、分区标题、常规 UI |
-| `--fs-ui-plus` | 13.5px | 紧凑 UI / 代码块标题 |
-| `--fs-base` | 12px | 提示、说明、次要正文 |
-| `--fs-base-plus` | 12.5px | 紧凑正文 |
-| `--fs-sm` | 11px | 标签、表格元信息 |
-| `--fs-sm-plus` | 11.5px | 默认元信息（mono 标签） |
-| `--fs-xs` | 10px | 紧凑元信息 |
-| `--fs-xs-plus` | 10.5px | 紧凑标签 |
-| `--fs-2xs` | 9.5px | 仅密集轨迹/热力图 |
-| `--fs-3xs` | 9px | **最小字号**，只用于非关键装饰信息 |
+| `--text-page-title-*` | 设置/页面标题 | 20px / 500 / 1.2 |
+| `--text-section-*` | 分区标题 | 13px / 600 |
+| `--text-body-size` | 正文 | 14px |
+| `--text-ui-size` | 控件文字 | 13px |
+| `--text-hint-size` | 说明 | 12px |
+| `--text-meta-size` | 元信息 | 11.5px |
+| `--text-code-size` | 代码 | 13.5px |
 
-**规则**：正文/按钮/表单不得低于 12px；9–11px 只用于元信息、快捷键、热力图等非阅读主体。新增页面必须引用 token，不允许写死 `font-size: Npx`。
+### 3.2 权限卡排版
 
-应用字号默认 **14px**（可选 12–15，驱动 `--fs-body`，`--fs-ui` 自动取 `max(12, body-1)`）；代码字号默认 **12px**（可选 11–14，驱动 `--fs-code`）。代码字体默认 **JetBrains Mono**，可切换 IBM Plex Mono 或系统等宽。
+权限卡使用独立角色 token：
 
-### 3.2 字重与语义角色
+- 标题 14px / 600 / 1.35；
+- 说明 12.5px / 450 / 1.72；
+- 摘要 12px / 450 / 1.65；
+- 风险 10px / 500；
+- 命令预览 11.5px / 450 / 1.45；
+- 按钮 12.5px / 500 / 34px。
 
-| token | 值 | 用途 |
-|---|---|---|
-| `--fw-regular` | 400 | 代码、等宽数字 |
-| `--fw-book` | 450 | 正文默认 |
-| `--fw-medium` | 500 | 页面标题、强调标签 |
-| `--fw-mid` | 550 | 按钮、字段标签 |
-| `--fw-semibold` | 600 | 分区标题、强强调 |
+这些值不从组件内写死，全部来自 `--text-permission-*`。
 
-### 3.3 行高阶梯
+## 4. 间距、圆角与控件
 
-| token | 值 | 用途 |
-|---|---|---|
-| `--lh-none` | 1 | 单行控件/图标文字 |
-| `--lh-title` | 1.2 | 页面/卡片标题 |
-| `--lh-tight` | 1.35 | 紧凑标签 |
-| `--lh-ui` | 1.45 | 按钮、菜单、表单 |
-| `--lh-copy` | 1.55 | 紧凑正文 |
-| `--lh-readable` | 1.65 | 说明/提示默认 |
-| `--lh-body` | 1.72 | 正文默认 |
-| `--lh-loose` | 1.8 | 长文/空态 |
-
-字距 token：`--ls-tight -0.01em`（标题）、`--ls-ui 0.01em`（常规 UI）、`--ls-label 0.02em`（标签）、`--ls-caps 0.06em`（全大写/状态）、`--ls-wide 0.1em`（微型标题）、`--ls-display 0.14em`（品牌字距）。
-
-固定高度元素可以用 `line-height: 20px` 这类像素值，其余一律用 token。
-
-语义别名（页面实现优先用这些，而不是直接写数值）：
-`--text-page-title-size/-weight/-leading`、`--text-page-desc-size`、`--text-section-size/-weight`、`--text-body-size`、`--text-ui-size`、`--text-hint-size`、`--text-meta-size`、`--text-code-size/-weight`。
-
-### 3.4 权限卡排版角色（顶层 token）
-
-权限卡是高风险操作唯一的确认界面，字体、字号、字重、行距全部从 `tokens.css` 取，不允许在 `activity.css` 写裸值：
-
-| token | 值 | 用途 |
-|---|---|---|
-| `--font-permission` | `var(--font-ui)` | 标题、说明、摘要、按钮、脚注 |
-| `--font-permission-meta` | `var(--font-code)` | 风险标签、命令、路径、等宽预览 |
-| `--text-permission-title-size/-weight/-leading` | 14px / 600 / 1.35 | 「写入 …」标题 |
-| `--text-permission-desc-size/-weight/-leading` | 12.5px / 450 / 1.72 | 主说明 |
-| `--text-permission-summary-size/-weight/-leading` | 12px / 450 / 1.65 | 补充摘要 |
-| `--text-permission-risk-size/-weight/-leading` | 10px / 500 / 1 | 低/中/高风险标签 |
-| `--text-permission-preview-size/-weight/-leading` | 11.5px / 450 / 1.45 | 预览折叠按钮 |
-| `--text-permission-code-size/-weight/-leading` | 12px / 400 / 1.65 | 命令与文本预览 |
-| `--text-permission-button-size/-weight/-leading` | 12.5px / 500 / 1.45 | 允许/拒绝按钮 |
-| `--text-permission-note-size/-weight/-leading` | 11.5px / 450 / 1.45 | 高风险逐次确认说明 |
-| `--text-permission-foot-size/-weight/-leading` | 11px / 450 / 1.65 | 底部提示 |
-
-`tests/e2e/14-journey.spec.ts` 在真实审批卡上断言这些计算值；`npm run audit:ui` 继续阻止任何裸字号/字重/行高。
-
-当前规范：设置页标题 **20px / 500 / 1.2 / -0.01em**；分区标题 **13px / 600**；说明文字 **12px / 1.65**；正文 **14px / 450**；代码 **400**。
-
-行宽：对话列 `max-width: 720px`；画布内容 ≤ 900px。
-
-## 4. 间距 / 圆角 / 层级 / 材质
-
-- 间距 token：`--sp-1..10` = `4 8 12 16 20 24 32 40 56 72`。布局用 `--sp-6/7`，卡片内 `--sp-4/5`，行内 `--sp-2/3`；语义别名 `--card-pad`、`--row-gap`、`--section-gap`。
-- 圆角 token（当前实现）：`--r-xs 4px`、`--r-sm 5px`、`--r-md 7px`、`--r-lg 9px`、`--r-xl 12px`、`--r-full 999px`；语义别名 `--r-control`（按钮/输入）、`--r-card`（卡片）、`--r-modal`（弹窗）、`--r-pill`。按钮统一 `--r-control`，小按钮用 `--r-xs`；卡片 `--r-card`；弹窗 `--r-modal`。不要给所有元素同一个圆角。
-- 控件高度：`--control-xs 22px`、`--control-sm 28px`、`--control-md 34px`、`--control-field 36px`（输入框）、`--control-lg 40px`；图标：`--icon-xs 10px`、`--icon-sm 12px`、`--icon-md 14px`、`--icon-lg 16px`、`--icon-xl 20px`。UI Kit 的按钮高度只从这组 token 取。
-- 阴影只在浮层：`0 24px 80px -24px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.35)`；普通卡片靠 1px 线 + 色差，不用阴影。
-- 材质：`--grain` 2.5% 噪点覆盖全应用（SVG feTurbulence，性能友好）；玻璃仅用于命令面板/审批浮层（`backdrop-filter: blur(20px) saturate(120%)`）。
-- 图标：lucide，`stroke-width: 1.5`，16/18px；图标颜色继承文字，不做彩色图标。
+- 间距：`4 8 12 16 20 24 32 40 56 72`（`--sp-1..10`）。
+- 圆角：`--r-xs 4px`、`--r-sm 5px`、`--r-md 7px`、`--r-lg 9px`、`--r-xl 12px`、`--r-full 999px`；按钮/输入用 `--r-control`，卡片用 `--r-card`，弹窗用 `--r-modal`。
+- 控件：`--control-xs 22`、`--control-sm 28`、`--control-md 34`、`--control-field 36`、`--control-lg 40`；图标 10/12/14/16/20px。
+- 阴影只用于浮层：`0 24px 80px -24px rgba(0,0,0,.72), 0 2px 10px rgba(0,0,0,.38)`；普通卡片靠线 + 色差。
 
 ## 5. 布局
 
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ 44px titlebar：侧栏开关 · 文件夹 · 会话标题 · 浏览器/终端/画布/窗控 │
+├──────────────┬─────────────────────────────────────────────────────┤
+│ sidebar 240  │ transcript 滚动（max 720 居中）                      │
+│ 可收 64      │ plan / sources / run center / queue / composer      │
+│              ├─────────────────────────────────────────────────────┤
+│              │ canvas 420（多标签编辑器/预览）                      │
+├──────────────┴─────────────────────────────────────────────────────┤
+│ terminal dock 190–72vh（可选）                                      │
+└────────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ · 44px titlebar (drag) — 左：平台留白/品牌字；中：会话标题；右：模型 · 窗控 │
-├──────────────┬──────────────────────────────────────────────────────┤
-│ sidebar 264  │  content (max 720 居中)                              │
-│ ┌ brand      │   ┌ transcript 滚动 ─────────────────────────────┐  │
-│ │ M  Morrow   │   │  welcome / messages / activity spine         │  │
-│ ├ 新建对话 +  │   └───────────────────────────────────────────────┘  │
-│ ├ 搜索/命令  │   ┌ plan tray（有 todo 时出现）──────────────────┐  │
-│ ├ 项目/会话   │   ┌ composer ─────────────────────────────────────┐ │
-│ └ footer      │   │ + 输入……                      model · 权限 · ↑ │ │
-└──────────────┴──────────────────────────────────────────────────────┘
-右侧画布可滑出（宽度 42%，min 420），与会话并排，hairline 分隔。
-```
-- 侧栏可折叠为 64px 图标栏（hover 提示），`Ctrl+B`。
-- 欢迎态：Composer 位于垂直 46% 处；标题 greeting 用 Newsreader Italic + 中文 Light。
-- 滚动条：轨道 `--scrollbar-size` 8px，滑块 `--scrollbar-thumb-width` **6px 实色**（深色 `#8a6f42` / 浅色 `#a8844f`），`--scrollbar-radius: var(--r-full)` 全圆角，最小长度 36px；无渐变/炫光，轨道透明；只有内容超出当前高度时才显示。主区域、画布、代码编辑器与终端共用这组 token；终端隐藏 xterm 原生 viewport 滚动条/箭头，只保留自定义滑块，并用 xterm 的 `visible`/`invisible` 类控制显隐；iframe 与内置浏览器通过 `shared/scrollbar.ts` 注入相同数值（8px 轨道、1px 透明边框 + `background-clip: content-box` 形成 6px 实色滑块、999px 圆角、无渐变）。
 
-## 6. 关键组件规范
+- 侧栏 200–400px，默认 240；画布 320–960px，默认 420；≤1200px 为窄屏。
+- 设置弹窗 880px 宽，左侧 148px 导航。
+- 终端停靠主区底部，关闭面板后进程继续。
 
-### 6.1 地平线
-- 品牌下方 28px 宽、1px 高、`linear-gradient(90deg, transparent, var(--gold), transparent)`。
-- Composer 聚焦时地平线出现在其顶部边缘，透明度 0→0.8，280ms。
-- 发送时一条 2px 金色光带从输入区左向右扫过（400ms），随后消息段落依次淡入。
+## 6. 组件规范
 
-### 6.2 行动轨迹 Spine
-- 垂直 1px `--line-strong`；节点 6px 菱形（旋转 45°），状态色：运行中金色呼吸、成功 `--patina`、失败 `--rust`、等待审批 `--amber`、子代理 `--mauve`。
-- 行结构：`[节点] 工具图标 标题（人类语言）  路径/摘要（mono 12px，text-3）  耗时（mono，右）`。
-- 展开：参数 JSON（折叠 ≤6 行）、结果（前 40 行）、diff（红绿低饱和底 `rgba(194,121,95,.08)` / `rgba(127,162,146,.08)`）。
-- 标题必须人话：`读文件 sales-q3.csv`、`运行命令 npm install`、`搜索 "退款率"`。
+### 6.1 页签
 
-### 6.3 消息
-- 用户：右对齐，`--surface` 底、`--r-md`、最大宽 78%、内边距 12/16；无头像。
-- 助手：无气泡，正文直接排在画布上；段首无「AI」标识；块级标题用 Newsreader；列表缩进紧凑。
-- 思考：`--mauve` 斜体小字，默认折叠为一行「思考了 12 秒」。
-- 流式光标：6px 宽 1.2em 金色竖条，600ms 呼吸。
+- 高度 24px、圆角 5px、水平内边距 9px、关闭按钮 20px。
+- 选中：`--surface` 底 + 1px 金色边框；不再使用顶部圆角或底部金色下划线。
+- 浏览器、画布、终端、Git、项目、Office 工作表共用 `--tab-*` token。
 
-### 6.4 Composer
-- 容器：`--surface`、1px `--line`、`--r-lg`、内阴影 `inset 0 1px 0 rgba(255,255,255,.03)`；高度自适应 56→240px。
-- 内部布局：顶部输入区（无边框 textarea），底部工具条：`+` 附件 · 工作区 chip · 模型选择 · 权限选择 · 位置右：发送按钮（36px 圆形，激活时金色渐变，图标 `arrow-up`）。
-- 快捷键提示藏在 placeholder 与 tooltip；不做常驻提示条。
-- 拖入文件：整块 composer 金色细描边 + 底部「松开以添加 3 个文件」。
+### 6.2 开关
 
-### 6.5 权限卡
-- 出现在轨迹流中，左侧 2px `--amber` 竖线，背景 `--surface`；标题「Morrow 想运行一条命令」；参数 mono 展示；展开可看完整内容。
-- 按钮：主「允许一次」（金色描边）、次「始终允许（本工作区）」（持久规则，可在设置中删除）、危险文字「拒绝」；`Enter` 允许一次 / `Esc` 拒绝。
+- 34×20px，轨道圆角 5px，滑钮 14×14px、圆角 4px；金色开启。
+- 不再使用胶囊/全圆角。
 
-### 6.6 计划面板（Plan Tray）
-- 位于 Composer 上方，可折叠，默认展开；标题「计划」+ 进度 `3/7`（mono）；条目 20px 行高，状态用 8px 方块：待办 `--line-strong` 空心、进行中金色脉冲、完成 `--patina` 实心 + 删除线弱化。
-- 不做百分比进度条，用细线即可。
+### 6.3 状态标签（chip）
 
-### 6.7 画布（Artifacts）
-- 从右侧滑出，顶部 tabs（mono 文件名）、右侧操作（外部打开、全屏、关闭）。
-- 预览背景 `--bg`，内容衬纸色卡片；HTML iframe 无边框、圆角 8px。
-- 空态：一句话「让 Morrow 做一个网页、一份报告或一张图，成品会出现在这里。」
+- 圆角 4px、水平内边距 7px、高 20px、字号 11px。
+- 用于项目/Git/订阅/记忆/研究/定时/文件树/浏览器等状态；路径等长信息独占一行。
 
-### 6.8 命令面板
-- 居中浮层，宽 620，背景玻璃 + 1px line + 大阴影；输入无边框；结果按「操作 / 会话 / 文件」分组，键盘上下选择，选中项左侧金色 2px 竖条。
-- 动效 180ms：opacity 0→1, scale .98→1, blur 8px→0。
+### 6.4 滚动条
 
-### 6.10 页签（统一微圆角悬浮）
+- 轨道 8px；滑块 6px 实色（深色 `#8a6f42`，浅色 `#a8844f`），hover `#b18f58`，active `#e4ce9e`。
+- 全圆角（999px）、最小长度 36px、无渐变/无箭头/无炫光。
+- 主区域、画布、CodeMirror、终端、iframe 与内置浏览器共用同一套数值；终端使用 xterm 的 `visible/invisible` 类，只有内容溢出才显示。
+- iframe/浏览器通过 `shared/scrollbar.ts` 注入 8px 轨道、1px 透明边框 + `background-clip: content-box` 形成 6px 滑块。
 
-终端、浏览器、画布文件页签、Git 视图、项目视图与 Office 工作表共用一组顶层 token。页签不是「贴顶的文件夹」，而是 24px 高的微圆角悬浮块：
+### 6.5 按钮
 
-| token | 值 | 用途 |
-|---|---|---|
-| `--tab-height` | 24px | 页签高度 |
-| `--tab-radius` | 5px | 微圆角 |
-| `--tab-gap` | 3px | 页签间距 |
-| `--tab-pad-x` / `--tab-pad-right` | 9px / 4px | 左内边距 / 右侧关闭区 |
-| `--tab-font-size` | 11px | 页签标题 |
-| `--tab-border` | 1px solid transparent | 默认透明边框，避免选中时跳动 |
-| `--tab-color` / `--tab-hover-color` / `--tab-active-color` | text-2 / text / text | 文字层级 |
-| `--tab-hover-bg` / `--tab-active-bg` | surface-hover / surface | 悬停 / 选中底色 |
-| `--tab-active-border` | line-gold | 选中金色细边 |
-| `--tab-close-size` / `--tab-close-radius` | 20px / 4px | 关闭按钮 |
+- 主按钮：金色底/深色字，34px 高；次按钮：surface + 1px line；ghost：透明底，hover 变 surface。
+- 小按钮 28px / 12px；图标按钮 20–28px；危险操作使用 rust 边框/文字，不用大面积红底。
+- 所有按钮必须有 hover、focus-visible、disabled 三态；focus 使用金色 outline，不依赖阴影。
 
-页签栏本身：34px 高、`padding: 0 8px 0 10px`、1px 底部分隔线、`background: --bg-elev`。选中态只用「金色 1px 边框 + surface 底」，不再使用顶部圆角或底部金色下划线。
+### 6.6 Composer
 
-### 6.11 订阅详情（ChatGPT / Codex 为基准）
+- 圆角 `--r-lg`，surface 底，聚焦时金色地平线出现。
+- 模型/思考/上下文选择器紧贴输入区上浮，宽度/圆角/字号与模型菜单一致。
+- 附件、模式、权限、发送键在同一行；窄屏自动换行，不重叠。
 
-所有订阅渠道的详情页共用同一套排版与控件尺寸，不在 Qoder / Kimi / GLM 等页面单独调小：
+### 6.7 消息与轨迹
 
-| 角色 | token | 值 |
-|---|---|---|
-| 详情标题 | `--text-sub-detail-title-*` | 20px / 500 / 1.2，Newsreader |
-| 详情说明 | `--text-sub-detail-desc-*` | 12.5px / 1.65 |
-| 面板标题 | `--text-sub-panel-title-*` | 13px / 600 / 1.45 |
-| 正文/连接说明 | `--text-sub-body-*` | 12.5px / 1.65 |
-| 连接项标题 / 描述 | `--text-sub-connect-title-size` / `--text-sub-connect-desc-size` | 13px / 12px |
-| 注释 / 免责声明 | `--text-sub-note-*` / `--text-sub-disclaimer-size` | 12px / 1.65 |
-| 主操作按钮 | `--text-sub-button-*` | 34px 高 / 13px / 500 |
-| 面板内小按钮 | `--text-sub-small-button-*` | 28px 高 / 12px |
-| 面板内边距 / 连接项内边距 | `--sub-panel-pad` / `--sub-connect-pad` | 16px / 12px 13px |
+- 对话列 max-width 720；用户气泡 `--user-bubble`，assistant 无气泡，靠 typography 与间距分层。
+- 工具轨迹左侧 1px spine；工具行显示图标、标题、路径/摘要、耗时；展开看参数/结果。
+- diff 卡：长路径单行省略，展开箭头固定同行；行号/符号/统计与代码同字体同字重。
+- 思考块折叠，显示“思考了 N 秒”；进行中显示脉冲点。
 
-`tests/e2e/08-settings.spec.ts` 打开 ChatGPT/Codex 与 Qoder 两个详情页，断言标题、说明、正文、按钮、连接项与免责声明的计算值一致，并输出双主题截图。
+### 6.8 权限卡
 
-### 6.12 开关（统一微圆角矩形）
+- 背景 surface + 1px line；左侧 2px amber 竖线；标题“Morrow 想运行/写入…”。
+- 展示目标、影响范围、风险、可展开预览；按钮“允许一次 / 始终允许 / 拒绝”。
+- 高风险/越界不显示“始终允许”。
 
-设置、记忆中心、任务经验、技能卡中的开关共用同一组顶层 token；不再使用胶囊形轨道或圆形滑钮，形状与下拉菜单 / 多选按钮 / 确认按钮的 5px 微圆角语言一致：
+### 6.9 画布
 
-| 角色 | token | 值 |
-|---|---|---|
-| 轨道尺寸 | `--toggle-width` / `--toggle-height` | 34px / 20px |
-| 轨道圆角 | `--toggle-radius` | 5px（`--r-sm`） |
-| 滑钮尺寸 / 圆角 | `--toggle-thumb` / `--toggle-thumb-radius` | 14px / 4px |
-| 内缩 / 行程 | `--toggle-pad` / `--toggle-shift` | 2px / 14px |
-| 关/开底色 | `--toggle-bg` / `--toggle-bg-on` | surface-inset / gold-dim |
-| 关/开边框 | `--toggle-border` / `--toggle-border-on` | line / line-gold |
-| 滑钮 | `--toggle-thumb-bg` / `--toggle-thumb-bg-on` | text-3 / gold-bright |
+- 多标签、脏标记、只读标记；预览背景 `--bg`，内容纸张色卡片；HTML iframe 无边框、圆角 8px。
+- 版本历史抽屉、导出对话框、另存为使用统一表单控件。
 
-覆盖组件：`ui/index.tsx` 的 `Switch`、`.evo-toggle`、`.mc-toggle`、`.skills-mini-switch`。新增开关必须复用这些 token，不得再写 `border-radius: 999px` 或 50%。
+### 6.10 设置
 
-### 6.13 状态说明 / 标签
+- 页面标题 20px/500/1.2，说明 12px，分区 13px/600；正文 14px/450。
+- 订阅详情以 ChatGPT/Codex 为基准：标题 20px/500、说明 12.5px、连接项标题 13px、主按钮 34px/13px、小按钮 28px/12px。
+- 所有分页标题只出现一次，不在内容区重复。
 
-项目状态、计划、模型 chip、Git 标签、记忆结果、研究状态、定时任务、文件上限、侧栏临时标记、浏览器 Agent 状态等文本型徽标共用微圆角矩形：
+### 6.11 灵动岛
 
-| 角色 | token | 值 |
-|---|---|---|
-| 圆角 | `--chip-radius` | 4px（`--r-xs`） |
-| 左右内边距 | `--chip-pad-x` | 7px |
-| 图标/文字间距 | `--chip-gap` | 5px |
-| 标准高度 | `--chip-height` | 20px |
-| 主字号 | `--chip-font-size` | 11px（`--fs-sm`） |
-
-项目页同时放宽了状态行与元信息行的间距，路径单独占一行，避免“路径 / 对话 / 资料 / 记忆”挤在一起。进度条、滚动条、圆形图标按钮、头像和桌面灵动岛外壳不使用该 token。
-
-### 6.9 空/错/加载态
-- 空：一句编辑感文案 + 3 个不对称「纸片」建议（一大两小），每个含标题与一行说明，hover 时金色细边浮现。
-- 加载：不用通用 spinner；用 1px 金色线段在顶部 2s 循环（`horizon loader`）。
-- 错误：一句人话 + 「怎么办」半句 + 一个动作按钮；mono 显示错误码可复制。
-- 离线：标题栏出现小圆点 + 文案「模型未连接」，点击进设置。
+- 独立透明置顶窗；收起 356×84，展开 396×520；宠物形象 + 进度/待办 + 快速输入。
+- 背景玻璃仅在浮层使用；不遮挡主窗交互。
 
 ## 7. 动效
 
-| 场景 | 时长/曲线 |
-|---|---|
-| 消息进入 | 240ms `cubic-bezier(.2,.8,.2,1)`，opacity+6px translateY |
-| 工具节点运行 | 金色呼吸 1.6s ease-in-out infinite |
-| 画布滑出 | 320ms 同曲线，遮罩淡入 200ms |
-| 弹窗/命令面板 | 180ms scale+opacity |
-| 发送光带 | 400ms `cubic-bezier(.4,0,.2,1)` |
-| hover | 120ms color/background |
-| `prefers-reduced-motion` | 全部降为 ≤1ms 或直接切换 |
+- 页面/浮层 180ms：opacity + scale .98→1 + blur 8px→0。
+- 发送时 2px 金色光带从左到右 400ms，随后消息段落淡入。
+- 金色地平线聚焦 280ms；滚动条 hover/active 100ms。
+- 减少动效开启后全部即时切换，不保留装饰性循环动画。
 
-## 8. 文案语气
+## 8. 可访问性
 
-- 第一人称「我」，对用户称「你」；不用「您」，不卖萌，不用感叹号。
-- 动词开头、句子短；错误不道歉，直接说发生了什么 + 下一步。
-- 例：`API Key 无效。请检查是否复制完整，或换一个模型提供方。`
-- 例：`这条命令会删除工作区外的文件，已被拦下。`
-- 按钮 = 动作结果：`允许一次` `停止生成` `撤销这次修改` `打开文件夹`。
-- 空态不煽情：`今天想完成什么？` 副行 `说清想要的结果就行，过程我来想办法。`
+- 所有交互元素有可读标签与 focus-visible；键盘可达。
+- 颜色对比满足正文可读；状态不只靠颜色。
+- 图标 `stroke-width: 1.5`，不单独承载关键动作；按钮带文字或 aria-label。
+- 表单错误显示在字段附近，并关联 aria-describedby。
+- 窄屏/4K 下不重叠、不溢出；长路径省略但 title 可查看全文。
 
-## 9. 令牌审计与维护
+## 9. 实现约定
 
-- `npm run audit:ui` 扫描全部渲染层 CSS：字号/字重/无单位行高出现裸值即失败；当前 50 个 CSS + 66 个 TSX 文件、0 处裸字号/字重/行高/字距（文档预览 iframe 白名单除外）。
-- `tests/e2e/08-settings.spec.ts`（合并后的设置域）在真实 Electron 中校验页面标题 20px/500、说明 12px、分区 13px/600、正文 14px/450、代码 400、按钮高度 28/34，以及权限卡排版 token。
-- 调整视觉规范只改 `tokens.css` 与对应语义别名；不要在组件里新增字号。9–11px 只用于非阅读主体，正文不得低于 12px。
+- 新增页面必须引用 token，不允许写死字号/字重/行高/圆角/颜色。
+- `npm run audit:ui` 会扫描 CSS/TSX 的裸排版值；文档预览 iframe 有白名单。
+- 组件级 token 只用于语义角色（权限卡、订阅详情、页签、开关、chip、滚动条），不鼓励再造一套。
+- 改动视觉时同时检查深/浅主题与窄屏。
 
-## 10. 可达性
+## 10. 相关文档
 
-- 正文对比度 ≥ 7:1，次级 ≥ 4.5:1；金色仅用于非正文。
-- 全键盘可达：Tab 焦点环 `0 0 0 1px var(--gold)`；Esc 关闭/停止；对话区快捷键列表进设置。
-- 窗口缩放 100–200% 不破版；最小窗口 1000×680。
-- 不用颜色单独表意，状态同时有文字/形状。
-
-## 10. 品牌
-
-- 字标：`Morrow`，Newsreader 400，字距 -0.015em；前方 monogram：`M` 衬线 + 下方 14px 金色地平线。
-- 应用图标：石墨底 (#10141A) + 香槟金细线构成的地平线上升弧 + 衬线 M；多尺寸 ICO（16–256）。
-- 启动画面（首帧）：墨底 + 金色地平线渐显 + 字标，≤ 600ms。
+- [功能参考](FEATURES.md)
+- [用户指南](USER-GUIDE.md)
+- [架构说明](ARCHITECTURE.md)

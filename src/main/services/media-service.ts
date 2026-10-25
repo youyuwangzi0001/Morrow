@@ -1845,7 +1845,12 @@ export class MediaService implements MediaToolHandler {
     if (current?.model.supportsVision) {
       input.onProgress({ stage: `${current.model.label || current.model.id} 审看`, percent: 30 })
       try {
-        const text = await this.streamVisionText(current.provider, message, input.signal)
+        const text = await this.streamVisionText(current.provider, message, input.signal, {
+          // 视觉审看只需要短结论；给足输出预算，并尽量关闭思考，
+          // 避免推理解码占满 max_tokens 后只返回空 content。
+          maxTokens: 2_048,
+          reasoning: this.visionReasoningFor(current.model)
+        })
         if (!text) throw new Error('当前对话模型没有返回审看文字。')
         return {
           text,
@@ -1869,22 +1874,45 @@ export class MediaService implements MediaToolHandler {
     return this.describeWithLocalVision(settings, message, images.length, input, startedAt)
   }
 
-  private async streamVisionText(provider: import('../../core/types').Provider, message: ChatMessage, signal: AbortSignal): Promise<string> {
+  /** 视觉审看不传思考档位时，推理模型可能把全部预算花在 thinking 上。 */
+  private visionReasoningFor(model: import('../../shared/types').ModelInfo): { effort: 'off'; style: 'effort' | 'thinking' } | undefined {
+    if (model.reasoningStyle === 'thinking') return { effort: 'off', style: 'thinking' }
+    if (model.reasoningStyle === 'effort' && model.reasoningEfforts?.includes('off')) {
+      return { effort: 'off', style: 'effort' }
+    }
+    return undefined
+  }
+
+  private async streamVisionText(
+    provider: import('../../core/types').Provider,
+    message: ChatMessage,
+    signal: AbortSignal,
+    options: {
+      maxTokens?: number
+      reasoning?: { effort: 'off'; style: 'effort' | 'thinking' }
+    } = {}
+  ): Promise<string> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 180_000)
     let text = ''
+    let thinking = ''
     try {
       for await (const event of provider.stream({
         system: '你是严谨的视觉审片助手。只描述你实际看到的画面，给出可执行的改进建议，不要编造不存在的细节。',
         messages: [message],
         tools: [],
         signal: AbortSignal.any([signal, controller.signal]),
-        maxTokens: 700
+        maxTokens: options.maxTokens ?? 2_048,
+        ...(options.reasoning ? { reasoning: options.reasoning } : {})
       })) {
         if (event.type === 'text_delta' && event.text) text += event.text
+        if (event.type === 'thinking_delta' && event.text) thinking += event.text
       }
     } finally {
       clearTimeout(timer)
+    }
+    if (!text.trim() && thinking.trim()) {
+      log.warn('vision model returned thinking but no final text', { thinkingChars: thinking.length })
     }
     return text.trim()
   }
@@ -1899,12 +1927,15 @@ export class MediaService implements MediaToolHandler {
     const providerConfig =
       settings.providers.find((provider) => provider.id === 'llamacpp') ??
       settings.providers.find((provider) => provider.category === 'local' && /:8000(?:\/|$)/.test(provider.baseUrl))
-    const model =
-      providerConfig?.models.find((item) => item.id === 'Qwen3.8-27B-Coder390') ??
-      providerConfig?.models.find((item) => /coder390|qwen3\.8-27b/i.test(item.id)) ??
-      providerConfig?.models[0]
+    // 只选明确支持视觉的本地模型；不能拿目录里的任意文本模型冒充视觉模型。
+    const candidates = (providerConfig?.models ?? []).filter(
+      (item) => item.supportsVision === true || /coder390|qwen3\.8-27b/i.test(item.id)
+    )
+    const model = candidates.find((item) => item.id === 'Qwen3.8-27B-Coder390') ?? candidates[0]
     if (!providerConfig || !model) {
-      throw new Error('没有配置本地视觉模型。请在设置 → 模型启用「llama.cpp（本地）」的 Qwen3.8-27B-Coder390。')
+      throw new Error(
+        '没有可用的本地视觉模型。请在设置 → 多媒体启用带 --mmproj 的 Qwen3.8-27B-Coder390，或换用支持图片输入的对话模型。'
+      )
     }
     const base = providerConfig.baseUrl.replace(/\/v1\/?$/, '')
     try {

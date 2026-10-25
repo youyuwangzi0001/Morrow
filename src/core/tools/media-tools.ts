@@ -885,7 +885,7 @@ export const describeMediaTool: ToolImpl = {
       if (err instanceof ToolInputError) return errResult(err.message, err.hint)
       return errResult(
         `媒体审看失败：${err instanceof Error ? err.message : String(err)}`,
-        '确认当前对话模型支持图片输入；如果不支持，再启动本机视觉模型（llama-server 需带 --mmproj）。16GB 显卡上需先停止 ComfyUI 释放显存。'
+        '先让用户换用支持图片输入的对话模型；如果当前模型不支持或返回空内容，再在设置 → 多媒体启用带 --mmproj 的本机视觉模型（16GB 显卡需先停止 ComfyUI 释放显存）。不要用生图模型或纯文本模型冒充审看；两者都不可用时如实说明失败，并建议用户配置视觉模型或改用可验证的 DOM/几何检查。'
       )
     }
   }

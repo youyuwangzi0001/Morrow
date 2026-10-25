@@ -127,7 +127,8 @@ export function toOpenAIMessages(messages: ChatMessage[], system: string): OpenA
 
 export function buildOpenAIRequestBody(
   req: ProviderStreamRequest,
-  model: string
+  model: string,
+  providerId?: string
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
@@ -141,7 +142,14 @@ export function buildOpenAIRequestBody(
   }
   if (typeof req.maxTokens === 'number' && req.maxTokens > 0) body.max_tokens = req.maxTokens
   if (typeof req.temperature === 'number') body.temperature = req.temperature
-  if (req.reasoning?.style === 'effort') body.reasoning_effort = req.reasoning.effort
+  if (req.reasoning?.style === 'effort') {
+    // DeepSeek 官方档位是 none/low/high/max；Morrow 统一用 off 表示关闭。
+    // Qoder 代理仍按自己的 off 档位处理，不能在这里改成 none。
+    body.reasoning_effort =
+      req.reasoning.effort === 'off' && providerId === 'deepseek' && /deepseek/i.test(model)
+        ? 'none'
+        : req.reasoning.effort
+  }
   return body
 }
 
@@ -236,7 +244,7 @@ export class OpenAICompatProvider implements Provider {
           ...this.headers,
           ...(req.contextWindow ? { 'x-morrow-context-window': String(req.contextWindow) } : {})
         },
-        body: JSON.stringify(buildOpenAIRequestBody(req, this.model)),
+        body: JSON.stringify(buildOpenAIRequestBody(req, this.model, this.id)),
         signal: req.signal
       })
     } catch (err) {

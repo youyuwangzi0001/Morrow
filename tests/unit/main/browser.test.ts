@@ -1132,7 +1132,7 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const shell = manager.createShell(ws.root, '测试终端')
+      const shell = manager.createShell(ws.root, '测试终端', 'pwsh')
       expect(shell.kind).toBe('shell')
       expect(shell.status).toBe('running')
       manager.write(shell.id, "Write-Output 'hello-terminal'")
@@ -1151,7 +1151,7 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const shell = manager.createShell(ws.root, 'PTY 检测')
+      const shell = manager.createShell(ws.root, 'PTY 检测', 'pwsh')
       expect(shell.pid).toBeGreaterThan(0)
       manager.resize(shell.id, 100, 30)
       manager.write(
@@ -1175,29 +1175,22 @@ describe('TerminalManager', () => {
     }
   })
 
-  it('runs commands through the command prompt and Git Bash when available', async () => {
+  it('Git Bash is the default shell and legacy PowerShell 5.1 / cmd options are removed', async () => {
     if (process.platform !== 'win32') return
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
       const ids = manager.profiles().map((profile) => profile.id)
-      expect(ids).toContain('powershell')
-      const cases: Array<{ id: string; command: string; expected: string; cwd?: string }> = [
-        { id: 'cmd', command: 'echo %OS%_cmd_ok', expected: 'Windows_NT_cmd_ok' },
-        { id: 'gitbash', command: "printf 'gitbash_%s\\n' ok", expected: 'gitbash_ok' }
-      ]
-      for (const item of cases) {
-        if (!ids.includes(item.id)) continue
-        const shell = manager.createShell(ws.root, `测试 ${item.id}`, item.id)
-        expect(shell.shellId).toBe(item.id)
-        manager.write(shell.id, item.command)
-        await waitFor(() => manager.read(shell.id).output.includes(item.expected))
-        if (item.cwd) {
-          await waitFor(() => manager.read(shell.id).output.includes(item.cwd!))
-        }
-        manager.stop(shell.id)
-        await waitFor(() => manager.get(shell.id)?.status === 'exited')
-      }
+      expect(ids).not.toContain('powershell')
+      expect(ids).not.toContain('cmd')
+      if (!ids.includes('gitbash')) return
+      expect(manager.defaultShellId()).toBe('gitbash')
+      const shell = manager.createShell(ws.root, 'Git Bash 测试')
+      expect(shell.shellId).toBe('gitbash')
+      manager.write(shell.id, "printf 'gitbash_%s\\n' ok")
+      await waitFor(() => manager.read(shell.id).output.includes('gitbash_ok'))
+      manager.stop(shell.id)
+      await waitFor(() => manager.get(shell.id)?.status === 'exited')
     } finally {
       ws.cleanup()
     }
@@ -1209,17 +1202,13 @@ describe('TerminalManager', () => {
     try {
       const manager = makeManager()
       const ids = manager.profiles().map((profile) => profile.id)
-      if (ids.includes('cmd')) {
-        const run = await manager.runOnce('echo cmd_once_ok', ws.root, 10_000, 'cmd')
-        expect(run.output).toContain('cmd_once_ok')
-        const task = manager.startTask('echo cmd_task_ok', ws.root, 'cmd 任务', 'cmd')
-        expect(task.shellId).toBe('cmd')
-        await waitFor(() => manager.read(task.id).output.includes('cmd_task_ok'))
-        await waitFor(() => manager.get(task.id)?.status === 'exited')
-      }
       if (ids.includes('gitbash')) {
         const run = await manager.runOnce("printf 'bash_once_ok\\n'", ws.root, 10_000, 'gitbash')
         expect(run.output).toContain('bash_once_ok')
+        const task = manager.startTask("printf 'bash_task_ok\\n'", ws.root, 'bash 任务', 'gitbash')
+        expect(task.shellId).toBe('gitbash')
+        await waitFor(() => manager.read(task.id).output.includes('bash_task_ok'))
+        await waitFor(() => manager.get(task.id)?.status === 'exited')
       }
     } finally {
       ws.cleanup()
@@ -1230,7 +1219,7 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const task = manager.startTask("Write-Output 'task-ok'", ws.root, '后台任务')
+      const task = manager.startTask("Write-Output 'task-ok'", ws.root, '后台任务', 'pwsh')
       expect(task.kind).toBe('task')
       await waitFor(() => manager.read(task.id).output.includes('task-ok'))
       await waitFor(() => manager.get(task.id)?.status === 'exited')
@@ -1249,7 +1238,7 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const result = await manager.runOnce("Write-Output 'run-ok'", ws.root)
+      const result = await manager.runOnce("Write-Output 'run-ok'", ws.root, 10_000, 'pwsh')
       expect(result.timedOut).toBe(false)
       expect(result.exitCode).toBe(0)
       expect(result.output).toContain('run-ok')
@@ -1262,7 +1251,7 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const shell = manager.createShell(ws.root, '重启测试')
+      const shell = manager.createShell(ws.root, '重启测试', 'pwsh')
       // 旧进程被 taskkill/SIGTERM 后的 exit 可能晚于 restart 返回
       const restarted = manager.restart(shell.id)
       expect(restarted.status).toBe('running')
@@ -1284,7 +1273,7 @@ describe('TerminalManager', () => {
           ? "Write-Output 'started'; Start-Sleep -Seconds 10"
           : "echo started; sleep 10"
       const started = Date.now()
-      const result = await manager.runOnce(command, ws.root, 1000)
+      const result = await manager.runOnce(command, ws.root, 1000, 'pwsh')
       expect(result.timedOut).toBe(true)
       expect(result.output).toContain('started')
       expect(Date.now() - started).toBeLessThan(8000)
