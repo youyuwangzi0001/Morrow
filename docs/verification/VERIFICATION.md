@@ -8,11 +8,11 @@
 
 - 类型检查：`npm run typecheck` **0 error**（主进程 + 渲染层）。
 - UI 令牌审计：`npm run audit:ui` **通过**，50 个 CSS + 66 个 TSX，0 处裸字号/字重/行高/字距（文档预览 iframe 白名单除外）。
-- 单元测试：**14 个套件 / 943 个用例**（按环境跳过真实引擎/本地模型集成）。
+- 单元测试：**14 个套件 / 945 个用例**（按环境跳过真实引擎/本地模型集成）。
 - 端到端：**17 个套件 / 208 个用例**；非打包 **192 passed + 11 skipped**，打包版 **5/5 passed**。真实 Electron + 主进程，默认 Mock LLM/ComfyUI。
 - 真实断点：真实项目测试发现的 **6 个阻断点**全部修复并补回归（Codex 工具参数、登录端口复用、灵动岛跟随会话、当前模型视觉、登录按钮可重试、assistant 历史消息协议），见 §4。
-- 打包冒烟：**通过（4.7s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
-- 交付包：**5 个分发文件 / 345.79 MiB**；便携版 196.40 MiB，安装包 149.38 MiB，未签名。
+- 打包冒烟：**通过（4.8s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
+- 交付包：**5 个分发文件 / 345.80 MiB**；便携版 196.41 MiB，安装包 149.39 MiB，未签名。
 
 ## 2. 本轮 UI/UX 收口
 
@@ -29,6 +29,7 @@
 | 默认模型卡 | 从内容区移入页面标题栏，与说明文字同一行顶部对齐，减少空白 | `SettingsModal.tsx`、`SettingsModal.css`；`settings-title-models-*.png` |
 | 改动卡 | 长路径改为单行省略，展开箭头固定在同一行，不再被挤到第二行 | `Transcript.css`；`10-rounds` 超长路径用例 |
 | 上下文浮层 | 紧贴圆环按钮上浮，宽度、圆角、背景与字号对齐模型上拉菜单 | `ContextMeter.tsx`、`Composer.css`；`10-rounds` 上下文用例 |
+| WSL 终端 | 设置 → 终端检测 WSL 与发行版；无发行版时显示灰色说明，支持「重新检测」；有发行版时使用真实 PTY | `terminal-manager.ts`、`SettingsModal.tsx`；`11-terminal-git` 终端用例 |
 
 截图：
 
@@ -58,22 +59,22 @@
 | 连接 ChatGPT/Codex 订阅后，任务卡在「请补上 name 参数后重试」，`read_skill` 实际收到 `{}` | 代理只在 `response.output_item.done` 读取工具参数；部分响应把完整参数放在 `response.function_call_arguments.done`，流式增量组装时丢失 | 流式/非流式都消费 `function_call_arguments.done`；以 `output_item.added` 的增量为底，done 作为权威参数；`read_skill` 缺 `name` 时返回可用技能清单与重试提示，而不是直接失败 | `codex-proxy.ts`、`skills-tools.ts`；`subscriptions.test.ts` 的 done 事件参数用例、`tools.test.ts` 的缺少 name 回退用例 |
 | 首次点击「浏览器登录 ChatGPT」不弹浏览器；再次点击提示 `address already in use`（127.0.0.1:1455） | 首次登录在弹窗前中断，回调服务器未复用，第二次重复 `listen` 同一端口 | 登录流程改为单例：保存授权 URL 与同一个 Promise，重复点击重开同一授权页而不是重开端口；端口被占用时返回明确文案 | `subscriptions.ts`；`08-settings` 订阅连接用例 |
 | 多对话切换后，灵动岛不显示当前任务计划、耗时与进度条，只显示「随时待命」 | 灵动岛仅在开始运行或收到运行事件时更新，未跟随主窗口当前会话 | 新增 `island:sync-session`；渲染层在启动、切换、新建、切换工作区/演示/分支后同步；主进程按当前会话生成运行中/等待/待命快照，非当前会话事件不再覆盖 | `island.ts`、`ipc.ts`、`preload/index.ts`、`store.ts`、`agent-service.ts`；`01-ui-smoke` 灵动岛实时跟随、删除会话后跟随用例 |
-| 当前使用 DeepSeek API 开发时，审看媒体仍优先调用已配置的本地视觉模型 | `describe_media` 固定走 `visionProvider` 本地配置，忽略当前模型的视觉能力 | 当前模型声明 `supportsVision` 时直接用当前 Provider 处理图片；失败才回退本地并在结果中标注 fallback；DeepSeek/Kimi/Claude/GPT/Gemini/GLM 等目录补齐能力标记 | `media-service.ts`、`media-tools.ts`、`models.ts`；`16-media` 当前模型视觉用例 |
+| 当前使用 DeepSeek 或 ChatGPT 订阅开发时，审看媒体仍优先调用已配置的本地视觉模型 | `describe_media` 固定走 `visionProvider` 本地配置；Codex 订阅模型目录未声明 `supportsVision` | 当前模型声明 `supportsVision` 时直接用当前 Provider 处理图片；失败才回退本地并标注 fallback；为 Codex 订阅模型补齐视觉标记 | `media-service.ts`、`media-tools.ts`、`models.ts`、`subscriptions.ts`；`16-media` 当前模型视觉用例 |
 | 点击「浏览器登录 ChatGPT / Qoder」后浏览器无反应，按钮随即变灰或不可重试 | Windows 系统 URL 处理链在受限环境会静默失败；Qoder 每次点击都会新建设备流，UI 在整个等待期禁用按钮 | 登录授权页改为直接拉起已安装浏览器（优先默认浏览器，系统处理器兜底）；Qoder 增加单例复用与「重新打开登录页面」，其他 Agent 登录共用直连打开 | `external-open.ts`、`SubscriptionTab.tsx`、`subscriptions.ts`、`qoder-subscription.ts`；`external-open.test.ts`、`08-settings` 登录重试用例 |
 | ChatGPT 订阅首轮回复后立刻 HTTP 400：`Invalid value: 'input_text'`，要求 `output_text` | `contentToInput` 对所有角色都发送 `input_text`；Responses 要求 assistant 历史内容使用 `output_text` | 按角色映射：user/system 用 `input_text`，assistant 用 `output_text`，refusal 保留 `refusal`；补协议单测 | `codex-proxy.ts`；`subscriptions.test.ts` 的 assistant 历史内容用例 |
 
-修复后重新执行门禁并重打包：单元 **943**、非打包 E2E **192 passed + 11 skipped**、打包 E2E **5/5**、便携版冒烟 **4.7s**；交付包哈希见 §7。
+修复后重新执行门禁并重打包：单元 **945**、非打包 E2E **192 passed + 11 skipped**、打包 E2E **5/5**、便携版冒烟 **4.8s**；交付包哈希见 §7。
 
 ## 5. 代码库扁平化
 
 | 项目 | 变化 |
 |---|---|
-| 单元测试 | 22 → **14 个文件**：8 个订阅协议 + qoder/relay 合并为 `subscription-protocols.test.ts` / `subscriptions.test.ts`，另新增 `external-open.test.ts`；用例数 934 → **943** |
+| 单元测试 | 22 → **14 个文件**：8 个订阅协议 + qoder/relay 合并为 `subscription-protocols.test.ts` / `subscriptions.test.ts`，另新增 `external-open.test.ts`；用例数 934 → **945** |
 | E2E | 21 → **17 个文件**：设置标题/UI token/订阅并入 `08-settings`，模型表单并入 `16-media`；用例数 204 → **208** |
 | Feature 注册 | `discovery` / `permissions` / `git` / `subscriptions` / `schedules` 五个只被注册表引用的模块并入 `main/features/index.ts`，统一复用 `payloadOf` |
 | 死代码 | 删除 17 个无引用导出、5 个死频道常量、死常量/死兼容分支 |
 | 重复实现 | 统一 13 处 `errorText`、画布版本时间/大小格式化、`formatBytes`（core/project/renderer）、本机/私网 URL 判定、4 处 feature payload 解析 |
-| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,799 行**：ts 70,704 / tsx 29,126 / css 24,969）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
+| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,891 行**：ts 70,778 / tsx 29,144 / css 24,969）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
 
 ## 6. 验证门禁
 
@@ -81,22 +82,22 @@
 |---|---|
 | `npm run typecheck` | 0 error |
 | `npm run audit:ui` | 50 CSS + 66 TSX，0 裸排版值 |
-| `npm run test:unit` | 14 文件；943 用例；**935 passed + 8 skipped** |
+| `npm run test:unit` | 14 文件；945 用例；**937 passed + 8 skipped** |
 | `npx playwright test`（全量） | 17 文件；208 用例；**197 passed + 11 skipped + 0 failed**（11.1m） |
-| 打包版 E2E | 5 用例；**5/5 passed**（17.5s） |
-| `scripts/smoke-packaged.mjs` | 便携版 **4.7s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
-| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 17.5s；打包 smoke 4.7s |
+| 打包版 E2E | 5 用例；**5/5 passed**（18.2s） |
+| `scripts/smoke-packaged.mjs` | 便携版 **4.8s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
+| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 18.2s；打包 smoke 4.8s |
 
 ## 7. 交付物
 
 | 产物 | 大小 | SHA-256 |
 |---|---|---|
-| `Morrow-0.1.0-portable.exe` | 205,944,320 B / 196.40 MiB | `156405aa251f37a3a0962e29558aea31d74917fa24bef0b3397e62a0f13ac102` |
-| `Morrow-0.1.0-setup.exe` | 156,641,441 B / 149.38 MiB | `905e065fdc44b2c87aabe84bd76212fea4a869d49ef8d237d283e7cbf734783b` |
-| `使用说明.txt` | 3,138 B | `5d8ab15068299a778378f45d2071496940e6b017c274012349847fde4c81676c` |
-| `SHA256SUMS.txt` | 338 B | `c2dc7fdd79a8758390ff2d0fd11fa743889a728ffea3dcf6c5a3d580912e5e6f` |
+| `Morrow-0.1.0-portable.exe` | 205,947,392 B / 196.41 MiB | `46e2c3515648d37be6f97e739058e9476a74e5af732a0c43f439c3df620fed63` |
+| `Morrow-0.1.0-setup.exe` | 156,644,340 B / 149.39 MiB | `7075d5fd124ef1d14b14b4fdf978a68a5134d6a22ecf0baa6061f648085f96b0` |
+| `使用说明.txt` | 3,138 B | `cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302` |
+| `SHA256SUMS.txt` | 338 B | `74543d0fa341ec1668692658c6b1bc874a8a3a1120f2a59beda93a5a90250cd9` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **5 文件 / 362,590,307 B / 345.79 MiB** | 未签名（signed:false） |
+| **分发合计** | **5 文件 / 362,596,278 B / 345.8 MiB** | 未签名（signed:false） |
 
 安装包载荷：**331 个文件 / 55 个目录**，包含 `Morrow-app.exe`、`resources/app.asar`、`node-pty` 原生模块；与便携版共用同一份 `win-unpacked`。
 

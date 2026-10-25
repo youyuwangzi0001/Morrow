@@ -39,10 +39,16 @@ registerFeatureHandler('feature:terminal:list', (payload) => {
   return { processes: managerOf().list().filter((process) => sameCwd(process.cwd, workspace)) }
 })
 
-registerFeatureHandler('feature:terminal:profiles', () => ({
-  profiles: managerOf().profiles(),
-  defaultShell: managerOf().defaultShellId()
-}))
+registerFeatureHandler('feature:terminal:profiles', (payload) => {
+  const input = payloadOf(payload)
+  const refresh = input.refresh === true
+  if (refresh) managerOf().refreshProfiles()
+  return {
+    profiles: managerOf().profiles(),
+    defaultShell: managerOf().defaultShellId(),
+    wsl: managerOf().wslStatus()
+  }
+})
 
 registerFeatureHandler('feature:terminal:create', (payload) => {
   const input = payloadOf(payload)

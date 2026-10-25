@@ -100,7 +100,7 @@ Morrow 会先给计划（复杂任务）、再执行，过程在对话里可见�
 
 ### 11. 工作台：终端、Git、浏览器
 
-- **终端**：PowerShell 7 / Windows PowerShell / CMD / Git Bash / WSL；多标签、后台任务、复制粘贴、拖动调高。
+- **终端**：PowerShell 7 / Windows PowerShell / CMD / Git Bash / WSL；WSL 需先在 Windows 安装发行版，可在「设置 → 终端」重新检测；多标签、后台任务、复制粘贴、拖动调高。
 - **Git**：查看差异、暂存/取消暂存、提交、切换/新建分支、浏览历史、配置身份；不提供 push/pull，请用终端。
 - **内置浏览器**：多标签、前进/后退/刷新、下载确认；Agent 与你共用同一页面；返回主页面后页面保留。
 

@@ -1,23 +1,23 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
-  "builtAt": "2026-10-24T23:55:15.988Z",
+  "builtAt": "2026-10-25T12:30:51.695Z",
   "platform": "win32-x64",
   "source": {
     "files": 313,
     "codeFiles": 292,
     "loc": {
-      "ts": 70704,
-      "tsx": 29126,
+      "ts": 70778,
+      "tsx": 29144,
       "css": 24969,
-      "total": 124799
+      "total": 124891
     }
   },
   "tests": {
     "unit": {
       "suites": 14,
-      "cases": 943,
-      "passed": 935,
+      "cases": 945,
+      "passed": 937,
       "skipped": 8
     },
     "e2e": {
@@ -45,8 +45,8 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362590307,
-    "mib": 345.79
+    "bytes": 362596278,
+    "mib": 345.8
   },
   "artifacts": [
     {
@@ -57,29 +57,29 @@
     },
     {
       "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205944320,
-      "mib": 196.4,
-      "sha256": "156405aa251f37a3a0962e29558aea31d74917fa24bef0b3397e62a0f13ac102"
+      "bytes": 205947392,
+      "mib": 196.41,
+      "sha256": "46e2c3515648d37be6f97e739058e9476a74e5af732a0c43f439c3df620fed63"
     },
     {
       "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156641441,
-      "mib": 149.38,
-      "sha256": "905e065fdc44b2c87aabe84bd76212fea4a869d49ef8d237d283e7cbf734783b"
+      "bytes": 156644340,
+      "mib": 149.39,
+      "sha256": "7075d5fd124ef1d14b14b4fdf978a68a5134d6a22ecf0baa6061f648085f96b0"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "c2dc7fdd79a8758390ff2d0fd11fa743889a728ffea3dcf6c5a3d580912e5e6f"
+      "sha256": "74543d0fa341ec1668692658c6b1bc874a8a3a1120f2a59beda93a5a90250cd9"
     },
     {
       "name": "使用说明.txt",
       "bytes": 3138,
       "mib": 0,
-      "sha256": "5d8ab15068299a778378f45d2071496940e6b017c274012349847fde4c81676c"
+      "sha256": "cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302"
     }
   ],
   "runtimeCache": ".morrow-runtime-0.1.0-r010",
-  "generatedAt": "2026-10-24T23:56:03.528Z"
+  "generatedAt": "2026-10-25T12:31:48.809Z"
 }

@@ -731,6 +731,7 @@ export interface TerminalShellProfile {
   label: string
   detail: string
   isDefault?: boolean
+  disabled?: boolean
 }
 
 export interface TerminalEventPayload {

@@ -24,6 +24,7 @@ Morrow 是一个面向非技术用户的桌面 AI Agent。它不是只会聊天�
 - **集群（Agent Swarm）**：把独立子任务并行派发给不同角色，实时显示每个成员的状态、工具轨迹与结论；失败不会伪装成完成。
 - **执行过程与回退**：工具调用、命令输出、文件 diff 都在对话中可见；每轮结束可一次性回退对话与 Morrow 写过的文件。
 - **上下文管理**：达到阈值自动压缩，保留任务锚点、最近消息与工具对；长任务可跨轮继续。
+- **超频模式（常驻）**：底层提示词不因思考强度档位降低交付标准；把 token、时间与成本视为可投入资源，优先完整验证与最终效果，同时保留权限、安全与系统硬预算。
 - **队列、后台运行、分叉、导出**：运行中可插话或排队；可切到其他对话查看；对话可分支、导出 Markdown / JSON。
 
 ### 文件、编辑器与预览
@@ -41,7 +42,7 @@ Morrow 是一个面向非技术用户的桌面 AI Agent。它不是只会聊天�
 
 ### 工作台与系统能力
 
-- **真实终端**：PowerShell 7 / Windows PowerShell / CMD / Git Bash / WSL；后台任务、标签页、复制粘贴、拖动调高。
+- **真实终端**：PowerShell 7 / Windows PowerShell / CMD / Git Bash / WSL；WSL 需在 Windows 侧安装发行版，可在「设置 → 终端」重新检测；支持后台任务、标签页、复制粘贴、拖动调高。
 - **Git 工作台**：查看差异、暂存、提交、切换 / 新建分支、浏览历史；可在面板内配置仓库身份。
 - **内置浏览器**：渲染层 chrome + 主进程 WebContentsView；Agent 与用户共用同一页面；支持多标签、下载确认、返回主页面并保留页面状态。
 - **全局搜索、记忆、项目、定时任务、MCP、技能**：跨对话 / 文件 / 成品搜索；长期记忆与任务经验；项目说明与资料按文件夹带进对话；定时任务无人值守运行；MCP 外部工具与本地技能可安装、启停、审计。
@@ -102,7 +103,7 @@ npm ci
 npm run dev          # 开发模式（Electron + Vite HMR）
 npm run typecheck    # 主进程 / 渲染层类型检查
 npm run audit:ui     # UI 令牌审计
-npm run test:unit    # 14 个单元套件 / 943 个用例
+npm run test:unit    # 14 个单元套件 / 945 个用例
 npm run test:e2e     # 17 个 E2E 套件 / 208 个用例（真实 Electron；真实登录/本地模型按环境跳过）
 npm run build        # 类型检查 + 生产构建
 npm run dist         # 生成单文件便携 exe + NSIS 安装包
@@ -135,7 +136,7 @@ MORROW_AGENT_EVAL=1 npx playwright test tests/e2e/15-local-model.spec.ts -g "Mor
 
 - **类型**：`npm run typecheck`，TypeScript 严格模式，主进程与渲染层分开检查。
 - **UI 令牌**：`npm run audit:ui` 扫描渲染层 CSS/TSX，字号/字重/行高/字距必须走顶层 token；设置域 E2E 校验页面标题、提示、正文、按钮高度、权限卡与订阅详情排版。
-- **单元**：`npm run test:unit` → **14 个套件、943 个用例（935 passed + 8 skipped）**（含按环境跳过的真实引擎/本地模型集成）。覆盖 Agent 循环、双协议 Provider、工具、权限、上下文压缩、会话持久化、媒体目录/工具、输出隐私守卫、评测指标与 8 条订阅渠道的协议规则。
+- **单元**：`npm run test:unit` → **14 个套件、945 个用例（937 passed + 8 skipped）**（含按环境跳过的真实引擎/本地模型集成）。覆盖 Agent 循环、双协议 Provider、工具、权限、上下文压缩、会话持久化、媒体目录/工具、输出隐私守卫、评测指标与 8 条订阅渠道的协议规则。
 - **端到端**：`npm run test:e2e` → **17 个套件、208 个用例**，使用真实 Electron + 真实主进程；默认用 Mock LLM/ComfyUI，可选真实本地模型、引擎与 Codex 订阅登录。
 - **质量评测**：四项离线确定性指标（工具成功率、60 轮漂移、压缩保留、Token 曲线）见 [EVALUATION.md](docs/EVALUATION.md)。
 - **打包冒烟**：`npm run smoke:packaged` 启动便携 exe，检查渲染、预加载 API 与截图。

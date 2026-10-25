@@ -260,6 +260,22 @@ function buildWorkToolStrategy(): string {
   ].join('\n')
 }
 
+/**
+ * 超频模式（常驻）：不绑定思考强度档位，始终把完整交付放在节省资源之前。
+ * 只解除“自设预算”的保守倾向，不改变权限、安全或系统硬性预算。
+ */
+export function buildOverclockPromptSection(): string {
+  return [
+    '## 超频模式（常驻）',
+    '- 质量优先：把「最终交付正确、完整、可验证」放在第一位。token、工具调用、运行时间和模型成本都是可投入资源，不因节省而缩小范围、跳过验证、使用占位实现或拿示例冒充成品。',
+    '- 思考强度只控制推理预算，不改变交付门槛：用户选择 auto / low / medium / high / xhigh / max 中任何档位，都按同一标准规划、执行、验证和收尾。',
+    '- 交付前对照原始要求逐项核对，运行、打开或读取真实产物；没有验证的内容不能算完成。',
+    '- 需要更多探索、重读、测试、截图、对比或迭代时继续做，直到证据齐全；不要用「时间、成本或额度不够」作为降低质量的理由，但也不要为了消耗而重复已经核实的工作。',
+    '- 系统硬性的轮次、预算、权限与审批仍然生效；接近上限时优先完成可验证闭环，并如实报告未完成项，禁止虚报完成。',
+    '- 超频不改变模式边界：聊天模式只提升分析深度，计划模式只提升勘察与方案质量；涉及写入、命令或外部动作时仍按当前权限执行。'
+  ].join('\n')
+}
+
 export function buildSystemPrompt(opts: ModeAwarePromptOptions = {}): string {
   const chatMode = opts.mode === 'chat'
   const researchMode = opts.mode === 'research'
@@ -309,6 +325,7 @@ export function buildSystemPrompt(opts: ModeAwarePromptOptions = {}): string {
             : '你的用户大多不是程序员，他们只想要结果：一份能直接发给老板的报告、整理好的文件、一个能用的网页。' +
               '你要把事情做完、交付成品，而不是只给建议。')
   )
+  sections.push(buildOverclockPromptSection())
 
   if (chatMode) {
     sections.push(

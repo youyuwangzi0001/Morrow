@@ -39,6 +39,12 @@ interface ShellSpec {
   file: string
   args: string[]
   isDefault: boolean
+  disabled?: boolean
+}
+
+interface WslStatus {
+  installed: boolean
+  distros: string[]
 }
 
 interface BaseRecord {
@@ -118,19 +124,25 @@ function firstExisting(paths: string[]): string | null {
   return paths.find((path) => existsSync(path)) ?? null
 }
 
-function wslHasDistro(): boolean {
+function probeWsl(): WslStatus {
+  const exe = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wsl.exe')
+  if (!existsSync(exe)) return { installed: false, distros: [] }
   try {
-    const result = spawnSync('wsl.exe', ['-l', '-q'], {
+    const result = spawnSync(exe, ['-l', '-q'], {
       windowsHide: true,
-      timeout: 2000,
+      timeout: 8_000,
       encoding: 'buffer'
     })
-    if (result.error || result.status !== 0) return false
+    if (result.error) return { installed: true, distros: [] }
     const raw = Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? '')
-    const text = raw.includes(0) ? raw.toString('utf16le') : raw.toString('utf8')
-    return text.replace(/\u0000/g, '').trim().length > 0
+    const text = (raw.includes(0) ? raw.toString('utf16le') : raw.toString('utf8')).replace(/\u0000/g, '')
+    const distros = text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\uFEFF/, '').trim())
+      .filter((line) => line && !/未安装|no installed|not installed|适用于 Linux|wsl --install|https?:\/\//i.test(line))
+    return { installed: true, distros }
   } catch {
-    return false
+    return { installed: true, distros: [] }
   }
 }
 
@@ -181,14 +193,18 @@ function windowsSpecs(): ShellSpec[] {
       isDefault: false
     })
   }
-  if (existsSync('C:\\Windows\\System32\\wsl.exe') && wslHasDistro()) {
+  const wsl = probeWsl()
+  if (wsl.installed) {
     specs.push({
       id: 'wsl',
       label: 'WSL',
-      detail: 'Windows 子系统',
+      detail: wsl.distros.length
+        ? `Windows 子系统 · ${wsl.distros[0]}${wsl.distros.length > 1 ? ` 等 ${wsl.distros.length} 个发行版` : ''}`
+        : '未安装 Linux 发行版，先在 PowerShell 运行 wsl --install',
       file: 'wsl.exe',
       args: [],
-      isDefault: false
+      isDefault: false,
+      disabled: wsl.distros.length === 0
     })
   }
   const preferred = specs.find((spec) => spec.id === 'pwsh') ?? specs.find((spec) => spec.id === 'powershell')
@@ -257,8 +273,17 @@ export class TerminalManager {
       id: spec.id,
       label: spec.label,
       detail: spec.detail,
-      ...(spec.isDefault ? { isDefault: true } : {})
+      ...(spec.isDefault ? { isDefault: true } : {}),
+      ...(spec.disabled ? { disabled: true } : {})
     }))
+  }
+
+  wslStatus(): WslStatus {
+    return probeWsl()
+  }
+
+  refreshProfiles(): void {
+    this.shellCache = null
   }
 
   defaultShellId(): string {
@@ -275,7 +300,7 @@ export class TerminalManager {
     const specs = this.specs()
     if (shellId) {
       const requested = specs.find((spec) => spec.id === shellId)
-      if (requested) return requested
+      if (requested && !requested.disabled) return requested
     }
     return specs.find((spec) => spec.isDefault) ?? specs[0]
   }

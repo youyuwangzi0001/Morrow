@@ -64,7 +64,10 @@ describe('openExternalUrl', () => {
   })
 
   it.skipIf(process.platform !== 'win32')('登录时直接拉起默认浏览器，不依赖系统 URL 关联', async () => {
-    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
+    mocks.execFileSync.mockImplementation((file: string) => {
+      if (/net(?:.exe)?$/i.test(String(file))) throw new Error('not elevated')
+      return 'ProgId REG_SZ MSEdgeHTM'
+    })
     mocks.existsSync.mockReturnValue(true)
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { unref: () => void }
@@ -78,5 +81,20 @@ describe('openExternalUrl', () => {
     const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
     expect(exe.toLowerCase()).toContain('msedge.exe')
     expect(args).toEqual(['https://example.com/auth?x=1'])
+  })
+
+  it.skipIf(process.platform !== 'win32')('提升权限时通过 explorer 打开，避免创建高完整性浏览器实例', async () => {
+    mocks.execFileSync.mockReturnValue('session ok')
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void }
+      child.unref = vi.fn()
+      process.nextTick(() => child.emit('spawn'))
+      return child
+    })
+    const result = await openLoginUrl('https://example.com/auth?x=1')
+    expect(result).toEqual({ opened: true, copied: true })
+    const [exe] = mocks.spawn.mock.calls[0] as [string, string[]]
+    expect(exe.toLowerCase()).toContain('explorer.exe')
+    expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
   })
 })

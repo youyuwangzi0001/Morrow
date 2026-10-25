@@ -586,7 +586,7 @@ function buildUsageText(_singleOnly = false) {
     '- 修复 Windows 系统浏览器关联失效时登录页无法拉起（浏览器直连 + 可重试），以及多轮对话中 assistant 历史内容被上游 400 拒绝的问题。',
     '- 改动卡长路径改为单行省略，展开箭头不再被挤到第二行；上下文详情紧贴圆环上浮，并与模型菜单统一排版。',
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
-    '- 扁平化：14 个单元套件 / 943 用例，17 个 E2E 套件 / 208 用例；源码与构建脚本已在 GitHub 开源。',
+    '- 扁平化：14 个单元套件 / 945 用例，17 个 E2E 套件 / 208 用例；源码与构建脚本已在 GitHub 开源。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [

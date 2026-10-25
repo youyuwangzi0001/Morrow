@@ -1603,37 +1603,39 @@ function TerminalTab(): React.JSX.Element {
   const updateSettings = useAppStore((s) => s.updateSettings)
   const [profiles, setProfiles] = useState<TerminalShellProfile[]>([])
   const [fallbackShell, setFallbackShell] = useState('')
+  const [wsl, setWsl] = useState<{ installed: boolean; distros: string[] }>({ installed: false, distros: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      try {
-        const result = (await window.morrow.features.invoke('feature:terminal:profiles')) as Result<{
-          profiles: TerminalShellProfile[]
-          defaultShell: string
-        }>
-        if (!alive) return
-        if (!result.ok) {
-          setError(result.error.message)
-          return
-        }
-        setProfiles(result.data.profiles)
-        setFallbackShell(result.data.defaultShell)
-      } catch (err) {
-        if (alive) setError(errorText(err, '读取可用的终端失败。'))
-      } finally {
-        if (alive) setLoading(false)
+  const load = async (refresh = false): Promise<void> => {
+    setLoading(true)
+    try {
+      const result = (await window.morrow.features.invoke('feature:terminal:profiles', { refresh })) as Result<{
+        profiles: TerminalShellProfile[]
+        defaultShell: string
+        wsl?: { installed: boolean; distros: string[] }
+      }>
+      if (!result.ok) {
+        setError(result.error.message)
+        return
       }
-    })()
-    return () => {
-      alive = false
+      setProfiles(result.data.profiles)
+      setFallbackShell(result.data.defaultShell)
+      setWsl(result.data.wsl ?? { installed: false, distros: [] })
+    } catch (err) {
+      setError(errorText(err, '读取可用的终端失败。'))
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    void load()
   }, [])
 
-  const selected = profiles.some((profile) => profile.id === savedShell) ? savedShell : fallbackShell
+  const selected = profiles.some((profile) => profile.id === savedShell && !profile.disabled) ? savedShell : fallbackShell
   const meta = profiles.find((profile) => profile.id === selected)
+  const isWindows = /Windows/i.test(navigator.userAgent)
 
   const choose = async (value: string): Promise<void> => {
     setError(null)
@@ -1665,7 +1667,8 @@ function TerminalTab(): React.JSX.Element {
               options={profiles.map((profile) => ({
                 value: profile.id,
                 label: profile.label,
-                description: profile.detail
+                description: profile.detail,
+                disabled: profile.disabled
               }))}
               onChange={(next) => void choose(next)}
             />
@@ -1673,9 +1676,24 @@ function TerminalTab(): React.JSX.Element {
         </div>
       )}
 
+      {isWindows && (!wsl.installed || wsl.distros.length === 0) ? (
+        <p className="st-hint">
+          {wsl.installed
+            ? '检测到 WSL 组件，但还没有 Linux 发行版。在 PowerShell 运行 wsl --install，完成后点「重新检测」。'
+            : '未检测到 WSL。安装 WSL 与 Linux 发行版后，点「重新检测」即可选择。'}
+        </p>
+      ) : null}
       <p className="st-hint">只影响之后新建的终端；已经打开的终端保持原样。</p>
       <InlineError message={error} />
       <div className="st-search-actions">
+        <Button
+          variant="ghost"
+          icon={<RefreshCw size={13} strokeWidth={1.6} aria-hidden />}
+          disabled={loading}
+          onClick={() => void load(true)}
+        >
+          重新检测
+        </Button>
         <Button
           variant="secondary"
           icon={<SquareTerminal size={13} strokeWidth={1.6} aria-hidden />}

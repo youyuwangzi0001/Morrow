@@ -42,17 +42,17 @@ const OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
 const OAUTH_REDIRECT_URI = 'http://localhost:1455/auth/callback'
 const OAUTH_SCOPE = 'openid profile email offline_access'
 const QUOTA_CACHE_MS = 60_000
-const CODEX_MODELS: ModelInfo[] = [
-  { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-6-astra', label: 'GPT-6 Astra', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-6-sol', label: 'GPT-6 Sol', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-6-luna', label: 'GPT-6 Luna', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.4', label: 'GPT-5.4', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
-  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' }
+export const CODEX_MODELS: ModelInfo[] = [
+  { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-6-astra', label: 'GPT-6 Astra', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-6-sol', label: 'GPT-6 Sol', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-6-luna', label: 'GPT-6 Luna', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.4', label: 'GPT-5.4', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' }
 ]
 
 const DISCLAIMER =

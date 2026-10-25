@@ -1647,3 +1647,19 @@ describe('prompt-mentions.test.ts', () => {
     })
   })
 })
+
+describe('超频模式提示词', () => {
+  it('在聊天、工作、计划与研究模式下都常驻，且不受思考强度档位影响', () => {
+    const prompts = [
+      buildSystemPrompt({ mode: 'work', workspace: 'C:\work' }),
+      buildSystemPrompt({ mode: 'chat', workspace: 'C:\work' }),
+      buildSystemPrompt({ mode: 'work', planMode: true, workspace: 'C:\work' }),
+      buildSystemPrompt({ mode: 'research', workspace: 'C:\work' })
+    ]
+    for (const prompt of prompts) {
+      expect(prompt).toContain('## 超频模式（常驻）')
+      expect(prompt).toContain('任何档位')
+      expect(prompt).toContain('没有验证的内容不能算完成')
+    }
+  })
+})

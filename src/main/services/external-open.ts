@@ -43,6 +43,15 @@ function windowsBrowserCandidates(): string[] {
   return [...order, ...firefox, ...brave]
 }
 
+function windowsIsElevated(): boolean {
+  try {
+    execFileSync('net.exe', ['session'], { stdio: 'ignore', windowsHide: true, timeout: 1_500 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function launchBrowser(exe: string, url: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
@@ -108,6 +117,22 @@ export async function openLoginUrl(url: string): Promise<{ opened: boolean; copi
     return { opened: false, copied: true }
   }
   if (process.platform === 'win32') {
+    if (windowsIsElevated()) {
+      // 提升权限的 Morrow 直接启动浏览器会创建一个高完整性实例，随后用户正常打开浏览器会触发
+      // “现有实例正在以提升的权限运行”；交给 explorer.exe（普通完整性）打开默认浏览器。
+      try {
+        const child = spawn('explorer.exe', [url], { detached: true, stdio: 'ignore', windowsHide: true })
+        child.unref()
+        try {
+          clipboard.writeText(url)
+        } catch {
+          // 剪贴板不可用时仍尝试让 explorer 打开
+        }
+        return { opened: true, copied: true }
+      } catch {
+        // explorer 不可用时再尝试已安装浏览器
+      }
+    }
     for (const browser of windowsBrowserCandidates()) {
       if (!existsSync(browser)) continue
       if (await launchBrowser(browser, url)) return { opened: true, copied: false }
