@@ -63,7 +63,7 @@ describe('openExternalUrl', () => {
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/login?x=1')
   })
 
-  it.skipIf(process.platform !== 'win32')('登录时使用独立浏览器配置拉起浏览器，不依赖系统 URL 关联', async () => {
+  it.skipIf(process.platform !== 'win32')('登录优先使用 cmd /c start 打开系统默认浏览器', async () => {
     mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
     mocks.existsSync.mockReturnValue(true)
     mocks.spawn.mockImplementation(() => {
@@ -76,24 +76,30 @@ describe('openExternalUrl', () => {
     expect(result).toEqual({ opened: true, copied: true })
     expect(mocks.openExternal).not.toHaveBeenCalled()
     const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
-    expect(exe.toLowerCase()).toContain('msedge.exe')
-    expect(args.some((arg) => arg.startsWith('--user-data-dir='))).toBe(true)
-    expect(args).toContain('--new-window')
-    expect(args.at(-1)).toBe('https://example.com/auth?x=1')
+    expect(exe.toLowerCase()).toContain('cmd.exe')
+    expect(args).toEqual(['/c', 'start', '""', '"https://example.com/auth?x=1"'])
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
   })
 
-  it.skipIf(process.platform !== 'win32')('独立登录配置不会移交到既有浏览器实例', async () => {
-    mocks.execFileSync.mockReturnValue('session ok')
-    mocks.spawn.mockImplementation(() => {
-      const child = new EventEmitter() as EventEmitter & { unref: () => void }
-      child.unref = vi.fn()
-      process.nextTick(() => child.emit('spawn'))
-      return child
-    })
+  it.skipIf(process.platform !== 'win32')('cmd start 无法启动时回退到独立浏览器配置', async () => {
+    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
+    mocks.existsSync.mockReturnValue(true)
+    mocks.spawn
+      .mockImplementationOnce(() => {
+        const child = new EventEmitter() as EventEmitter & { unref: () => void }
+        child.unref = vi.fn()
+        process.nextTick(() => child.emit('error', new Error('no cmd')))
+        return child
+      })
+      .mockImplementation(() => {
+        const child = new EventEmitter() as EventEmitter & { unref: () => void }
+        child.unref = vi.fn()
+        process.nextTick(() => child.emit('spawn'))
+        return child
+      })
     const result = await openLoginUrl('https://example.com/auth?x=1')
     expect(result).toEqual({ opened: true, copied: true })
-    const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
+    const [exe, args] = mocks.spawn.mock.calls[1] as [string, string[]]
     expect(exe.toLowerCase()).toContain('msedge.exe')
     expect(args.some((arg) => arg.startsWith('--user-data-dir='))).toBe(true)
     expect(args).toContain('--new-window')

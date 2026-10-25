@@ -54,6 +54,28 @@ function loginBrowserProfile(): string {
   return profile
 }
 
+function launchViaCmdStart(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false
+    let timer: NodeJS.Timeout | undefined
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve(ok)
+    }
+    const child = spawn('cmd.exe', ['/c', 'start', '""', `"${url}"`], {
+      stdio: 'ignore',
+      detached: true,
+      windowsHide: true
+    })
+    child.unref()
+    timer = setTimeout(() => finish(true), 800)
+    child.once('error', () => finish(false))
+    child.once('spawn', () => finish(true))
+  })
+}
+
 function launchBrowser(exe: string, url: string, dedicated = false): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
@@ -130,7 +152,10 @@ export async function openLoginUrl(url: string): Promise<{ opened: boolean; copi
     } catch {
       // 剪贴板不可用时仍继续尝试浏览器
     }
-    // 登录始终使用独立配置，避免默认浏览器正在以其它完整性级别运行导致静默移交。
+    // 参考 dsh-chatgpt-subscription：Windows 用 cmd /c start 交给系统 ShellExecute；
+    // 这比直接 spawn 浏览器更能兼容默认关联与既有实例。
+    if (await launchViaCmdStart(url)) return { opened: true, copied: true }
+    // 系统关联不可用时，再用独立配置直连浏览器兜底。
     for (const browser of browsers) {
       if (await launchBrowser(browser, url, true)) return { opened: true, copied: true }
     }
