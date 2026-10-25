@@ -395,6 +395,68 @@
   font-style: normal;
 }
 
+.st-sub-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.st-sub-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--chip-radius);
+  color: var(--text-2);
+  font-size: var(--fs-xs-plus);
+}
+
+.st-sub-model-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-sub-model-row > em {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  font-style: normal;
+}
+
+.st-sub-model-context {
+  flex: 0 0 auto;
+  width: 86px;
+}
+
+.st-sub-model-context .select-trigger {
+  height: 24px;
+  padding: 0 6px;
+  border-color: transparent;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.st-sub-model-context .select-trigger:hover,
+.st-sub-model-context .select-trigger.is-open {
+  border-color: var(--line);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.st-sub-model-context .select-popup {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  width: 150px;
+}
+
 .st-sub-note,
 .st-sub-empty {
   margin: 0;

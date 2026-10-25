@@ -13,7 +13,6 @@ const MODELS: Array<{ id: string; label: string; contextWindow: number }> = [
   { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', contextWindow: 384_000 },
   { id: 'glm-5.3', label: 'GLM-5.3', contextWindow: 200_000 },
   { id: 'glm-5.3-flash', label: 'GLM-5.3 Flash', contextWindow: 200_000 },
-  { id: 'glm-5.2', label: 'GLM-5.2', contextWindow: 200_000 },
   { id: 'kimi-k3', label: 'Kimi K3', contextWindow: 262_144 },
   { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code', contextWindow: 262_144 },
   { id: 'kimi-k2.6', label: 'Kimi K2.6', contextWindow: 262_144 },

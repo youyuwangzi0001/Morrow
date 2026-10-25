@@ -243,6 +243,8 @@ export interface AppStore {
   setModel: (modelId: string, providerId: string) => Promise<void>
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   setReasoningEffort: (effort: import('@shared/types').ReasoningEffort) => Promise<void>
+  /** 设置当前会话/默认模型的上下文上限（仅支持 contextOptions 的模型） */
+  setContextWindow: (contextWindow?: number) => Promise<void>
   /** 切换显式「聊天 / 工作」模式（主进程持久化；运行中会先提示停止） */
   setSessionMode: (mode: SessionMode) => Promise<void>
   /** 开启/关闭计划模式（仅工作模式；运行中拒绝） */
@@ -2018,6 +2020,32 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       set({ settings })
     } catch {
       // 忽略
+    }
+  },
+
+  async setContextWindow(contextWindow) {
+    const session = get().session
+    const nextModel = { ...(session?.model ?? get().settings.defaultModel) }
+    if (contextWindow && contextWindow > 0) nextModel.contextWindow = contextWindow
+    else delete nextModel.contextWindow
+    if (session) {
+      const sessionId = session.id
+      try {
+        const meta = await call(window.morrow.session.setModel(sessionId, nextModel))
+        set((state) => ({
+          ...(state.session?.id === sessionId ? { session: { ...state.session, model: nextModel } } : {}),
+          sessions: upsertSessionMeta(state.sessions, meta)
+        }))
+      } catch (err) {
+        get().notify('error', err instanceof Error ? err.message : '切换上下文长度失败')
+      }
+      return
+    }
+    try {
+      const settings = await call(window.morrow.settings.update({ defaultModel: nextModel }))
+      set({ settings })
+    } catch (err) {
+      get().notify('error', err instanceof Error ? err.message : '切换上下文长度失败')
     }
   },
 

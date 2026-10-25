@@ -6,6 +6,7 @@ import { startSubscriptionRelay } from '../../../src/main/services/subscription-
 import {
   decodeQoderBody,
   encodeQoderBody,
+  parseQoderModelCatalog,
   startQoderProxy,
   type QoderCredential,
   type QoderModel
@@ -311,6 +312,58 @@ function sseResponse(frames: string): Response {
   return new Response(frames, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+describe('Qoder 账号模型目录', () => {
+  it('只使用接口返回的模型、200K/400K/1M 上下文与真实思考档位', () => {
+    const contextConfig = {
+      '1M': { token_count: 1_000_000 },
+      '200K': { token_count: 200_000, is_default: true },
+      '400K': { token_count: 400_000 }
+    }
+    const models = parseQoderModelCatalog({
+      chat: [
+        {
+          key: 'auto',
+          display_name: 'Auto',
+          is_reasoning: false,
+          is_vl: true,
+          enable: true,
+          max_input_tokens: 200_000,
+          context_config: contextConfig
+        },
+        {
+          key: 'dfmodel',
+          display_name: 'DeepSeek-Flash',
+          is_reasoning: true,
+          is_vl: true,
+          enable: true,
+          max_input_tokens: 1_000_000,
+          context_config: contextConfig,
+          thinking_config: { enabled: { efforts: { low: {}, high: { is_default: true }, max: {} } } }
+        },
+        {
+          key: 'qfmodel',
+          display_name: 'Qwen3.8-Flash',
+          is_reasoning: true,
+          is_vl: true,
+          enable: true,
+          max_input_tokens: 180_000,
+          context_config: contextConfig,
+          thinking_config: { enabled: { efforts: { xhigh: {}, low: {}, medium: { is_default: true } } } }
+        }
+      ]
+    })
+    expect(models.map((model) => model.label)).toEqual(['Auto', 'DeepSeek-Flash', 'Qwen3.8-Flash'])
+    for (const model of models) {
+      expect(model.contextWindow).toBe(1_000_000)
+      expect(model.contextOptions).toEqual([200_000, 400_000, 1_000_000])
+      expect(model.defaultContextWindow).toBe(200_000)
+    }
+    expect(models[0]?.reasoning).toBe(false)
+    expect(models[1]?.reasoningEfforts).toEqual(['low', 'high', 'max'])
+    expect(models[2]?.reasoningEfforts).toEqual(['xhigh', 'low', 'medium'])
+  })
+})
+
 describe('Qoder 请求 codec', () => {
   it('按 frozen fixture 逐字节编码请求体', () => {
     const fixture = JSON.parse(readFileSync(join(__dirname, '../../fixtures/qoder/body-codec.json'), 'utf8')) as {
@@ -363,11 +416,14 @@ describe('Qoder 订阅代理', () => {
       headers: {
         authorization: `Bearer ${localToken}`,
         'content-type': 'application/json',
-        'x-session-id': 'sess-1'
+        'x-session-id': 'sess-1',
+        'x-morrow-context-window': '64000'
       },
       body: JSON.stringify({
         model: 'Auto',
         stream: true,
+        max_tokens: 200_000,
+        reasoning_effort: 'medium',
         messages: [
           { role: 'system', content: '你是 Morrow 的助手' },
           { role: 'user', content: '你好' }
@@ -403,7 +459,10 @@ describe('Qoder 订阅代理', () => {
     const messages = payload.messages as Array<Record<string, unknown>>
     expect(messages[0]).toEqual({ role: 'system', content: '你是 Morrow 的助手' })
     expect(messages[1]).toEqual({ role: 'user', content: '你好' })
-    expect(payload.model_config).toMatchObject({ key: 'auto', is_reasoning: true })
+    expect(payload.model_config).toMatchObject({ key: 'auto', is_reasoning: true, max_input_tokens: 64_000 })
+    expect((payload.parameters as Record<string, unknown>).max_tokens).toBe(32_768)
+    // Auto 没有声明真实档位：即使客户端传来 medium，也不能发给上游。
+    expect((payload.parameters as Record<string, unknown>).reasoning_effort).toBeUndefined()
     expect(Array.isArray(payload.tools)).toBe(true)
     expect((payload.business as Record<string, unknown>).name).toBe('你好')
   })

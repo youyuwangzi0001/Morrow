@@ -257,25 +257,55 @@
   height: 100%;
 }
 
+/* viewport 原生滚动条只由 xterm 用来同步滚动，隐藏它，避免与自定义
+   scrollbar 的滑块/箭头叠在一起；实际可视滚动条走下面的 xterm 自定义 DOM。 */
 .terminal-xterm .xterm .xterm-viewport {
   background: transparent !important;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: none;
 }
 
-.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar {
-  width: 9px;
-}
-
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar,
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-button,
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-track,
 .terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: var(--line-strong);
-  background-clip: content-box;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
-.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
+/* xterm 6 使用自己的滚动条 DOM（不是 viewport 原生滚动条）：
+   宽度/圆角/颜色全部使用顶层 --scrollbar-* 令牌；显隐交给 xterm 的
+   visible/invisible 类，只有内容超出当前高度时才出现。 */
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: var(--scrollbar-size) !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical.visible {
+  opacity: 1 !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical.invisible {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  /* 与主区域原生滑块一致：居中 6px、实心、上下全圆角，不做渐变高光。 */
+  left: calc((var(--scrollbar-size) - var(--scrollbar-thumb-width)) / 2) !important;
+  width: var(--scrollbar-thumb-width) !important;
+  border: 0;
+  border-radius: var(--scrollbar-radius);
+  background: var(--scrollbar-thumb-color) !important;
+}
+
+/* 与应用滚动条一致：无箭头按钮、无边框 */
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .scra {
+  display: none !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+  background: var(--scrollbar-thumb-hover-color) !important;
 }
 
 .terminal-xterm .xterm .xterm-screen {
@@ -366,34 +396,6 @@
 
 .terminal-task-input:focus {
   border-color: var(--line-gold);
-}
-
-.terminal-statusbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  height: 20px;
-  padding: 0 10px;
-  border-top: 1px solid var(--line);
-  background: var(--bg-elev);
-  color: var(--text-3);
-  font-size: var(--fs-3xs);
-}
-
-.terminal-status-path {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-status-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
 }
 
 @media (max-width: 760px) {

@@ -7,7 +7,7 @@
 | 渠道 | 登录 / 导入 | 上游协议 | 额度 | 当前验证 |
 |---|---|---|---|---|
 | ChatGPT / Codex | 本机 `~/.codex/auth.json` 只读导入、浏览器 OAuth | Responses（本地代理转换为 Chat Completions） | `/backend-api/wham/usage` | 真实账号验证（登录、额度、Agent 工具调用、重启恢复） |
-| Qoder | PAT、浏览器设备流、本机 qodercli 导入 | Qoder COSY 专用信封 | `/api/v2/quota/usage` | 协议单测 + UI；本机无 Qoder 账号 |
+| Qoder | PAT、浏览器设备流、本机 qodercli 导入 | Qoder COSY 专用信封 | `/api/v2/quota/usage` | 协议单测 + 真账号登录/Agent 调用；账号模型目录 15 个 chat 模型 |
 | Kimi Code | RFC 8628 设备码（中国站 / 全球区） | OpenAI Chat Completions | `/coding/v1/usages` | 协议单测 + UI；本机无 Kimi 账号 |
 | GLM Coding Plan | ZCode 浏览器轮询登录 → 兑换 Coding Plan Key | Anthropic Messages | `/api/monitor/usage/quota/limit` | 协议单测 + UI；本机无 GLM 账号 |
 | MiniMax Code | 设备码 + PKCE、本机 `~/.minimax/auth/.../auth.json` 导入 | Anthropic Messages | `/v1/api/openplatform/coding_plan/remains` | 协议单测 + UI；本机无 MiniMax 账号 |
@@ -42,6 +42,7 @@
 
 - 三种入口：PAT 兑换、全球区浏览器设备流、本机 qodercli 登录只读导入。
 - `qoder-proxy.ts` 处理 COSY 1.1.72 头签名、请求体 alphabet 编码、`RemoteChatAsk` 信封与信封 SSE。
+- 模型目录不硬编码：登录/恢复时读取账号接口 `/algo/api/v2/model/list?Encode=1`，模型原始名称、上下文档位（`context_config`，实测 200K/400K/1M，默认 200K）与思考档位（`thinking_config`）全部以账号返回为准；设置页可逐个模型调整默认上下文，输入栏按模型可选项显示“上下文上限”。
 - 区域必须与账号一致；中国站与全球区端点不同。
 
 ### 3.3 Kimi Code
@@ -57,7 +58,7 @@
   2. `getCustomerInfo` 定位默认机构 / 项目；
   3. 找或创建本线路专属 Key（`morrow-glm-coding-plan`），取 `secretKey`，拼成 `{id}.{secret}`；
   4. 用配额接口验证后才落盘。
-- 模型面走 Anthropic Messages（`/api/anthropic/v1/messages`），同时发送 `x-api-key` 与 `Authorization: Bearer`；思考开关发 `thinking:{type:'enabled'}`，深度用顶层 `reasoning_effort`（GLM-5.3 为 low/high/max，GLM-5.2 为 high/max，Turbo 不发）；额度接口用裸 Key（不加 Bearer）。
+- 模型面走 Anthropic Messages（`/api/anthropic/v1/messages`），同时发送 `x-api-key` 与 `Authorization: Bearer`；思考开关发 `thinking:{type:'enabled'}`，深度用顶层 `reasoning_effort`（GLM-5.3 为 low/high/max；不支持思考的 Turbo 不发）。GLM-5.2 不在官方 API 模型列表内，Morrow 不提供该型号。额度接口用裸 Key（不加 Bearer）。
 - GLM 没有 refresh 交换接口；Coding Plan Key 是长期凭据，失效时重新登录。中国区兑换链在上游文档中不如国际区明确，失败会显示服务商原因。
 
 ### 3.5 MiniMax Code

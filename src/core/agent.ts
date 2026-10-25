@@ -74,6 +74,7 @@ import type {
   WebSearchHandler
 } from './types'
 import { ProviderError, toProviderError } from './providers/types'
+import { reasoningRequestFor } from '../shared/models'
 import {
   GOAL_TOOL_DEFINITION,
   TOOL_DEFINITIONS,
@@ -156,6 +157,8 @@ export interface RunAgentOptions {
   permissionRules?: PermissionRule[]
   /** 推理强度；仅在模型声明 reasoningStyle 时映射到 provider */
   reasoningEffort?: import('../shared/types').ReasoningEffort
+  /** 本会话覆盖的上下文上限；传给支持该参数的代理 */
+  contextWindow?: number
   /** 可用的集群成员角色（主进程加载内置 + 自定义） */
   agents?: SwarmMemberRole[]
   signal: AbortSignal
@@ -950,6 +953,7 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
   }
 
   try {
+    const reasoning = reasoningRequestFor(opts.model, opts.reasoningEffort)
     const request: ProviderStreamRequest = {
       system: ctx.systemPrompt,
       messages: ctx.messages,
@@ -957,9 +961,8 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
       signal: opts.signal,
       workspace: opts.workspace,
       maxTokens: opts.model.maxOutput,
-      ...(opts.reasoningEffort && opts.reasoningEffort !== 'auto' && opts.model.reasoningStyle
-        ? { reasoning: { effort: opts.reasoningEffort, style: opts.model.reasoningStyle } }
-        : {})
+      ...(opts.contextWindow ? { contextWindow: opts.contextWindow } : {}),
+      ...(reasoning ? { reasoning } : {})
     }
     for await (const event of iterateWithAbort(opts.provider.stream(request), opts.signal)) {
       switch (event.type) {
@@ -1869,6 +1872,7 @@ async function runSwarmMemberLoop(
     const streamedCalls: ToolUseBlock[] = []
     const seenProviderCallIds = new Set<string>()
     let requestUsage: Usage = { inputTokens: 0, outputTokens: 0 }
+    const reasoning = reasoningRequestFor(opts.model, opts.reasoningEffort)
     try {
       for await (const event of iterateWithAbort(
         opts.provider.stream({
@@ -1878,9 +1882,8 @@ async function runSwarmMemberLoop(
           signal: opts.signal,
           workspace: opts.workspace,
           maxTokens: opts.model.maxOutput,
-          ...(opts.reasoningEffort && opts.reasoningEffort !== 'auto' && opts.model.reasoningStyle
-            ? { reasoning: { effort: opts.reasoningEffort, style: opts.model.reasoningStyle } }
-            : {})
+          ...(opts.contextWindow ? { contextWindow: opts.contextWindow } : {}),
+          ...(reasoning ? { reasoning } : {})
         }),
         opts.signal
       )) {

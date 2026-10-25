@@ -14,6 +14,7 @@ import type { SubscriptionTestResult } from '../../shared/subscriptions'
 import { dataPath } from './paths'
 import { getSettingsStore } from './settings-store'
 import { testProviderConnection } from '../../core/providers'
+import { enrichModelCapabilities } from '../../shared/models'
 import { asRecord, asString } from './agent-protocol-utils'
 import { openLoginUrl } from './external-open'
 
@@ -66,7 +67,7 @@ export function saveLoopbackProvider(input: {
     kind: input.kind,
     name: input.name,
     baseUrl: `http://127.0.0.1:${input.port}/v1`,
-    models: input.models,
+    models: enrichModelCapabilities(input.models),
     category: 'custom',
     apiKeyStored: true,
     enabled: existing?.enabled ?? true

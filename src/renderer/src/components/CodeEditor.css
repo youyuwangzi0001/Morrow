@@ -26,18 +26,18 @@
 }
 
 .code-editor-host .cm-scroller::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 .code-editor-host .cm-scroller::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: 999px;
-  border: 2px solid transparent;
+  background: var(--scrollbar-thumb-color);
+  border-radius: var(--scrollbar-radius);
+  border: calc((var(--scrollbar-size) - var(--scrollbar-thumb-width)) / 2) solid transparent;
   background-clip: content-box;
 }
 
 .code-editor-host .cm-scroller::-webkit-scrollbar-thumb:hover {
-  background: var(--line-gold);
+  background: var(--scrollbar-thumb-hover-color);
   background-clip: content-box;
 }

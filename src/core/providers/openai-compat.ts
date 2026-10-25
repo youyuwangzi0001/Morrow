@@ -232,7 +232,10 @@ export class OpenAICompatProvider implements Provider {
     try {
       response = await this.fetchImpl(this.url, {
         method: 'POST',
-        headers: this.headers,
+        headers: {
+          ...this.headers,
+          ...(req.contextWindow ? { 'x-morrow-context-window': String(req.contextWindow) } : {})
+        },
         body: JSON.stringify(buildOpenAIRequestBody(req, this.model)),
         signal: req.signal
       })

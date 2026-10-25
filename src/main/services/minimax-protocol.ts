@@ -30,7 +30,7 @@ export const MINIMAX_MODELS: ModelInfo[] = [
   {
     id: 'MiniMax-M3',
     label: 'MiniMax M3',
-    contextWindow: 512_000,
+    contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,
@@ -40,7 +40,7 @@ export const MINIMAX_MODELS: ModelInfo[] = [
   {
     id: 'MiniMax-M3.1-Flash',
     label: 'MiniMax M3.1 Flash',
-    contextWindow: 512_000,
+    contextWindow: 1_000_000,
     maxOutput: 128_000,
     supportsTools: true,
     supportsReasoning: true,

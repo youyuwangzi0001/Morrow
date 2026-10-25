@@ -338,10 +338,19 @@ export async function configureMockProvider(
   baseUrl: string,
   providerId = 'mock-e2e',
   contextWindow = 32_000,
-  supportsVision = false
+  supportsVision = false,
+  contextOptions: number[] = [],
+  reasoningEfforts: string[] = ['low', 'medium', 'high', 'xhigh', 'max']
 ): Promise<{ providerId: string; modelId: string }> {
   return page.evaluate(
-    async (arg: { providerId: string; baseUrl: string; contextWindow: number; supportsVision: boolean }) => {
+    async (arg: {
+      providerId: string
+      baseUrl: string
+      contextWindow: number
+      supportsVision: boolean
+      contextOptions: number[]
+      reasoningEfforts: string[]
+    }) => {
       const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
       const config = {
         id: arg.providerId,
@@ -356,6 +365,8 @@ export async function configureMockProvider(
             supportsTools: true,
             supportsReasoning: true,
             ...(arg.supportsVision ? { supportsVision: true } : {}),
+            ...(arg.reasoningEfforts.length > 0 ? { reasoningEfforts: arg.reasoningEfforts } : {}),
+            ...(arg.contextOptions.length > 0 ? { contextOptions: arg.contextOptions } : {}),
             reasoningStyle: 'effort',
             pricing: { inputPerMTok: 1, outputPerMTok: 2 }
           }
@@ -369,7 +380,7 @@ export async function configureMockProvider(
       if (!saved) throw new Error('mock provider 保存失败')
       return { providerId: arg.providerId, modelId: 'mock-model' }
     },
-    { providerId, baseUrl, contextWindow, supportsVision }
+    { providerId, baseUrl, contextWindow, supportsVision, contextOptions, reasoningEfforts }
   )
 }
 

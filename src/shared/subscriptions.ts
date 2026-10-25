@@ -191,6 +191,7 @@ export type SubscriptionAction =
   | { action: 'remove-qoder' }
   | { action: 'test-qoder' }
   | { action: 'set-qoder-enabled'; enabled: boolean }
+  | { action: 'set-qoder-context'; modelId: string; contextWindow: number }
   | { action: 'login-agent'; id: AgentSubscriptionId; region?: string }
   | { action: 'login-agent-token'; id: AgentSubscriptionId; token: string; region?: string }
   | { action: 'import-agent-local'; id: AgentSubscriptionId }

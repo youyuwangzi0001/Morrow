@@ -59,12 +59,12 @@ body {
 /* R9：无外边框、黑金配色滚动条（侧栏/画布/对话/设置统一） */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #8a6f42 transparent;
+  scrollbar-color: var(--scrollbar-thumb-color) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
   background: transparent;
 }
 
@@ -74,18 +74,18 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  min-height: 36px;
+  min-height: var(--scrollbar-min-length);
   border: 0;
-  border-radius: var(--r-xs);
-  background: linear-gradient(180deg, rgba(84, 67, 40, 0.55) 0%, #8a6f42 42%, #c8ae7d 52%, #5d492b 100%);
+  border-radius: var(--scrollbar-radius);
+  background: var(--scrollbar-thumb-color);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(122, 96, 55, 0.75) 0%, #b18f58 42%, #e4ce9e 54%, #7a6138 100%);
+  background: var(--scrollbar-thumb-hover-color);
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background: linear-gradient(180deg, #8a6f42 0%, #e4ce9e 52%, #8a6f42 100%);
+  background: var(--scrollbar-thumb-active-color);
 }
 
 ::-webkit-scrollbar-corner {

@@ -794,6 +794,7 @@ export class AgentService {
           sessionId: session.id,
           provider: resolved.provider,
           model: resolved.modelInfo,
+          ...(resolved.contextWindow ? { contextWindow: resolved.contextWindow } : {}),
           systemPrompt,
           history,
           userMessage,
@@ -2431,19 +2432,38 @@ export class AgentService {
   private resolveProvider(
     session: Session,
     input: SendMessageInput
-  ): { provider: ReturnType<typeof createProvider>; config: ProviderConfig; modelId: string; modelInfo: ModelInfo } {
+  ): {
+    provider: ReturnType<typeof createProvider>
+    config: ProviderConfig
+    modelId: string
+    modelInfo: ModelInfo
+    contextWindow?: number
+  } {
     return this.resolveModel(input.model ?? session.model)
   }
 
   private resolveModel(
     modelRef: Session['model']
-  ): { provider: ReturnType<typeof createProvider>; config: ProviderConfig; modelId: string; modelInfo: ModelInfo } {
+  ): {
+    provider: ReturnType<typeof createProvider>
+    config: ProviderConfig
+    modelId: string
+    modelInfo: ModelInfo
+    contextWindow?: number
+  } {
     const settings = this.settingsStore.get()
     const config = settings.providers.find((p) => p.id === modelRef.providerId)
     if (!config) throw new Error('找不到这个模型提供方，请到设置里重新连接。')
     const modelInfo =
       config.models.find((m) => m.id === modelRef.modelId) ?? config.models[0] ?? null
     if (!modelInfo) throw new Error('这个提供方还没有可用模型，请到设置里添加。')
+    const requestedContext =
+      modelRef.contextWindow && Number.isFinite(modelRef.contextWindow) &&
+      modelRef.contextWindow >= 1_024 && modelRef.contextWindow <= modelInfo.contextWindow
+        ? Math.round(modelRef.contextWindow)
+        : undefined
+    const contextWindow = requestedContext ?? modelInfo.defaultContextWindow ?? modelInfo.contextWindow
+    const effectiveModelInfo = contextWindow !== modelInfo.contextWindow ? { ...modelInfo, contextWindow } : modelInfo
     let apiKey = config.kind === 'demo' ? null : this.settingsStore.getApiKey(config.id)
     const isLocalEndpoint = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/i.test(config.baseUrl)
     if (config.kind !== 'demo' && !apiKey) {
@@ -2458,7 +2478,8 @@ export class AgentService {
       provider: createProvider(config, apiKey, modelInfo.id),
       config,
       modelId: modelInfo.id,
-      modelInfo
+      modelInfo: effectiveModelInfo,
+      contextWindow
     }
   }
 

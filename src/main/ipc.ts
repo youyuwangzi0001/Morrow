@@ -922,8 +922,19 @@ export function registerIpcHandlers(): void {
     IPC.sessionSetModel,
     (_e, payload: { sessionId: string; model: ModelRef }): Result<SessionMeta> => {
       if (!payload || typeof payload !== 'object') return fail('INVALID_MODEL', '模型参数无效。')
-      if (!findModel(getSettingsStore().get().providers, payload.model)) {
+      const requestedModel = findModel(getSettingsStore().get().providers, payload.model)
+      if (!requestedModel) {
         return fail('MODEL_NOT_FOUND', '这个模型不可用，请到设置里重新选择。')
+      }
+      if (payload.model.contextWindow !== undefined) {
+        const contextWindow = payload.model.contextWindow
+        const options = requestedModel.contextOptions ?? []
+        if (!Number.isInteger(contextWindow) || contextWindow < 1_024 || contextWindow > requestedModel.contextWindow) {
+          return fail('INVALID_CONTEXT_WINDOW', '这个上下文长度不合法。')
+        }
+        if (options.length === 0 || !options.includes(contextWindow)) {
+          return fail('CONTEXT_WINDOW_UNSUPPORTED', '这个模型不支持调整上下文长度。')
+        }
       }
       const settings = getSettingsStore().get()
       const provider = settings.providers.find((item) => item.id === payload.model.providerId)

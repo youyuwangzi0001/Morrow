@@ -44,7 +44,7 @@ import type {
   ResearchDepth,
   SessionMode
 } from '@shared/types'
-import { isReasoningEffort, REASONING_EFFORTS } from '@shared/models'
+import { isReasoningEffort, modelContextOptions, modelReasoningEfforts } from '@shared/models'
 import { RESEARCH_DEPTHS } from '@shared/research'
 import { useAppStore } from '../../store'
 import { IconButton, Segmented, Select } from '../../ui'
@@ -62,17 +62,13 @@ function maxInputHeightForViewport(): number {
 
 const REASONING_DESCRIPTIONS: Record<ReasoningEffort, string> = {
   auto: '由模型自己决定',
+  off: '关闭思考，直接回答',
   low: '更快、更省，适合简单任务',
   medium: '速度与深度平衡',
   high: '复杂分析，耗时更长',
   xhigh: '更深入的推理，适合难题',
   max: '尽可能深入，最慢、最贵'
 }
-const REASONING_OPTIONS = REASONING_EFFORTS.map((value) => ({
-  value,
-  label: value,
-  description: REASONING_DESCRIPTIONS[value]
-}))
 
 /* ── 权限模式文案 ─────────────────────────────────────────────── */
 
@@ -461,7 +457,23 @@ export function Composer(): React.JSX.Element {
   const permissionMode = session?.permissionMode ?? settings.permissionMode
   const permission = PERMISSION_OPTIONS.find((item) => item.value === permissionMode) ?? PERMISSION_OPTIONS[1]
   const reasoningEffort = session?.reasoningEffort ?? settings.reasoningEffort
-  const reasoningAvailable = Boolean(modelInfo?.supportsReasoning && modelInfo.reasoningStyle)
+  const reasoningOptions = modelReasoningEfforts(modelInfo).map((value) => ({
+    value,
+    label: value,
+    description: REASONING_DESCRIPTIONS[value]
+  }))
+  const reasoningAvailable = reasoningOptions.length > 0
+  const contextOptions = modelContextOptions(modelInfo)
+  const contextWindow = session?.model.contextWindow ?? modelInfo?.defaultContextWindow ?? modelInfo?.contextWindow ?? 0
+  const contextValue = contextOptions.includes(contextWindow)
+    ? contextWindow
+    : modelInfo?.defaultContextWindow ?? modelInfo?.contextWindow ?? 0
+  const setContextWindow = useAppStore((s) => s.setContextWindow)
+
+  useEffect(() => {
+    if (!modelInfo?.supportsReasoning || !modelInfo.reasoningStyle) return
+    if (!modelReasoningEfforts(modelInfo).includes(reasoningEffort)) void setReasoningEffort('auto')
+  }, [modelInfo, reasoningEffort, setReasoningEffort])
   const sessionMode: SessionMode =
     session?.mode === 'chat' ? 'chat' : session?.mode === 'research' ? 'research' : 'work'
   const uiSessionMode: ComposerMode = sessionMode === 'chat' ? 'chat' : 'work'
@@ -1355,11 +1367,7 @@ export function Composer(): React.JSX.Element {
         .flatMap((provider) =>
           provider.models.map((info) => ({
             value: `${provider.id}:${info.id}`,
-            label: info.label,
-            description:
-              provider.kind === 'demo'
-                ? '离线演示 · 不消耗额度'
-                : `${provider.name} · 上下文 ${Math.round(info.contextWindow / 1000)}k`
+            label: info.label
           }))
         ),
     [settings.providers, modelRef.providerId]
@@ -1613,18 +1621,6 @@ export function Composer(): React.JSX.Element {
 
           <div className="composer-bar-right">
             {runningCurrent ? <span className="composer-elapsed mono">{formatElapsed(elapsed)}</span> : null}
-            {reasoningAvailable ? (
-              <div className="composer-picker composer-picker-reasoning" title="思考强度：越高越适合复杂任务，但更慢、更贵">
-                <Select
-                  ariaLabel="推理强度"
-                  value={reasoningEffort}
-                  options={REASONING_OPTIONS}
-                  onChange={(next) => {
-                    if (isReasoningEffort(next)) void setReasoningEffort(next)
-                  }}
-                />
-              </div>
-            ) : null}
             <div className="composer-picker composer-picker-model">
               <Select
                 ariaLabel="选择模型"
@@ -1636,6 +1632,40 @@ export function Composer(): React.JSX.Element {
                 }}
               />
             </div>
+            {reasoningAvailable ? (
+              <div className="composer-picker composer-picker-reasoning" title="思考强度：只列出当前模型真实支持的档位">
+                <Select
+                  ariaLabel="推理强度"
+                  value={reasoningEffort}
+                  options={reasoningOptions}
+                  onChange={(next) => {
+                    if (isReasoningEffort(next)) void setReasoningEffort(next)
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                className="composer-picker composer-picker-reasoning is-unsupported"
+                title="当前模型不支持思考强度"
+              >
+                <span className="composer-reasoning-none">不支持思考</span>
+              </div>
+            )}
+            {contextOptions.length > 1 ? (
+              <div className="composer-picker composer-picker-context" title="上下文上限：只列出当前模型支持的长度">
+                <Select
+                  ariaLabel="上下文上限"
+                  value={String(contextValue)}
+                  options={contextOptions.map((value) => ({
+                    value: String(value),
+                    label: value >= 1_000_000 && value % 1_000_000 === 0
+                      ? `${value / 1_000_000}M`
+                      : `${Math.round(value / 1000)}K`
+                  }))}
+                  onChange={(next) => void setContextWindow(Number(next))}
+                />
+              </div>
+            ) : null}
             {researchMode ? (
               <div
                 className="composer-picker composer-picker-research"

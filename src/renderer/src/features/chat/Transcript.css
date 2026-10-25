@@ -711,18 +711,22 @@ button.compaction-head:hover {
   white-space: nowrap;
 }
 
-.message-diff-add {
+.message-diff-add,
+.message-diff-del {
   flex: 0 0 auto;
-  color: var(--patina);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-code);
+  font-weight: var(--code-font-weight, 400);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
+.message-diff-add {
+  color: var(--patina);
+}
+
 .message-diff-del {
-  flex: 0 0 auto;
   color: var(--rust);
-  font-weight: var(--fw-semibold);
-  white-space: nowrap;
 }
 
 .message-diff-paths {

@@ -1,5 +1,5 @@
-import type { ModelInfo, ProviderConfig } from '../../shared/types'
-import { isLocalServiceUrl } from '../../shared/models'
+import type { ModelInfo, ProviderConfig, ReasoningEffort } from '../../shared/types'
+import { isLocalServiceUrl, isReasoningEffort, reasoningEffortsForModel } from '../../shared/models'
 import { resolveAnthropicMessagesUrl, resolveChatCompletionsUrl } from '../../core/providers/types'
 
 export interface SyncModelsOutcome {
@@ -126,6 +126,25 @@ export async function syncProviderModels(
       existing?.reasoningStyle ?? (supportsReasoning ? (isAnthropic ? 'thinking' : 'effort') : undefined)
     const visionRaw = item.supports_vision ?? item.supports_image_input ?? item.vision
     const supportsVision = typeof visionRaw === 'boolean' ? visionRaw : existing?.supportsVision
+    const effortRaw = item.reasoning_efforts ?? item.supported_reasoning_efforts ?? item.reasoning_effort_support_list
+    const parsedEfforts: ReasoningEffort[] | undefined = Array.isArray(effortRaw)
+      ? [...new Set(effortRaw.filter((value): value is ReasoningEffort => isReasoningEffort(value)))]
+      : existing?.reasoningEfforts
+    const reasoningEfforts = parsedEfforts?.length
+      ? parsedEfforts
+      : supportsReasoning ? reasoningEffortsForModel(id, true) : undefined
+    const contextOptionsRaw = item.context_length_options ?? item.context_window_options ?? item.supported_context_lengths
+    const contextOptions = Array.isArray(contextOptionsRaw)
+      ? [...new Set(contextOptionsRaw
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 1_024 && value <= contextWindow))]
+          .sort((a, b) => a - b)
+      : existing?.contextOptions
+    const defaultContextRaw = item.default_context_window ?? item.defaultContextWindow
+    const defaultContextWindow = Number.isInteger(Number(defaultContextRaw)) &&
+      Number(defaultContextRaw) >= 1_024 && Number(defaultContextRaw) <= contextWindow
+      ? Number(defaultContextRaw)
+      : existing?.defaultContextWindow
     const info: ModelInfo = {
       id,
       label,
@@ -135,6 +154,9 @@ export async function syncProviderModels(
       supportsReasoning,
       ...(reasoningStyle ? { reasoningStyle } : {}),
       ...(supportsVision !== undefined ? { supportsVision } : {}),
+      ...(reasoningEfforts?.length ? { reasoningEfforts } : {}),
+      ...(contextOptions?.length ? { contextOptions } : {}),
+      ...(defaultContextWindow ? { defaultContextWindow } : {}),
       ...(existing?.note ? { note: existing.note } : {})
     }
     if (existing) updated += 1

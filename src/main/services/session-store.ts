@@ -102,9 +102,16 @@ function normalizeStoredSession(raw: unknown, expectedId?: string): Session | nu
     outputTokens: finiteNumber(usageRaw.outputTokens)
   }
   const modelRaw = item.model && typeof item.model === 'object' ? (item.model as Record<string, unknown>) : {}
+  const contextWindow = typeof modelRaw.contextWindow === 'number' && Number.isInteger(modelRaw.contextWindow) && modelRaw.contextWindow > 0
+    ? modelRaw.contextWindow
+    : undefined
   const model: ModelRef =
     typeof modelRaw.providerId === 'string' && typeof modelRaw.modelId === 'string'
-      ? { providerId: modelRaw.providerId, modelId: modelRaw.modelId }
+      ? {
+          providerId: modelRaw.providerId,
+          modelId: modelRaw.modelId,
+          ...(contextWindow ? { contextWindow } : {})
+        }
       : { providerId: '', modelId: '' }
   const permissionMode: PermissionMode =
     item.permissionMode === 'read-only' || item.permissionMode === 'ask' || item.permissionMode === 'auto'

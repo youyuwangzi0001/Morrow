@@ -9,6 +9,7 @@ import type {
   ProviderCategory,
   ProviderConfig,
   ProviderKind,
+  ReasoningEffort,
   Settings,
   WebSearchProvider,
   WebSearchSettings
@@ -17,7 +18,7 @@ import { dataPath, ensureDataDirs } from './paths'
 import { log } from './logger'
 import { LEGACY_FALLBACK_PREFIX, decodeSecret, encodeSecret, type SecretCrypto } from './secret-codec'
 import { isHookEvent, MAX_ENABLED_HOOKS_PER_EVENT, MAX_HOOKS } from '../../shared/types'
-import { isReasoningEffort } from '../../shared/models'
+import { isReasoningEffort, reasoningEffortsForModel } from '../../shared/models'
 import {
   ANSWER_STYLE_MAX_CUSTOM,
   isAnswerStyleId,
@@ -166,6 +167,24 @@ function normalizeModels(raw: unknown): ModelInfo[] {
     const labelRaw = typeof item.label === 'string' ? item.label.trim() : ''
     const reasoningStyle =
       item.reasoningStyle === 'effort' || item.reasoningStyle === 'thinking' ? item.reasoningStyle : undefined
+    const suppliedEfforts: ReasoningEffort[] | undefined = Array.isArray(item.reasoningEfforts)
+      ? [...new Set(item.reasoningEfforts.filter((value): value is ReasoningEffort => isReasoningEffort(value)))]
+      : undefined
+    const reasoningEfforts = suppliedEfforts?.length
+      ? suppliedEfforts
+      : item.supportsReasoning === true || reasoningStyle !== undefined
+        ? reasoningEffortsForModel(id, true)
+        : undefined
+    const contextOptionsRaw = Array.isArray(item.contextOptions) ? item.contextOptions : []
+    const contextOptions = [...new Set(
+      contextOptionsRaw
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value >= 1_024 && value <= Math.round(contextRaw))
+    )].sort((a, b) => a - b)
+    const defaultContextRaw = Number(item.defaultContextWindow)
+    const defaultContextWindow = Number.isInteger(defaultContextRaw) && defaultContextRaw >= 1_024 && defaultContextRaw <= Math.round(contextRaw)
+      ? defaultContextRaw
+      : undefined
     let pricing: ModelInfo['pricing']
     if (isRecord(item.pricing)) {
       const input = Number(item.pricing.inputPerMTok)
@@ -192,6 +211,9 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ...(typeof item.supportsReasoning === 'boolean' ? { supportsReasoning: item.supportsReasoning } : {}),
       ...(typeof item.supportsVision === 'boolean' ? { supportsVision: item.supportsVision } : {}),
       ...(reasoningStyle ? { reasoningStyle } : {}),
+      ...(reasoningEfforts?.length ? { reasoningEfforts } : {}),
+      ...(contextOptions.length > 0 ? { contextOptions } : {}),
+      ...(defaultContextWindow ? { defaultContextWindow } : {}),
       ...(pricing ? { pricing } : {}),
       ...(typeof item.note === 'string' && item.note.trim() ? { note: item.note.trim().slice(0, 200) } : {})
     })
@@ -241,12 +263,21 @@ function validateDefaultModel(providers: ProviderConfig[], raw: unknown): Settin
   const providerId = typeof raw.providerId === 'string' ? raw.providerId.trim() : ''
   const modelId = typeof raw.modelId === 'string' ? raw.modelId.trim() : ''
   if (!providerId || !modelId) failValidation('默认模型格式不正确。')
-  const ref = { providerId, modelId }
-  if (!findModel(providers, ref)) failValidation('默认模型不可用，请先保存模型提供方。')
+  const model = findModel(providers, { providerId, modelId })
+  if (!model) failValidation('默认模型不可用，请先保存模型提供方。')
   if (providers.find((provider) => provider.id === providerId)?.kind === 'demo') {
     failValidation('演示模型不能设为默认模型。')
   }
-  return ref
+  let contextWindow: number | undefined
+  if (raw.contextWindow !== undefined) {
+    const value = Number(raw.contextWindow)
+    const options = model.contextOptions ?? []
+    if (!Number.isInteger(value) || value < 1_024 || value > model.contextWindow || options.length === 0 || !options.includes(value)) {
+      failValidation('默认模型的上下文长度不合法。')
+    }
+    contextWindow = value
+  }
+  return { providerId, modelId, ...(contextWindow ? { contextWindow } : {}) }
 }
 
 function fallbackDefaultModel(providers: ProviderConfig[]): Settings['defaultModel'] {

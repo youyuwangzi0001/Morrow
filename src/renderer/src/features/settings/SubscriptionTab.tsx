@@ -549,7 +549,7 @@ export function SubscriptionTab(): React.JSX.Element {
     busy ? (
       <div className="st-sub-busy">
         <LoaderCircle size={13} className="st-sub-spin" aria-hidden />
-        <span>{busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，或复制登录链接到浏览器打开。' : null}</span>
+        <span>{busy}{loginWaiting ? ' 登录窗口没有出现？再次点击登录按钮重试，或复制登录链接。登录窗口可能在后台。' : null}</span>
         {loginWaiting ? (
           <span className="st-sub-busy-copy">
             <Button size="sm" variant="ghost" icon={<Copy size={12} />} onClick={() => void copyLoginUrl(provider)}>
@@ -899,8 +899,36 @@ export function SubscriptionTab(): React.JSX.Element {
 
             <section className="st-sub-panel">
               <div className="st-sub-panel-head"><span>可用模型</span><span className="mono">{qoder.models.length} 个</span></div>
-              <div className="st-sub-model-chips">
-                {qoder.models.map((model) => <span key={model.id}>{model.label}<em>{Math.round(model.contextWindow / 1000)}K</em></span>)}
+              <div className="st-sub-model-list">
+                {qoder.models.map((model) => {
+                  const options = model.contextOptions ?? []
+                  const defaultValue = model.defaultContextWindow ?? model.contextWindow
+                  return (
+                    <div className="st-sub-model-row" key={model.id}>
+                      <span>{model.label}</span>
+                      {options.length > 0 ? (
+                        <div className="st-sub-model-context">
+                          <Select
+                            ariaLabel={`${model.label} 上下文上限`}
+                            value={String(defaultValue)}
+                            options={options.map((value) => ({
+                              value: String(value),
+                              label: value >= 1_000_000 && value % 1_000_000 === 0 ? `${value / 1_000_000}M` : `${Math.round(value / 1000)}K`
+                            }))}
+                            onChange={(next) => {
+                              void act(
+                                { action: 'set-qoder-context', modelId: model.id, contextWindow: Number(next) },
+                                { done: '更新上下文档位…', keepView: true }
+                              )
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <em>{Math.round((model.defaultContextWindow ?? model.contextWindow) / 1000)}K</em>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
               <p className="st-sub-note">模型实际可用性由 Qoder 套餐与上游策略决定；在对话模型选择器中选择「Qoder（订阅）」即可使用。</p>
             </section>

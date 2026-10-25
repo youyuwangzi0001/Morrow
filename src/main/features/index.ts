@@ -28,6 +28,7 @@ import {
 } from '../services/schedule-runtime'
 import { getSubscriptionService, runSubscriptionAction } from '../services/subscriptions'
 import { getQoderSubscriptionService } from '../services/qoder-subscription'
+import { closeLoginWindow } from '../services/login-window'
 import type { PermissionRuleKind } from '../../shared/types'
 import type { SubscriptionAction } from '../../shared/subscriptions'
 import { resolveWorkspaceDir } from './workspace-roots'
@@ -214,7 +215,9 @@ registerFeatureHandler('feature:subscriptions:login-url', (payload) => {
 registerFeatureHandler('feature:subscriptions:action', async (payload) => {
   const input = payloadOf(payload)
   if (typeof input.action !== 'string') throw new Error('缺少订阅操作。')
-  return runSubscriptionAction(input as SubscriptionAction)
+  const result = await runSubscriptionAction(input as SubscriptionAction)
+  if (/^(login-|import-)/.test(input.action)) closeLoginWindow()
+  return result
 })
 
 registerFeatureHandler('feature:subscriptions:pick-codex-auth', async (_payload, event) => {

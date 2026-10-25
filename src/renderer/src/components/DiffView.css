@@ -108,19 +108,24 @@
 
 .diff-gutter {
   flex: 0 0 auto;
-  width: 34px;
+  width: 40px;
   padding-right: 8px;
   color: var(--text-3);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-code);
+  font-weight: var(--code-font-weight, 400);
+  letter-spacing: 0;
   text-align: right;
   user-select: none;
-  opacity: 0.75;
+  opacity: 0.9;
 }
 
 .diff-sign {
   flex: 0 0 auto;
-  width: 14px;
+  width: 16px;
   color: var(--text-3);
+  font-size: var(--fs-code);
+  font-weight: var(--code-font-weight, 400);
+  letter-spacing: 0;
   text-align: center;
   user-select: none;
 }
@@ -138,7 +143,9 @@
   padding-right: 14px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-sm-plus);
+  font-size: var(--fs-code);
+  font-weight: var(--code-font-weight, 400);
+  letter-spacing: 0;
 }
 
 .diff-line.is-ctx .diff-code {

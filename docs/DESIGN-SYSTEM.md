@@ -178,7 +178,7 @@ Morrow 的记忆点只有两个：
 ```
 - 侧栏可折叠为 64px 图标栏（hover 提示），`Ctrl+B`。
 - 欢迎态：Composer 位于垂直 46% 处；标题 greeting 用 Newsreader Italic + 中文 Light。
-- 滚动条：8px，thumb `--line-strong`，hover 变金，轨道透明。
+- 滚动条：轨道 `--scrollbar-size` 8px，滑块 `--scrollbar-thumb-width` **6px 实色**（深色 `#8a6f42` / 浅色 `#a8844f`），`--scrollbar-radius: var(--r-full)` 全圆角，最小长度 36px；无渐变/炫光，轨道透明；只有内容超出当前高度时才显示。主区域、画布、代码编辑器与终端共用这组 token；终端隐藏 xterm 原生 viewport 滚动条/箭头，只保留自定义滑块，并用 xterm 的 `visible`/`invisible` 类控制显隐；iframe 与内置浏览器通过 `shared/scrollbar.ts` 注入相同数值（8px 轨道、1px 透明边框 + `background-clip: content-box` 形成 6px 实色滑块、999px 圆角、无渐变）。
 
 ## 6. 关键组件规范
 

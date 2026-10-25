@@ -14,8 +14,9 @@ export function ContextMeter(): React.JSX.Element | null {
   const usage = useAppStore((s) => s.session?.usage)
   const session = useAppStore((s) => s.session)
   const settings = useAppStore((s) => s.settings)
-  const model = findModel(settings.providers, session?.model ?? settings.defaultModel)
-  const snapshot = contextSnapshot(usage, model?.contextWindow)
+  const modelRef = session?.model ?? settings.defaultModel
+  const model = findModel(settings.providers, modelRef)
+  const snapshot = contextSnapshot(usage, modelRef.contextWindow ?? model?.defaultContextWindow ?? model?.contextWindow)
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
   const wrapRef = useClickOutside(close, open)

@@ -514,6 +514,27 @@ body.is-resizing-composer {
   width: 158px;
 }
 
+.composer-picker-context {
+  width: 88px;
+}
+
+.composer-picker-context .select-value {
+  max-width: 64px;
+}
+
+/* 模型没有可调思考档位时也要如实显示，而不是把入口藏起来 */
+.composer-reasoning-none {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: var(--fs-sm-plus);
+  white-space: nowrap;
+}
+
 .composer-picker-perm {
   width: 104px;
 }
@@ -820,8 +841,9 @@ body.is-resizing-composer {
 
 /* 窄容器（画布打开 / 小窗口）逐级让位，避免工具条溢出 */
 @container (max-width: 880px) {
-  /* 先收起推理强度（仍可在设置里调整），避免右栏拥挤 */
-  .composer-picker-reasoning {
+  /* 先收起可操作的推理强度（仍可在设置里调整）；“不支持思考”是真实状态，保留显示 */
+  .composer-picker-reasoning:not(.is-unsupported),
+  .composer-picker-context {
     display: none;
   }
 }

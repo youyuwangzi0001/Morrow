@@ -162,7 +162,7 @@ describe('Cline Pass 协议', () => {
     expect(body.stream).toBe(true)
     expect(body.stream_options).toEqual({ include_usage: true })
     expect(body.max_tokens).toBe(64_000)
-    expect(CLINE_MODELS).toHaveLength(15)
+    expect(CLINE_MODELS).toHaveLength(14)
     expect(CLINE_MODELS.every((model) => model.id.startsWith('cline-pass/'))).toBe(true)
   })
 
@@ -283,12 +283,6 @@ describe('GLM Coding Plan 协议', () => {
     expect(turbo.thinking).toBeUndefined()
     expect(turbo.reasoning_effort).toBeUndefined()
     expect(turbo.max_tokens).toBe(4096)
-
-    const glm52 = JSON.parse(rewriteGlmBody(JSON.stringify({
-      model: 'GLM-5.2',
-      thinking: { type: 'enabled', budget_tokens: 1024 }
-    }))) as Record<string, unknown>
-    expect(glm52.reasoning_effort).toBe('high')
   })
 
   it('解析 TOKENS_LIMIT / CREDIT_LIMIT，丢弃未知单位与 TIME_LIMIT', () => {
@@ -568,7 +562,12 @@ describe('Step Plan 协议', () => {
     }, 'step_plan')
     expect(parsed.models).toHaveLength(2)
     expect(parsed.models.some((model) => model.id === 'embed-model')).toBe(false)
-    expect(parsed.models[0]).toMatchObject({ id: 'step-3', contextWindow: 262_144, supportsReasoning: true })
+    expect(parsed.models[0]).toMatchObject({
+      id: 'step-3',
+      contextWindow: 262_144,
+      supportsReasoning: true,
+      reasoningEfforts: ['off', 'low', 'high']
+    })
     expect(parsed.efforts['step-3']).toEqual(['off', 'low', 'high'])
     expect(parsed.models[1].supportsReasoning).toBeUndefined()
     expect(parsed.models[0].note).toContain('Step Plan')

@@ -579,14 +579,14 @@ function buildUsageText(_singleOnly = false) {
     ...(withInstaller ? [`- Morrow-${version}-setup.exe：安装包（推荐日常使用）`] : []),
     '',
     '本版重点',
-    '- 权限卡、订阅详情与终端/浏览器/画布/Git/项目/Office 页签统一为顶层 UI 令牌；页签统一 24px 高、5px 微圆角。',
-    '- 应用字号 12–15（默认 14），代码字号 11–14（默认 12）；代码字体默认 JetBrains Mono。',
+    '- Qoder 真账号闭环：内置浏览器登录后读取账号模型目录（15 个 chat 模型）；模型原始名称、思考档位与 200K/400K/1M 上下文档位全部来自账号元信息，可逐模型调整，不再硬编码。',
+    '- 模型契约：思考强度只显示模型真实档位；DeepSeek V4.1 Flash 为 1M 上下文与 off/low/high/max，Kimi/Claude/GPT-6 支持 max；移除官方已不提供的 GLM-5.2。未知模型只提供“自动”。',
+    '- 滚动条完全对齐：轨道 8px、滑块 6px 实色全圆角、无渐变/炫光/箭头；主区域、画布、代码编辑器、终端与内置浏览器共用同一组样式。',
+    '- 权限卡、订阅详情、页签/开关/状态标签统一顶层 UI 令牌；页签 24px 高、5px 微圆角；代码字体默认 JetBrains Mono。',
     '- 本机/局域网模型服务可留空 API Key；多媒体「添加本机模型」支持 llama.cpp、Ollama、LM Studio 与 ComfyUI API 工作流。',
-    '- 修复 ChatGPT 订阅工具参数丢失、登录端口复用、灵动岛跟随当前会话、审看媒体优先当前模型视觉四个断点。',
-    '- 修复 Windows 系统浏览器关联失效时登录页无法拉起（浏览器直连 + 可重试），以及多轮对话中 assistant 历史内容被上游 400 拒绝的问题。',
-    '- 改动卡长路径改为单行省略，展开箭头不再被挤到第二行；上下文详情紧贴圆环上浮，并与模型菜单统一排版。',
+    '- 修复 ChatGPT 订阅工具参数丢失、登录端口复用、灵动岛跟随当前会话、审看媒体优先当前模型视觉，以及 assistant 历史内容被上游 400 拒绝的问题。',
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
-    '- 扁平化：14 个单元套件 / 945 用例，17 个 E2E 套件 / 208 用例；源码与构建脚本已在 GitHub 开源。',
+    '- 测试：14 个单元套件 / 951 用例，17 个 E2E 套件 / 209 用例；源码与构建脚本包含在源码包中。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
@@ -774,6 +774,11 @@ function stageDelivery() {
     try {
       rmSync(join(deliverDir, entry.name), { recursive: true, force: true })
     } catch (err) {
+      // 旧运行时缓存不属于分发文件，被宿主/杀毒占用时保留即可，不能阻塞新包交付。
+      if (entry.name.startsWith('.morrow-runtime-')) {
+        logLine(`[dist] 保留被占用的旧运行时缓存 deliver/${entry.name}（不计入分发）`)
+        continue
+      }
       fail(
         `无法清理旧交付物 deliver/${entry.name}：${err instanceof Error ? err.message : String(err)}\n` +
           '请先完全退出正在运行的 Morrow（包括托盘图标），并关闭正在索引/扫描 deliver 的编辑器、杀毒软件或索引服务，再重新打包。'

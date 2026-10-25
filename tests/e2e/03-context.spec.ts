@@ -935,12 +935,20 @@ test('默认 DeepSeek 模型可选择推理强度', async () => {
     const trigger = page.getByRole('button', { name: '推理强度' })
     await expect(trigger).toBeVisible()
     await expect(trigger).toContainText('auto')
+    // 模型选择在左、思考强度在右，符合「先选模型，再调强度」的阅读顺序。
+    const modelTrigger = page.getByRole('button', { name: /^选择模型/ })
+    await expect(modelTrigger).toBeVisible()
+    const [modelBox, effortBox] = await Promise.all([modelTrigger.boundingBox(), trigger.boundingBox()])
+    expect(modelBox && effortBox).toBeTruthy()
+    expect(modelBox!.x).toBeLessThan(effortBox!.x)
     await trigger.click()
+    // DeepSeek 官方只支持 off/low/high/max；不能再把 medium/xhigh 塞进请求。
+    await expect(page.getByRole('option', { name: /^off/ })).toBeVisible()
     await expect(page.getByRole('option', { name: /^low/ })).toBeVisible()
-    await expect(page.getByRole('option', { name: /^medium/ })).toBeVisible()
     await expect(page.getByRole('option', { name: /^high/ })).toBeVisible()
-    await expect(page.getByRole('option', { name: /^xhigh/ })).toBeVisible()
     await expect(page.getByRole('option', { name: /^max/ })).toBeVisible()
+    await expect(page.getByRole('option', { name: /^medium/ })).toHaveCount(0)
+    await expect(page.getByRole('option', { name: /^xhigh/ })).toHaveCount(0)
     await page.waitForTimeout(250)
     await page.screenshot({ path: screenshotPath('reasoning-menu-dark.png') })
 
@@ -978,7 +986,8 @@ test('旧版同步模型缺少 reasoningStyle 时仍显示思考强度', async (
               contextWindow: 1_048_576,
               maxOutput: 393_216,
               supportsTools: true,
-              supportsReasoning: true
+              supportsReasoning: true,
+              reasoningEfforts: ['low', 'high']
             }
           ]
         }
@@ -1350,4 +1359,54 @@ test.describe('Token 活动', () => {
   })
 })
 
+})
+
+// ── 原文件：model-metadata.spec.ts ──────────────────────────────────────────────
+test.describe('model-metadata.spec.ts', () => {
+/**
+ * 订阅/API 模型的上下文上限来自模型元数据，且选择后必须真实传给支持该参数的代理，
+ * 不能只在 UI 上改数字。
+ */
+test('上下文上限可选并真实传给代理', async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockLLM({ scripts: [{ text: '上下文已调整。' }] })
+  const morrow = await launchMorrow({ name: 'model-context', timeoutMs: 90_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const provider = await configureMockProvider(
+      page,
+      mock.openaiBaseUrl,
+      'mock-context',
+      128_000,
+      false,
+      [32_000, 64_000, 128_000],
+      ['low', 'high']
+    )
+    const workspace = join(root, 'tmp', `e2e-model-context-${Date.now()}`)
+    mkdirSync(workspace, { recursive: true })
+    await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '上下文档位测试' })
+
+    const trigger = page.getByRole('button', { name: '上下文上限' })
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+    await page.getByRole('option', { name: '64K' }).click()
+    await expect(trigger).toContainText('64K')
+
+    const selected = await page.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      return store.getState().session?.model as Record<string, unknown> | null
+    })
+    expect(selected?.contextWindow).toBe(64_000)
+
+    await sendMessageViaStore(page, '测试上下文上限')
+    await waitUntil(async () => mock.requests.length > 0, 30_000, 'mock 收到请求')
+    expect(mock.requests[0]?.headers['x-morrow-context-window']).toBe('64000')
+    await expect(page.getByText('上下文已调整。')).toBeVisible({ timeout: 30_000 })
+  } finally {
+    await morrow.close()
+    await mock.close()
+  }
+})
 })

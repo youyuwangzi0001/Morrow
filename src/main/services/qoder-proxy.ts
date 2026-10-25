@@ -7,7 +7,8 @@
  */
 import { createHash, createCipheriv, createDecipheriv, publicEncrypt, constants, randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
-import type { ModelInfo } from '../../shared/types'
+import type { ModelInfo, ReasoningEffort } from '../../shared/types'
+import { isReasoningEffort } from '../../shared/models'
 
 export type QoderRegion = 'global' | 'cn'
 
@@ -18,37 +19,15 @@ export interface QoderModel {
   contextWindow: number
   supportsImages: boolean
   reasoning: boolean
+  /** 账号模型目录真实支持的档位；未提供时只显示自动，避免发送无效档位 */
+  reasoningEfforts?: ReasoningEffort[]
+  /** 账号模型目录真实可选上下文（200K/400K/1M，以接口返回为准） */
+  contextOptions?: number[]
+  /** 账号模型目录的默认上下文；未提供时回落到 contextWindow */
+  defaultContextWindow?: number
 }
 
-export const QODER_MODELS_GLOBAL: QoderModel[] = [
-  { id: 'Auto', upstreamKey: 'auto', label: 'Auto', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Ultimate', upstreamKey: 'ultimate', label: 'Ultimate', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Performance', upstreamKey: 'performance', label: 'Performance', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Efficient', upstreamKey: 'efficient', label: 'Efficient', contextWindow: 200_000, supportsImages: true, reasoning: false },
-  { id: 'Lite', upstreamKey: 'lite', label: 'Lite', contextWindow: 128_000, supportsImages: false, reasoning: false },
-  { id: 'Qwen3.7Plus', upstreamKey: 'qmodel', label: 'Qwen3.7 Plus', contextWindow: 200_000, supportsImages: true, reasoning: false },
-  { id: 'Cantus', upstreamKey: 'cmodel', label: 'Cantus', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Qwen3.8-Max', upstreamKey: 'qmodel_preview', label: 'Qwen3.8-Max', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Qwen3.7-Max', upstreamKey: 'qmodel_latest', label: 'Qwen3.7-Max', contextWindow: 200_000, supportsImages: true, reasoning: false },
-  { id: 'DeepSeek-V4-Pro', upstreamKey: 'dmodel', label: 'DeepSeek-V4-Pro', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'DeepSeek-V4-Flash', upstreamKey: 'dfmodel', label: 'DeepSeek-V4-Flash', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'GLM-5.2', upstreamKey: 'gm51model', label: 'GLM-5.2', contextWindow: 1_000_000, supportsImages: true, reasoning: true },
-  { id: 'Kimi-K2.7-Code', upstreamKey: 'kmodel', label: 'Kimi-K2.7-Code', contextWindow: 256_000, supportsImages: true, reasoning: false },
-  { id: 'Kimi-K3', upstreamKey: 'kmodel_latest', label: 'Kimi-K3', contextWindow: 256_000, supportsImages: true, reasoning: false },
-  { id: 'MiniMax-M3', upstreamKey: 'mmodel', label: 'MiniMax-M3', contextWindow: 200_000, supportsImages: true, reasoning: false }
-]
-
-export const QODER_MODELS_CN: QoderModel[] = [
-  { id: 'Auto', upstreamKey: 'auto', label: 'Auto', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Qwen3.7-Max', upstreamKey: 'qmodel_latest', label: 'Qwen3.7-Max', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Qwen3.7-Plus', upstreamKey: 'qmodel', label: 'Qwen3.7-Plus', contextWindow: 200_000, supportsImages: false, reasoning: true },
-  { id: 'Qwen3.6-Flash', upstreamKey: 'q36fmodel', label: 'Qwen3.6-Flash', contextWindow: 200_000, supportsImages: false, reasoning: true },
-  { id: 'DeepSeek-V4-Pro', upstreamKey: 'dmodel', label: 'DeepSeek-V4-Pro', contextWindow: 200_000, supportsImages: false, reasoning: true },
-  { id: 'DeepSeek-V4-Flash', upstreamKey: 'dfmodel', label: 'DeepSeek-V4-Flash', contextWindow: 200_000, supportsImages: false, reasoning: false },
-  { id: 'GLM-5.2', upstreamKey: 'gm51model', label: 'GLM-5.2', contextWindow: 200_000, supportsImages: true, reasoning: true },
-  { id: 'Kimi-K2.7-Code', upstreamKey: 'kmodel', label: 'Kimi-K2.7-Code', contextWindow: 256_000, supportsImages: true, reasoning: true },
-  { id: 'MiniMax-M2.7', upstreamKey: 'mmodel', label: 'MiniMax-M2.7', contextWindow: 200_000, supportsImages: false, reasoning: false }
-]
+// 模型目录只来自 Qoder 账号接口 `/api/v2/model/list`；不再内置猜测的模型名/上下文/档位。
 
 const HOSTS = {
   global: { inference: 'https://api3.qoder.sh', openapi: 'https://openapi.qoder.sh', center: 'https://center.qoder.sh', pat: 'https://qoder.com/account/integrations' },
@@ -171,6 +150,161 @@ export function decodeQoderAdoptPayload(content: string, machineId: string): str
   return Buffer.concat([decipher.update(Buffer.from(trimmed, 'base64')), decipher.final()]).toString('utf8')
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function asText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function asNumber(value: unknown): number | undefined {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function asEffort(value: string): ReasoningEffort | undefined {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'none' || normalized === 'disabled' || normalized === 'disable') return 'off'
+  return isReasoningEffort(normalized) ? normalized : undefined
+}
+
+/** 读取 Qoder 账号模型目录的 context_config / 可选上下文；不自行生成档位。 */
+function qoderContextMeta(row: Record<string, unknown>): {
+  contextWindow: number
+  contextOptions?: number[]
+  defaultContextWindow: number
+} {
+  const values: number[] = []
+  let markedDefault: number | undefined
+  const config = asRecord(row.context_config)
+  if (config) {
+    for (const entry of Object.values(config)) {
+      const record = asRecord(entry)
+      const token = asNumber(record?.token_count)
+      if (!token || token <= 0) continue
+      values.push(Math.round(token))
+      if (record?.is_default === true) markedDefault = Math.round(token)
+    }
+  }
+  const available = Array.isArray(row.available_context_windows) ? row.available_context_windows : []
+  for (const entry of available) {
+    const token = asNumber(asRecord(entry)?.token_count ?? entry)
+    if (token && token > 0) values.push(Math.round(token))
+  }
+  const options = [...new Set(values)].sort((a, b) => a - b)
+  const maxInput = asNumber(row.max_input_tokens)
+  const contextWindow = options.length > 0 ? Math.max(...options) : Math.max(1_024, Math.round(maxInput ?? 200_000))
+  const explicitDefault = markedDefault ?? asNumber(row.default_context_window)
+  const defaultContextWindow = explicitDefault && (options.length === 0 || options.includes(explicitDefault))
+    ? explicitDefault
+    : options.length > 0
+      ? options[0]!
+      : contextWindow
+  return {
+    contextWindow,
+    ...(options.length > 0 ? { contextOptions: options } : {}),
+    defaultContextWindow
+  }
+}
+
+/** 读取 thinking_config / available_reasoning_effort 的真实档位。 */
+function qoderReasoningEfforts(row: Record<string, unknown>): ReasoningEffort[] | undefined {
+  const efforts = new Set<ReasoningEffort>()
+  let supportsDisabled = row.supports_disabled === true || row.supportsDisabled === true
+  for (const config of [
+    asRecord(row.thinking_config),
+    asRecord(row.thinkingConfig),
+    asRecord(row.available_reasoning_effort),
+    asRecord(row.availableReasoningEffort)
+  ]) {
+    if (!config) continue
+    const enabled = asRecord(config.enabled) ?? config
+    const effortValues = enabled.efforts
+    if (Array.isArray(effortValues)) {
+      for (const value of effortValues) {
+        const effort = typeof value === 'string' ? asEffort(value) : undefined
+        if (effort) efforts.add(effort)
+      }
+    } else {
+      const effortMap = asRecord(effortValues)
+      if (effortMap) {
+        for (const key of Object.keys(effortMap)) {
+          const effort = asEffort(key)
+          if (effort) efforts.add(effort)
+        }
+      }
+    }
+    if (enabled.supports_disabled === true || enabled.supportsDisabled === true || config.supports_disabled === true) {
+      supportsDisabled = true
+    }
+  }
+  if (supportsDisabled) efforts.add('off')
+  return efforts.size > 0 ? [...efforts] : undefined
+}
+
+/**
+ * 解析 Qoder `/api/v2/model/list?Encode=1` 的账号模型目录。
+ * 只使用接口返回的模型、上下文档位和思考档位，不猜测。
+ */
+export function parseQoderModelCatalog(payload: unknown): QoderModel[] {
+  const root = asRecord(payload)
+  if (!root) return []
+  const scene = Array.isArray(root.chat)
+    ? root.chat
+    : Array.isArray(root.assistant)
+      ? root.assistant
+      : Array.isArray(root.app)
+        ? root.app
+        : []
+  const seen = new Set<string>()
+  const models: QoderModel[] = []
+  for (const item of scene) {
+    const row = asRecord(item)
+    if (!row || row.enable === false) continue
+    const key = asText(row.key)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    const context = qoderContextMeta(row)
+    const efforts = qoderReasoningEfforts(row)
+    models.push({
+      id: key,
+      upstreamKey: key,
+      label: asText(row.display_name) ?? key,
+      contextWindow: context.contextWindow,
+      ...(context.contextOptions ? { contextOptions: context.contextOptions } : {}),
+      defaultContextWindow: context.defaultContextWindow,
+      supportsImages: row.is_vl === true,
+      reasoning: row.is_reasoning === true || Boolean(efforts?.length),
+      ...(efforts ? { reasoningEfforts: efforts } : {})
+    })
+  }
+  return models
+}
+
+/** 从账号模型目录接口读取模型/上下文/思考档位；COSY 头与聊天请求共用。 */
+export async function fetchQoderModelCatalog(
+  credential: QoderCredential,
+  fetchImpl: (url: string, init: RequestInit) => Promise<Response>
+): Promise<QoderModel[]> {
+  const url = `${HOSTS[credential.region].inference}/algo/api/v2/model/list?Encode=1`
+  const response = await fetchImpl(url, {
+    method: 'GET',
+    headers: {
+      ...cosyHeaders(credential, url, '', 'auto'),
+      Accept: 'application/json'
+    },
+    signal: AbortSignal.timeout(30_000)
+  })
+  if (!response.ok) {
+    throw new Error(`Qoder 账号模型目录读取失败（HTTP ${response.status}）。`)
+  }
+  const payload = await response.json().catch(() => null)
+  const models = parseQoderModelCatalog(payload)
+  if (models.length === 0) throw new Error('Qoder 账号模型目录为空。')
+  return models
+}
+
 function cosySignedPath(url: string): string {
   try {
     const pathname = new URL(url).pathname
@@ -280,7 +414,13 @@ function qoderUserContent(value: unknown): string | Array<Record<string, unknown
   return parts
 }
 
-function buildQoderRequest(body: OpenAIRequestBody, credential: QoderCredential, models: QoderModel[], sessionId: string): { payload: Record<string, unknown>; upstreamKey: string } {
+function buildQoderRequest(
+  body: OpenAIRequestBody,
+  credential: QoderCredential,
+  models: QoderModel[],
+  sessionId: string,
+  contextWindow?: number
+): { payload: Record<string, unknown>; upstreamKey: string } {
   const model = models.find((item) => item.id === body.model)
   if (!model) throw new Error(`Qoder 模型不存在：${body.model ?? '未指定'}`)
   const systems = (body.messages ?? []).filter((message) => message.role === 'system' || message.role === 'developer')
@@ -318,13 +458,29 @@ function buildQoderRequest(body: OpenAIRequestBody, credential: QoderCredential,
     if (typeof content === 'string' && content === '') continue
     messages.push({ role: 'user', content })
   }
-  const maxTokens = Number(body.max_tokens) > 0 ? Number(body.max_tokens) : 32_768
+  // Qoder 的接口硬限制是 32768；Agent 按模型 maxOutput 传入更大的值时必须截断。
+  const maxTokens = Math.min(Number(body.max_tokens) > 0 ? Number(body.max_tokens) : 32_768, 32_768)
   const parameters: Record<string, unknown> = { max_tokens: maxTokens }
   if (typeof body.temperature === 'number') parameters.temperature = body.temperature
-  if (body.reasoning_effort && body.reasoning_effort !== 'auto') {
-    parameters.enable_thinking = true
-    parameters.reasoning_effort = body.reasoning_effort
+  const requestedEffort = body.reasoning_effort
+  if (requestedEffort && requestedEffort !== 'auto') {
+    const supported = model.reasoningEfforts
+    if (supported && supported.includes(requestedEffort as ReasoningEffort)) {
+      if (requestedEffort === 'off') parameters.enable_thinking = false
+      else {
+        parameters.enable_thinking = true
+        parameters.reasoning_effort = requestedEffort
+      }
+    }
   }
+  const effectiveContext = Math.min(
+    model.contextWindow,
+    Math.max(1_024, Math.round(
+      contextWindow && contextWindow > 0
+        ? contextWindow
+        : model.defaultContextWindow ?? model.contextWindow
+    ))
+  )
   const tools = Array.isArray(body.tools) ? body.tools : []
   let lastUserText = ''
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -351,7 +507,7 @@ function buildQoderRequest(body: OpenAIRequestBody, credential: QoderCredential,
     is_reply: true,
     is_retry: false,
     messages,
-    model_config: { key: model.upstreamKey, format: 'openai', source: 'system', enable: true, display_name: model.label, is_vl: model.supportsImages, is_reasoning: model.reasoning, max_input_tokens: model.contextWindow },
+    model_config: { key: model.upstreamKey, format: 'openai', source: 'system', enable: true, display_name: model.label, is_vl: model.supportsImages, is_reasoning: model.reasoning, max_input_tokens: effectiveContext },
     parameters,
     request_id: randomUUID(),
     request_set_id: recordId,
@@ -412,8 +568,17 @@ async function handleChat(req: import('node:http').IncomingMessage, res: import(
   const controller = new AbortController()
   res.on('close', () => { if (!res.writableEnded) controller.abort() })
   const sessionId = typeof req.headers['x-session-id'] === 'string' ? req.headers['x-session-id'] : randomUUID()
+  const contextHeader = typeof req.headers['x-morrow-context-window'] === 'string'
+    ? Number(req.headers['x-morrow-context-window'])
+    : undefined
   let credential = await options.getCredential()
-  let { payload, upstreamKey } = buildQoderRequest(body, credential, options.models, sessionId)
+  let { payload, upstreamKey } = buildQoderRequest(
+    body,
+    credential,
+    options.models,
+    sessionId,
+    contextHeader && Number.isFinite(contextHeader) ? contextHeader : undefined
+  )
   let response = await upstream(options, payload, credential, upstreamKey, controller.signal)
   if (response.status === 401 || response.status === 403) {
     await response.body?.cancel().catch(() => undefined)

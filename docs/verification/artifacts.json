@@ -1,41 +1,146 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
-  "builtAt": "2026-10-25T12:30:51.695Z",
+  "builtAt": "2026-10-25T18:43:47.135Z",
   "platform": "win32-x64",
   "source": {
-    "files": 313,
-    "codeFiles": 292,
+    "files": 314,
+    "codeFiles": 293,
     "loc": {
-      "ts": 70832,
-      "tsx": 29174,
-      "css": 25006,
-      "total": 125012
+      "ts": 71382,
+      "tsx": 29228,
+      "css": 25115,
+      "total": 125725
     }
   },
   "tests": {
     "unit": {
       "suites": 14,
-      "cases": 945,
-      "passed": 937,
+      "cases": 951,
+      "passed": 943,
       "skipped": 8
     },
     "e2e": {
       "suites": 17,
-      "cases": 208,
+      "cases": 209,
       "passed": 197,
       "skipped": 11,
-      "nonPackaged": {
-        "cases": 203,
-        "passed": 192,
-        "skipped": 11
-      },
+      "note": "上一轮全量基线 208 例；本轮新增模型元数据/上下文 1 例，未重跑全量",
       "packaged": {
         "cases": 5,
         "passed": 5,
-        "skipped": 0
+        "skipped": 0,
+        "date": "2026-10-26"
       }
-    }
+    },
+    "targeted": [
+      {
+        "name": "in-app ChatGPT login form",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "Morrow 内置 BrowserWindow 加载 auth.openai.com，完整显示欢迎回来/邮箱/Google/Apple/Microsoft/手机登录表单"
+      },
+      {
+        "name": "real Codex account import",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "用本机 ~/.codex/auth.json 真实导入 ChatGPT 账号，服务返回 connected + quota；未输出凭据"
+      },
+      {
+        "name": "in-app subscription channels",
+        "cases": 8,
+        "passed": 7,
+        "skipped": 1,
+        "date": "2026-10-26",
+        "note": "Qoder/Kimi/GLM/MiniMax/Step/Command Code/Cline 均在内置窗口打开授权/登录页；Antigravity 缺 OAuth secret；OpenCode 本机 Key"
+      },
+      {
+        "name": "diff card typography",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26"
+      },
+      {
+        "name": "settings login retry",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26"
+      },
+      {
+        "name": "qoder in-app login",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "真实 Qoder 账号在设置页完成“允许登录 → 继续 → 登录成功”，窗口自动关闭，页面即时显示已连接/额度/账号接口返回的 15 个 chat 模型"
+      },
+      {
+        "name": "qoder account model metadata",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "账号接口返回 15 个 chat 模型；context_config 为 200K/400K/1M，默认 200K；设置页逐模型可调；以 max + 400K 发起真实请求成功"
+      },
+      {
+        "name": "qoder agent real calls",
+        "cases": 2,
+        "passed": 2,
+        "date": "2026-10-26",
+        "note": "Agent 真实调用 deepseek-v4.1-flash 与 qwen-3.8-flash，run_finished=complete，回复“链路正常”，无 tool/error"
+      },
+      {
+        "name": "composer order",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "模型选择在左、思考强度在右，computed bounding box 顺序断言"
+      },
+      {
+        "name": "login channel smoke",
+        "cases": 8,
+        "passed": 7,
+        "skipped": 1,
+        "date": "2026-10-26",
+        "note": "Codex/Kimi/GLM/MiniMax/Step/Command Code/Cline 内置登录页全部打开；Antigravity 按预期提示缺少 MORROW_ANTIGRAVITY_CLIENT_SECRET"
+      },
+      {
+        "name": "deepseek real efforts",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "默认 DeepSeek 选择器只出现 auto/off/low/high/max；medium/xhigh 不再出现"
+      },
+      {
+        "name": "model metadata/context",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "Mock 上下文档位 65,536/400,000 可选，400,000 通过 x-morrow-context-window 传给代理"
+      },
+      {
+        "name": "terminal scrollbar",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "原生 viewport 滚动条隐藏；自定义滑块 6px/999px/实色 rgb(138,111,66)；无渐变、无上下三角；空终端隐藏，输出 80 行后出现；复跑 1/1"
+      },
+      {
+        "name": "browser/iframe scrollbar",
+        "cases": 1,
+        "passed": 1,
+        "date": "2026-10-26",
+        "note": "内置浏览器注入轨道 8px、无渐变；iframe 规则由单元测试锁定 6px 实色/999px 全圆角；复跑 1/1"
+      },
+      {
+        "name": "packaged e2e",
+        "cases": 5,
+        "passed": 5,
+        "date": "2026-10-26",
+        "note": "r017 便携包实际解压启动，5/5（17.3s）"
+      }
+    ],
+    "files": 66
   },
   "docs": {
     "files": 31,
@@ -45,8 +150,8 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362595914,
-    "mib": 345.8
+    "bytes": 362610158,
+    "mib": 345.81
   },
   "artifacts": [
     {
@@ -57,29 +162,37 @@
     },
     {
       "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205947392,
+      "bytes": 205955584,
       "mib": 196.41,
-      "sha256": "0fe42ff3a76482584eb03170cc032ef1ba7818f9354f6ec85d93a557b4f38cf5"
+      "sha256": "d6b45b53f79e8ec8b5a89e2bde2e7cf030dc03fffbc1cb7622b09ca137780a23"
     },
     {
       "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156643976,
+      "bytes": 156649780,
       "mib": 149.39,
-      "sha256": "97f71101c68b9c8b649116e20ab0d7b8ea6aac50e92bcb5daf0e4c8ab1fa715f"
+      "sha256": "f96432257cbf060acec3bfaadeec834b0a7ff1c11706bb7606060ffc1a7a567d"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "09aa9b8c21fa0a67d2c70ca99aefcc1a52ad78e07025e24dfbdee6b4ce2a9d87"
+      "sha256": "77224e04e44c912b284c2221de2c4655667a46b1fe3b9b11430b343b18399a77"
     },
     {
       "name": "使用说明.txt",
-      "bytes": 3138,
+      "bytes": 3386,
       "mib": 0,
-      "sha256": "cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302"
+      "sha256": "3e08d67aaf664091ba784c50bec68bb5627a2818c639ab246f91a2baf4ce4e55"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.1.0-r010",
-  "generatedAt": "2026-10-25T13:50:27.361Z"
+  "runtimeCache": ".morrow-runtime-0.1.0-r017",
+  "generatedAt": "2026-10-25T18:43:47.135Z",
+  "sourceArchive": {
+    "name": "Morrow-0.1.0-source.zip",
+    "bytes": 12564440,
+    "mib": 11.98,
+    "sha256": "75635272870afc97fa84429189556a13250daeaf0f2140ae6ee2e5977357aa84",
+    "sidecar": "Morrow-0.1.0-source.zip.sha256",
+    "note": "源码包内验收文档为打包前快照；最终哈希以侧车文件为准"
+  }
 }

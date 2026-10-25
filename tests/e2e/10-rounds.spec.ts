@@ -702,6 +702,30 @@ test('改动卡运行中不可展开，结束后可展开查看详细 diff', asy
     const fileDiff = page.locator('.message-diff-file .diff-view')
     await expect(fileDiff).toContainText('+第一行')
     await expect(fileDiff).toContainText('+第二行')
+    const typography = await fileDiff.evaluate((root) => {
+      const gutter = getComputedStyle(root.querySelector('.diff-gutter') as HTMLElement)
+      const code = getComputedStyle(root.querySelector('.diff-code') as HTMLElement)
+      return {
+        gutterWeight: gutter.fontWeight,
+        codeWeight: code.fontWeight,
+        gutterSize: gutter.fontSize,
+        codeSize: code.fontSize,
+        gutterSpacing: gutter.letterSpacing,
+        codeSpacing: code.letterSpacing
+      }
+    })
+    expect(typography.gutterWeight).toBe('400')
+    expect(typography.codeWeight).toBe('400')
+    expect(typography.gutterSize).toBe(typography.codeSize)
+    expect(['normal', '0px']).toContain(typography.gutterSpacing)
+    expect(['normal', '0px']).toContain(typography.codeSpacing)
+    const statTypography = await page.locator('.message-diff-file-head .message-diff-add').first().evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { weight: style.fontWeight, size: style.fontSize, spacing: style.letterSpacing }
+    })
+    expect(statTypography.weight).toBe('400')
+    expect(statTypography.size).toBe(typography.codeSize)
+    expect(['normal', '0px']).toContain(statTypography.spacing)
     await page.screenshot({ path: screenshotPath('r13-diff-card-expanded.png') })
     await setThemeViaStore(page, 'light')
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')

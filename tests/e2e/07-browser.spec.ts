@@ -1415,10 +1415,27 @@ test('本地预览端口稍后监听时 browser_open 会自动重试成功', asy
         const root = getComputedStyle(document.documentElement)
         const thumb = getComputedStyle(document.documentElement, '::-webkit-scrollbar-thumb')
         const bar = getComputedStyle(document.documentElement, '::-webkit-scrollbar')
-        return { color: root.scrollbarColor, thumb: thumb.backgroundImage, width: bar.width }
+        return {
+          color: root.scrollbarColor,
+          thumbColor: thumb.backgroundColor,
+          thumbImage: thumb.backgroundImage,
+          thumbRadius: thumb.borderRadius,
+          thumbBorder: thumb.borderTopWidth,
+          thumbClip: thumb.backgroundClip,
+          width: bar.width
+        }
       })()`)
-    })) as { color?: string; thumb?: string; width?: string }
-    expect(JSON.stringify(scrollbarStyle)).toMatch(/138,\s*111,\s*66|#8a6f42|linear-gradient/i)
+    })) as {
+      color?: string
+      thumbColor?: string
+      thumbImage?: string
+      thumbRadius?: string
+      thumbBorder?: string
+      thumbClip?: string
+      width?: string
+    }
+    expect(scrollbarStyle.width).toBe('8px')
+    expect(scrollbarStyle.thumbImage).toBe('none')
     try {
       const png = await morrow.app.evaluate(async () => {
         const service = (globalThis as unknown as {

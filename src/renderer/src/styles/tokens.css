@@ -227,6 +227,15 @@
   --shadow-float: 0 24px 80px -24px rgba(0, 0, 0, 0.72), 0 2px 10px rgba(0, 0, 0, 0.38);
   --shadow-soft: 0 12px 32px -18px rgba(0, 0, 0, 0.6);
   --grain-opacity: 0.026;
+
+  /* 滚动条：与主区域/画布的原生细滚动条一致——实心、无炫光、6px 滑块、全圆角 */
+  --scrollbar-size: 8px;
+  --scrollbar-thumb-width: 6px;
+  --scrollbar-radius: var(--r-full);
+  --scrollbar-min-length: 36px;
+  --scrollbar-thumb-color: #8a6f42;
+  --scrollbar-thumb-hover-color: #b18f58;
+  --scrollbar-thumb-active-color: #e4ce9e;
   --user-bubble: #1a212c;
   --code-bg: #0d1117;
   --btn-primary-hover: #ffffff;
@@ -333,6 +342,9 @@
   --shadow-float: 0 24px 80px -28px rgba(50, 40, 20, 0.35), 0 2px 10px rgba(50, 40, 20, 0.1);
   --shadow-soft: 0 12px 32px -20px rgba(50, 40, 20, 0.28);
   --grain-opacity: 0.035;
+  --scrollbar-thumb-color: #a8844f;
+  --scrollbar-thumb-hover-color: #c8ae7d;
+  --scrollbar-thumb-active-color: #8a6a3c;
   --user-bubble: #e8e1d2;
   --code-bg: #ece6d8;
   --btn-primary-hover: #000000;

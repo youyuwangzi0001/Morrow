@@ -11,16 +11,24 @@ import {
   mimeTypeForFileName,
   previewKindForFileName,
 } from '../../../src/shared/file-types'
-import type { ChatMessage, SessionPlan, TodoItem, Artifact } from '../../../src/shared/types'
+import type { ChatMessage, ModelInfo, SessionPlan, TodoItem, Artifact } from '../../../src/shared/types'
 import { messagePlainText, replaceUserMessageText, userMessageDisplayText } from '../../../src/shared/message'
 import { planStepKey, planStepsCompleted, todoMatchesPlanStep, todosFromPlan } from '../../../src/shared/plan'
 import { swarmTasksFromMeta } from '../../../src/shared/swarm'
 import { estimateUsageCost } from '../../../src/shared/usage'
 import { builtinProviders, isLocalServiceUrl, isPrivateNetworkHost, pricingForModel } from '../../../src/shared/models'
+import { MORROW_SCROLLBAR_RULES, withMorrowScrollbar } from '../../../src/shared/scrollbar'
 import { buildOpenAIRequestBody } from '../../../src/core/providers/openai-compat'
 import { buildAnthropicRequestBody } from '../../../src/core/providers/anthropic'
 import type { ProviderStreamRequest } from '../../../src/core/types'
-import { isReasoningEffort, REASONING_EFFORTS } from '../../../src/shared/models'
+import {
+  isReasoningEffort,
+  modelReasoningEfforts,
+  normalizeReasoningEffortForModel,
+  REASONING_EFFORTS,
+  reasoningEffortsForModel,
+  reasoningRequestFor
+} from '../../../src/shared/models'
 import {
   RESEARCH_DEPTHS,
   buildResearchPlanPrompt,
@@ -347,16 +355,50 @@ describe('reasoning-cost.test.ts', () => {
 
 describe('reasoning.test.ts', () => {
   describe('推理强度白名单', () => {
-    it('包含 UI 提供的全部六档', () => {
-      expect(REASONING_EFFORTS).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max'])
+    it('包含 auto/off 与真实档位', () => {
+      expect(REASONING_EFFORTS).toEqual(['auto', 'off', 'low', 'medium', 'high', 'xhigh', 'max'])
       for (const effort of REASONING_EFFORTS) expect(isReasoningEffort(effort)).toBe(true)
     })
 
     it('拒绝大小写变体、空值与旧档位', () => {
-      for (const value of ['HIGH', 'XHIGH', '', 'minimal', null, undefined, 1, {}, []]) {
+      for (const value of ['HIGH', 'XHIGH', '', 'minimal', 'none', null, undefined, 1, {}, []]) {
         expect(isReasoningEffort(value)).toBe(false)
       }
     })
+  })
+
+  describe('模型真实档位', () => {
+    const unknown = {
+      id: 'unknown-model',
+      label: 'Unknown',
+      contextWindow: 128_000,
+      supportsTools: true,
+      supportsReasoning: true,
+      reasoningStyle: 'effort'
+    } satisfies ModelInfo
+
+    it('DeepSeek V4.1 Flash 只暴露 off/low/high/max，medium 会退回自动', () => {
+      const deepseek = builtinProviders()
+        .find((provider) => provider.id === 'deepseek')!
+        .models.find((model) => model.id === 'deepseek-flash')!
+      expect(modelReasoningEfforts(deepseek)).toEqual(['auto', 'off', 'low', 'high', 'max'])
+      expect(normalizeReasoningEffortForModel(deepseek, 'medium')).toBe('auto')
+      expect(normalizeReasoningEffortForModel(deepseek, 'off')).toBe('off')
+      expect(reasoningRequestFor(deepseek, 'off')).toEqual({ effort: 'off', style: 'effort' })
+    })
+
+    it('通过 API Key 接入的 DeepSeek 也识别同一组官方档位', () => {
+      expect(reasoningEffortsForModel('deepseek-v4.1-flash', true)).toEqual(['off', 'low', 'high', 'max'])
+      expect(reasoningEffortsForModel('deepseek-v4.1-flash', false)).toBeUndefined()
+    })
+
+    it('没有元数据的模型只给自动；不支持思考的模型为空', () => {
+      expect(modelReasoningEfforts(unknown)).toEqual(['auto'])
+      expect(normalizeReasoningEffortForModel(unknown, 'high')).toBe('auto')
+      expect(modelReasoningEfforts({ ...unknown, supportsReasoning: false })).toEqual([])
+      expect(reasoningRequestFor(unknown, 'high')).toBeUndefined()
+    })
+
   })
 })
 
@@ -825,6 +867,20 @@ describe('file-path.test.ts', () => {
       expect(isTextFilePath('assets/logo.png')).toBe(false)
       expect(isTextFilePath('report.pdf')).toBe(false)
     })
+  })
+})
+
+describe('iframe / 内置浏览器滚动条', () => {
+  it('与宿主一致：8px 轨道、6px 实色滑块、全圆角、无渐变', () => {
+    expect(MORROW_SCROLLBAR_RULES).toContain('width: 8px')
+    expect(MORROW_SCROLLBAR_RULES).toContain('border: 1px solid transparent')
+    expect(MORROW_SCROLLBAR_RULES).toContain('border-radius: 999px')
+    expect(MORROW_SCROLLBAR_RULES).toContain('background: #8a6f42')
+    expect(MORROW_SCROLLBAR_RULES).toContain('background-clip: content-box')
+    expect(MORROW_SCROLLBAR_RULES).not.toContain('linear-gradient')
+    const html = withMorrowScrollbar('<html><head></head><body>预览</body></html>')
+    expect(html).toContain('data-morrow-scrollbar')
+    expect(withMorrowScrollbar(html)).toBe(html)
   })
 })
 

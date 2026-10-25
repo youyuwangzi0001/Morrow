@@ -73,6 +73,30 @@ test('真实终端、默认终端切换与后台任务', async () => {
 
     await expect(page.locator('.terminal-dock')).toBeVisible()
     await expect(page.locator('.terminal-tab')).toHaveCount(1, { timeout: 30_000 })
+    // 原生 viewport 滚动条必须隐藏，否则上下三角会和自定义滑块重叠；
+    // 自定义滑块与主区域原生细滚动条一致：6px 实心、全圆角、无渐变高光。
+    const scrollbarState = async (): Promise<{ width: string; radius: string; background: string; backgroundImage: string; viewportScrollbar: string; opacity: string; invisible: boolean }> =>
+      page.locator('.terminal-xterm .xterm-scrollable-element > .scrollbar.vertical').first().evaluate((element) => {
+        const slider = element.querySelector('.slider')
+        const viewport = document.querySelector('.terminal-xterm .xterm-viewport')
+        return {
+          width: slider ? getComputedStyle(slider).width : '',
+          radius: slider ? getComputedStyle(slider).borderRadius : '',
+          background: slider ? getComputedStyle(slider).backgroundColor : '',
+          backgroundImage: slider ? getComputedStyle(slider).backgroundImage : '',
+          viewportScrollbar: viewport ? getComputedStyle(viewport).scrollbarWidth : '',
+          opacity: getComputedStyle(element).opacity,
+          invisible: element.classList.contains('invisible')
+        }
+      })
+    const scrollbarStyle = await scrollbarState()
+    expect(scrollbarStyle.width).toBe('6px')
+    expect(scrollbarStyle.radius).toBe('999px')
+    expect(scrollbarStyle.background).toBe('rgb(138, 111, 66)')
+    expect(scrollbarStyle.backgroundImage).toBe('none')
+    expect(scrollbarStyle.viewportScrollbar).toBe('none')
+    // 初始只有一行提示符：滚动条应与主区域一样自动隐藏。
+    expect(scrollbarStyle.invisible || scrollbarStyle.opacity === '0').toBe(true)
     const dockBox = await page.locator('.terminal-dock').boundingBox()
     const mainBox = await page.locator('.app-main').boundingBox()
     expect(dockBox?.height).toBe(240)
@@ -94,6 +118,13 @@ test('真实终端、默认终端切换与后台任务', async () => {
     await expect
       .poll(() => readTerminal(page, initialShells[0].id), { timeout: 30_000 })
       .toContain('中文终端_ok')
+    // 输出超过当前终端高度后，滚动条才出现；与主区域原生滚动条一致。
+    await page.keyboard.insertText('1..80 | ForEach-Object { "scroll_$_" }')
+    await page.keyboard.press('Enter')
+    await expect
+      .poll(() => readTerminal(page, initialShells[0].id), { timeout: 30_000 })
+      .toContain('scroll_80')
+    await expect.poll(async () => (await scrollbarState()).opacity).toBe('1')
     // 终端拥有键盘：Ctrl+K 不应打开命令面板
     await page.keyboard.press('Control+K')
     await expect(page.locator('.palette')).toHaveCount(0)
@@ -144,7 +175,7 @@ test('真实终端、默认终端切换与后台任务', async () => {
     await tickTab.getByRole('tab').click()
     await expect(page.locator('.terminal-task-output')).toContainText('tick', { timeout: 30_000 })
     await page.getByRole('button', { name: '停止终端' }).click()
-    await expect(page.locator('.terminal-status-meta')).toContainText('已退出', { timeout: 20_000 })
+    await expect(tickTab.locator('.terminal-tab-dot')).not.toHaveClass(/is-running/, { timeout: 20_000 })
 
     // 回到第一个终端截图
     await page.locator('.terminal-tab').first().getByRole('tab').click()

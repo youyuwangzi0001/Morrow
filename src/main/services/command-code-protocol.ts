@@ -1,6 +1,7 @@
 /** Command Code 的纯协议规则：鉴权头、模型路由、请求改写与额度解析。 */
-import type { ModelInfo } from '../../shared/types'
+import type { ModelInfo, ReasoningEffort } from '../../shared/types'
 import type { AgentQuotaWindow, AgentSubscriptionQuota } from '../../shared/subscriptions'
+import { isReasoningEffort } from '../../shared/models'
 import { asNumber, asRecord, asString, percentWindow, timestampMs } from './agent-protocol-utils'
 
 export const COMMAND_CODE_API = 'https://api.commandcode.ai'
@@ -96,12 +97,17 @@ export function parseCommandCodeCatalog(payload: unknown): {
     if (!isClaude && wire === 'responses') continue
     const contextWindow = asNumber(row.context_length) ?? asNumber(row.context_window) ?? asNumber(row.contextWindow) ?? asNumber(row.max_context_tokens) ?? 200_000
     const maxOutput = asNumber(row.max_output_tokens) ?? asNumber(row.maxOutputTokens) ?? Math.min(contextWindow, 32_768)
+    const effortRaw = row.reasoning_efforts ?? row.supported_reasoning_efforts ?? row.reasoning_effort_support_list
+    const reasoningEfforts: ReasoningEffort[] | undefined = Array.isArray(effortRaw)
+      ? [...new Set(effortRaw.filter((value): value is ReasoningEffort => isReasoningEffort(value)))]
+      : undefined
     const model: ModelInfo = {
       id,
       label: asString(row.name) ?? asString(row.display_name) ?? id,
       contextWindow,
       maxOutput,
       supportsTools: true,
+      ...(reasoningEfforts?.length ? { reasoningEfforts } : {}),
       note: 'Command Code'
     }
     if (isClaude) {

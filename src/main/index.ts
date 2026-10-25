@@ -33,6 +33,7 @@ import {
   requestCloseFromIsland
 } from './services/lifecycle'
 import { log } from './services/logger'
+import { isLoginSession } from './services/login-window'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -123,6 +124,12 @@ function bootstrap(dataDir: string): void {
   })
 
   app.on('web-contents-created', (_event, contents) => {
+    // 登录窗口在自己的 http(s) 白名单里完成整页跳转，不套用“非应用地址一律拦截”的全局规则。
+    try {
+      if (isLoginSession(contents.session)) return
+    } catch {
+      // 会话尚未就绪时仍安装应用级防护
+    }
     // 功能测试模式下绝不能弹出外部浏览器/Edge 窗口：测试站点导航只允许留在应用内部。
     const testMode = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
     const devUrl = process.env.ELECTRON_RENDERER_URL

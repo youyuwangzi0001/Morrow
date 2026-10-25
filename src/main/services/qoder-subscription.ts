@@ -11,8 +11,6 @@ import type { ModelInfo, ProviderConfig } from '../../shared/types'
 import type { QoderSubscriptionAccount, QoderSubscriptionQuota, QoderSubscriptionState } from '../../shared/subscriptions'
 import { openLoginQuiet } from './external-open'
 import {
-  QODER_MODELS_CN,
-  QODER_MODELS_GLOBAL,
   HOSTS,
   QUOTA_USAGE_PATH,
   JOB_TOKEN_EXCHANGE_PATH,
@@ -21,6 +19,7 @@ import {
   COSY_OPENAPI_VERSION,
   COSY_CLIENT_TYPE,
   decodeQoderAdoptPayload,
+  fetchQoderModelCatalog,
   startQoderProxy,
   type QoderCredential,
   type QoderModel,
@@ -78,10 +77,13 @@ function toModelInfo(model: QoderModel): ModelInfo {
     id: model.id,
     label: model.label,
     contextWindow: model.contextWindow,
-    maxOutput: 128_000,
+    maxOutput: 32_768,
     supportsTools: true,
     supportsReasoning: model.reasoning,
     ...(model.reasoning ? { reasoningStyle: 'effort' as const } : {}),
+    ...(model.reasoningEfforts?.length ? { reasoningEfforts: model.reasoningEfforts } : {}),
+    ...(model.contextOptions?.length ? { contextOptions: model.contextOptions } : {}),
+    ...(model.defaultContextWindow ? { defaultContextWindow: model.defaultContextWindow } : {}),
     note: 'Qoder 订阅'
   }
 }
@@ -129,10 +131,12 @@ export class QoderSubscriptionService {
   private lastError: string | null = null
   private refreshing: Promise<QoderCredential> | null = null
   private deviceLogin: { url: string; promise: Promise<QoderSubscriptionState> } | null = null
+  private catalog: QoderModel[] | null = null
 
   constructor() {
     this.file = this.loadFile()
     this.credential = this.loadCredential()
+    this.catalog = this.loadCatalogCache()
   }
 
   private filePath(): string {
@@ -151,6 +155,48 @@ export class QoderSubscriptionService {
   private saveFile(): void {
     mkdirSync(dataPath(), { recursive: true })
     writeFileSync(this.filePath(), `${JSON.stringify(this.file, null, 2)}\n`, 'utf8')
+  }
+
+  private catalogPath(): string {
+    return dataPath('qoder-model-catalog.json')
+  }
+
+  private loadCatalogCache(): QoderModel[] | null {
+    try {
+      const parsed = JSON.parse(readFileSync(this.catalogPath(), 'utf8')) as { models?: unknown }
+      if (!Array.isArray(parsed?.models)) return null
+      const models = parsed.models.filter((item): item is QoderModel => {
+        const record = item && typeof item === 'object' ? item as Record<string, unknown> : null
+        return Boolean(record && typeof record.id === 'string' && typeof record.label === 'string' &&
+          typeof record.contextWindow === 'number')
+      })
+      return models.length > 0 ? models : null
+    } catch {
+      return null
+    }
+  }
+
+  private saveCatalogCache(models: QoderModel[]): void {
+    try {
+      mkdirSync(dataPath(), { recursive: true })
+      writeFileSync(this.catalogPath(), `${JSON.stringify({ version: 1, updatedAt: Date.now(), models }, null, 2)}\n`, 'utf8')
+    } catch (err) {
+      log.warn('qoder model catalog cache save failed', { error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  /** 账号模型目录是模型/上下文/思考档位的唯一来源；失败时沿用上次缓存。 */
+  private async refreshCatalog(): Promise<void> {
+    if (!this.credential) return
+    try {
+      const models = await fetchQoderModelCatalog(this.credential, (url, init) => this.fetchImpl(url, init))
+      this.catalog = models
+      this.saveCatalogCache(models)
+      log.info('qoder account model catalog loaded', { models: models.length })
+    } catch (err) {
+      log.warn('qoder account model catalog unavailable', { error: err instanceof Error ? err.message : String(err) })
+      if (!this.catalog) this.catalog = this.loadCatalogCache()
+    }
   }
 
   private encrypt(value: string): string {
@@ -324,8 +370,8 @@ export class QoderSubscriptionService {
     return credential
   }
 
-  private models(region: QoderRegion): QoderModel[] {
-    return region === 'cn' ? QODER_MODELS_CN : QODER_MODELS_GLOBAL
+  private models(_region: QoderRegion): QoderModel[] {
+    return this.catalog ?? []
   }
 
   private async ensureProxy(): Promise<number> {
@@ -335,6 +381,9 @@ export class QoderSubscriptionService {
     this.localToken = existing ? getSettingsStore().getApiKey(PROVIDER_ID) : null
     if (!this.localToken) this.localToken = randomBytes(32).toString('base64url')
     const models = this.models(this.credential.region)
+    if (models.length === 0) {
+      throw new Error('Qoder 账号模型目录尚未读取成功，请重新登录或稍后重试。')
+    }
     this.proxy = await startQoderProxy({
       localToken: this.localToken,
       models,
@@ -370,6 +419,7 @@ export class QoderSubscriptionService {
   async restore(): Promise<void> {
     if (!this.credential) return
     try {
+      await this.refreshCatalog()
       await this.ensureProxy()
       this.ensureProvider()
     } catch (err) {
@@ -399,6 +449,7 @@ export class QoderSubscriptionService {
       machineId: this.machineId()
     }
     this.persist(credential, 'pat')
+    await this.refreshCatalog()
     await this.ensureProxy()
     this.ensureProvider()
     this.quotaCache = null
@@ -480,6 +531,7 @@ export class QoderSubscriptionService {
       machineId
     }
     this.persist(credential, 'device')
+    await this.refreshCatalog()
     await this.ensureProxy()
     this.ensureProvider()
     this.quotaCache = null
@@ -537,6 +589,7 @@ export class QoderSubscriptionService {
       machineId
     }
     this.persist(credential, 'local', paths.auth)
+    await this.refreshCatalog()
     await this.ensureProxy()
     this.ensureProvider()
     this.quotaCache = null
@@ -588,6 +641,29 @@ export class QoderSubscriptionService {
     }
   }
 
+  /** 模型管理里的默认上下文只允许账号目录声明的档位（Qoder 为 200K/400K/1M）。 */
+  async setModelContextWindow(modelId: string, contextWindow: number): Promise<QoderSubscriptionState> {
+    const provider = getSettingsStore().get().providers.find((item) => item.id === PROVIDER_ID)
+    const model = provider?.models.find((item) => item.id === modelId)
+    if (!provider || !model) throw new Error('Qoder 模型不存在，请重新登录读取账号模型目录。')
+    if (!model.contextOptions?.includes(contextWindow)) {
+      throw new Error('这个上下文档位不在 Qoder 账号模型目录中。')
+    }
+    getSettingsStore().saveProvider({
+      ...provider,
+      models: provider.models.map((item) =>
+        item.id === modelId ? { ...item, defaultContextWindow: contextWindow } : item
+      )
+    }, getSettingsStore().getApiKey(PROVIDER_ID) ?? undefined)
+    if (this.catalog) {
+      this.catalog = this.catalog.map((item) =>
+        item.id === modelId ? { ...item, defaultContextWindow: contextWindow } : item
+      )
+      this.saveCatalogCache(this.catalog)
+    }
+    return this.status()
+  }
+
   async setEnabled(enabled: boolean): Promise<QoderSubscriptionState> {
     let provider = getSettingsStore().get().providers.find((item) => item.id === PROVIDER_ID)
     if (!provider && enabled && this.credential) {
@@ -619,6 +695,7 @@ export class QoderSubscriptionService {
     this.localToken = null
     this.quotaCache = null
     this.lastError = null
+    this.catalog = null
     this.file = { version: 1 }
     this.saveFile()
     try {

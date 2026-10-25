@@ -3,14 +3,20 @@ import type { ModelInfo } from '../../shared/types'
 import type { AgentQuotaWindow, AgentSubscriptionQuota } from '../../shared/subscriptions'
 import { asString } from './agent-protocol-utils'
 
-export const KIMI_MODELS: ModelInfo[] = [
-  { id: 'k3', label: 'Kimi K3', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
+const KIMI_MODELS_BASE: ModelInfo[] = [
+  { id: 'k3', label: 'Kimi K3', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
   { id: 'k3-256k', label: 'Kimi K3 256K', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
   { id: 'kimi-for-coding', label: 'Kimi for Coding', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
   { id: 'kimi-for-coding-highspeed', label: 'Kimi for Coding 高速', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
-  { id: 'k3.1-pro', label: 'Kimi K3.1 Pro', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
+  { id: 'k3.1-pro', label: 'Kimi K3.1 Pro', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
   { id: 'k3.1-pro-highspeed', label: 'Kimi K3.1 Pro 高速', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' }
 ]
+
+/** Kimi K3/K3.1 Pro/K2.8 支持 low/high/max；代理按真实档位改写，不固定 high。 */
+export const KIMI_MODELS: ModelInfo[] = KIMI_MODELS_BASE.map((model) => ({
+  ...model,
+  ...(model.supportsReasoning ? { reasoningEfforts: ['low', 'high', 'max'] as ModelInfo['reasoningEfforts'] } : {})
+}))
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null
@@ -47,8 +53,10 @@ export function rewriteKimiBody(raw: string): string {
   body.max_completion_tokens = Math.max(1_024, Math.min(maxTokens, 262_144))
   body.stream = true
   body.stream_options = { ...(asRecord(body.stream_options) ?? {}), include_usage: true }
-  body.reasoning_effort = 'high'
-  body.thinking = { type: 'enabled', effort: 'high', keep: 'all' }
+  const requested = asString(body.reasoning_effort)
+  const effort = requested === 'low' || requested === 'high' || requested === 'max' ? requested : 'high'
+  body.reasoning_effort = effort
+  body.thinking = { type: 'enabled', effort, keep: 'all' }
   if (Array.isArray(body.tools) && body.tools.length > 0 && body.tool_choice === undefined) body.tool_choice = 'auto'
   if (Array.isArray(body.messages)) {
     for (const message of body.messages) {

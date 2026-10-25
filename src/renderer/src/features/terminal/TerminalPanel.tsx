@@ -41,17 +41,6 @@ function storedHeight(): number {
   return Number.isFinite(raw) && raw > 0 ? clampHeight(raw) : DEFAULT_HEIGHT
 }
 
-function stateLabel(process: TerminalProcessInfo): string {
-  if (process.status === 'running') return '运行中'
-  if (process.exitCode !== undefined && process.exitCode !== 0) return `已退出 · 代码 ${process.exitCode}`
-  return '已退出'
-}
-
-function compactCwd(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean)
-  return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`
-}
-
 function xtermTheme(theme: ThemeMode): ITheme {
   const light = theme === 'light'
   return {
@@ -705,19 +694,6 @@ export function TerminalPanel({
         ) : null}
       </div>
 
-      <div className="terminal-statusbar">
-        <span className="terminal-status-path mono" title={active?.cwd ?? ''}>
-          {active ? compactCwd(active.cwd) : workspace ? compactCwd(workspace) : '未选择文件夹'}
-        </span>
-        {active ? (
-          <span
-            className="terminal-status-meta"
-            title={active.pid !== undefined ? `PID ${active.pid}` : undefined}
-          >
-            {active.kind === 'shell' ? active.shellLabel ?? '终端' : '后台任务'} · {stateLabel(active)}
-          </span>
-        ) : null}
-      </div>
     </section>
   )
 }

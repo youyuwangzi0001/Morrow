@@ -170,7 +170,7 @@ export type CodeFontId = 'ibm-plex' | 'jetbrains' | 'system'
 
 export type ProviderKind = 'openai-compat' | 'anthropic' | 'demo'
 
-export type ReasoningEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type ReasoningEffort = 'auto' | 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export interface ModelPricing {
   /** 每百万输入 token 的美元参考价 */
@@ -192,6 +192,12 @@ export interface ModelInfo {
   supportsVision?: boolean
   /** 推理强度如何映射到 provider：effort=reasoning_effort，thinking=thinking budget */
   reasoningStyle?: 'effort' | 'thinking'
+  /** 服务商真实支持的思考档位；未提供时只展示安全的“自动”，不猜测档位 */
+  reasoningEfforts?: ReasoningEffort[]
+  /** 服务端声明的默认上下文上限；未提供时用 contextWindow */
+  defaultContextWindow?: number
+  /** 服务商支持客户端指定上下文上限时的可选值（tokens） */
+  contextOptions?: number[]
   pricing?: ModelPricing
   note?: string
 }
@@ -219,6 +225,8 @@ export interface ProviderConfig {
 export interface ModelRef {
   providerId: string
   modelId: string
+  /** 本会话覆盖的上下文上限；未设置时使用模型元数据里的上限 */
+  contextWindow?: number
 }
 
 export interface ProviderTestResult {

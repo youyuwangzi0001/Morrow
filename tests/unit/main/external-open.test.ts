@@ -1,13 +1,10 @@
-import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   openExternal: vi.fn(),
   writeText: vi.fn(),
   execFile: vi.fn(),
-  execFileSync: vi.fn(),
-  spawn: vi.fn(),
-  existsSync: vi.fn()
+  openLoginWindow: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -15,19 +12,13 @@ vi.mock('electron', () => ({
   clipboard: { writeText: mocks.writeText }
 }))
 
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>()
-  return { ...actual, existsSync: mocks.existsSync }
-})
+vi.mock('../../../src/main/services/login-window', () => ({
+  openLoginWindow: mocks.openLoginWindow
+}))
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>()
-  return {
-    ...actual,
-    execFile: mocks.execFile,
-    execFileSync: mocks.execFileSync,
-    spawn: mocks.spawn
-  }
+  return { ...actual, execFile: mocks.execFile }
 })
 
 import { openExternalUrl, openLoginUrl } from '../../../src/main/services/external-open'
@@ -62,48 +53,37 @@ describe('openExternalUrl', () => {
     }
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/login?x=1')
   })
+})
 
-  it.skipIf(process.platform !== 'win32')('登录优先使用 cmd /c start 打开系统默认浏览器', async () => {
-    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
-    mocks.existsSync.mockReturnValue(true)
-    mocks.spawn.mockImplementation(() => {
-      const child = new EventEmitter() as EventEmitter & { unref: () => void }
-      child.unref = vi.fn()
-      process.nextTick(() => { child.emit('spawn'); child.emit('close', 0) })
-      return child
-    })
-    const result = await openLoginUrl('https://example.com/auth?x=1')
-    expect(result).toEqual({ opened: true, copied: true })
-    expect(mocks.openExternal).not.toHaveBeenCalled()
-    const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
-    expect(exe.toLowerCase()).toContain('cmd.exe')
-    expect(args).toEqual(['/c', 'start', '""', '"https://example.com/auth?x=1"'])
-    expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
+describe('openLoginUrl', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.openLoginWindow.mockReset()
+    delete process.env.MORROW_TEST
   })
 
-  it.skipIf(process.platform !== 'win32')('cmd start 无法启动时回退到独立浏览器配置', async () => {
-    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
-    mocks.existsSync.mockReturnValue(true)
-    mocks.spawn
-      .mockImplementationOnce(() => {
-        const child = new EventEmitter() as EventEmitter & { unref: () => void }
-        child.unref = vi.fn()
-        process.nextTick(() => child.emit('error', new Error('no cmd')))
-        return child
-      })
-      .mockImplementation(() => {
-        const child = new EventEmitter() as EventEmitter & { unref: () => void }
-        child.unref = vi.fn()
-        process.nextTick(() => child.emit('spawn'))
-        return child
-      })
-    const result = await openLoginUrl('https://example.com/auth?x=1')
+  it('测试模式只复制登录链接', async () => {
+    process.env.MORROW_TEST = '1'
+    const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
+    expect(result).toEqual({ opened: false, copied: true })
+    expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
+    expect(mocks.openLoginWindow).not.toHaveBeenCalled()
+  })
+
+  it('在 Morrow 内置登录窗口打开授权页', async () => {
+    mocks.openLoginWindow.mockReturnValue(true)
+    const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
     expect(result).toEqual({ opened: true, copied: true })
-    const [exe, args] = mocks.spawn.mock.calls[1] as [string, string[]]
-    expect(exe.toLowerCase()).toContain('msedge.exe')
-    expect(args.some((arg) => arg.startsWith('--user-data-dir='))).toBe(true)
-    expect(args).toContain('--new-window')
-    expect(args.at(-1)).toBe('https://example.com/auth?x=1')
-    expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
+    expect(mocks.openLoginWindow).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
+    expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
+    expect(mocks.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('内置窗口不可用时仍复制链接', async () => {
+    mocks.openLoginWindow.mockReturnValue(false)
+    const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
+    expect(result).toEqual({ opened: false, copied: true })
+    expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
+    expect(mocks.openExternal).not.toHaveBeenCalled()
   })
 })

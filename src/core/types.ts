@@ -109,6 +109,8 @@ export interface ProviderStreamRequest {
   temperature?: number
   /** 推理强度映射：effort→reasoning_effort，thinking→Anthropic thinking budget */
   reasoning?: { effort: import('../shared/types').ReasoningEffort; style: 'effort' | 'thinking' }
+  /** 本会话覆盖的上下文上限；由支持该参数的本地代理读取 */
+  contextWindow?: number
 }
 
 /** Provider 层产出的细粒度流事件，由 Agent 循环聚合成 RuntimeEvent */

@@ -1,5 +1,6 @@
 /** Step Plan 的纯协议规则：profile、登录、模型目录与请求改写。 */
-import type { ModelInfo } from '../../shared/types'
+import type { ModelInfo, ReasoningEffort } from '../../shared/types'
+import { isReasoningEffort } from '../../shared/models'
 import { asNumber, asRecord, asString } from './agent-protocol-utils'
 
 export type StepProfile = 'step_plan' | 'step_plan_oversea' | 'platform_cn' | 'platform_oversea'
@@ -82,6 +83,7 @@ export function parseStepModels(payload: unknown, profile: StepProfile = 'step_p
       : []
     const supportsReasoning = row.enable_reason === true
       || (row.enable_reason === undefined && ladder.some((value) => !/^(off|none|disabled|disable)$/i.test(value)))
+    const modelEfforts = ladder.filter((value): value is ReasoningEffort => isReasoningEffort(value))
     if (supportsReasoning && ladder.length > 0) efforts[id] = ladder
     models.push({
       id,
@@ -90,6 +92,7 @@ export function parseStepModels(payload: unknown, profile: StepProfile = 'step_p
       maxOutput: Math.min(contextWindow, 32_768),
       supportsTools: true,
       ...(supportsReasoning ? { supportsReasoning: true, reasoningStyle: 'effort' as const } : {}),
+      ...(supportsReasoning && modelEfforts.length > 0 ? { reasoningEfforts: modelEfforts } : {}),
       note: STEP_PROFILES[profile].label
     })
   }

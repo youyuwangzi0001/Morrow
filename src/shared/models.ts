@@ -1,8 +1,8 @@
-import type { ModelInfo, ModelRef, ProviderConfig, Settings } from './types'
+import type { ModelInfo, ModelRef, ProviderConfig, ReasoningEffort, Settings } from './types'
 
 /**
  * 内置模型预设。
- * 数据截至 2026-10-19，来源与核对方式见 docs/MODELS-RESEARCH.md；
+ * 数据截至 2026-10-26，来源与核对结果见 docs/verification/VERIFICATION.md §4.3；
  * 设置页支持「从服务商同步模型列表」在运行时刷新上下文/输出上限等元数据。
  */
 
@@ -10,23 +10,25 @@ const deepseekModels: ModelInfo[] = [
   {
     id: 'deepseek-flash',
     label: 'DeepSeek V4.1 Flash',
-    contextWindow: 1_048_576,
+    contextWindow: 1_000_000,
     maxOutput: 393_216,
     supportsTools: true,
     supportsVision: true,
 
     supportsReasoning: true,
+    reasoningEfforts: ['off', 'low', 'high', 'max'],
     note: '速度快、性价比高'
   },
   {
     id: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
-    contextWindow: 1_048_576,
+    contextWindow: 1_000_000,
     maxOutput: 393_216,
     supportsTools: true,
     supportsVision: true,
 
     supportsReasoning: true,
+    reasoningEfforts: ['high', 'max'],
     note: '旗舰推理与复杂任务能力，适合长任务'
   }
 ]
@@ -35,7 +37,7 @@ const kimiModels: ModelInfo[] = [
   {
     id: 'kimi-k3.1-pro',
     label: 'Kimi K3.1 Pro',
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
@@ -44,7 +46,7 @@ const kimiModels: ModelInfo[] = [
   {
     id: 'kimi-k3',
     label: 'Kimi K3',
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     maxOutput: 65_536,
     supportsTools: true,
     supportsVision: true,
@@ -55,7 +57,7 @@ const kimiModels: ModelInfo[] = [
   {
     id: 'kimi-k2.8-preview',
     label: 'Kimi K2.8 Preview',
-    contextWindow: 262_144,
+    contextWindow: 1_048_576,
     maxOutput: 65_536,
     supportsTools: true,
     supportsReasoning: true,
@@ -126,7 +128,7 @@ const anthropicModels: ModelInfo[] = [
     maxOutput: 128_000,
     supportsTools: true,
     supportsVision: true,
-
+    supportsReasoning: true,
     note: '高并发、低成本'
   }
 ]
@@ -362,6 +364,50 @@ export function pricingForModel(modelId: string): ModelInfo['pricing'] {
   return found ? { ...found[1] } : undefined
 }
 
+/**
+ * 已知模型族的真实思考档位。只收录有把握的档位；未知家族不猜测，
+ * 由 UI 只提供“自动（不指定）”，避免把 medium/xhigh 发给不支持的 API。
+ */
+const REASONING_EFFORT_PATTERNS: Array<[RegExp, ReasoningEffort[]]> = [
+  // DeepSeek V4.1 Flash：官方档位 none/low/high/max，Morrow 用 off 表示 none。
+  [/deepseek.*(?:flash|v4\.1)/i, ['off', 'low', 'high', 'max']],
+  // V4 Pro / 旧版 V4：官方高力度档位为 high/max。
+  [/deepseek/i, ['high', 'max']],
+  // GPT-6.1 Sol 等：low/medium/high/xhigh/max（不支持 none/minimal）。
+  [/^(gpt-|o\d)/i, ['low', 'medium', 'high', 'xhigh', 'max']],
+  // Claude 5.5 家族：低到 max 五档。
+  [/claude/i, ['low', 'medium', 'high', 'xhigh', 'max']],
+  // Kimi K3/K3.1 Pro/K2.8：low/high/max。
+  [/kimi|^k3/i, ['low', 'high', 'max']],
+  // GLM-5.3 / 5.3-Flash：low/high/max，默认 max。
+  [/glm/i, ['low', 'high', 'max']],
+  // MiniMax M3.1 Flash：low 到 max 五档。
+  [/minimax/i, ['low', 'medium', 'high', 'xhigh', 'max']],
+  // Qwen3.8：官方低/中/xhigh 三档；max/high 会映射到 xhigh。
+  [/qwen/i, ['low', 'medium', 'xhigh']],
+  // Gemini 4 Argon / 3.8 Flash：LOW/MEDIUM/HIGH。
+  [/gemini/i, ['low', 'medium', 'high']],
+  // Grok 4.6/4.7：low/medium/high/xhigh，默认 high。
+  [/grok/i, ['low', 'medium', 'high', 'xhigh']],
+  // Meta Muse Spark：low/medium/high/xhigh。
+  [/muse/i, ['low', 'medium', 'high', 'xhigh']]
+]
+
+export function reasoningEffortsForModel(modelId: string, supportsReasoning = true): ReasoningEffort[] | undefined {
+  if (!supportsReasoning) return undefined
+  const found = REASONING_EFFORT_PATTERNS.find(([pattern]) => pattern.test(modelId))
+  return found ? [...found[1]] : undefined
+}
+
+/** 订阅渠道保存 Provider 前统一补齐真实档位；显式元数据优先。 */
+export function enrichModelCapabilities(models: ModelInfo[]): ModelInfo[] {
+  return models.map((model) => {
+    if (!model.supportsReasoning) return model
+    const efforts = model.reasoningEfforts ?? reasoningEffortsForModel(model.id, true)
+    return efforts ? { ...model, reasoningEfforts: efforts } : model
+  })
+}
+
 /** 给内置模型补充推理映射与参考价；未知模型不猜测价格。 */
 function enrichModels(models: ModelInfo[], providerId: string): ModelInfo[] {
   return models.map((model) => {
@@ -370,10 +416,13 @@ function enrichModels(models: ModelInfo[], providerId: string): ModelInfo[] {
     const reasoningStyle =
       model.reasoningStyle ??
       (model.supportsReasoning ? (providerId === 'anthropic' ? 'thinking' : 'effort') : undefined)
+    const reasoningEfforts =
+      model.reasoningEfforts ?? reasoningEffortsForModel(model.id, model.supportsReasoning === true)
     const pricing = model.pricing ?? pricingForModel(model.id)
     return {
       ...model,
       ...(reasoningStyle ? { reasoningStyle } : {}),
+      ...(reasoningEfforts ? { reasoningEfforts } : {}),
       ...(pricing ? { pricing } : {})
     }
   })
@@ -690,12 +739,53 @@ export const SUGGESTIONS = [
   }
 ] as const
 
-import type { ReasoningEffort } from './types'
-
-export const REASONING_EFFORTS = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly ReasoningEffort[]
+export const REASONING_EFFORTS = ['auto', 'off', 'low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly ReasoningEffort[]
 
 const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS)
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && REASONING_EFFORT_SET.has(value)
 }
+
+function normalizeEffortList(value: unknown): ReasoningEffort[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((item): item is ReasoningEffort => isReasoningEffort(item)))]
+}
+
+/**
+ * 模型实际可选的思考强度：auto 表示“不指定、交给服务端”，显式档位只来自模型元数据。
+ * 没有元数据时不猜测 low/high 等档位，避免像 DeepSeek medium 这样的上游 400。
+ */
+export function modelReasoningEfforts(model: ModelInfo | null | undefined): ReasoningEffort[] {
+  if (!model?.supportsReasoning || !model.reasoningStyle) return []
+  const explicit = normalizeEffortList(model.reasoningEfforts)
+  return explicit.length > 0 ? ['auto', ...explicit.filter((effort) => effort !== 'auto')] : ['auto']
+}
+
+/** 请求前把历史/默认值收敛到模型真实支持的档位；不合法时退回 auto（不发送参数）。 */
+export function normalizeReasoningEffortForModel(
+  model: ModelInfo | null | undefined,
+  effort: ReasoningEffort | undefined
+): ReasoningEffort | undefined {
+  if (!model?.supportsReasoning || !model.reasoningStyle) return undefined
+  if (!effort || effort === 'auto') return 'auto'
+  return modelReasoningEfforts(model).includes(effort) ? effort : 'auto'
+}
+
+export function reasoningRequestFor(
+  model: ModelInfo | null | undefined,
+  effort: ReasoningEffort | undefined
+): { effort: ReasoningEffort; style: 'effort' | 'thinking' } | undefined {
+  const normalized = normalizeReasoningEffortForModel(model, effort)
+  if (!normalized || normalized === 'auto' || !model?.reasoningStyle) return undefined
+  return { effort: normalized, style: model.reasoningStyle }
+}
+
+export function modelContextOptions(model: ModelInfo | null | undefined): number[] {
+  if (!model?.contextOptions?.length) return []
+  const max = model.contextWindow
+  return [...new Set(model.contextOptions.filter((value) => Number.isInteger(value) && value >= 1_024 && value <= max))]
+    .sort((a, b) => a - b)
+}
+
+/** 生成 Qoder/兼容网关可用的上下文档位；只在模型自己的上限内取整档。 */

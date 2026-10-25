@@ -56,16 +56,6 @@ export const GLM_MODELS: ModelInfo[] = [
     note: 'GLM Coding Plan · 多模态'
   },
   {
-    id: 'GLM-5.2',
-    label: 'GLM-5.2',
-    contextWindow: 1_000_000,
-    maxOutput: 128_000,
-    supportsTools: true,
-    supportsReasoning: true,
-    reasoningStyle: 'thinking',
-    note: 'GLM Coding Plan · 上一代旗舰'
-  },
-  {
     id: 'GLM-5-Turbo',
     label: 'GLM-5 Turbo',
     contextWindow: 200_000,
@@ -94,7 +84,7 @@ export function rewriteGlmBody(raw: string): string {
   const requested = asString(body.reasoning_effort) ?? (budget === undefined ? 'high'
     : budget <= 1_024 ? 'low'
       : budget <= 8_192 ? 'high' : 'max')
-  const ladder = /5\.2/i.test(model) ? ['high', 'max'] : ['low', 'high', 'max']
+  const ladder = ['low', 'high', 'max']
   const rank: Record<string, number> = { low: 1, medium: 2, high: 3, xhigh: 4, max: 5 }
   const target = rank[requested] ?? rank.high!
   const snapped = ladder.reduce((best, value) =>

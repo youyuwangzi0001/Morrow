@@ -126,7 +126,7 @@ export function buildAnthropicRequestBody(
   if (converted.system) body.system = converted.system
   if (req.tools.length > 0) body.tools = req.tools.map(toAnthropicTool)
   if (typeof req.temperature === 'number') body.temperature = req.temperature
-  if (req.reasoning?.style === 'thinking') {
+  if (req.reasoning?.style === 'thinking' && req.reasoning.effort !== 'off') {
     const budgets = { low: 1024, medium: 4096, high: 8192, xhigh: 16384, max: 32768 } as const
     const budget = budgets[req.reasoning.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max'] ?? 4096
     const maxTokens = typeof body.max_tokens === 'number' ? body.max_tokens : 8192

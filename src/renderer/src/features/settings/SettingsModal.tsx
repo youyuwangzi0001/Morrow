@@ -37,7 +37,7 @@ import {
   Trash2,
   Zap
 } from 'lucide-react'
-import { findModel, isLocalServiceUrl } from '@shared/models'
+import { findModel, isLocalServiceUrl, reasoningEffortsForModel } from '@shared/models'
 import { formatUsd } from '@shared/usage'
 import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/types'
 import { RESERVED_COMMAND_NAMES } from '@shared/commands'
@@ -406,6 +406,8 @@ function ModelsTab(): React.JSX.Element {
     }
     const contextWindow = Number(customModelCtx) || 131_072
     const maxOutput = Number(customModelOut) || 32_768
+    const inferredEfforts = reasoningEffortsForModel(id, true)
+    const supportsReasoning = provider.kind === 'anthropic' || inferredEfforts !== undefined
     const { seq, targetId } = beginAction()
     setAddingModel(true)
     setError(null)
@@ -413,7 +415,23 @@ function ModelsTab(): React.JSX.Element {
       const config: ProviderConfig = {
         ...provider,
         enabled: true,
-        models: [...provider.models, { id, label: id, contextWindow, maxOutput, supportsTools: true }]
+        models: [
+          ...provider.models,
+          {
+            id,
+            label: id,
+            contextWindow,
+            maxOutput,
+            supportsTools: true,
+            ...(supportsReasoning
+              ? {
+                  supportsReasoning: true,
+                  reasoningStyle: provider.kind === 'anthropic' ? 'thinking' : 'effort',
+                  ...(inferredEfforts ? { reasoningEfforts: inferredEfforts } : {})
+                }
+              : {})
+          }
+        ]
       }
       await saveProvider({ config })
       await setModel(id, provider.id)
@@ -882,7 +900,8 @@ function ContextTab(): React.JSX.Element {
 
   const model = findModel(settings.providers, session?.model ?? settings.defaultModel)
   const usage = session?.usage
-  const snapshot = contextSnapshot(usage, model?.contextWindow)
+  const effectiveContextWindow = session?.model.contextWindow ?? model?.defaultContextWindow ?? model?.contextWindow
+  const snapshot = contextSnapshot(usage, effectiveContextWindow)
   const thresholdPercent = Math.round(settings.compactThreshold * 100)
   const planTokens = Math.round(snapshot.limit * settings.compactThreshold)
   const tone = snapshot.ratio >= 0.85 ? 'is-danger' : snapshot.ratio >= 0.6 ? 'is-warning' : ''
@@ -961,8 +980,8 @@ function ContextTab(): React.JSX.Element {
         </div>
         <div className="st-ctx-stat">
           <span className="st-ctx-stat-label">上下文窗口</span>
-          <span className="st-ctx-stat-value mono" title={formatExactTokens(model?.contextWindow)}>
-            {formatUsageTokens(model?.contextWindow)}
+          <span className="st-ctx-stat-value mono" title={formatExactTokens(effectiveContextWindow)}>
+            {formatUsageTokens(effectiveContextWindow)}
           </span>
         </div>
         <div className="st-ctx-stat">
