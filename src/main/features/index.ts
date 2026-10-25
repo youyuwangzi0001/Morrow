@@ -27,6 +27,7 @@ import {
   updateSchedule
 } from '../services/schedule-runtime'
 import { getSubscriptionService, runSubscriptionAction } from '../services/subscriptions'
+import { getQoderSubscriptionService } from '../services/qoder-subscription'
 import type { PermissionRuleKind } from '../../shared/types'
 import type { SubscriptionAction } from '../../shared/subscriptions'
 import { resolveWorkspaceDir } from './workspace-roots'
@@ -200,6 +201,14 @@ registerFeatureHandler('feature:git:show', (payload) => {
 
 registerFeatureHandler('feature:subscriptions:status', async () => {
   return getSubscriptionService().status()
+})
+
+registerFeatureHandler('feature:subscriptions:login-url', (payload) => {
+  const input = payloadOf(payload)
+  const provider = text(input.provider)
+  return {
+    url: provider === 'qoder' ? getQoderSubscriptionService().pendingLoginUrl() : getSubscriptionService().pendingLoginUrl()
+  }
 })
 
 registerFeatureHandler('feature:subscriptions:action', async (payload) => {

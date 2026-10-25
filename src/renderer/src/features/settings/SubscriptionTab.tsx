@@ -5,6 +5,7 @@ import {
   Bot,
   Brain,
   Check,
+  Copy,
   Download,
   ExternalLink,
   Gauge,
@@ -44,6 +45,7 @@ import type {
   SubscriptionTestResult
 } from '@shared/subscriptions'
 import { Badge, Button, Select, Switch, TextArea, TextInput } from '../../ui'
+import { errorText } from '../../lib'
 import { useAppStore } from '../../store'
 import './SettingsSubscriptions.css'
 
@@ -466,6 +468,20 @@ export function SubscriptionTab(): React.JSX.Element {
     if (ok) notify('success', 'Qoder 已连接。')
   }
 
+  const copyLoginUrl = async (provider: 'codex' | 'qoder'): Promise<void> => {
+    try {
+      const result = (await window.morrow.features.invoke('feature:subscriptions:login-url', { provider })) as Result<{
+        url: string | null
+      }>
+      if (!result.ok) throw new Error(result.error.message)
+      if (!result.data.url) throw new Error('登录链接还没有准备好，请稍后再试。')
+      await navigator.clipboard.writeText(result.data.url)
+      notify('success', '登录链接已复制，请粘贴到浏览器打开。')
+    } catch (err) {
+      notify('error', errorText(err, '复制登录链接失败。'))
+    }
+  }
+
   const loginQoderPat = async (): Promise<void> => {
     if (!qoderPat.trim()) {
       setError('请粘贴 Qoder PAT。')
@@ -529,6 +545,20 @@ export function SubscriptionTab(): React.JSX.Element {
   const codexLoginWaiting = busy === CODEX_LOGIN_BUSY
   const qoderLoginWaiting = busy === QODER_LOGIN_BUSY
   const loginWaiting = codexLoginWaiting || qoderLoginWaiting
+  const busyRow = (provider: 'codex' | 'qoder'): React.JSX.Element | null =>
+    busy ? (
+      <div className="st-sub-busy">
+        <LoaderCircle size={13} className="st-sub-spin" aria-hidden />
+        <span>{busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，或复制登录链接到浏览器打开。' : null}</span>
+        {loginWaiting ? (
+          <span className="st-sub-busy-copy">
+            <Button size="sm" variant="ghost" icon={<Copy size={12} />} onClick={() => void copyLoginUrl(provider)}>
+              复制登录链接
+            </Button>
+          </span>
+        ) : null}
+      </div>
+    ) : null
 
   if (view.kind === 'codex' && codex) {
     return (
@@ -545,7 +575,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={codex.connected ? 'success' : 'neutral'}>{codex.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busyRow('codex')}
 
         {codex.connected ? (
           <>
@@ -654,7 +684,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={selectedAgent.connected ? 'success' : 'neutral'}>{selectedAgent.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busyRow('codex')}
 
         {selectedAgent.connected ? (
           <>
@@ -834,7 +864,7 @@ export function SubscriptionTab(): React.JSX.Element {
           <Badge tone={qoder.connected ? 'success' : 'neutral'}>{qoder.connected ? '已连接' : '未连接'}</Badge>
         </div>
         {error ? <p className="st-error" role="alert">{error}</p> : null}
-        {busy ? <p className="st-sub-busy"><LoaderCircle size={13} className="st-sub-spin" aria-hidden /> {busy}{loginWaiting ? ' 浏览器没有打开？再次点击登录按钮重试，登录页也可能在后台窗口。' : null}</p> : null}
+        {busyRow('qoder')}
 
         {qoder.connected ? (
           <>

@@ -375,6 +375,10 @@ export class SubscriptionService {
     return this.status()
   }
 
+  pendingLoginUrl(): string | null {
+    return this.codexLogin?.url ?? null
+  }
+
   async loginCodex(): Promise<SubscriptionStatus> {
     // 用户第一次点击后浏览器可能被系统/安全软件拦下；第二次点击应重新打开同一个授权页，
     // 而不是再次 listen(1455) 导致 EADDRINUSE。

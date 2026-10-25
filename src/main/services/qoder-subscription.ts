@@ -406,6 +406,10 @@ export class QoderSubscriptionService {
     return this.status()
   }
 
+  pendingLoginUrl(): string | null {
+    return this.deviceLogin?.url ?? null
+  }
+
   async loginDevice(): Promise<QoderSubscriptionState> {
     if (this.deviceLogin) {
       openLoginQuiet(this.deviceLogin.url)

@@ -83,7 +83,7 @@ describe('openExternalUrl', () => {
     expect(args).toEqual(['https://example.com/auth?x=1'])
   })
 
-  it.skipIf(process.platform !== 'win32')('提升权限时通过 explorer 打开，避免创建高完整性浏览器实例', async () => {
+  it.skipIf(process.platform !== 'win32')('提升权限时使用独立浏览器配置，避免高完整性实例冲突', async () => {
     mocks.execFileSync.mockReturnValue('session ok')
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { unref: () => void }
@@ -93,8 +93,11 @@ describe('openExternalUrl', () => {
     })
     const result = await openLoginUrl('https://example.com/auth?x=1')
     expect(result).toEqual({ opened: true, copied: true })
-    const [exe] = mocks.spawn.mock.calls[0] as [string, string[]]
-    expect(exe.toLowerCase()).toContain('explorer.exe')
+    const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
+    expect(exe.toLowerCase()).toContain('msedge.exe')
+    expect(args.some((arg) => arg.startsWith('--user-data-dir='))).toBe(true)
+    expect(args).toContain('--new-window')
+    expect(args.at(-1)).toBe('https://example.com/auth?x=1')
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
   })
 })

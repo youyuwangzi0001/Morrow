@@ -1,7 +1,7 @@
 /** 统一的外部链接打开：Windows 优先用系统 URL 处理器，失败时复制链接，避免静默无反应。 */
 import { clipboard, shell } from 'electron'
 import { execFile, execFileSync, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -52,7 +52,18 @@ function windowsIsElevated(): boolean {
   }
 }
 
-function launchBrowser(exe: string, url: string): Promise<boolean> {
+function loginBrowserProfile(): string {
+  const base = process.env.LOCALAPPDATA ?? process.env.APPDATA ?? process.env.TEMP ?? '.'
+  const profile = join(base, 'Morrow', 'login-browser')
+  try {
+    mkdirSync(profile, { recursive: true })
+  } catch {
+    // 目录不可用时仍带上路径，让浏览器自行处理
+  }
+  return profile
+}
+
+function launchBrowser(exe: string, url: string, dedicated = false): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
     let timer: NodeJS.Timeout | undefined
@@ -62,7 +73,12 @@ function launchBrowser(exe: string, url: string): Promise<boolean> {
       if (timer) clearTimeout(timer)
       resolve(ok)
     }
-    const child = spawn(exe, [url], { detached: true, stdio: 'ignore', windowsHide: true })
+    const args = dedicated
+      ? /firefox/i.test(exe)
+        ? ['-profile', loginBrowserProfile(), '-new-window', url]
+        : [`--user-data-dir=${loginBrowserProfile()}`, '--no-first-run', '--new-window', url]
+      : [url]
+    const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: true })
     child.unref()
     timer = setTimeout(() => finish(true), 800)
     child.once('error', () => finish(false))
@@ -117,25 +133,26 @@ export async function openLoginUrl(url: string): Promise<{ opened: boolean; copi
     return { opened: false, copied: true }
   }
   if (process.platform === 'win32') {
-    if (windowsIsElevated()) {
-      // 提升权限的 Morrow 直接启动浏览器会创建一个高完整性实例，随后用户正常打开浏览器会触发
-      // “现有实例正在以提升的权限运行”；交给 explorer.exe（普通完整性）打开默认浏览器。
+    const elevated = windowsIsElevated()
+    // 提升权限时直接打开浏览器会创建一个高完整性实例，后续正常浏览器会触发
+    // “现有实例正在以提升的权限运行”。使用独立的登录浏览器配置，避免进程单例冲突。
+    const browsers = windowsBrowserCandidates().filter((browser) => existsSync(browser))
+    if (elevated) {
       try {
-        const child = spawn('explorer.exe', [url], { detached: true, stdio: 'ignore', windowsHide: true })
-        child.unref()
-        try {
-          clipboard.writeText(url)
-        } catch {
-          // 剪贴板不可用时仍尝试让 explorer 打开
-        }
-        return { opened: true, copied: true }
+        clipboard.writeText(url)
       } catch {
-        // explorer 不可用时再尝试已安装浏览器
+        // 剪贴板不可用时仍继续尝试浏览器
       }
-    }
-    for (const browser of windowsBrowserCandidates()) {
-      if (!existsSync(browser)) continue
-      if (await launchBrowser(browser, url)) return { opened: true, copied: false }
+      for (const browser of browsers) {
+        if (await launchBrowser(browser, url, true)) return { opened: true, copied: true }
+      }
+    } else {
+      for (const browser of browsers) {
+        if (await launchBrowser(browser, url)) return { opened: true, copied: false }
+      }
+      for (const browser of browsers) {
+        if (await launchBrowser(browser, url, true)) return { opened: true, copied: false }
+      }
     }
   }
   return openExternalUrl(url)

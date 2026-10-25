@@ -1238,6 +1238,10 @@ test.describe('ChatGPT 登录交互', () => {
       await expect(retry).toBeVisible()
       await expect(retry).toBeEnabled()
       await expect(settings.locator('.st-sub-busy')).toContainText('浏览器没有打开')
+      await settings.getByRole('button', { name: '复制登录链接' }).click()
+      await expect
+        .poll(() => morrow.app.evaluate(({ clipboard }) => clipboard.readText()), { timeout: 5_000 })
+        .toContain('auth.openai.com')
     } finally {
       await morrow.close()
     }

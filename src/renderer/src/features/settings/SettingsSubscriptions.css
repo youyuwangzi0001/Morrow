@@ -438,6 +438,15 @@
   font-size: var(--fs-sm);
 }
 
+.st-sub-busy > span:first-of-type {
+  min-width: 0;
+}
+
+.st-sub-busy-copy {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .st-sub-spin {
   animation: st-sub-rotate 1s linear infinite;
 }

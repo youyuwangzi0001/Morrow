@@ -11,7 +11,7 @@
 - 单元测试：**14 个套件 / 945 个用例**（按环境跳过真实引擎/本地模型集成）。
 - 端到端：**17 个套件 / 208 个用例**；非打包 **192 passed + 11 skipped**，打包版 **5/5 passed**。真实 Electron + 主进程，默认 Mock LLM/ComfyUI。
 - 真实断点：真实项目测试发现的 **6 个阻断点**全部修复并补回归（Codex 工具参数、登录端口复用、灵动岛跟随会话、当前模型视觉、登录按钮可重试、assistant 历史消息协议），见 §4。
-- 打包冒烟：**通过（4.8s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
+- 打包冒烟：**通过（4.9s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
 - 交付包：**5 个分发文件 / 345.80 MiB**；便携版 196.41 MiB，安装包 149.39 MiB，未签名。
 
 ## 2. 本轮 UI/UX 收口
@@ -74,7 +74,7 @@
 | Feature 注册 | `discovery` / `permissions` / `git` / `subscriptions` / `schedules` 五个只被注册表引用的模块并入 `main/features/index.ts`，统一复用 `payloadOf` |
 | 死代码 | 删除 17 个无引用导出、5 个死频道常量、死常量/死兼容分支 |
 | 重复实现 | 统一 13 处 `errorText`、画布版本时间/大小格式化、`formatBytes`（core/project/renderer）、本机/私网 URL 判定、4 处 feature payload 解析 |
-| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,891 行**：ts 70,778 / tsx 29,144 / css 24,969）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
+| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,964 行**：ts 70,812 / tsx 29,174 / css 24,978）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
 
 ## 6. 验证门禁
 
@@ -85,19 +85,19 @@
 | `npm run test:unit` | 14 文件；945 用例；**937 passed + 8 skipped** |
 | `npx playwright test`（全量） | 17 文件；208 用例；**197 passed + 11 skipped + 0 failed**（11.1m） |
 | 打包版 E2E | 5 用例；**5/5 passed**（18.2s） |
-| `scripts/smoke-packaged.mjs` | 便携版 **4.8s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
-| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 18.2s；打包 smoke 4.8s |
+| `scripts/smoke-packaged.mjs` | 便携版 **4.9s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
+| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 18.2s；打包 smoke 4.9s |
 
 ## 7. 交付物
 
 | 产物 | 大小 | SHA-256 |
 |---|---|---|
-| `Morrow-0.1.0-portable.exe` | 205,947,392 B / 196.41 MiB | `46e2c3515648d37be6f97e739058e9476a74e5af732a0c43f439c3df620fed63` |
-| `Morrow-0.1.0-setup.exe` | 156,644,340 B / 149.39 MiB | `7075d5fd124ef1d14b14b4fdf978a68a5134d6a22ecf0baa6061f648085f96b0` |
+| `Morrow-0.1.0-portable.exe` | 205,946,368 B / 196.41 MiB | `ad6bb0aa47a2e0f7724bb39eb77f8eef3a7a24cd253b39dbbc3028c3a8a85dd4` |
+| `Morrow-0.1.0-setup.exe` | 156,643,738 B / 149.39 MiB | `c89c71091c077d26d99ffa20fc0f01027e9020b81bd688baa044bcf6bc71f8c5` |
 | `使用说明.txt` | 3,138 B | `cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302` |
-| `SHA256SUMS.txt` | 338 B | `74543d0fa341ec1668692658c6b1bc874a8a3a1120f2a59beda93a5a90250cd9` |
+| `SHA256SUMS.txt` | 338 B | `4f89b670f5992abe78df5e1e5e052c8d0fcb4017cf1d223ed3b2600cd1adf43d` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **5 文件 / 362,596,278 B / 345.8 MiB** | 未签名（signed:false） |
+| **分发合计** | **5 文件 / 362,594,652 B / 345.8 MiB** | 未签名（signed:false） |
 
 安装包载荷：**331 个文件 / 55 个目录**，包含 `Morrow-app.exe`、`resources/app.asar`、`node-pty` 原生模块；与便携版共用同一份 `win-unpacked`。
 
