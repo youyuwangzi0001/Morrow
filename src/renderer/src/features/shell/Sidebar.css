@@ -360,7 +360,7 @@
   flex: 0 0 auto;
   padding: 0 5px;
   border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--line));
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   color: var(--gold);
   font-size: var(--fs-3xs);
   line-height: 15px;

@@ -255,7 +255,7 @@
   flex: 0 0 auto;
   padding: 0 4px;
   border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   color: var(--amber);
   font-size: var(--fs-3xs);
   line-height: 13px;

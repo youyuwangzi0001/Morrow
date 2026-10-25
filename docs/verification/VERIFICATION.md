@@ -11,7 +11,7 @@
 - 单元测试：**14 个套件 / 945 个用例**（按环境跳过真实引擎/本地模型集成）。
 - 端到端：**17 个套件 / 208 个用例**；非打包 **192 passed + 11 skipped**，打包版 **5/5 passed**。真实 Electron + 主进程，默认 Mock LLM/ComfyUI。
 - 真实断点：真实项目测试发现的 **6 个阻断点**全部修复并补回归（Codex 工具参数、登录端口复用、灵动岛跟随会话、当前模型视觉、登录按钮可重试、assistant 历史消息协议），见 §4。
-- 打包冒烟：**通过（4.8s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
+- 打包冒烟：**通过（4.7s）**；单文件便携版首次解压 `.morrow-runtime-0.1.0-r010`，CDP、预加载 API、渲染与截图均正常。
 - 交付包：**5 个分发文件 / 345.80 MiB**；便携版 196.41 MiB，安装包 149.39 MiB，未签名。
 
 ## 2. 本轮 UI/UX 收口
@@ -30,6 +30,7 @@
 | 改动卡 | 长路径改为单行省略，展开箭头固定在同一行，不再被挤到第二行 | `Transcript.css`；`10-rounds` 超长路径用例 |
 | 上下文浮层 | 紧贴圆环按钮上浮，宽度、圆角、背景与字号对齐模型上拉菜单 | `ContextMeter.tsx`、`Composer.css`；`10-rounds` 上下文用例 |
 | 开关 | 设置、记忆中心、任务经验、技能卡全部改为 34×20px 微圆角矩形；轨道 5px、滑钮 4px，统一 `--toggle-*` token | `tokens.css`、`ui.css`、`EvolutionSuggestions.css`、`MemoryCenter.css`、`SkillsPanel.css`；`08-settings` 外观 token 用例 |
+| 状态标签 | 项目、Git、订阅、记忆、研究、定时任务、文件树、侧栏、浏览器等文本徽标统一为 4px 微圆角矩形，统一 `--chip-*` token；项目路径独占一行，信息区增加间距 | `tokens.css`、`ProjectsPanel.css`、`git.css`、`SettingsSubscriptions.css` 等；项目页截图 |
 | WSL 终端 | 设置 → 终端检测 WSL 与发行版；无发行版时显示灰色说明，支持「重新检测」；有发行版时使用真实 PTY | `terminal-manager.ts`、`SettingsModal.tsx`；`11-terminal-git` 终端用例 |
 
 截图：
@@ -75,7 +76,7 @@
 | Feature 注册 | `discovery` / `permissions` / `git` / `subscriptions` / `schedules` 五个只被注册表引用的模块并入 `main/features/index.ts`，统一复用 `payloadOf` |
 | 死代码 | 删除 17 个无引用导出、5 个死频道常量、死常量/死兼容分支 |
 | 重复实现 | 统一 13 处 `errorText`、画布版本时间/大小格式化、`formatBytes`（core/project/renderer）、本机/私网 URL 判定、4 处 feature payload 解析 |
-| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**124,999 行**：ts 70,832 / tsx 29,174 / css 24,993）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
+| 规模 | 源码 **313 个文件**（其中 292 个 ts/tsx/css，**125,012 行**：ts 70,832 / tsx 29,174 / css 25,006）；测试 **66 个文件**（14 单元 + 17 E2E + helpers/fixtures）；文档 31 个文件（10 个 Markdown + 12 张指南图 + manifest/验收 JSON） |
 
 ## 6. 验证门禁
 
@@ -86,19 +87,19 @@
 | `npm run test:unit` | 14 文件；945 用例；**937 passed + 8 skipped** |
 | `npx playwright test`（全量） | 17 文件；208 用例；**197 passed + 11 skipped + 0 failed**（11.1m） |
 | 打包版 E2E | 5 用例；**5/5 passed**（18.2s） |
-| `scripts/smoke-packaged.mjs` | 便携版 **4.8s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
-| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 18.2s；打包 smoke 4.8s |
+| `scripts/smoke-packaged.mjs` | 便携版 **4.7s 通过**；首次解压 `.morrow-runtime-0.1.0-r010`，预加载/渲染/截图正常 |
+| 单元/打包耗时 | 单元 13.2s；全量 E2E 11.1m；打包 E2E 18.2s；打包 smoke 4.7s |
 
 ## 7. 交付物
 
 | 产物 | 大小 | SHA-256 |
 |---|---|---|
-| `Morrow-0.1.0-portable.exe` | 205,946,880 B / 196.41 MiB | `cc3b832e9d94766adbada79e089460e94af3de1710bd83d442705d8c452da577` |
-| `Morrow-0.1.0-setup.exe` | 156,644,089 B / 149.39 MiB | `afa5176ac893b553f01191bb7dd38f58d9cb775883c1585c459c01451f57547d` |
+| `Morrow-0.1.0-portable.exe` | 205,947,392 B / 196.41 MiB | `0fe42ff3a76482584eb03170cc032ef1ba7818f9354f6ec85d93a557b4f38cf5` |
+| `Morrow-0.1.0-setup.exe` | 156,643,976 B / 149.39 MiB | `97f71101c68b9c8b649116e20ab0d7b8ea6aac50e92bcb5daf0e4c8ab1fa715f` |
 | `使用说明.txt` | 3,138 B | `cf6d00ce1b9d2f2ebd96ad26dbb1199dcbbf8a0e57807e06c9749221226db302` |
-| `SHA256SUMS.txt` | 338 B | `58d3eb924ce53a3479e341c86aaf31d631afe94d4dd4e655ff63afb4b7ab93b6` |
+| `SHA256SUMS.txt` | 338 B | `09aa9b8c21fa0a67d2c70ca99aefcc1a52ad78e07025e24dfbdee6b4ce2a9d87` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **5 文件 / 362,595,515 B / 345.8 MiB** | 未签名（signed:false） |
+| **分发合计** | **5 文件 / 362,595,914 B / 345.8 MiB** | 未签名（signed:false） |
 
 安装包载荷：**331 个文件 / 55 个目录**，包含 `Morrow-app.exe`、`resources/app.asar`、`node-pty` 原生模块；与便携版共用同一份 `win-unpacked`。
 

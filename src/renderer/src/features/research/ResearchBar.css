@@ -130,7 +130,7 @@
 .research-status {
   flex: 0 0 auto;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   border: 1px solid var(--line);
   font-size: var(--fs-2xs);
   color: var(--text-3);

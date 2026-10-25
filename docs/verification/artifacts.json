@@ -9,8 +9,8 @@
     "loc": {
       "ts": 70832,
       "tsx": 29174,
-      "css": 24993,
-      "total": 124999
+      "css": 25006,
+      "total": 125012
     }
   },
   "tests": {
@@ -45,7 +45,7 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362595515,
+    "bytes": 362595914,
     "mib": 345.8
   },
   "artifacts": [
@@ -57,21 +57,21 @@
     },
     {
       "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205946880,
+      "bytes": 205947392,
       "mib": 196.41,
-      "sha256": "cc3b832e9d94766adbada79e089460e94af3de1710bd83d442705d8c452da577"
+      "sha256": "0fe42ff3a76482584eb03170cc032ef1ba7818f9354f6ec85d93a557b4f38cf5"
     },
     {
       "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156644089,
+      "bytes": 156643976,
       "mib": 149.39,
-      "sha256": "afa5176ac893b553f01191bb7dd38f58d9cb775883c1585c459c01451f57547d"
+      "sha256": "97f71101c68b9c8b649116e20ab0d7b8ea6aac50e92bcb5daf0e4c8ab1fa715f"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "58d3eb924ce53a3479e341c86aaf31d631afe94d4dd4e655ff63afb4b7ab93b6"
+      "sha256": "09aa9b8c21fa0a67d2c70ca99aefcc1a52ad78e07025e24dfbdee6b4ce2a9d87"
     },
     {
       "name": "使用说明.txt",
@@ -81,5 +81,5 @@
     }
   ],
   "runtimeCache": ".morrow-runtime-0.1.0-r010",
-  "generatedAt": "2026-10-25T13:35:57.907Z"
+  "generatedAt": "2026-10-25T13:50:27.361Z"
 }

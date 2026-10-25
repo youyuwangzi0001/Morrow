@@ -462,7 +462,7 @@
 .pp-home-head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pp-home-state-row {
@@ -474,11 +474,12 @@
 .pp-home-state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
+  gap: var(--chip-gap);
+  height: var(--chip-height);
+  padding: 0 var(--chip-pad-x);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: var(--fs-2xs);
+  border-radius: var(--chip-radius);
+  font-size: var(--chip-font-size);
   color: var(--text-3);
 }
 
@@ -526,8 +527,9 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: var(--fs-xs);
+  gap: 8px 16px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-readable);
   color: var(--text-3);
 }
 
@@ -536,6 +538,10 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
+}
+
+.pp-home-meta > span:first-child {
+  flex: 1 0 100%;
 }
 
 .pp-home-meta svg {

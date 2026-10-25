@@ -628,7 +628,7 @@
   flex: 0 0 auto;
   padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--text-3);
   font-size: var(--fs-3xs);
   line-height: 16px;
@@ -1576,7 +1576,7 @@
   max-width: 240px;
   padding: 4px 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--text-3);
   font-size: var(--fs-xs-plus);
   cursor: pointer;

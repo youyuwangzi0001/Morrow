@@ -135,7 +135,7 @@
 .sch-paused-tag {
   flex: 0 0 auto;
   padding: 1px 5px;
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   border: 1px solid var(--line);
   font-size: var(--fs-3xs);
   color: var(--text-3);

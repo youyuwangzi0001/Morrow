@@ -132,6 +132,13 @@
   --toggle-thumb-bg: var(--text-3);
   --toggle-thumb-bg-on: var(--gold-bright);
 
+  /* 状态说明 / 标签：微圆角矩形，不使用胶囊 */
+  --chip-radius: var(--r-xs);
+  --chip-pad-x: 7px;
+  --chip-gap: 5px;
+  --chip-height: 20px;
+  --chip-font-size: var(--fs-sm);
+
   /* 订阅详情排版角色：所有渠道共用，ChatGPT/Codex 页为基准 */
   --font-sub-detail: var(--font-display);
   --font-sub-body: var(--font-ui);

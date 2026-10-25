@@ -97,7 +97,7 @@
   height: 22px;
   padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   background: transparent;
   color: var(--text-3);
   font-size: var(--fs-xs-plus);

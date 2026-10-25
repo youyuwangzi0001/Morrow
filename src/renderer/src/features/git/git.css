@@ -195,7 +195,7 @@
 
 .git-tab-count {
   padding: 0 5px;
-  border-radius: var(--r-pill);
+  border-radius: var(--chip-radius);
   background: var(--gold-ghost);
   color: var(--text-3);
   font-size: var(--fs-3xs);
@@ -539,7 +539,7 @@
   flex: 0 0 auto;
   padding: 1px 7px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--text-3);
   font-size: var(--fs-3xs);
 }

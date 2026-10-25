@@ -83,7 +83,7 @@
   max-width: 100%;
   padding: 4px 11px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   background: var(--surface);
   color: var(--text-3);
   font-size: var(--fs-sm);

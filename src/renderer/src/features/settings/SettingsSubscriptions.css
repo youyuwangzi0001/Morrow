@@ -178,7 +178,7 @@
   flex: 0 0 auto;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
@@ -384,7 +384,7 @@
   gap: 4px;
   padding: 3px 7px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--text-2);
   font-size: var(--fs-xs-plus);
 }
@@ -595,7 +595,7 @@
 
 .st-sub-model-chips > span {
   font-size: var(--text-sub-label-size);
-  border-radius: var(--r-pill);
+  border-radius: var(--chip-radius);
 }
 
 .st-sub-model-chips em {

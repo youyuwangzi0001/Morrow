@@ -282,7 +282,7 @@
   height: 19px;
   padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--line));
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   background: var(--gold-ghost);
   color: var(--gold);
   font-size: var(--fs-2xs);
@@ -532,7 +532,7 @@
   flex: none;
   padding: 2px 9px;
   border: 1px solid var(--line-gold);
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   color: var(--gold);
   font-size: var(--fs-sm);
   transition: background 120ms, color 120ms;

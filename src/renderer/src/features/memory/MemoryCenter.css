@@ -327,7 +327,7 @@
   flex: 0 0 auto;
   padding: 1px 5px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--chip-radius);
   color: var(--patina);
   font-size: var(--fs-3xs);
 }
@@ -492,7 +492,7 @@
 .mc-source {
   padding: 0 5px;
   border: 1px solid var(--line);
-  border-radius: var(--r-full);
+  border-radius: var(--chip-radius);
   color: var(--text-3);
 }
 
