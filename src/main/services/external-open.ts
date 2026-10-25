@@ -43,15 +43,6 @@ function windowsBrowserCandidates(): string[] {
   return [...order, ...firefox, ...brave]
 }
 
-function windowsIsElevated(): boolean {
-  try {
-    execFileSync('net.exe', ['session'], { stdio: 'ignore', windowsHide: true, timeout: 1_500 })
-    return true
-  } catch {
-    return false
-  }
-}
-
 function loginBrowserProfile(): string {
   const base = process.env.LOCALAPPDATA ?? process.env.APPDATA ?? process.env.TEMP ?? '.'
   const profile = join(base, 'Morrow', 'login-browser')
@@ -133,26 +124,15 @@ export async function openLoginUrl(url: string): Promise<{ opened: boolean; copi
     return { opened: false, copied: true }
   }
   if (process.platform === 'win32') {
-    const elevated = windowsIsElevated()
-    // 提升权限时直接打开浏览器会创建一个高完整性实例，后续正常浏览器会触发
-    // “现有实例正在以提升的权限运行”。使用独立的登录浏览器配置，避免进程单例冲突。
     const browsers = windowsBrowserCandidates().filter((browser) => existsSync(browser))
-    if (elevated) {
-      try {
-        clipboard.writeText(url)
-      } catch {
-        // 剪贴板不可用时仍继续尝试浏览器
-      }
-      for (const browser of browsers) {
-        if (await launchBrowser(browser, url, true)) return { opened: true, copied: true }
-      }
-    } else {
-      for (const browser of browsers) {
-        if (await launchBrowser(browser, url)) return { opened: true, copied: false }
-      }
-      for (const browser of browsers) {
-        if (await launchBrowser(browser, url, true)) return { opened: true, copied: false }
-      }
+    try {
+      clipboard.writeText(url)
+    } catch {
+      // 剪贴板不可用时仍继续尝试浏览器
+    }
+    // 登录始终使用独立配置，避免默认浏览器正在以其它完整性级别运行导致静默移交。
+    for (const browser of browsers) {
+      if (await launchBrowser(browser, url, true)) return { opened: true, copied: true }
     }
   }
   return openExternalUrl(url)

@@ -57,12 +57,12 @@
 .evo-toggle {
   position: relative;
   flex: 0 0 auto;
-  width: 26px;
-  height: 15px;
+  width: var(--toggle-width);
+  height: var(--toggle-height);
   padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--surface);
+  border: 1px solid var(--toggle-border);
+  border-radius: var(--toggle-radius);
+  background: var(--toggle-bg);
   cursor: pointer;
   transition:
     background var(--dur-fast) ease,
@@ -70,26 +70,26 @@
 }
 
 .evo-toggle.is-on {
-  border-color: color-mix(in srgb, var(--gold) 58%, var(--line));
-  background: color-mix(in srgb, var(--gold) 30%, var(--surface));
+  border-color: var(--toggle-border-on);
+  background: var(--toggle-bg-on);
 }
 
 .evo-toggle-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--text-3);
+  top: var(--toggle-pad);
+  left: var(--toggle-pad);
+  width: var(--toggle-thumb);
+  height: var(--toggle-thumb);
+  border-radius: var(--toggle-thumb-radius);
+  background: var(--toggle-thumb-bg);
   transition:
     transform var(--dur-fast) var(--ease-out),
     background var(--dur-fast) ease;
 }
 
 .evo-toggle.is-on .evo-toggle-thumb {
-  transform: translateX(11px);
-  background: var(--gold-bright);
+  transform: translateX(var(--toggle-shift));
+  background: var(--toggle-thumb-bg-on);
 }
 
 .evo-toggle:focus-visible {

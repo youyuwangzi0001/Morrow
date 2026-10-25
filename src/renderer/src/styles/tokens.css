@@ -117,6 +117,21 @@
   --tab-close-size: 20px;
   --tab-close-radius: var(--r-xs);
 
+  /* 开关：微圆角矩形，与按钮 / 下拉菜单共用同一圆角语言 */
+  --toggle-width: 34px;
+  --toggle-height: 20px;
+  --toggle-radius: var(--r-sm);
+  --toggle-pad: 2px;
+  --toggle-thumb: 14px;
+  --toggle-thumb-radius: var(--r-xs);
+  --toggle-shift: 14px;
+  --toggle-bg: var(--surface-inset);
+  --toggle-bg-on: var(--gold-dim);
+  --toggle-border: var(--line);
+  --toggle-border-on: var(--line-gold);
+  --toggle-thumb-bg: var(--text-3);
+  --toggle-thumb-bg-on: var(--gold-bright);
+
   /* 订阅详情排版角色：所有渠道共用，ChatGPT/Codex 页为基准 */
   --font-sub-detail: var(--font-display);
   --font-sub-body: var(--font-ui);

@@ -259,6 +259,22 @@ Morrow 的记忆点只有两个：
 
 `tests/e2e/08-settings.spec.ts` 打开 ChatGPT/Codex 与 Qoder 两个详情页，断言标题、说明、正文、按钮、连接项与免责声明的计算值一致，并输出双主题截图。
 
+### 6.12 开关（统一微圆角矩形）
+
+设置、记忆中心、任务经验、技能卡中的开关共用同一组顶层 token；不再使用胶囊形轨道或圆形滑钮，形状与下拉菜单 / 多选按钮 / 确认按钮的 5px 微圆角语言一致：
+
+| 角色 | token | 值 |
+|---|---|---|
+| 轨道尺寸 | `--toggle-width` / `--toggle-height` | 34px / 20px |
+| 轨道圆角 | `--toggle-radius` | 5px（`--r-sm`） |
+| 滑钮尺寸 / 圆角 | `--toggle-thumb` / `--toggle-thumb-radius` | 14px / 4px |
+| 内缩 / 行程 | `--toggle-pad` / `--toggle-shift` | 2px / 14px |
+| 关/开底色 | `--toggle-bg` / `--toggle-bg-on` | surface-inset / gold-dim |
+| 关/开边框 | `--toggle-border` / `--toggle-border-on` | line / line-gold |
+| 滑钮 | `--toggle-thumb-bg` / `--toggle-thumb-bg-on` | text-3 / gold-bright |
+
+覆盖组件：`ui/index.tsx` 的 `Switch`、`.evo-toggle`、`.mc-toggle`、`.skills-mini-switch`。新增开关必须复用这些 token，不得再写 `border-radius: 999px` 或 50%。
+
 ### 6.9 空/错/加载态
 - 空：一句编辑感文案 + 3 个不对称「纸片」建议（一大两小），每个含标题与一行说明，hover 时金色细边浮现。
 - 加载：不用通用 spinner；用 1px 金色线段在顶部 2s 循环（`horizon loader`）。

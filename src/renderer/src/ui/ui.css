@@ -345,36 +345,36 @@
 
 .switch {
   position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: var(--r-full);
-  background: var(--surface-active);
-  border: 1px solid var(--line);
+  width: var(--toggle-width);
+  height: var(--toggle-height);
+  border-radius: var(--toggle-radius);
+  background: var(--toggle-bg);
+  border: 1px solid var(--toggle-border);
   transition: background var(--dur-base) ease, border-color var(--dur-base) ease;
   flex: 0 0 auto;
 }
 
 .switch-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text-3);
+  top: var(--toggle-pad);
+  left: var(--toggle-pad);
+  width: var(--toggle-thumb);
+  height: var(--toggle-thumb);
+  border-radius: var(--toggle-thumb-radius);
+  background: var(--toggle-thumb-bg);
   transition:
     transform var(--dur-base) var(--ease-out),
     background var(--dur-base) ease;
 }
 
 .switch.is-on {
-  background: var(--gold-dim);
-  border-color: var(--line-gold);
+  background: var(--toggle-bg-on);
+  border-color: var(--toggle-border-on);
 }
 
 .switch.is-on .switch-thumb {
-  transform: translateX(16px);
-  background: var(--gold-bright);
+  transform: translateX(var(--toggle-shift));
+  background: var(--toggle-thumb-bg-on);
 }
 
 /* Segmented */

@@ -838,7 +838,12 @@ test.describe('UI 设计令牌', () => {
         permissionDescLeading: style.getPropertyValue('--text-permission-desc-leading').trim(),
         permissionCode: style.getPropertyValue('--text-permission-code-size').trim(),
         permissionButton: style.getPropertyValue('--text-permission-button-size').trim(),
-        permissionButtonWeight: style.getPropertyValue('--text-permission-button-weight').trim()
+        permissionButtonWeight: style.getPropertyValue('--text-permission-button-weight').trim(),
+        toggleWidth: style.getPropertyValue('--toggle-width').trim(),
+        toggleHeight: style.getPropertyValue('--toggle-height').trim(),
+        toggleRadius: style.getPropertyValue('--toggle-radius').trim(),
+        toggleThumb: style.getPropertyValue('--toggle-thumb').trim(),
+        toggleThumbRadius: style.getPropertyValue('--toggle-thumb-radius').trim()
       }
     })
     expect(tokens).toMatchObject({
@@ -858,7 +863,12 @@ test.describe('UI 设计令牌', () => {
       permissionDescLeading: '1.72',
       permissionCode: '12px',
       permissionButton: '12.5px',
-      permissionButtonWeight: '500'
+      permissionButtonWeight: '500',
+      toggleWidth: '34px',
+      toggleHeight: '20px',
+      toggleRadius: '5px',
+      toggleThumb: '14px',
+      toggleThumbRadius: '4px'
     })
 
     const title = settings.locator('.st-page-title')
@@ -879,6 +889,17 @@ test.describe('UI 设计令牌', () => {
       await expect(sectionTitle).toHaveCSS('font-size', '13px')
       await expect(sectionTitle).toHaveCSS('font-weight', '600')
     }
+
+    await settings.getByRole('tab', { name: '外观', exact: true }).click()
+    const toggle = settings.locator('[role="switch"]').first()
+    await expect(toggle).toBeVisible()
+    await expect(toggle).toHaveCSS('width', '34px')
+    await expect(toggle).toHaveCSS('height', '20px')
+    await expect(toggle).toHaveCSS('border-radius', '5px')
+    await expect(toggle.locator('.switch-thumb')).toHaveCSS('width', '14px')
+    await expect(toggle.locator('.switch-thumb')).toHaveCSS('border-radius', '4px')
+    await page.mouse.move(2, 2)
+    await settings.screenshot({ path: screenshotPath('settings-toggle-rect-dark.png') })
   })
 })
 

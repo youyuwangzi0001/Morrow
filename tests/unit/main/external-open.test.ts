@@ -63,11 +63,8 @@ describe('openExternalUrl', () => {
     expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/login?x=1')
   })
 
-  it.skipIf(process.platform !== 'win32')('登录时直接拉起默认浏览器，不依赖系统 URL 关联', async () => {
-    mocks.execFileSync.mockImplementation((file: string) => {
-      if (/net(?:.exe)?$/i.test(String(file))) throw new Error('not elevated')
-      return 'ProgId REG_SZ MSEdgeHTM'
-    })
+  it.skipIf(process.platform !== 'win32')('登录时使用独立浏览器配置拉起浏览器，不依赖系统 URL 关联', async () => {
+    mocks.execFileSync.mockReturnValue('ProgId REG_SZ MSEdgeHTM')
     mocks.existsSync.mockReturnValue(true)
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { unref: () => void }
@@ -76,14 +73,17 @@ describe('openExternalUrl', () => {
       return child
     })
     const result = await openLoginUrl('https://example.com/auth?x=1')
-    expect(result).toEqual({ opened: true, copied: false })
+    expect(result).toEqual({ opened: true, copied: true })
     expect(mocks.openExternal).not.toHaveBeenCalled()
     const [exe, args] = mocks.spawn.mock.calls[0] as [string, string[]]
     expect(exe.toLowerCase()).toContain('msedge.exe')
-    expect(args).toEqual(['https://example.com/auth?x=1'])
+    expect(args.some((arg) => arg.startsWith('--user-data-dir='))).toBe(true)
+    expect(args).toContain('--new-window')
+    expect(args.at(-1)).toBe('https://example.com/auth?x=1')
+    expect(mocks.writeText).toHaveBeenCalledWith('https://example.com/auth?x=1')
   })
 
-  it.skipIf(process.platform !== 'win32')('提升权限时使用独立浏览器配置，避免高完整性实例冲突', async () => {
+  it.skipIf(process.platform !== 'win32')('独立登录配置不会移交到既有浏览器实例', async () => {
     mocks.execFileSync.mockReturnValue('session ok')
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & { unref: () => void }

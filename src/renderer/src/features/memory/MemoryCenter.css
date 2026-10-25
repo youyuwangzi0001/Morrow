@@ -533,12 +533,12 @@
 /* 行内启用开关 */
 .mc-toggle {
   position: relative;
-  width: 30px;
-  height: 17px;
+  width: var(--toggle-width);
+  height: var(--toggle-height);
   flex: 0 0 auto;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-full);
-  background: var(--surface-inset);
+  border: 1px solid var(--toggle-border);
+  border-radius: var(--toggle-radius);
+  background: var(--toggle-bg);
   transition:
     background var(--dur-fast) ease,
     border-color var(--dur-fast) ease;
@@ -546,25 +546,25 @@
 
 .mc-toggle .mc-toggle-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--text-3);
+  top: var(--toggle-pad);
+  left: var(--toggle-pad);
+  width: var(--toggle-thumb);
+  height: var(--toggle-thumb);
+  border-radius: var(--toggle-thumb-radius);
+  background: var(--toggle-thumb-bg);
   transition:
     transform var(--dur-base) var(--ease-out),
     background var(--dur-fast) ease;
 }
 
 .mc-toggle.is-on {
-  border-color: var(--line-gold);
-  background: var(--gold-dim);
+  border-color: var(--toggle-border-on);
+  background: var(--toggle-bg-on);
 }
 
 .mc-toggle.is-on .mc-toggle-thumb {
-  transform: translateX(13px);
-  background: var(--gold-bright);
+  transform: translateX(var(--toggle-shift));
+  background: var(--toggle-thumb-bg-on);
 }
 
 .mc-toggle:disabled {
