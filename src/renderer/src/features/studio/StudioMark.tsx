@@ -1,12 +1,12 @@
 import { useAppStore } from '../../store'
-import dark32 from '../../assets/studio/dark/studio-icon-32.png'
-import dark48 from '../../assets/studio/dark/studio-icon-48.png'
-import dark96 from '../../assets/studio/dark/studio-icon-96.png'
-import dark256 from '../../assets/studio/dark/studio-icon-256.png'
-import light32 from '../../assets/studio/light/studio-icon-32.png'
-import light48 from '../../assets/studio/light/studio-icon-48.png'
-import light96 from '../../assets/studio/light/studio-icon-96.png'
-import light256 from '../../assets/studio/light/studio-icon-256.png'
+import dark32 from '../../../../../build/studio-icon-dark-32.png'
+import dark48 from '../../../../../build/studio-icon-dark-48.png'
+import dark96 from '../../../../../build/studio-icon-dark-96.png'
+import dark256 from '../../../../../build/studio-icon-dark-256.png'
+import light32 from '../../../../../build/studio-icon-light-32.png'
+import light48 from '../../../../../build/studio-icon-light-48.png'
+import light96 from '../../../../../build/studio-icon-light-96.png'
+import light256 from '../../../../../build/studio-icon-light-256.png'
 
 const SOURCES = {
   dark: [

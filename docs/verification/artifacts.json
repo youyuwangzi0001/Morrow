@@ -1,8 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "runtime": "r037",
-  "builtAt": "2026-10-27T20:21:08.936Z",
+  "runtime": "r038",
+  "builtAt": "2026-10-27T20:47:25.579Z",
   "platform": "win32-x64",
   "source": {
     "files": 343,
@@ -48,7 +48,7 @@
     "lines": 2776,
     "guideScreens": 26,
     "manifest": "docs/guide/screens/manifest.json",
-    "guideScreenshotBytes": 4801730,
+    "guideScreenshotBytes": 4799142,
     "optimized": {
       "maxWidth": 1600,
       "colors": 256,
@@ -62,33 +62,33 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 388576731,
+    "bytes": 388578284,
     "mib": 370.58
   },
   "artifacts": [
     {
       "name": "Morrow-0.2.0-portable.exe",
-      "bytes": 220359680,
+      "bytes": 220361216,
       "mib": 210.15,
-      "sha256": "6a71b0be1a6a43280b85ee4615cc18f81db3205dab0a13dd896f9473e86ab3e9"
+      "sha256": "ca1ffa74346353ec93ef244ce7fbd6b3558301e0dd26dd6fab0a54f5fa2b59ab"
     },
     {
       "name": "Morrow-0.2.0-setup.exe",
-      "bytes": 168210275,
+      "bytes": 168210292,
       "mib": 160.42,
-      "sha256": "e999a264ad50b67cc6b342777a3c4242c209af39f402764ad9a1a072693fd379"
+      "sha256": "b788ed4aa024c87bc241cbd0b3075050f5f53158f1f3982dfee56f36f5cb88e3"
     },
     {
       "name": "使用说明.txt",
       "bytes": 5706,
       "mib": 0,
-      "sha256": "d279af90b066351e27e2d22eaa3b07d76aec239df51f75fc20bdc9b75b5b0fbd"
+      "sha256": "779d6dfc884b42e7f648a64f69659576d229db98b05e81b68a99a15c415f847d"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "2e6e5fec416f8a298f843f107734f9499aba6ea623629f5694d8775d00d37107"
+      "sha256": "1c7c017585d04a669130b00ead3db06694a73702213d172d54595aa02ae4eda3"
     },
     {
       "name": "LICENSE",
@@ -97,7 +97,7 @@
       "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.2.0-r037",
+  "runtimeCache": ".morrow-runtime-0.2.0-r038",
   "code": {
     "files": 429,
     "lines": 211535,
@@ -114,7 +114,7 @@
       "lines": 4141
     }
   },
-  "generatedAt": "2026-10-27T20:40:29.507Z",
+  "generatedAt": "2026-10-27T20:50:29.982Z",
   "lockedCaches": [],
   "pendingCacheCleanup": [],
   "sourceArchive": {

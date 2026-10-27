@@ -3039,7 +3039,7 @@
 .studio-empty-mark .studio-mark {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
+  border-radius: var(--r-xs);
 }
 
 .studio-guide-brand img {

@@ -1,6 +1,6 @@
-# Morrow 0.2.0 验收记录（r037）
+# Morrow 0.2.0 验收记录（r038）
 
-> 日期：2026-10-28 · 版本：0.2.0 · 运行时：r037 · 平台：Windows 10/11 x64
+> 日期：2026-10-28 · 版本：0.2.0 · 运行时：r038 · 平台：Windows 10/11 x64
 >
 > 交付形态：单文件便携版 + NSIS 安装包 + 源码包
 
@@ -16,7 +16,7 @@
 - 助手来源：每条回答记录本轮实际使用的章节、镜头、片段与设定来源，可点击回到原位置；模型上下文与看图/工具能力在协作者头部可见。
 - 导出预检：交付页检查中文字体、FFmpeg 与格式状态；PDF 使用 Type3 字形嵌入，DOCX/EPUB 使用字体回退栈。
 - 自动推进：一次确认后补齐缺失素材、自动装配时间线并合成草稿；付费步骤仍逐项过预算闸门。
-- 交付：**5 个分发文件 / 388,576,731 B / 370.58 MiB**；源码包与用户数据 `Morrow Data` 不计入。
+- 交付：**5 个分发文件 / 388,578,284 B / 370.58 MiB**；源码包与用户数据 `Morrow Data` 不计入。
 
 ## 2. 质量方法与 Agent 指标
 
@@ -52,7 +52,7 @@
 - **创作台**：真实 Electron 走查作品库、12 镜 96 秒时间线、分镜详情、交付视频、长篇写作候选与自动保存、大白话修改计划、版本对话框与双主题。
 - **创作台测试夹具**：`19-studio-corpus.spec.ts` 使用 4 份真实语料夹具（不随安装包分发）覆盖章节/设定/配图/候选锁稿/连续写作/真实草稿合成/工程包导入。
 - **创作台真实引擎**：本机 ComfyUI Qwen-Image 生成图片、MiniMax H3 图生视频、ffmpeg 草稿 960×540 与成片 1920×1080、TXT/MD/DOCX/EPUB/PDF/封面/工程包/交付文件夹。
-- **打包与安装**：r037 便携包实际解压启动；文件夹版原地运行；NSIS 默认路径静默安装到 Program Files、启动、卸载全部通过。
+- **打包与安装**：r038 便携包实际解压启动；文件夹版原地运行；NSIS 默认路径静默安装到 Program Files、启动、卸载全部通过。
 
 ### 2.4 复现
 
@@ -119,9 +119,9 @@ npx playwright test tests/e2e/13-packaged.spec.ts
 | `npm run test:eval` | Agent 质量 score=100，pass=true |
 | 全量 E2E | 26 套件 / 224 用例；213 passed + 11 skipped + 0 failed（15.2m） |
 | 最终代码定向 E2E | 18–26 共 14/14 |
-| 打包版 E2E | 6/6（r037 文件夹版） |
-| 便携版冒烟 | 1/1（4.9s，r037，首屏与预加载 API 正常） |
-| 文件夹版冒烟 | 1/1（2.0s，原地运行、portable.marker 数据目录正确） |
+| 打包版 E2E | 6/6（r038 文件夹版） |
+| 便携版冒烟 | 1/1（5.1s，r038，首屏与预加载 API 正常） |
+| 文件夹版冒烟 | 1/1（1.4s，原地运行、portable.marker 数据目录正确） |
 | NSIS 安装/卸载 | 363 个文件；per-machine 安装到 Program Files；启动主窗口正常；卸载后快捷方式/注册表清理，目录仅余空目录（已清理），用户数据保留 |
 | EPUB 配图/字体 | JSZip 读取 `OEBPS/images/`、`<figure>` 与字体回退栈通过 |
 | DOCX 配图/目录/字体 | `word/media/`、`<w:drawing>`、目录文本、`w:eastAsia="宋体"` 通过 |
@@ -137,14 +137,14 @@ npx playwright test tests/e2e/13-packaged.spec.ts
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `Morrow-0.2.0-portable.exe` | 220,359,680 B / 210.15 MiB | `6a71b0be1a6a43280b85ee4615cc18f81db3205dab0a13dd896f9473e86ab3e9` |
-| `Morrow-0.2.0-setup.exe` | 168,210,275 B / 160.42 MiB | `e999a264ad50b67cc6b342777a3c4242c209af39f402764ad9a1a072693fd379` |
-| `使用说明.txt` | 5,706 B | `d279af90b066351e27e2d22eaa3b07d76aec239df51f75fc20bdc9b75b5b0fbd` |
-| `SHA256SUMS.txt` | 338 B | `2e6e5fec416f8a298f843f107734f9499aba6ea623629f5694d8775d00d37107` |
+| `Morrow-0.2.0-portable.exe` | 220,361,216 B / 210.15 MiB | `ca1ffa74346353ec93ef244ce7fbd6b3558301e0dd26dd6fab0a54f5fa2b59ab` |
+| `Morrow-0.2.0-setup.exe` | 168,210,292 B / 160.42 MiB | `b788ed4aa024c87bc241cbd0b3075050f5f53158f1f3982dfee56f36f5cb88e3` |
+| `使用说明.txt` | 5,706 B | `779d6dfc884b42e7f648a64f69659576d229db98b05e81b68a99a15c415f847d` |
+| `SHA256SUMS.txt` | 338 B | `1c7c017585d04a669130b00ead3db06694a73702213d172d54595aa02ae4eda3` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **388,576,731 B / 370.58 MiB** | 未签名（signed:false） |
+| **分发合计** | **388,578,284 B / 370.58 MiB** | 未签名（signed:false） |
 
-便携版运行时为 `.morrow-runtime-0.2.0-r037`；安装包为 per-machine（Program Files，需要管理员权限）；内嵌应用 zip 带 SHA-256 戳记，缓存不匹配时会重新解压。`deliver/` 顶层保留五个分发文件、源码包与侧车，以及原样保留的 `Morrow Data` 用户数据（不计入分发）。
+便携版运行时为 `.morrow-runtime-0.2.0-r038`；安装包为 per-machine（Program Files，需要管理员权限）；内嵌应用 zip 带 SHA-256 戳记，缓存不匹配时会重新解压。`deliver/` 顶层保留五个分发文件、源码包与侧车，以及原样保留的 `Morrow Data` 用户数据（不计入分发）。
 
 ## 8. 源码包
 

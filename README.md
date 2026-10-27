@@ -86,7 +86,7 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r037`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r038`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
 - 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
