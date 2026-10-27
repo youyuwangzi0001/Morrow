@@ -47,8 +47,6 @@ import {
 import { errorText } from '../../lib'
 import './FileTree.css'
 
-/* ── 工具 ─────────────────────────────────────────────────────── */
-
 const CODE_EXTS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonl', 'css', 'scss', 'less', 'html', 'htm', 'vue',
   'py', 'rb', 'go', 'rs', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'php', 'sh', 'ps1', 'bat', 'cmd', 'sql',
@@ -89,8 +87,6 @@ function ancestorDirs(path: string): string[] {
   return dirs
 }
 
-
-
 function validName(name: string): string | null {
   const value = name.trim()
   if (!value) return '名字不能为空。'
@@ -120,8 +116,6 @@ interface ContextMenuState {
   y: number
   entry: FileEntry
 }
-
-/* ── 文件树 ───────────────────────────────────────────────────── */
 
 /** 路径属性安全编码：btoa 不能编码中文（会抛 InvalidCharacterError），改用 encodeURIComponent。 */
 function pathKey(path: string): string {
@@ -218,7 +212,6 @@ export function FileTree(): React.JSX.Element {
     try {
       window.localStorage.setItem('morrow.files.showHidden', showHidden ? '1' : '0')
     } catch {
-      // ignore
     }
   }, [showHidden])
 

@@ -16,8 +16,6 @@ const STEPS: { id: StepId; label: string; caption: string }[] = [
   { id: 3, label: '选择文件夹', caption: '它可以在哪里动手' }
 ]
 
-
-
 export function Onboarding(): React.JSX.Element | null {
   const open = useAppStore((s) => s.onboardingOpen)
   const settings = useAppStore((s) => s.settings)
@@ -228,7 +226,6 @@ export function Onboarding(): React.JSX.Element | null {
   const goDemo = (): void => {
     void finish({ demo: true })
   }
-
 
   return (
     <div

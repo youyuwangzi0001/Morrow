@@ -1,10 +1,4 @@
-/**
- * 系统提示词（中文）。
- *
- * 参照本机 Qoder worker 运行时的 Agent 提示结构（目标判断 → 工作循环 → 最小改动 →
- * 风险与授权 → 工具纪律 → 沟通），按 Morrow 的模式、工具与新手用户重写。
- * 目标是稳定提升平均交付质量：先判断任务类型，再做对的事，最后用真实证据交付。
- */
+// 系统提示词（中文）。
 import type { BuildSystemPromptOptions } from './types'
 import type { Goal, ResearchState, SessionMode } from '../shared/types'
 import { isChatModeToolAllowed, isResearchModeToolAllowed } from './permissions'

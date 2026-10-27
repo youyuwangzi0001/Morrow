@@ -1,7 +1,4 @@
-/**
- * 本地多媒体服务：把本机 ComfyUI（图片/视频）与 ffmpeg（剪辑）接到 Agent 工具上。
- * Morrow 不内置推理引擎或权重；这里只负责检测、启动、调用、落盘与预览元数据。
- */
+// 本地多媒体服务：把本机 ComfyUI（图片/视频）与 ffmpeg（剪辑）接到 Agent 工具上。
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { BrowserWindow } from 'electron'
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
@@ -173,6 +170,7 @@ interface RunPromptOptions {
   seed: number
   signal: AbortSignal
   onProgress: (update: { stage: string; percent?: number }) => void
+  onPromptId?: (promptId: string) => void
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -195,7 +193,6 @@ function normalizeBaseUrl(raw: string): string {
   const path = url.pathname.replace(/\/+$/, '')
   return `${url.origin}${path}`
 }
-
 
 function wsUrlFor(baseUrl: string, clientId: string): string {
   const url = new URL(normalizeBaseUrl(baseUrl))
@@ -992,7 +989,8 @@ export class MediaService implements MediaToolHandler {
       timeoutMs: Math.max(60, settings.imageTimeoutSec) * 1000,
       seed,
       signal: input.signal,
-      onProgress: input.onProgress
+      onProgress: input.onProgress,
+      ...(input.onPromptId ? { onPromptId: input.onPromptId } : {})
     })
   }
 
@@ -1044,7 +1042,8 @@ export class MediaService implements MediaToolHandler {
       timeoutMs: Math.max(120, settings.videoTimeoutSec) * 1000,
       seed,
       signal: input.signal,
-      onProgress: input.onProgress
+      onProgress: input.onProgress,
+      ...(input.onPromptId ? { onPromptId: input.onPromptId } : {})
     })
     return {
       ...result,
@@ -1052,6 +1051,44 @@ export class MediaService implements MediaToolHandler {
       height: result.height ?? height,
       durationSec: result.durationSec ?? frames / 24,
       referencePath: firstPath
+    }
+  }
+
+  /** 断电/重启后按外部任务号取回结果；不改动原任务记录。 */
+  async resumePrompt(input: {
+    promptId: string
+    kind: 'image' | 'video'
+    workspace: string
+    signal: AbortSignal
+    onProgress: (update: { stage: string; percent?: number }) => void
+  }): Promise<MediaArtifactResult> {
+    const settings = this.settings()
+    const base = normalizeBaseUrl(settings.comfyuiUrl)
+    const startedAt = Date.now()
+    const files = await this.waitForPrompt({
+      base,
+      promptId: input.promptId,
+      timeoutMs: Math.max(60, input.kind === 'video' ? settings.videoTimeoutSec : settings.imageTimeoutSec) * 1000,
+      signal: input.signal,
+      onProgress: input.onProgress,
+      labels: input.kind === 'video' ? { decode: '解码视频', save: '保存视频' } : { decode: '解码图片', save: '保存图片' }
+    })
+    const file = files.find((item) => kindForExt(extOf(item.filename)) === input.kind) ?? files[0]
+    if (!file) throw new Error('ComfyUI 任务完成，但没有返回可下载的文件。')
+    const dest = await this.downloadOutput(settings, input.workspace, file, input.kind, input.signal)
+    const probe = await this.probeFile(settings, dest).catch(() => null)
+    const thumbnail = await this.thumbnail(settings, dest, input.kind)
+    return {
+      path: dest,
+      mediaKind: input.kind,
+      bytes: statSync(dest).size,
+      model: input.kind === 'video' ? VIDEO_MODEL_LABEL : IMAGE_MODEL_LABEL,
+      engine: 'ComfyUI',
+      elapsedMs: Date.now() - startedAt,
+      ...(probe?.width ? { width: probe.width } : {}),
+      ...(probe?.height ? { height: probe.height } : {}),
+      ...(probe?.durationSec !== undefined ? { durationSec: probe.durationSec } : {}),
+      ...(thumbnail ? { thumbnailDataUrl: thumbnail } : {})
     }
   }
 
@@ -1283,6 +1320,7 @@ export class MediaService implements MediaToolHandler {
       }
       const promptId = asString(submitted.prompt_id)
       if (!promptId) throw new Error('ComfyUI 没有返回任务 ID。')
+      options.onPromptId?.(promptId)
       onProgress({ stage: '已提交，等待执行', percent: 3 })
       const files = await this.waitForPrompt({ base, promptId, timeoutMs, signal, onProgress, labels })
       onProgress({ stage: '下载成品', percent: 95 })

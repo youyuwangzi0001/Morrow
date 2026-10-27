@@ -1,15 +1,4 @@
-/**
- * R10-H 技能库面板。
- *
- * 独立受控组件（Lead 挂载）：`<SkillsPanel open={open} onClose={onClose} />`
- * - 列出「文件夹自带技能」与「我的技能」；搜索 / 启用状态筛选 / 排序；
- * - 详情：描述、来源、路径、文件清单、SKILL.md 原文；
- * - 启用 / 禁用（Agent 的 list_skills / read_skill / 系统提示只看到已启用技能）；
- * - 从本地文件夹或 .zip 安装到我的技能（主进程做 zip-slip/大小/白名单校验）；
- * - 删除用户技能、打开目录、重新扫描、错误态。
- *
- * 不联网、不接市场；所有操作都走 `feature:skills:*` IPC。
- */
+// R10-H 技能库面板。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
@@ -49,8 +38,6 @@ const SORT_OPTIONS: Array<{ value: SkillSort; label: string }> = [
   { value: 'name', label: '按名称' },
   { value: 'updated', label: '按更新时间' }
 ]
-
-
 
 function formatTime(timestamp: number | null): string {
   if (!timestamp) return '未知'

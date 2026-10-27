@@ -78,7 +78,6 @@ function cleanupTemporarySessionData(): void {
       }
     }
   } catch {
-    // ignore
   }
 }
 

@@ -1,7 +1,4 @@
-/**
- * 成品导出转换：HTML → Markdown / 纯文本，Markdown → HTML，以及 PDF 用的打印文档。
- * 纯函数，不接触 Electron，方便单元测试；PDF 渲染由 ipc 层负责。
- */
+// 成品导出转换：HTML → Markdown / 纯文本，Markdown → HTML，以及 PDF 用的打印文档。
 
 const ENTITIES: Record<string, string> = {
   amp: '&',

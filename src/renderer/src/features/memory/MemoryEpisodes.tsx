@@ -1,7 +1,4 @@
-/**
- * 任务经验：任务完成后自动记录的可检索经历，和长期记忆（始终参考）分工不同。
- * 这里只负责查看、检索、启停、删除，以及把一条经验手动保存为长期记忆。
- */
+// 任务经验：任务完成后自动记录的可检索经历，和长期记忆（始终参考）分工不同。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, Check, ChevronDown, History, RefreshCw, Trash2 } from 'lucide-react'
 import type { MemoryScope, TaskEpisode } from './memory-api'
@@ -19,8 +16,6 @@ interface MemoryEpisodesProps {
   onPromote: (episode: TaskEpisode) => void
   onNotice: (message: string) => void
 }
-
-
 
 export function MemoryEpisodes({
   open,

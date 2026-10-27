@@ -242,3 +242,71 @@ export function isPathInside(root: string, target: string): boolean {
   const prefix = base.endsWith(sep) ? base : `${base}${sep}`
   return candidate === base || candidate.startsWith(prefix)
 }
+
+/** 创作台数据目录指针：与 Agent 数据目录解耦，存放在 LOCALAPPDATA\Morrow。 */
+export function studioLocationFile(): string {
+  const explicit = process.env.MORROW_STUDIO_LOCATION_FILE
+  if (explicit) return resolve(explicit)
+  const base = process.env.LOCALAPPDATA || app.getPath('appData')
+  return join(base, 'Morrow', 'studio-location.json')
+}
+
+export function readStudioLocation(file = studioLocationFile()): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { studioRoot?: unknown }
+    if (typeof parsed.studioRoot !== 'string' || !isAbsolute(parsed.studioRoot)) return null
+    return resolve(parsed.studioRoot)
+  } catch {
+    return null
+  }
+}
+
+export function writeStudioLocation(dir: string, file = studioLocationFile()): void {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(
+    file,
+    JSON.stringify({ studioRoot: resolve(dir), updatedAt: new Date().toISOString() }, null, 2) + '\n',
+    'utf8'
+  )
+}
+
+export function removeStudioLocation(file = studioLocationFile()): void {
+  rmSync(file, { force: true })
+}
+
+export function resolveDefaultStudioRoot(dataDir = resolveDataDir()): string {
+  return join(dataDir, 'studio')
+}
+
+/** 自定义创作台目录可用时优先使用；不可用时回退到 Agent 数据目录下的 studio。 */
+export function resolveStudioDataRoot(dataDir = resolveDataDir()): string {
+  const custom = readStudioLocation()
+  if (custom) {
+    try {
+      mkdirSync(custom, { recursive: true })
+      return custom
+    } catch {
+      // 盘符断开/无权限时回退默认，指针保留给设置页修复
+    }
+  }
+  return resolveDefaultStudioRoot(dataDir)
+}
+
+export interface StudioDataDirInfo {
+  root: string
+  defaultRoot: string
+  customRoot: string | null
+  source: 'default' | 'custom'
+}
+
+export function studioDataDirInfo(dataDir = resolveDataDir()): StudioDataDirInfo {
+  const root = resolveStudioDataRoot(dataDir)
+  const defaultRoot = resolveDefaultStudioRoot(dataDir)
+  const customRoot = readStudioLocation()
+  return {
+    root,
+    defaultRoot,
+    customRoot,
+    source: customRoot && samePath(root, customRoot) ? 'custom' : 'default'
+  }
+}

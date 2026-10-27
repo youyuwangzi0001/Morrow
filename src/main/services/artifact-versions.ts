@@ -1,9 +1,4 @@
-/**
- * 成品版本历史：每次成品内容变化时保存一份文本快照。
- * - 只对 html / markdown / code / svg / text 成品做快照；二进制文件走文件历史或另存为。
- * - 每个成品最多保留 30 个版本，单版本超过 8MB 不记录，避免把数据目录撑爆。
- * - 纯 Node，可在单元测试里用临时目录直接验证。
- */
+// 成品版本历史：每次成品内容变化时保存一份文本快照。
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
@@ -65,7 +60,6 @@ function atomicWrite(path: string, content: string | Buffer): void {
     try {
       rmSync(tmp, { force: true })
     } catch {
-      // ignore
     }
     throw err
   }
@@ -80,7 +74,6 @@ function atomicWrite(path: string, content: string | Buffer): void {
         try {
           rmSync(tmp, { force: true })
         } catch {
-          // ignore
         }
         throw err
       }
@@ -93,7 +86,6 @@ function atomicWrite(path: string, content: string | Buffer): void {
           try {
             rmSync(tmp, { force: true })
           } catch {
-            // ignore
           }
           throw writeErr
         }
@@ -194,7 +186,6 @@ export class ArtifactVersionStore {
         try {
           rmSync(join(directory, removed.file), { force: true })
         } catch {
-          // ignore
         }
       }
     }
@@ -236,7 +227,6 @@ export class ArtifactVersionStore {
     try {
       rmSync(join(this.dir, safeSegment(sessionId)), { recursive: true, force: true })
     } catch {
-      // ignore
     }
   }
 

@@ -1,7 +1,4 @@
-/**
- * 工具注册表：唯一工具清单（顺序固定，便于 provider 端 prompt cache 命中）。
- * 同时提供「给模型的定义」「给 UI/权限的元信息」「真实执行」三个视图。
- */
+// 工具注册表：唯一工具清单（顺序固定，便于 provider 端 prompt cache 命中）。
 import type { ToolCategory, ToolResult, ToolRisk } from '../../shared/types'
 import type { ToolContext, ToolDefinition } from '../types'
 import { detectDangerousCommand, isResearchModeToolAllowed } from '../permissions'
@@ -23,6 +20,7 @@ import { webFetchTool } from './web-tools'
 import { browserTools } from './browser-tools'
 import { computerTools } from './computer-tools'
 import { mediaTools } from './media-tools'
+import { studioTools } from './studio-tools'
 import { xlsxTools } from './xlsx-tools'
 import { errResult, type ToolImpl } from './types'
 
@@ -58,7 +56,9 @@ const BASE_TOOLS: ToolImpl[] = [
   // R10-K3 受控 computer-use：仅在用户逐次审批后执行
   ...computerTools,
   // 本地多媒体：生成/剪辑走本机引擎，未配置时给出可执行指引
-  ...mediaTools
+  ...mediaTools,
+  // 创作台：作品、写作、分镜、时间线与交付（同一套作品服务）
+  ...studioTools
 ]
 // P0-2 计划模式工具：不进入普通会话工具清单，只由 toolDefinitionsForRun(planMode=true) 注入
 const PLAN_TOOLS: ToolImpl[] = [...planTools]

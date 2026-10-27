@@ -731,6 +731,39 @@ test('侧边聊天：只读回答，不写入主对话', async () => {
     await expect(drawer).toBeVisible()
     await expect(drawer.getByText('侧边回答：入口在')).toBeVisible({ timeout: 30_000 })
     await expect(drawer.getByText('主对话没有受到影响')).toBeVisible()
+    const sideFonts = await page.evaluate(() => ({
+      title: getComputedStyle(document.querySelector('.sidechat-title') as HTMLElement).fontSize,
+      meta: getComputedStyle(document.querySelector('.sidechat-sub') as HTMLElement).fontSize,
+      body: getComputedStyle(document.querySelector('.sidechat-text') as HTMLElement).fontSize
+    }))
+    expect(sideFonts).toEqual({ title: '15px', meta: '11.5px', body: '13.5px' })
+
+    // 侧边聊天与 Agent 主聊天框共用流金边框，聚焦时 1px 金线展开。
+    const sideComposer = page.locator('.sidechat-composer')
+    await expect(sideComposer).toHaveClass(/chat-gold-frame/)
+    await expect(page.locator('.composer-shell')).toHaveClass(/chat-gold-frame/)
+    const sideBase = await sideComposer.evaluate((element) => ({
+      radius: getComputedStyle(element).borderRadius,
+      border: Number.parseFloat(getComputedStyle(element).borderTopWidth),
+      color: getComputedStyle(element).borderTopColor
+    }))
+    const agentBorder = await page
+      .locator('.composer-shell')
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth))
+    expect(sideBase.radius).toBe('9px')
+    expect(sideBase.border).toBeGreaterThan(0.5)
+    expect(sideBase.border).toBeLessThanOrEqual(1.01)
+    expect(sideBase.border).toBe(agentBorder)
+    await sideComposer.locator('.sidechat-input').focus()
+    await page.waitForTimeout(520)
+    const sideFocus = await sideComposer.evaluate((element) => ({
+      color: getComputedStyle(element).borderTopColor,
+      horizon: Number(getComputedStyle(element, '::before').opacity)
+    }))
+    expect(sideFocus.color).not.toBe(sideBase.color)
+    expect(sideFocus.horizon).toBeGreaterThan(0.8)
+    await page.locator('.sidechat-title').click()
+    await page.waitForTimeout(320)
 
     // 主对话没有新增消息；侧边聊天请求带上主对话上下文且没有工具
     const after = await readStore(page)
@@ -749,6 +782,13 @@ test('侧边聊天：只读回答，不写入主对话', async () => {
     await page.screenshot({ path: screenshotPath('sidechat-dark.png') })
     await setThemeViaStore(page, 'light')
     await page.waitForTimeout(350)
+    const sideLightFrame = await sideComposer.evaluate((element) => ({
+      radius: getComputedStyle(element).borderRadius,
+      border: Number.parseFloat(getComputedStyle(element).borderTopWidth)
+    }))
+    expect(sideLightFrame.radius).toBe('9px')
+    expect(sideLightFrame.border).toBeGreaterThan(0.5)
+    expect(sideLightFrame.border).toBeLessThanOrEqual(1.01)
     await page.screenshot({ path: screenshotPath('sidechat-light.png') })
 
     await drawer.getByRole('button', { name: '关闭侧边聊天' }).click()

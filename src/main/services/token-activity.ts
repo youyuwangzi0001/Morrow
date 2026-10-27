@@ -141,7 +141,6 @@ export class TokenActivityService {
       try {
         rmSync(tmp, { force: true })
       } catch {
-        // ignore
       }
       throw err
     }
@@ -156,7 +155,6 @@ export class TokenActivityService {
           try {
             rmSync(tmp, { force: true })
           } catch {
-            // ignore
           }
           throw err
         }
@@ -169,7 +167,6 @@ export class TokenActivityService {
             try {
               rmSync(tmp, { force: true })
             } catch {
-              // ignore
             }
             throw writeErr
           }

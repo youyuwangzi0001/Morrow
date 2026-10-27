@@ -1,7 +1,4 @@
-/**
- * Provider 工厂与连接测试。
- * 主进程只依赖 createProvider / testProviderConnection，不关心具体协议实现。
- */
+// Provider 工厂与连接测试。
 import type { ChatMessage, ProviderConfig, ProviderTestResult } from '../../shared/types'
 import { isLocalServiceUrl } from '../../shared/models'
 import type { ConnectionTestOptions, Provider } from '../types'

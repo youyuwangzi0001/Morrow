@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "kind": "nsis-installer",
+  "mode": "per-machine-default-path-silent",
+  "exe": "tmp/final2-deliver/Morrow-0.2.0-setup.exe",
+  "exeSha256": "e6a85fef92e0957f62049b218ed135e7ba7cb7b0f61c6bec5814a2db6e15fe7c",
+  "exeSizeBytes": 169807561,
+  "silentArgs": "/S",
+  "installDir": "C:\\Program Files\\Morrow",
+  "installedFiles": 377,
+  "installedBytes": 542318332,
+  "installExitCode": 0,
+  "launch": {
+    "ok": true,
+    "windowTitle": "Morrow",
+    "dataDirOverride": "C:\\Temp\\MorrowInstalledData2"
+  },
+  "uninstall": {
+    "exitCode": 0,
+    "startMenuShortcutRemoved": true,
+    "desktopShortcutRemoved": true,
+    "registryEntryRemoved": true,
+    "installDirEmptyAfterUninstall": true,
+    "emptyDirCleanedAfterTest": true,
+    "userDataPreserved": true
+  },
+  "testedAt": "2026-10-28T01:31:00.000Z",
+  "notes": "最终 r035 安装包为 per-machine（Program Files，需要管理员权限）。默认路径静默安装、启动与卸载均通过；卸载后只余空目录，测试结束后已清理。未改动交付目录的 Morrow Data。"
+}

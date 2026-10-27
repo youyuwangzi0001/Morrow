@@ -1,10 +1,4 @@
-/**
- * 通用模型/引擎目录：检测、安装、启停、下载、注册、卸载。
- *
- * 具体模型不应写死在 UI 或生成代码里；这里把模型描述成 manifest，
- * 用同一套生命周期操作 ComfyUI 文件、llama.cpp GGUF、Ollama/LM Studio 模型。
- * 内置 Qwen/MiniMax/coder390 只是预设，用户和 Agent 可以注册任意模型。
- */
+// 通用模型/引擎目录：检测、安装、启停、下载、注册、卸载。
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'

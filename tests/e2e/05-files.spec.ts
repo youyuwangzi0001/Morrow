@@ -99,6 +99,28 @@ test.describe('多格式文件预览', () => {
       })
       expect(pdfMetrics.docWidth).toBeLessThanOrEqual(pdfMetrics.docClient)
       expect(pdfMetrics.stageWidth).toBeLessThanOrEqual(pdfMetrics.stageClient)
+      const pdfDarkPixel = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('.preview-pdf-canvas')
+        const context = canvas?.getContext('2d')
+        const data = context?.getImageData(Math.max(0, canvas.width - 4), Math.max(0, canvas.height - 4), 1, 1).data
+        return data ? [data[0], data[1], data[2]] : null
+      })
+      expect(pdfDarkPixel).not.toBeNull()
+      await expect(page.locator('.preview-pdf-image')).toBeVisible({ timeout: 20_000 })
+      const pdfImagePixel = await page.evaluate(async () => {
+        const image = document.querySelector<HTMLImageElement>('.preview-pdf-image')
+        if (!image) return null
+        if (!image.complete) await image.decode().catch(() => undefined)
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        const context = canvas.getContext('2d')
+        context?.drawImage(image, 0, 0)
+        const data = context?.getImageData(Math.max(0, canvas.width - 4), Math.max(0, canvas.height - 4), 1, 1).data
+        return data ? { pixel: [data[0], data[1], data[2]], naturalWidth: image.naturalWidth, srcPrefix: image.src.slice(0, 32) } : null
+      })
+      console.log('PDF_IMAGE', JSON.stringify(pdfImagePixel))
+      expect((pdfDarkPixel?.[0] ?? 255) + (pdfDarkPixel?.[1] ?? 255) + (pdfDarkPixel?.[2] ?? 255)).toBeLessThan(180)
       await shot(page, 'pdf', 'dark')
       await shot(page, 'pdf', 'light')
 

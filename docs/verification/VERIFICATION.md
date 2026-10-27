@@ -1,104 +1,171 @@
-# Morrow 0.1.0 验收记录（r019）
+# Morrow 0.2.0 验收记录（r035）
 
-> 日期：2026-10-26 · 版本：0.1.0 · 运行时：r019 · 平台：Windows 10/11 x64
+> 日期：2026-10-28 · 版本：0.2.0 · 运行时：r035 · 平台：Windows 10/11 x64
 >
 > 交付形态：单文件便携版 + NSIS 安装包 + 源码包
 
 ## 1. 结论
 
 - 类型检查：`npm run typecheck` **0 error**。
-- UI 令牌审计：`npm run audit:ui` **通过**，50 个 CSS + 66 个 TSX，0 处裸排版值（文档预览 iframe 白名单除外）。
-- 单元测试：**14 个套件 / 952 个用例**（944 passed + 8 skipped）。
-- E2E：**17 个套件 / 209 个用例**；本轮定向终端、Shell、打包冒烟与 12 张指南截图全部通过。
-- 打包版：**5/5**（18.2s，r019 便携包实际解压启动）。
-- 文档：**15 篇 Markdown / 2,142 行**；12 张指南图由真实 Electron E2E 重新生成。
-- 交付：**5 个分发文件 / 345.81 MiB**，另有源码包与用户数据 `Morrow Data`（不计入分发）。
+- UI 令牌审计：`npm run audit:ui` **通过**，58 个 CSS + 83 个 TSX，0 处裸排版值（文档预览 iframe 白名单除外）。
+- 单元测试：**29 个套件 / 1008 个用例**（1000 passed + 8 skipped），Agent 质量评测 `score=100`。
+- 全量 E2E：**26 个套件 / 224 个用例**，**213 passed + 11 skipped + 0 failed**，15.3 分钟；跳过项均为真实账号、本机模型或真实短片生成的环境边界。
+- 最终代码定向回归：`18–26` 共 **14/14**；打包版 E2E **6/6**；便携版冒烟 **1/1**；文件夹版冒烟 **1/1**。
+- 安装包：per-machine 默认路径静默安装 **377 个文件**，安装版可启动并显示主窗口；卸载后快捷方式与注册表项清理，安装目录仅余空目录（测试后已清理），用户数据保留。
+- 指南截图：**28 张**，真实 Electron 窗口生成，14.7MB → **5.3MB**（1600px、PNG-8 256 色）；另有 8 张 1280/1920/3840 响应式矩阵。
+- 助手来源：每条回答记录本轮实际使用的章节、镜头、片段与设定来源，可点击回到原位置；模型上下文与看图/工具能力在协作者头部可见。
+- 导出预检：交付页检查中文字体、FFmpeg 与格式状态；PDF 使用 Type3 字形嵌入，DOCX/EPUB 使用字体回退栈。
+- 自动推进：一次确认后补齐缺失素材、自动装配时间线并合成草稿；付费步骤仍逐项过预算闸门。
+- 交付：**5 个分发文件 / 391,856,458 B / 373.70 MiB**；源码包与用户数据 `Morrow Data` 不计入。
 
-## 2. 版本与规模
+## 2. 质量方法与 Agent 指标
 
-统计口径：`wc -l`；代码含 `src/`、`tests/`（含 E2E）、`scripts/`、`build/`；文档为根目录 + `docs/` Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
+### 2.1 测试分层
+
+| 层 | 技术 | 规模 | 作用 |
+|---|---|---:|---|
+| 类型/静态 | TypeScript + UI token audit | 全量 | 编译、裸排版值、设计 token |
+| 单元 | Vitest | 29 套件 / 1008 用例 | 协议、工具、权限、上下文、持久化、模型映射、创作台 |
+| E2E | Playwright `_electron` | 26 套件 / 224 用例 | 真实窗口、IPC、终端、浏览器、画布、设置、旅程、创作台 |
+| 打包回归 | Playwright + 最终构建 | 6 用例 | PTY、文档工具、原生浏览器、双数据目录、创作台资产 |
+| 真账号/真引擎 | 手动/条件测试 | 按环境 | 登录、Agent 调用、Qoder 模型目录、媒体 |
+
+单测可以 mock Provider/引擎；E2E 必须启动真实 Electron、真实 IPC、真实 PTY/画布。真实账号、真实模型、ComfyUI、ffmpeg 等外部依赖不在默认 CI 中运行，会明确 skip，不伪造通过；所有测试使用临时数据目录。
+
+### 2.2 Agent 质量指标
+
+离线确定性套件（`npm run test:eval`，Mock Provider）评估四项：
+
+- **工具调用首次成功率（TSR@1）**：8 个工具任务，首次成功 8/8；3 个重试任务成功 3/3。
+- **长任务上下文漂移率（LDR）**：60 轮、3 次压缩、24 个事实检查，违规 0。
+- **压缩后关键决定保留率（CKR）**：2 个场景，预期保留 10 项，实际 10 项。
+- **Token 曲线斜率（TSS）**：80 轮，上限 10,000，压缩 12 次；基线斜率 494，管理后 -0.04；管理后峰值 7,994、最终 7,500，基线峰值 39,806。
+
+综合得分 **100/100**，四项门槛全部通过。结果文件：`docs/verification/eval-results.json`。
+
+### 2.3 真实任务与回归
+
+- **Qoder 真账号**：内置浏览器登录 → 账号目录 15 个 chat 模型 / 200K、400K、1M → Agent 调用返回“链路正常” → max 思考 + 400K 真实请求成功。
+- **Codex**：本机 `auth.json` 导入 connected + quota；Responses 工具参数与 assistant 历史内容修复。
+- **媒体**：ComfyUI mock 真实生成/编辑/预览；本地 Coder390/视觉链路的请求与回退逻辑由单测覆盖。
+- **终端/Git**：真实 PTY、默认 Git Bash 选择、空终端隐藏滚动条、80 行输出后显示、Shell 切换、Git 暂存/提交/分支/历史/放弃。
+- **创作台**：真实 Electron 走查作品库、12 镜 96 秒时间线、分镜详情、交付视频、长篇写作候选与自动保存、大白话修改计划、版本对话框与双主题。
+- **创作台真实语料**：`19-studio-corpus.spec.ts` 覆盖《极速曙光》《再造华夏》《神迹与巫术》《0.12秒》的章节/设定/配图/候选锁稿/连续写作/真实草稿合成/工程包导入。
+- **创作台真实引擎**：本机 ComfyUI Qwen-Image 生成图片、MiniMax H3 图生视频、ffmpeg 草稿 960×540 与成片 1920×1080、TXT/MD/DOCX/EPUB/PDF/封面/工程包/交付文件夹。
+- **打包与安装**：r035 便携包实际解压启动；文件夹版原地运行；NSIS 默认路径静默安装到 Program Files、启动、卸载全部通过。
+
+### 2.4 复现
+
+```powershell
+npm install
+npm run typecheck
+npm run audit:ui
+npm run test:unit
+npm run test:eval
+npx playwright test
+npx playwright test tests/e2e/18-studio.spec.ts
+npm run dist:all
+npx playwright test tests/e2e/13-packaged.spec.ts
+```
+
+真实账号/引擎测试需要额外环境变量与本机资源；详见 [多媒体与本地模型](../MODELS.md) 与 [订阅与模型](../MODELS.md)。
+
+## 3. v0.2.0 体验完善与质量自查
+
+| 轮次 | 范围 | 结果 |
+|---|---|---|
+| 1 | 创作台左右栏与聊天框 | 左右栏可拖动（默认 240 / 420，1px 香槟金线，双击复位，按机记忆）；协作栏打开时左栏不再收成图标轨；Agent 主输入 / 侧边聊天 / 协作者统一流金边框；深/浅主题同步 |
+| 2 | 交付页 | “用途—画面—字幕—文件—清晰度”按意图排列；推荐设置；格式与音频用途说明；六种带走方式说明可见；导出预检；交付记录去掉裸哈希 |
+| 3 | 设置页 | 子页“配音与引擎”；预算“不设上限”与后端 0 值一致；模型策略“先用哪个模型”；路线表“已连接/未连接、会看图、会用工具、参考价”；工具能力保留常用术语 |
+| 4 | 时间线 | 保留起点 / 入点 / 转场·淡入淡出 / 分割 / 逐帧 / 变速 / 播放头；底部常驻“拖中间改位置，拖两端改长短” |
+| 5 | 质量自查 | 检查页去掉引擎/声线术语；预算 0 在顶栏、协作者、蓝图、检查、设置统一显示“不限”；打开文件夹失败有提示；源码包改为包含当前工作树 |
+| 6 | 术语平衡 | 从过度口语化回退到行业常用说法，保留推荐设置、可见说明、预算不限等真实改进 |
+| 7 | 数据目录、双线与字号 | 创作台数据目录可自定义并迁移重启；悬浮/拖动只高亮面板 1px 边框（Studio + Agent）；画布素材/节点、写作目录/人物设定、正文字号上调并统一“协作者” |
+| 8 | 终检假实现与半成品 | 蓝图确认前隐藏“用模型重写”；大白话原话与“不改脸/保持雨向”写入画面/视频提示词并锁定当前镜头参考；“自动排好”先确认、服务端拒绝静默覆盖；字幕字号/颜色/底板写入 ASS 并补上界面控件；外部章节配图按 chapterId 回到本章草稿 |
+
+- **假实现检查**：`src/main/studio` 与 `src/renderer/src/features/studio` 没有 TODO/FIXME/占位实现或空 `onClick`；11 个 `studio_*` 助手动作都落到真实服务；ComfyUI 外部任务取回走 `resumePrompt`；未发现只改文案不接真实服务的半成品。
+- **真实缺陷修复**：预算 0 的多处“¥0”误导显示；`pack-source.mjs` 原先只打包 `HEAD`，会漏掉未跟踪的创作台目录，现已改为临时 Git index 打包当前工作树；文件夹打开失败不再静默。
+- **文档整合**：FEATURES / STUDIO-SHORTCUTS / SUBSCRIPTIONS / MEDIA-MODELS / COMMENT-AUDIT / EVALUATION / TROUBLESHOOTING 并入 USER-GUIDE、STUDIO、MODELS、CONTRIBUTING、VERIFICATION；删除重复的 docs/README 与旧审计日志。Markdown 文档收敛为 **13 个**。
+
+## 4. 版本与规模
+
+统计口径：`wc -l`；代码含 `src/`、`tests/`、`scripts/`、`build/`；文档为根目录 + `docs/` + `docs/verification/` 的 Markdown；不含 `node_modules`、构建产物、JSON 清单、应用内置技能说明与图片。
 
 | 范围 | 文件 | 行数 |
 |---|---:|---:|
-| 生产源码 `src/` | 314 | 125,812 |
-| 测试 `tests/`（含 E2E） | 66 | 43,456 |
-| 其中 E2E 套组 `tests/e2e/` | 20 | 19,236 |
-| 构建脚本 `scripts/` + `build/` | 11 | 2,896 |
-| **代码合计** | **391** | **172,164** |
-| Markdown 文档 | 15 | 2,142 |
-| 指南截图 | 12 | 2100×1200 为主 |
+| 生产源码 `src/` | 343 | 160,495 |
+| 测试 `tests/`（含 E2E） | 69 | 46,689 |
+| 构建脚本 `scripts/` + `build/` | 17 | 4,132 |
+| **代码合计** | **429** | **211,316** |
+| Markdown 文档 | 13 | 2,767 |
+| 指南截图 | 28 | 1600px 最长边 · PNG-8 |
+| 语料素材 | 17.7 MiB | 图片已转 JPEG，音频/视频保留原格式 |
 
-## 3. 本轮能力状态
+## 5. 能力状态
 
-### 3.1 模型与订阅
+- **Agent 响应式与终端**：对话列 / 输入区 / 欢迎页按视口放大；画布拖宽时为对话列保留 560px；终端从侧栏右缘铺满主区，画布或侧边聊天打开时从其下方贯通。
+- **助手能力与来源**：协作者头部展示模型、上下文与看图/工具/本机或云端；来源可点击跳转，来源失效写入检查项；计划预览/应用/整体撤销与预算闸门保持。
+- **交付与自动推进**：导出预检、真实 EPUB/DOCX/PDF/工程包/音轨/四格漫画；PDF Type3、DOCX eastAsia、EPUB 回退栈均有真实导出断言；自动补齐 + 时间线装配 + 草稿合成。
+- **画布、任务、长篇与媒体**：多选/对齐/编组/快照 PNG；任务消息流与 ComfyUI 外部任务号取回；超长章节分片、候选段落级对照、人物语气审稿；真实波形、540p 代理、云端 TTS、内置音频素材。
+- **创作台体验**：左右栏 240/420 可拖动；三种聊天框统一流金边框；交付、设置、时间线文案已小白化；深/浅主题截图与 1280/1920/3840 矩阵覆盖。
 
-- 内置 API 目录与思考档位按服务商公开资料核对：DeepSeek V4.1 Flash 1M / off-low-high-max，V4 Pro high-max；Kimi、Claude、GPT-6 补齐 max；Qwen 仅 low/medium/xhigh；Gemini 三档；Grok/Muse 四档；GLM-5.2 移除。
-- Qoder 删除静态模型表，模型目录实时读取账号接口；实测 15 个 chat 模型、200K/400K/1M 上下文、默认 200K；max + 400K 真实请求成功。
-- 订阅渠道、代理、额度与安全边界见 `docs/SUBSCRIPTIONS.md`；未在本机验证的渠道只做登录页/协议/端点验证，不伪造额度。
-
-### 3.2 媒体审看
-
-- 顺序固定：当前对话模型 → 声明视觉能力的本地模型 → 真实失败。
-- 视觉请求关闭思考并给 2048 输出预算；DeepSeek 直接 Provider 的 off→none，Qoder 保持 off。
-- 本地只选声明视觉能力的模型或 Coder390 预设；两边失败返回真实错误与配置建议，不用生图/文本模型冒充审看。
-- 单测覆盖请求顺序、思考关闭、输出预算与本地模型筛选；未在最终构建上重复消耗真实 DeepSeek 视觉额度。
-
-### 3.3 终端与滚动条
-
-- 默认终端 **Git Bash**；Windows PowerShell 5.1 与 CMD 选项移除，保留 PowerShell 7 / WSL。
-- 终端空态隐藏滚动条，内容溢出才显示；轨道 8px、滑块 6px 实色全圆角、无渐变/箭头。
-- 受限测试令牌下 Git Bash MSYS 共享内存不可用，打包 PTY 回归显式使用 PowerShell 7；真实桌面默认仍为 Git Bash。
-
-### 3.4 稳定性
-
-- 打包版启用本地 crashReporter；记录 uncaughtException、unhandledRejection、child-process-gone。
-- 主窗口渲染进程崩溃后自动 reload（60 秒内最多两次），记录无响应事件。
-- 用户报告的闪退时刻没有对应 WER 记录，根因未确认；后续复现可查看 `logs/main.log` 与本地转储。
-
-### 3.5 文档与截图
-
-- 文档体系从零重写：README、文档索引、用户指南、功能参考、模型、订阅、媒体、架构、设计系统、安全、排障、评测、验收、贡献与安全策略。
-- 12 张截图来自当前 r019 UI 的真实 Electron E2E：首次启动、主界面、审批卡、编辑器、模型/订阅/外观/多媒体设置、浏览器、终端、记忆中心、项目主页。截图来源与尺寸见 `docs/guide/screens/manifest.json`。
-
-## 4. 验证门禁
+## 6. 验证门禁
 
 | 门禁 | 结果 |
 |---|---|
 | `npm run typecheck` | 0 error |
-| `npm run audit:ui` | 50 CSS + 66 TSX，0 裸排版值 |
-| `npm run test:unit` | 14 文件 / 952 用例；944 passed + 8 skipped |
-| E2E 全量 | 17 文件 / 209 用例；本轮未重跑全量，沿用上一轮基线 |
-| 定向 E2E | 终端 1/1、Shell 选择 1/1、浏览器滚动条 1/1、上下文 5/5 |
-| 打包版 E2E | 5/5（18.2s，r019） |
-| 指南截图 | 11 个截图用例全部通过，生成 12 张图 |
+| `npm run audit:ui` | 58 CSS + 83 TSX，0 裸排版值 |
+| `npm run test:unit` | 29 文件 / 1008 用例；1000 passed + 8 skipped |
+| `npm run test:eval` | Agent 质量 score=100，pass=true |
+| 全量 E2E | 26 套件 / 224 用例；213 passed + 11 skipped + 0 failed（15.3m） |
+| 最终代码定向 E2E | 18–26 共 14/14 |
+| 打包版 E2E | 6/6（19.6s，r035 文件夹版） |
+| 便携版冒烟 | 1/1（5.2s，r035，首屏与预加载 API 正常） |
+| 文件夹版冒烟 | 1/1（1.4s，原地运行、portable.marker 数据目录正确） |
+| NSIS 安装/卸载 | 377 个文件；per-machine 安装到 Program Files；启动主窗口正常；卸载后快捷方式/注册表清理，目录仅余空目录（已清理），用户数据保留 |
+| EPUB 配图/字体 | JSZip 读取 `OEBPS/images/`、`<figure>` 与字体回退栈通过 |
+| DOCX 配图/目录/字体 | `word/media/`、`<w:drawing>`、目录文本、`w:eastAsia="宋体"` 通过 |
+| PDF 配图/字体 | `/Subtype /Image`、`/Subtype /Type3` 通过 |
+| 行为矩阵 | `STUDIO-BEHAVIOR-MATRIX.md` 123 项 |
+| 容量基准 | 100 章/300 素材保存读取、100 镜装配 119 片段 |
+| 恢复演练 | 损坏作品恢复超长章节与外部任务号 |
+| 指南截图压缩 | 28 张，14.7MB → 5.3MB，文字清晰度人工复核 |
 
-## 5. 交付物
+全量 E2E 在最后一轮文案/错误提示修复后的构建上完成；11 个跳过项为：真实 Codex 登录 1 项、本机模型 9 项、真实短片生成 1 项。
+
+## 7. 交付物
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `Morrow-0.1.0-portable.exe` | 205,956,096 B / 196.41 MiB | `c6276d60c5aad2a4c785576ce9b854e7ff96e1b92e0f96bd6aa5aaab56ba96e3` |
-| `Morrow-0.1.0-setup.exe` | 156,651,619 B / 149.39 MiB | `17faadf2304d2312ca0d043a3fb92207433d87959b29060a56064c00a47a6141` |
-| `使用说明.txt` | 3,951 B | `9926e526ec2554abb8b574c18747c663efbe8c657396cc2542c6a27120d909a6` |
-| `SHA256SUMS.txt` | 338 B | `2125265725f6a22f2b7f196e8eb10833560016375ad3d8b3bb7000f4e4f0e77f` |
+| `Morrow-0.2.0-portable.exe` | 222,042,112 B / 211.76 MiB | `445edd4e5375ef14a42e09a3e5d7ea0819508679018f88352c8c71b5bd67e0ca` |
+| `Morrow-0.2.0-setup.exe` | 169,807,561 B / 161.94 MiB | `e6a85fef92e0957f62049b218ed135e7ba7cb7b0f61c6bec5814a2db6e15fe7c` |
+| `使用说明.txt` | 5,715 B | `454dacd1ecc85000c9eaf92b9d83cc84374ad1cdfd2bf6bce1ac2f20380578a7` |
+| `SHA256SUMS.txt` | 338 B | `61fad97b2f89fdc5ac59521febe47734b836ec780986e5c7c88d50845f139a9f` |
 | `LICENSE` | 1,070 B | `5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97` |
-| **分发合计** | **5 文件 / 362,613,074 B / 345.81 MiB** | 未签名（signed:false） |
+| **分发合计** | **391,856,458 B / 373.70 MiB** | 未签名（signed:false） |
 
-源码包 `Morrow-0.1.0-source.zip` 单独附带：大小与 SHA-256 以同目录侧车 `Morrow-0.1.0-source.zip.sha256` 为准（源码包内文档为打包前快照，最终哈希以侧车为准）；不计入上表五件分发文件。
+便携版运行时为 `.morrow-runtime-0.2.0-r035`；安装包为 per-machine（Program Files，需要管理员权限）；内嵌应用 zip 带 SHA-256 戳记，缓存不匹配时会重新解压。`deliver/` 顶层保留五个分发文件、源码包与侧车，以及原样保留的 `Morrow Data` 用户数据（不计入分发）。
 
-本轮便携版使用 **r019** 运行时目录，并通过内嵌应用 zip 的 SHA-256 戳记校验缓存。旧的 r010–r016 运行时缓存、历史 `tmp`/`release` 打包缓存与测试残留已清理；`deliver/` 的分发文件只保留当前五个，另保留源码包与用户数据 `Morrow Data`。当前运行实例若仍占用 r017/r018 运行时缓存，关闭应用后可删除；缓存不属于分发文件。
+## 8. 源码包
 
-## 6. 验证边界
+`Morrow-0.2.0-source.zip` 的当前大小与 SHA-256 以交付目录的 `Morrow-0.2.0-source.zip.sha256` 侧车为准。源码包由 `v0.2.0` tag 对应的工作树生成（临时 Git index，遵守 `.gitignore`），包含全部源码、测试、构建脚本、文档与素材；包内不含源码包自身哈希，以侧车为准。
 
-- E2E 全量 17 个套件 / 209 例沿用上一轮基线；本轮没有重新跑完整套件，只跑了受影响用例与截图用例。
-- 本机只有 Qoder/Codex 有可用真实账号；Kimi、GLM、MiniMax、Step、Command Code、Cline、Antigravity、OpenCode 只验证登录页/协议/端点，没有编造额度。
-- 媒体真实生成依赖本机 GPU/ComfyUI；无引擎时 skip，不把 mock 结果当真实生成。
-- 真实 DeepSeek 视觉调用未在最终构建上重复执行；请求层与优先级由单测覆盖，下一次真实开发直接走当前模型优先路径。
-- 用户报告的闪退没有 WER/Application Error 记录；已补崩溃日志与自动恢复，根因仍待复现。
+## 9. 验证边界
+
+- 11 个 E2E 跳过项需要真实 Codex 账号、本机模型或 GPU/ComfyUI；跳过不是通过，也不以 mock 冒充。
+- 外部 ComfyUI 自动对账需要本机引擎在线；无引擎时任务进入“需核对”，不会伪造成功。
+- 本机只有 Qoder/Codex 有可用真实账号；其他订阅只验证登录页/协议/端点，没有编造额度。
+- 云端 TTS 仅验证兼容 OpenAI `/audio/speech` 的真实请求与错误路径；具体服务商兼容性由用户账号决定。
+- Windows 语音在受限令牌/远程会话中可能失败，产品提供“导入配音”兜底。
+- FFmpeg 未内置，增强包能力取决于本机安装；分发许可见 `../THIRD-PARTY-LICENSES.md`。
+- K07/K08 已增加导出预检、PDF Type3/DOCX/EPUB 字体断言；DOCX/EPUB 在目标机器上仍依赖 Office/阅读器字体，干净机器与无 FFmpeg 导出矩阵仍需多机验收。
+- 安装包为 per-machine：安装到 Program Files，需要管理员权限；卸载后快捷方式与注册表清理，安装目录可能保留空目录，用户数据默认保留。
 - 便携版/安装包未签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
-## 7. 维护
+## 10. 维护
 
-- 新功能合并前更新 `FEATURES.md`、`USER-GUIDE.md` 与对应专项文档。
-- 模型/协议变化更新 `MODELS.md`、`SUBSCRIPTIONS.md`、`MEDIA-MODELS.md`。
-- 视觉变化更新 `DESIGN-SYSTEM.md` 与 `docs/guide/screens/`（重新跑截图用例并更新 manifest）。
+- 新功能合并前更新 `USER-GUIDE.md`、`STUDIO.md`（含快捷键表）。
+- 模型/协议变化更新 `MODELS.md`（含订阅与多媒体）。
+- 视觉变化更新 `DESIGN-SYSTEM.md` 与 `docs/guide/screens/`（重新跑截图用例，运行 `python scripts/optimize-guide-screens.py` 压缩，并更新 manifest）。
+- 质量证据更新 `STUDIO-BEHAVIOR-MATRIX.md`、`THIRD-PARTY-LICENSES.md`、`artifacts.json` 与 `packaging.json`。
 - 每次发布更新本文件的规模表、门禁结果与交付哈希。

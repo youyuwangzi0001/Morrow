@@ -298,7 +298,6 @@ export class EditorHistoryStore {
       try {
         unlinkSync(join(dir, name))
       } catch {
-        // ignore
       }
     }
   }
@@ -351,7 +350,6 @@ export class EditorHistoryStore {
         try {
           unlinkSync(join(entry.dir, `${candidate.id}.txt`))
         } catch {
-          // ignore
         }
       }
       index.versions = index.versions.filter((item) => !dropIds.has(item.id))

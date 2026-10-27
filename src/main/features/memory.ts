@@ -230,8 +230,6 @@ export function registerMemoryFeature(register: RegisterFeatureChannel, options:
     })
   })
 
-  /* ── 任务经验（自动记忆） ─────────────────────────────────── */
-
   register('feature:memory:episodes', (payload) => {
     const data = record(payload)
     const scope = parseScope(data)

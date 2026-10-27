@@ -1,7 +1,4 @@
-/**
- * 工具调用的展示元信息：图标种类、人话摘要、耗时、diff 提取。
- * 不修改数据，只做「给用户看」的翻译。
- */
+// 工具调用的展示元信息：图标种类、人话摘要、耗时、diff 提取。
 import type { ChatMessage, PermissionRequest, ToolResult, ToolUseBlock } from '@shared/types'
 
 export type ToolVisual = 'read' | 'write' | 'edit' | 'search' | 'command' | 'list' | 'glob' | 'todo' | 'ask' | 'artifact' | 'web' | 'memory' | 'media' | 'other'
@@ -147,8 +144,6 @@ export function toolDuration(block: ToolUseBlock): string {
   if (block.startedAt && block.finishedAt) return formatDuration(block.finishedAt - block.startedAt)
   return ''
 }
-
-/* ── diff 提取 ────────────────────────────────────────────────── */
 
 export interface DiffInfo {
   patch?: string

@@ -66,7 +66,6 @@ function runPowerShell(args: string[], signal?: AbortSignal): Promise<{ code: nu
       try {
         child.kill()
       } catch {
-        // ignore
       }
       finish(() => reject(new Error('PDF OCR 已取消。')))
     }
@@ -74,7 +73,6 @@ function runPowerShell(args: string[], signal?: AbortSignal): Promise<{ code: nu
       try {
         child.kill()
       } catch {
-        // ignore
       }
       finish(() => reject(new Error('PDF OCR 超时，请缩小 pages 范围后重试。')))
     }, OCR_TIMEOUT_MS)
@@ -183,7 +181,6 @@ export function createPdfOcrHandler(): PdfOcrHandler {
       try {
         rmSync(tempDir, { recursive: true, force: true })
       } catch {
-        // ignore
       }
     }
   }

@@ -192,12 +192,19 @@ export function IslandApp(): ReactElement {
 
   const status = snapshot?.status ?? 'idle'
   const running = status === 'running' || status === 'waiting'
+  const studio = snapshot?.mode === 'studio'
   const total = snapshot?.todos.length ?? 0
   const completed = snapshot?.todos.filter((todo) => todo.status === 'completed').length ?? 0
-  const progress = total > 0 ? completed / total : null
+  const progress = studio
+    ? snapshot?.studioJobProgress !== null && snapshot?.studioJobProgress !== undefined
+      ? snapshot.studioJobProgress / 100
+      : null
+    : total > 0
+      ? completed / total
+      : null
   const elapsed = snapshot?.startedAt && running && now - snapshot.startedAt >= 1000 ? formatElapsed(now - snapshot.startedAt) : null
-  const title = snapshot?.sessionId ? snapshot.sessionTitle || '新的对话' : 'Morrow 小伙伴'
-  const detail = snapshot?.detail || '在桌面陪你待命'
+  const title = studio ? snapshot?.studioProjectTitle || '作品库' : snapshot?.sessionId ? snapshot.sessionTitle || '新的对话' : 'Morrow 小伙伴'
+  const detail = snapshot?.detail || (studio ? '在创作台里等你' : '在桌面陪你待命')
 
   const expand = (): void => {
     setExpanded(true)
@@ -210,9 +217,16 @@ export function IslandApp(): ReactElement {
     void window.morrow.island.setExpanded(false)
   }
 
-  const openMain = (input?: { sessionId?: string; newSession?: boolean }): void => {
-    void window.morrow.island.openMain(input)
-    collapse()
+  const openMain = (input?: { sessionId?: string; newSession?: boolean; studio?: boolean }): void => {
+    void (async () => {
+      const result = await window.morrow.island.openMain(input)
+      if (!result.ok) {
+        setError(result.error.message)
+        return
+      }
+      setError(null)
+      collapse()
+    })()
   }
 
   const submit = async (): Promise<void> => {
@@ -250,6 +264,7 @@ export function IslandApp(): ReactElement {
           <div className="island-copy">
             <div className="island-title-row">
               <span className="island-title truncate">{title}</span>
+              {studio ? <span className="island-mode-chip">创作台</span> : null}
               {running ? <Waveform /> : null}
               {snapshot?.unread ? <span className="island-unread" aria-label="有新进展" /> : null}
             </div>
@@ -258,15 +273,17 @@ export function IslandApp(): ReactElement {
             </p>
           </div>
           <div className="island-actions">
+            {!studio ? (
             <button type="button" className="island-icon-btn" aria-label="快速对话" title="快速对话" onClick={(event) => {
               event.stopPropagation()
               expand()
             }}>
               <MessageSquare size={15} strokeWidth={1.6} />
             </button>
+            ) : null}
             <button type="button" className="island-icon-btn" aria-label="打开 Morrow" title="打开 Morrow" onClick={(event) => {
               event.stopPropagation()
-              openMain()
+              openMain(studio ? { studio: true } : undefined)
             }}>
               <ArrowUpRight size={15} strokeWidth={1.6} />
             </button>
@@ -289,7 +306,7 @@ export function IslandApp(): ReactElement {
             <header className="island-panel-head">
               <PetOrb status={status} large />
               <div className="island-panel-title">
-                <span className="island-panel-name">Morrow 小伙伴</span>
+                <span className="island-panel-name">{studio ? '创作台' : 'Morrow 小伙伴'}</span>
                 <span className="island-status-chip" data-status={status}>
                   <i />
                   {STATUS_LABEL[status]}
@@ -313,13 +330,13 @@ export function IslandApp(): ReactElement {
                         </span>
                       ) : null}
                     </p>
-                    <p className="island-task-title truncate">{snapshot?.sessionId ? title : '桌面伙伴，随时待命'}</p>
+                    <p className="island-task-title truncate">{studio ? title : snapshot?.sessionId ? title : '桌面伙伴，随时待命'}</p>
                   </div>
                 </div>
                 <p className="island-task-detail">{detail}</p>
-                {total > 0 || running ? (
+                {total > 0 || running || (studio && (snapshot?.studioJobProgress ?? null) !== null) ? (
                   <div className={`island-task-bar${total === 0 ? ' is-live' : ''}`} aria-hidden>
-                    <span style={total > 0 ? { width: `${Math.round((progress ?? 0) * 100)}%` } : undefined} />
+                    <span style={progress !== null ? { width: `${Math.round(progress * 100)}%` } : undefined} />
                   </div>
                 ) : null}
 
@@ -348,6 +365,14 @@ export function IslandApp(): ReactElement {
                 ) : null}
               </div>
 
+              {studio ? (
+                <div className="island-studio-actions">
+                  <p>
+                    {snapshot?.studioJobActive ? `${snapshot.studioJobLabel ?? '任务'} · ${snapshot.studioJobProgress ?? 0}%` : snapshot?.studioJobLabel ?? '在创作台继续写、分镜或合成'}
+                    {snapshot?.studioJobs ? ` · ${snapshot.studioJobs} 条任务记录` : ''}
+                  </p>
+                </div>
+              ) : (
               <div className="island-composer">
                 <textarea
                   ref={textareaRef}
@@ -372,10 +397,12 @@ export function IslandApp(): ReactElement {
                     {busy ? <LoaderCircle size={14} className="island-spin" /> : <Send size={14} strokeWidth={1.8} />}
                   </button>
                 </div>
-                {error ? <p className="island-error">{error}</p> : null}
               </div>
+              )}
 
-              {recent.length > 0 ? (
+              {error ? <p className="island-error" role="alert">{error}</p> : null}
+
+              {!studio && recent.length > 0 ? (
                 <div className="island-recent">
                   <p className="island-eyebrow mono">最近对话</p>
                   <ul>
@@ -401,14 +428,25 @@ export function IslandApp(): ReactElement {
             </div>
 
             <footer className="island-panel-foot">
-              <button type="button" className="island-text-btn" onClick={() => openMain({ newSession: true })}>
-                <Plus size={13} strokeWidth={1.7} />
-                新对话
-              </button>
-              <button type="button" className="island-text-btn is-gold" onClick={() => openMain({ ...(snapshot?.sessionId ? { sessionId: snapshot.sessionId } : {}) })}>
-                打开 Morrow
-                <ArrowUpRight size={13} strokeWidth={1.7} />
-              </button>
+              {studio ? (
+                <>
+                  <button type="button" className="island-text-btn" onClick={() => openMain()}>回到 Agent</button>
+                  <button type="button" className="island-send is-wide island-studio-open" onClick={() => openMain({ studio: true })}>
+                    打开创作台 <ArrowUpRight size={13} strokeWidth={1.7} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="island-text-btn" onClick={() => openMain({ newSession: true })}>
+                    <Plus size={13} strokeWidth={1.7} />
+                    新对话
+                  </button>
+                  <button type="button" className="island-text-btn is-gold" onClick={() => openMain({ ...(snapshot?.sessionId ? { sessionId: snapshot.sessionId } : {}) })}>
+                    打开 Morrow
+                    <ArrowUpRight size={13} strokeWidth={1.7} />
+                  </button>
+                </>
+              )}
               <button type="button" className="island-icon-btn island-hide" aria-label="隐藏小伙伴" title="隐藏（Ctrl+Shift+M 唤回）" onClick={() => void window.morrow.island.hide()}>
                 <X size={14} strokeWidth={1.6} />
               </button>

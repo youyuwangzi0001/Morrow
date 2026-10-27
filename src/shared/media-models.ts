@@ -1,10 +1,4 @@
-/**
- * 通用模型/引擎清单。
- *
- * 设计原则：代码只认识“能力 + 生命周期”，不认识具体模型名。
- * Qwen / MiniMax / coder390 只是内置预设；用户或 Agent 可以注册任意
- * ComfyUI 工作流、llama.cpp GGUF、Ollama/LM Studio 模型，甚至自定义引擎。
- */
+// 通用模型/引擎清单。
 
 export type MediaEngineKind = 'comfyui' | 'llamacpp' | 'ollama' | 'lmstudio' | 'openai-compat' | 'custom'
 

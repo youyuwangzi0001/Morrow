@@ -1,8 +1,4 @@
-/**
- * 无外边框的石墨 + 香槟金滚动条。
- * 宿主应用由 base.css 统一；这里给 iframe / 内置浏览器等独立渲染上下文复用。
- * 尺寸与宿主一致：8px 轨道、6px 实色滑块、全圆角、无渐变/箭头。
- */
+// 无外边框的石墨 + 香槟金滚动条。
 export const MORROW_SCROLLBAR_RULES = `
 * { scrollbar-width: thin !important; scrollbar-color: #8a6f42 transparent !important; }
 *::-webkit-scrollbar { width: 8px !important; height: 8px !important; background: transparent !important; }

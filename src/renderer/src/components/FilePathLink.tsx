@@ -1,9 +1,4 @@
-/**
- * 对话正文里的文件路径链接：识别相对/绝对路径与行号，提供打开、定位、复制路径。
- *
- * 菜单通过 portal 挂到 body，避免被消息容器裁剪；路径解析统一走 shared/file-path，
- * 这样 Markdown 渲染与链接点击使用同一套规则。
- */
+// 对话正文里的文件路径链接：识别相对/绝对路径与行号，提供打开、定位、复制路径。
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Copy, FileText, FolderOpen, Link2 } from 'lucide-react'

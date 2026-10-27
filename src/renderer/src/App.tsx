@@ -24,6 +24,8 @@ import { WorkbenchHost } from './features/workbench/WorkbenchHost'
 import { SideChat } from './features/sidechat/SideChat'
 import { RewindConfirm } from './features/checkpoints/RewindConfirm'
 import { CloseConfirm } from './features/shell/CloseConfirm'
+import { StudioApp } from './features/studio/StudioApp'
+import { useStudioStore } from './features/studio/studio-store'
 import { Button, HorizonLoader, ResizeHandle, hasOpenModal } from './ui'
 
 /**
@@ -109,7 +111,13 @@ export default function App(): React.JSX.Element {
         await useAppStore.getState().sendMessage(text)
       })()
     })
-    const offOpen = window.morrow.island.onOpen(({ sessionId, newSession }) => {
+    const offOpen = window.morrow.island.onOpen(({ sessionId, newSession, studio }) => {
+      if (studio) {
+        void useStudioStore.getState().openStudio()
+        return
+      }
+      // 灵动岛的“回到 Agent”需要先退出创作台，否则主窗口仍停在创作台。
+      useStudioStore.getState().closeStudio()
       void (async () => {
         const state = useAppStore.getState()
         if (newSession) await state.newSession()
@@ -232,6 +240,7 @@ export default function App(): React.JSX.Element {
       <RewindConfirm />
       <CloseConfirm />
       <DemoOverlay />
+      <StudioApp />
       <Toasts />
     </div>
   )

@@ -76,8 +76,6 @@ export class WorkspaceFileError extends Error {
   }
 }
 
-/* ── 路径工具 ─────────────────────────────────────────────────── */
-
 function toPosix(value: string): string {
   return value.split(sep).join('/')
 }
@@ -185,8 +183,6 @@ export function findWorkspaceContaining(inputPath: string, candidates: string[])
   return null
 }
 
-/* ── list ─────────────────────────────────────────────────────── */
-
 export interface ListWorkspaceInput {
   dir?: string
   showHidden?: boolean
@@ -246,8 +242,6 @@ export function listWorkspaceEntries(workspace: string, options: ListWorkspaceIn
   })
   return { workspace: ws, dir: toWorkspaceRelative(ws, resolved.absolute), entries, limited }
 }
-
-/* ── read ─────────────────────────────────────────────────────── */
 
 export interface ReadWorkspaceResult {
   path: string
@@ -311,8 +305,6 @@ export function readWorkspaceFile(
   }
 }
 
-/* ── stat ─────────────────────────────────────────────────────── */
-
 export interface WorkspaceFileStat {
   path: string
   absolutePath: string
@@ -334,8 +326,6 @@ export function statWorkspaceFile(workspace: string, inputPath: string): Workspa
     mtimeMs: stat.mtimeMs
   }
 }
-
-/* ── 快照 + 原子写 ───────────────────────────────────────────── */
 
 export interface SnapshotRecord {
   snapshotPath: string
@@ -452,7 +442,6 @@ export function writeWorkspaceFile(
     try {
       rmSync(temp, { force: true })
     } catch {
-      // ignore
     }
     throw new WorkspaceFileError('WRITE_FAILED', `保存失败：${err instanceof Error ? err.message : String(err)}`)
   }
@@ -491,8 +480,6 @@ function conflictError(currentMtimeMs: number | null): WorkspaceFileError {  con
   return error
 }
 
-/* ── create / rename / move / delete ─────────────────────────── */
-
 export function createWorkspaceEntry(
   workspace: string,
   inputPath: string,
@@ -526,7 +513,6 @@ export function createWorkspaceEntry(
       try {
         rmSync(temp, { force: true })
       } catch {
-        // ignore
       }
       throw new WorkspaceFileError('CREATE_FAILED', `创建文件失败：${err instanceof Error ? err.message : String(err)}`)
     }

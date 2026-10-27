@@ -1,9 +1,4 @@
-/**
- * R10-D 记忆中心：渲染层 API 客户端（只通过 window.morrow.features.invoke 访问主进程）。
- *
- * 这里的类型与 `src/main/services/memory-service.ts` 的公开类型一一对应（wire contract）；
- * 面板不直接 import 主进程代码（渲染层只依赖 @shared 与 window.morrow）。
- */
+// R10-D 记忆中心：渲染层 API 客户端（只通过 window.morrow.features.invoke 访问主进程）。
 import type {
   EpisodeInjection,
   EpisodeListResult,
@@ -169,8 +164,6 @@ export function downloadTextFile(fileName: string, content: string, mime = 'text
   document.body.removeChild(anchor)
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-
-/* ── 自进化建议客户端（同一个 feature 客户端，避免重复封装） ───── */
 
 const EVOLUTION_CHANNEL_PREFIX = 'feature:evolution:'
 

@@ -1,12 +1,4 @@
-/**
- * 定时任务运行时：真实调度 + 创建会话 + 交给 Agent 执行 + 结果回写。
- *
- * 约束（与 UI 文案一致，不偷偷扩大能力）：
- * - 只在 Morrow 进程运行时执行；应用没开就跳过（1 小时内会补跑一次）。
- * - 无人值守，不询问审批：任务只允许「只读」或「自动修改文件」两种权限。
- * - 单次运行 30 分钟上限，避免提问/挂起占住调度队列。
- * - 同一时间只跑一个定时任务，避免多任务同时抢文件。
- */
+// 定时任务运行时：真实调度 + 创建会话 + 交给 Agent 执行 + 结果回写。
 import { BrowserWindow } from 'electron'
 import { realpathSync, statSync } from 'node:fs'
 import {
@@ -248,8 +240,6 @@ function finish(
     log.warn('scheduled task result dropped', { id: taskId, error: String(err) })
   }
 }
-
-/* ── 供功能面板调用 ───────────────────────────────────────────── */
 
 export function listSchedules(): ScheduleState {
   return scheduleState()

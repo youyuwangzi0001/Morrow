@@ -679,3 +679,15 @@
   opacity: 0.9;
 }
 
+
+
+/* 拖动/悬浮分隔线时只高亮侧栏自身的 1px 右边框，不叠加第二条线。 */
+.sidebar {
+  transition: border-color var(--dur-fast) ease;
+}
+
+.app-body:has(> .sidebar-resizer:hover) .sidebar,
+.app-body:has(> .sidebar-resizer.is-dragging) .sidebar,
+.app-body:has(> .sidebar-resizer:focus-visible) .sidebar {
+  border-right-color: var(--gold);
+}

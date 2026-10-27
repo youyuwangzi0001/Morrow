@@ -2,13 +2,26 @@
 
 > 住在你电脑里的 AI 工作伙伴。说清想要的结果，Morrow 会读文件、写代码、运行命令、检查成品，并把结果放回你的工作区。
 
-Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作模式、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务和本机多媒体放在同一个工作台里。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
+Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作模式、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务、本机多媒体与**创作台**放在同一个应用里。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
 
 ![Morrow 主界面](docs/guide/screens/02-chat-home-dark.png)
 
 ## 核心能力
 
-### 从一句话到可验收的成品
+### 创作台：从一句话到可交付作品
+
+- **一个作品底座**：中短篇、长篇与漫剧共用同一份作品文件，保存蓝图、章节、分镜、素材、剪辑表、任务与交付物；随时退出再继续。
+- **先看蓝图再生产**：故事主线、人物、结构、风格与预算一次说清；蓝图确认前不批量生成正文或画面。
+- **三条完整链路**：小说从大纲、纸页、候选稿、事实连续性到成书；漫剧从分镜、画面、配音、音乐、五轨时间线、检查到成片。
+- **候选不覆盖手改**：用户改过的章节只接受手动采纳，模型候选不会自动写回；每章保留最近 30 个版本。
+- **大白话改片**：先说“镜 01 慢 20%，雨声压低一点”，助手给出修改计划与费用，确认后才改时间线。
+- **本机引擎**：Qwen-Image 2.1 Turbo、MiniMax 图生视频、Windows 本机语音与 ffmpeg；未就绪时明确失败，不伪造结果。
+- **数据可自定义**：创作台作品目录可在设置 → 数据与安全单独更换并迁移，Agent 对话与设置不移动。
+- **共用一个设计系统**：创作台没有单独的品牌标题或顶栏图标，深色主题使用深色纸页，文档/PDF 预览同样跟随主题。
+
+![创作台](docs/guide/screens/13-studio-home-dark.png)
+
+### Agent：从一句话到可验收的成品
 
 - **聊天 / 工作 / 计划 / 深度研究 / 长期目标**五种工作方式。聊天模式只读；工作模式可以写文件和执行命令；计划模式先给出可审阅的计划；研究模式会查证并保留来源；目标模式可以跨轮持续推进，直到交付可验证的结果。
 - **审批卡**把“它想做什么、会影响什么”写清楚。只读、询问、完全访问三档权限；危险命令、越界路径和外部副作用动作始终逐次确认。
@@ -21,7 +34,7 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 - **Git 工作台**：变更、diff、暂存、提交、分支、历史、放弃改动；diff 超长时截断展示。
 - **内置浏览器**：多标签、地址栏、前进后退、真实网页内容；登录窗口与普通浏览共用同一套安全边界。
 
-![终端与工作台](docs/guide/screens/10-terminal-dark.png)
+![终端与主界面](docs/guide/screens/10-terminal-dark.png)
 
 ### 模型、订阅与账号元信息
 
@@ -73,7 +86,7 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.1.0-r019`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r035`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
 - 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
@@ -88,21 +101,18 @@ npm start
 
 | 文档 | 适合谁 | 内容 |
 |---|---|---|
-| [用户指南](docs/USER-GUIDE.md) | 所有用户 | 从安装、首次启动到日常任务的完整操作手册 |
-| [功能参考](docs/FEATURES.md) | 所有用户 | 功能清单、入口、限制与状态 |
-| [模型与思考档位](docs/MODELS.md) | 配置模型的人 | 内置模型、上下文、思考档位、Qoder 账号目录、同步规则 |
-| [订阅接入](docs/SUBSCRIPTIONS.md) | 使用官方账号的人 | 10 个 Agent 渠道与第三方 plan 的登录、代理、额度和边界 |
-| [多媒体与本地模型](docs/MEDIA-MODELS.md) | 做图片/视频的人 | 引擎、模型目录、生成/编辑/审看、ffmpeg 与显存 |
+| [用户指南](docs/USER-GUIDE.md) | 所有用户 | 从安装、首次启动到日常任务的操作手册、排障与功能速查 |
+| [创作台](docs/STUDIO.md) | 写作/漫剧创作者 | 一句话到成书/成片的完整工作流、快捷键与工具边界 |
+| [56 项任务对照](docs/STUDIO-TASKS.md) | 产品/验收 | 逐项实现状态、证据与剩余缺口 |
+| [模型、订阅与多媒体](docs/MODELS.md) | 配置模型/账号/媒体的人 | 内置模型、上下文与思考档位、官方订阅、本机媒体引擎 |
 | [架构说明](docs/ARCHITECTURE.md) | 开发者 | 进程、IPC、Agent 循环、权限、持久化、Provider、测试 |
 | [设计系统](docs/DESIGN-SYSTEM.md) | 设计与前端 | 色彩、字体、间距、圆角、组件与可访问性 |
 | [安全与隐私](docs/SECURITY-PRIVACY.md) | 谨慎的用户/审计者 | 数据位置、密钥、权限、网络与已知边界 |
-| [排障指南](docs/TROUBLESHOOTING.md) | 遇到问题的人 | 启动、模型、订阅、媒体、终端、数据恢复 |
-| [评测规范](docs/EVALUATION.md) | 想复现质量的人 | 单测、E2E、Agent 质量指标与真实任务 |
-| [验收记录](docs/verification/VERIFICATION.md) | 发布/验收 | 当前版本的门禁、证据、交付哈希与边界 |
+| [验收记录](docs/verification/VERIFICATION.md) | 发布/验收 | 质量方法、门禁结果、证据、交付哈希与边界 |
 | [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
 | [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
+指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（28 张，含创作台指引、真实界面演示、真实语料、漫剧画布、人物语气与真实波形；已压缩至约 5.3MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
 
 ## 架构一览
 
@@ -130,12 +140,12 @@ npm start
 
 | 范围 | 文件 | 行数 |
 |---|---:|---:|
-| 生产源码 `src/` | 314 | 125,812 |
-| 测试 `tests/`（含 E2E） | 66 | 43,456 |
-| 其中 E2E 套组 `tests/e2e/` | 20 | 19,236 |
-| 构建脚本 `scripts/` + `build/` | 11 | 2,896 |
-| **代码合计** | **391** | **172,164** |
-| Markdown 文档 | 15 | 2,142 |
+| 生产源码 `src/` | 343 | 159,978 |
+| 测试 `tests/`（含 E2E） | 68 | 46,520 |
+| 其中 E2E 套组 `tests/e2e/` | 29 | 21,089 |
+| 构建脚本 `scripts/` + `build/` | 14 | 3,681 |
+| **代码合计** | **425** | **210,179** |
+| Markdown 文档 | 15 | 2,952 |
 
 ## 测试与质量
 
@@ -143,10 +153,10 @@ npm start
 npm run typecheck     # 主进程 + 渲染层
 npm run audit:ui      # 设计 token / 裸排版值审计
 npm run test:unit     # Vitest
-npm run test:e2e      # Playwright（完整套件约 11 分钟）
+npm run test:e2e      # Playwright（完整套件约 15 分钟）
 ```
 
-当前基线：单元 **14 个套件 / 952 个用例**（944 passed + 8 skipped）；E2E **17 个套件 / 209 个用例**。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量评测定义与结果见 [评测规范](docs/EVALUATION.md)。
+当前基线：单元 **29 个套件 / 1008 个用例**（1000 passed + 8 skipped）；E2E **26 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
 
 ## 开发与打包
 
@@ -173,6 +183,7 @@ npm run pack:source    # 从当前提交生成源码包
 - 便携版/安装包未签名，SmartScreen 可能提示。
 - 终端默认 Git Bash；在受限令牌/低完整性环境中 Git Bash 的 MSYS 共享内存可能不可用，可在设置里切 PowerShell 7。
 - 真实本地模型、ffmpeg、ComfyUI 与视频生成依赖本机硬件和模型是否就绪；未配置时会如实报错，不会伪造结果。
+- 创作台的配音使用 Windows 本机语音；受限令牌/无语音环境会失败，可改用“导入配音”。打包机需在真实桌面复核语音。
 - 订阅渠道的服务端接口可能变化；Morrow 会在登录/额度/模型目录失败时明确提示。
 
 ## License

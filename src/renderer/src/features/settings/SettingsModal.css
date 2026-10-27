@@ -10,12 +10,12 @@
 .st-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 148px;
+  gap: var(--settings-nav-gap);
+  width: var(--settings-nav-width);
   flex: 0 0 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 12px;
+  padding-right: var(--settings-nav-pad-right);
   border-right: 1px solid var(--line);
 }
 
@@ -23,12 +23,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 34px;
-  padding: 0 10px;
+  gap: var(--settings-nav-item-gap);
+  height: var(--settings-nav-item-height);
+  padding: var(--settings-nav-item-pad);
   border-radius: var(--r-xs);
   color: var(--text-2);
-  font-size: var(--fs-base-plus);
+  font-size: var(--settings-nav-font-size);
   text-align: left;
   transition:
     background var(--dur-fast) ease,
@@ -61,6 +61,11 @@
   color: var(--text-3);
 }
 
+.st-nav-icon svg {
+  width: var(--settings-nav-icon-size);
+  height: var(--settings-nav-icon-size);
+}
+
 .st-nav-item.is-active .st-nav-icon {
   color: var(--gold-bright);
 }
@@ -71,7 +76,7 @@
   min-width: 0;
   max-height: 100%;
   overflow-y: auto;
-  padding: 2px 4px 8px 20px;
+  padding: var(--settings-pane-pad);
   outline: none;
 }
 
@@ -83,7 +88,7 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin: 0 0 14px;
+  margin: 0 0 var(--settings-page-head-gap);
 }
 
 .st-page-head-copy {
@@ -805,7 +810,7 @@
 
 /* 为标题、页脚和内边距预留空间：只保留右侧面板一条滚动条，避免模态正文再套一层滚动 */
 .settings {
-  height: min(calc(84vh - 200px), 620px);
+  height: var(--settings-body-height);
   min-height: 220px;
 }
 
@@ -2163,4 +2168,38 @@
 
 .st-code-preview-comment {
   color: var(--text-3);
+}
+
+
+/* 创作台只在关于页露出品牌图标 */
+.st-about-studio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+
+.st-about-studio-mark {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  object-fit: cover;
+}
+
+.st-about-studio-name {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-title-sm);
+  line-height: var(--lh-title);
+}
+
+.st-about-studio .st-about-tagline {
+  margin-top: 3px;
+  line-height: var(--lh-readable);
 }

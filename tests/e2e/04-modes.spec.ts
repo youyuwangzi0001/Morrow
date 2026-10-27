@@ -783,6 +783,15 @@ test.describe('R6 Goal 模式 / 画布调宽', () => {
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
+    await page.waitForTimeout(900)
+    await morrow.app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((item) => !item.webContents.getURL().includes('#island'))
+      if (!win) return
+      if (win.isMaximized()) win.unmaximize()
+      win.setContentSize(1920, 1080)
+      win.center()
+    })
+    await page.waitForTimeout(500)
     await page.locator('[aria-label="展开画布"]').click()
     await expect(page.locator('.canvas-root')).toBeVisible()
     await page.waitForTimeout(300)
@@ -1303,6 +1312,10 @@ test('工作区权限规则持久化、deny 优先与审批日志', async () => 
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
+    // 规则命令用 PowerShell 语法；受限令牌下 Git Bash 可能无法初始化，改用 PowerShell 7 验证权限逻辑。
+    await page.evaluate(async () => {
+      await window.morrow.settings.update({ terminalShell: 'pwsh' })
+    })
     const provider = await configureMockProvider(page, mock.openaiBaseUrl)
     await createSession(page, {
       workspace,

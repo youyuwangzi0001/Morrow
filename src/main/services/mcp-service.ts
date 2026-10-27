@@ -158,7 +158,6 @@ function writeFileAtomic(target: string, contents: string, options: { mode?: num
         try {
           unlinkSync(temp)
         } catch {
-          // ignore
         }
         return
       }
@@ -1272,7 +1271,6 @@ function closePendingOAuthFlow(key: string): void {
   try {
     flow.server.close()
   } catch {
-    // ignore
   }
 }
 
@@ -1553,7 +1551,6 @@ export async function startConnectorOAuth(options: {
     try {
       server.close()
     } catch {
-      // ignore
     }
   }
   server = createServer((request, response) => {
@@ -1643,7 +1640,6 @@ export async function startConnectorOAuth(options: {
     try {
       server.close()
     } catch {
-      // ignore
     }
     throw err instanceof Error ? err : new Error(String(err))
   }
@@ -1670,7 +1666,6 @@ export async function startConnectorOAuth(options: {
     try {
       server.close()
     } catch {
-      // ignore
     }
     emitOAuthEvent({ name: options.name, scopeKey, status: 'error', message: '授权超时（5 分钟）。' })
   }, 5 * 60_000)
@@ -1685,7 +1680,6 @@ export async function startConnectorOAuth(options: {
     try {
       server.close()
     } catch {
-      // ignore
     }
     emitOAuthEvent({ name: options.name, scopeKey, status: 'error', message: err.message })
   })

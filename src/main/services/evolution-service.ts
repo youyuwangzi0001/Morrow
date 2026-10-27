@@ -1,14 +1,4 @@
-/**
- * 自进化建议：任务结束后的轻量复盘，产出可采纳的记忆/技能候选。
- *
- * 与 Qoder 的 skill-evolution 不同，这里不 fork 完整子代理、也不回放全部历史：
- * - 只在强信号（多次纠正、失败重试、明确长期要求或复杂多步任务）后调用当前模型；
- * - 复盘输入是脱敏后的任务摘要，不包含工具完整输出；
- * - 产物先进入建议库，用户点「采纳」后才真正写记忆或技能；
- * - 同一会话 10 分钟内最多自动复盘一次，待处理建议达到 3 条时暂停自动复盘。
- *
- * 纯 Node 实现，不 import electron，便于单元测试。
- */
+// 自进化建议：任务结束后的轻量复盘，产出可采纳的记忆/技能候选。
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -38,8 +28,6 @@ import { MemoryService, normalizeMemoryTags, sanitizeMemoryText, type MemoryEntr
 import { createSkillsService, SkillsService, type SkillView } from './skills-service'
 import { SensitiveGuard } from './output-guard'
 import { log } from './logger'
-
-/* ── 常量 ─────────────────────────────────────────────────────── */
 
 const STORE_VERSION = 1
 const AUTO_PENDING_LIMIT = EVOLUTION_MAX_SUGGESTIONS_PER_REVIEW
@@ -85,8 +73,6 @@ const REVIEW_SYSTEM_PROMPT = [
   'skill: {"kind":"skill","action":"create|update","name":"kebab-case-name","description":"...","body":"...","targetId":null,"rationale":"...","confidence":0.8}'
 ].join('\n')
 
-/* ── 公开类型 ─────────────────────────────────────────────────── */
-
 export interface EvolutionServiceOptions {
   dataDir: string
   now?: () => number
@@ -117,8 +103,6 @@ interface DraftContext {
   existingSkills: SkillView[]
   guard: SensitiveGuard
 }
-
-/* ── 小工具 ───────────────────────────────────────────────────── */
 
 function pathKey(path: string | null | undefined): string {
   if (!path) return ''
@@ -220,8 +204,6 @@ function extractSuggestionPayload(text: string): unknown[] {
   }
   return []
 }
-
-/* ── 服务 ─────────────────────────────────────────────────────── */
 
 export class EvolutionService {
   private readonly dataDir: string
@@ -941,8 +923,6 @@ export class EvolutionService {
     this.writeStore(store)
   }
 }
-
-/* ── 运行时单例（AgentService 与 feature IPC 共用） ───────────── */
 
 let runtime: EvolutionService | null = null
 

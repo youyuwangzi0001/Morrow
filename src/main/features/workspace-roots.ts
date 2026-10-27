@@ -17,14 +17,12 @@ export function knownWorkspaceRoots(): string[] {
     if (settings.lastWorkspace) roots.push(settings.lastWorkspace)
     roots.push(...settings.recentWorkspaces)
   } catch {
-    // ignore
   }
   try {
     for (const session of getSessionStore().list()) {
       if (session.workspace) roots.push(session.workspace)
     }
   } catch {
-    // ignore
   }
   return [...new Set(roots.map((root) => resolve(root)))]
 }

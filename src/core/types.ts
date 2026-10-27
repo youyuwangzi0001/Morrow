@@ -274,11 +274,27 @@ export interface ToolContext {
   terminal?: TerminalToolHandler
   /** 本地多媒体引擎（由主进程注入；未注入时媒体工具明确报错） */
   media?: MediaToolHandler
+  /** 创作台作品服务（由主进程注入；绑定作品后可用） */
+  studio?: StudioToolHandler
   /** 当前对话的 Provider/模型；支持视觉时优先用于 describe_media */
   vision?: { provider: Provider; model: ModelInfo }
   /** 用户设置的默认终端（run_command 与一次性命令使用） */
   commandShell?: CommandShell
 }
+
+/** 创作台专用动作处理器（主进程注入；只走作品服务，不直接改文件）。 */
+export interface StudioToolRequest {
+  action: string
+  projectId?: string
+  [key: string]: unknown
+}
+
+export interface StudioToolResponse {
+  summary: string
+  data?: unknown
+}
+
+export type StudioToolHandler = (input: StudioToolRequest) => Promise<StudioToolResponse>
 
 export interface TerminalToolInput {
   action: 'list' | 'start' | 'run' | 'read' | 'write' | 'stop' | 'restart'
@@ -330,6 +346,8 @@ export interface MediaGenerateImageInput {
   seed?: number
   signal: AbortSignal
   onProgress: (update: MediaProgressUpdate) => void
+  /** ComfyUI 返回的外部任务号；用于断电后对账与续跑。 */
+  onPromptId?: (promptId: string) => void
 }
 
 export interface MediaGenerateVideoInput {
@@ -347,6 +365,7 @@ export interface MediaGenerateVideoInput {
   seed?: number
   signal: AbortSignal
   onProgress: (update: MediaProgressUpdate) => void
+  onPromptId?: (promptId: string) => void
 }
 
 export interface MediaFilmShot {

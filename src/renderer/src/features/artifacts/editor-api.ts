@@ -1,15 +1,4 @@
-/**
- * 编辑器与主进程的桥：文件读写（feature:files:*，A 队友实现）与版本历史（feature:history:*）。
- *
- * 契约（与 shell/Lead 对齐）：
- * - read  { workspace, path(相对), maxBytes? } → { path, content, size, mtimeMs, binary, truncated, encoding, readOnly? }
- * - preview { workspace, path } → FilePreviewMeta（图片/PDF/DOCX/音视频）
- * - docx-html { workspace, path } → { html, size, mtimeMs, warnings }
- * - write { workspace, path(相对), content, expectedMtimeMs? } → { path, size, mtimeMs, snapshot?, created }
- * - stat  { workspace, path } → { path, size, mtimeMs, kind }
- * - create{ workspace, path, kind:'file'|'dir' } → FileEntry
- * 所有 invoke 返回 Result<T>；错误抛出 EditorApiError（code FEATURE_ERROR，message 为中文可读原因）。
- */
+// 编辑器与主进程的桥：文件读写（feature:files:*，A 队友实现）与版本历史（feature:history:*）。
 import type {
   ArchivePreviewResult,
   DocumentPreviewResult,
@@ -232,8 +221,6 @@ export async function createFile(workspace: string, path: string, kind: 'file' |
   }
 }
 
-/* ── 版本历史 ─────────────────────────────────────────────────── */
-
 export async function recordHistory(input: {
   path: string
   content: string
@@ -268,8 +255,6 @@ export async function restoreHistory(
     ...(typeof expectedMtimeMs === 'number' ? { expectedMtimeMs } : {})
   })
 }
-
-/* ── 路径工具 ─────────────────────────────────────────────────── */
 
 /** 统一成 posix 风格的工作区相对路径（files API 使用） */
 export function normalizeRelativePath(path: string): string {

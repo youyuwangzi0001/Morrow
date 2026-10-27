@@ -1,14 +1,4 @@
-/**
- * R10-C 内置浏览器面板（受控组件，Lead 在 App 中挂载）。
- *
- * 用法：
- *   import { BrowserSurface } from './features/browser'
- *   <BrowserSurface open={browserOpen} onClose={() => setBrowserOpen(false)} initialUrl={url} />
- *
- * 渲染层只画浏览器 chrome（地址栏/导航/状态/错误/下载确认），真实网页由主进程
- * WebContentsView 渲染；组件测量 `.browser-viewport` 的窗口内坐标并通过
- * `feature:browser:set-bounds` 同步给主进程，窗口缩放/全屏时持续同步。
- */
+// R10-C 内置浏览器面板（受控组件，Lead 在 App 中挂载）。
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Globe, House, Loader2, Plus, RotateCw, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { formatBytes } from '@shared/usage'
@@ -135,7 +125,6 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     }
   }, [])
 
-  /* ── 订阅主进程状态/下载事件 ─────────────────────────────────── */
   useEffect(() => {
     const api = featureApi()
     if (!api?.on) return
@@ -170,7 +159,6 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     }
   }, [])
 
-  /* ── viewport bounds 持续同步（含窗口缩放/全屏） ─────────────── */
   const measureBounds = useCallback((): { x: number; y: number; width: number; height: number } | null => {
     const element = viewportRef.current
     if (!element) return null
@@ -241,7 +229,6 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     setAddress(state.url || '')
   }, [state.url, state.activeTabId])
 
-  /* ── open/visible/initialUrl 驱动 ───────────────────────────── */
   useEffect(() => {
     if (!open || !visible) {
       const api = featureApi()
@@ -292,7 +279,6 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     }
   }, [open, visible, initialUrl, measureBounds])
 
-  /* ── 面板卸载时关闭浏览器视图，避免留下孤儿 WebContentsView ─── */
   useEffect(
     () => () => {
       const api = featureApi()

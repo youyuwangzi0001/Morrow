@@ -115,8 +115,6 @@ export interface ProjectServiceOptions {
   now?: () => number
 }
 
-/* ── 常量与限制 ───────────────────────────────────────────────── */
-
 export const PROJECT_STORE_VERSION = 1
 export const PROJECT_STORE_FILE = 'projects.json'
 export const PROJECT_MAX_NAME_CHARS = 80
@@ -144,8 +142,6 @@ interface ProjectStoreFile {
   version: number
   projects: ProjectRecord[]
 }
-
-/* ── 小工具 ───────────────────────────────────────────────────── */
 
 function newProjectId(): string {
   return `proj_${createHash('sha1').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 12)}`
@@ -244,8 +240,6 @@ export function normalizeProjectWorkspace(workspace: string): string {
   if (!statSync(real).isDirectory()) throw new Error('工作区不是文件夹')
   return real
 }
-
-/* ── 服务 ─────────────────────────────────────────────────────── */
 
 export class ProjectService {
   private readonly dataDir: string
@@ -592,8 +586,6 @@ export class ProjectService {
   }
 }
 
-/* ── 上下文渲染/预算辅助 ──────────────────────────────────────── */
-
 function buildMemoryInjection(workspace: string, options: ProjectContextOptions): MemoryInjection | null {
   const dataDir = resolveMemoryDataDir(options.dataDir)
   if (!dataDir) return null
@@ -629,9 +621,6 @@ function truncateForBudget(body: string, availableTokens: number, suffix: string
   }
   return null
 }
-
-
-/* ── 供主进程/Agent 集成使用的便捷函数 ───────────────────────── */
 
 let runtimeDataDir: string | null = null
 

@@ -125,8 +125,6 @@ const PAGE_META: Record<SettingsTabId, { title: string; description: string }> =
   about: { title: '关于', description: '版本、运行环境与数据目录。' }
 }
 
-
-
 function InlineError({ message }: { message: string | null }): React.JSX.Element | null {
   if (!message) return null
   return (
@@ -135,8 +133,6 @@ function InlineError({ message }: { message: string | null }): React.JSX.Element
     </p>
   )
 }
-
-/* ── 模型连接（R5 重做：分组 / 同步 / 自定义模型 ID） ─────────── */
 
 const CATEGORY_ORDER: { id: ProviderCategory; label: string; hint: string }[] = [
   { id: 'cn', label: '国内', hint: '国内直连，充值方便' },
@@ -840,8 +836,6 @@ function ModelsTab(): React.JSX.Element {
   )
 }
 
-/* ── 上下文（R5 新增） ───────────────────────────────────────── */
-
 function ContextTab(): React.JSX.Element {
   const session = useAppStore((s) => s.session)
   const settings = useAppStore((s) => s.settings)
@@ -1111,8 +1105,6 @@ function ContextTab(): React.JSX.Element {
     </div>
   )
 }
-
-/* ── 权限 ─────────────────────────────────────────────────────── */
 
 const PERMISSION_CARDS = [
   {
@@ -1413,8 +1405,6 @@ function PermissionTab(): React.JSX.Element {
   )
 }
 
-/* ── 联网搜索 ─────────────────────────────────────────────────── */
-
 const SEARCH_PROVIDERS: Array<{
   value: import('@shared/types').WebSearchProvider
   label: string
@@ -1596,8 +1586,6 @@ function SearchTab(): React.JSX.Element {
   )
 }
 
-/* ── 自动化：自定义命令与运行钩子（P1-12） ───────────────────── */
-
 const HOOK_EVENT_OPTIONS: { value: HookEvent; label: string }[] = [
   { value: 'user_prompt_submit', label: '发送消息前' },
   { value: 'post_tool_use', label: '每次工具完成后' },
@@ -1727,8 +1715,6 @@ function TerminalTab(): React.JSX.Element {
     </div>
   )
 }
-
-/* ── 外观 ─────────────────────────────────────────────────────── */
 
 function AppearanceTab(): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
@@ -1860,8 +1846,6 @@ function AppearanceTab(): React.JSX.Element {
   )
 }
 
-/* ── 关于 ─────────────────────────────────────────────────────── */
-
 function AboutTab(): React.JSX.Element {
   const appInfo = useAppStore((s) => s.appInfo)
   const settings = useAppStore((s) => s.settings)
@@ -1986,8 +1970,6 @@ function AboutTab(): React.JSX.Element {
   )
 }
 
-/* ── 快捷键 ───────────────────────────────────────────────────── */
-
 function ShortcutsTab(): React.JSX.Element {
   const settings = useAppStore((state) => state.settings)
   const groups = SHORTCUT_GROUPS.map((group) => ({
@@ -2031,8 +2013,6 @@ function ShortcutsTab(): React.JSX.Element {
     </div>
   )
 }
-
-/* ── 对话归档 ─────────────────────────────────────────────────── */
 
 function archiveDate(ts: number): string {
   return new Date(ts).toLocaleString('zh-CN', {
@@ -2496,8 +2476,6 @@ function AutomationTab(): React.JSX.Element {
   )
 }
 
-/* ── 功能与工具：原工作台里的入口，统一收进设置 ───────────────── */
-
 interface ToolEntry {
   id: WorkbenchPanel
   title: string
@@ -2663,8 +2641,6 @@ function CurrentModelCard(): React.JSX.Element | null {
     </div>
   )
 }
-
-/* ── Modal 组装 ───────────────────────────────────────────────── */
 
 export function SettingsModal(): React.JSX.Element | null {
   const settingsOpen = useAppStore((s) => s.settingsOpen)

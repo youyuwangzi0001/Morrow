@@ -1,8 +1,4 @@
-/**
- * 行级 diff（不引入第三方依赖）。
- * 用途：edit_file/write_file 的 meta.diff、审批卡 diff 预览、UI 差异视图的数据源。
- * 大文件降级为统计信息，避免 O(n*m) 内存爆炸。
- */
+// 行级 diff（不引入第三方依赖）。
 export interface DiffResult {
   patch: string
   added: number

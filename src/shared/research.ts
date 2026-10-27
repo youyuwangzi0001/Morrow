@@ -1,9 +1,4 @@
-/**
- * 深度研究模式的共享规则：
- * - 深度决定轮次上限与独立来源下限；
- * - 从真实 web_search 工具结果统计独立来源；
- * - 根据来源数量 / 报告产物决定「继续检索 / 完成 / 停止」。
- */
+// 深度研究模式的共享规则：
 import type { Artifact, ChatMessage, ResearchDepth, ResearchState } from './types'
 
 export interface ResearchDepthConfig {

@@ -68,8 +68,6 @@ function xtermTheme(theme: ThemeMode): ITheme {
   }
 }
 
-/* ── xterm 实例 ─────────────────────────────────────────────── */
-
 function TerminalSurface({
   process,
   active,
@@ -195,7 +193,6 @@ function TerminalSurface({
       try {
         fit.fit()
       } catch {
-        // ignore
       }
     })
 
@@ -241,7 +238,6 @@ function TerminalSurface({
       try {
         fit.fit()
       } catch {
-        // ignore
       }
       term.focus()
     })
@@ -250,8 +246,6 @@ function TerminalSurface({
 
   return <div ref={hostRef} className="terminal-xterm" hidden={!active} />
 }
-
-/* ── 后台任务输出 ───────────────────────────────────────────── */
 
 function TaskView({
   process,
@@ -302,8 +296,6 @@ function TaskView({
     </div>
   )
 }
-
-/* ── 面板 ───────────────────────────────────────────────────── */
 
 export function TerminalPanel({
   open,

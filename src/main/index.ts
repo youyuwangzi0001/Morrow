@@ -127,7 +127,6 @@ function bootstrap(dataDir: string): void {
     try {
       getTerminalManager().dispose()
     } catch {
-      // ignore
     }
     hideIsland(true)
     if (tray && !tray.isDestroyed()) tray.destroy()
@@ -325,7 +324,6 @@ export function createWindow(): BrowserWindow {
     try {
       mainWindow?.flashFrame(false)
     } catch {
-      // ignore
     }
     markIslandRead()
   })

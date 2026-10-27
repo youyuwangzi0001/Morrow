@@ -1,244 +1,128 @@
 {
   "product": "Morrow",
-  "version": "0.1.0",
-  "builtAt": "2026-10-25T19:53:32.500Z",
+  "version": "0.2.0",
+  "runtime": "r035",
+  "builtAt": "2026-10-27T17:30:55.900Z",
   "platform": "win32-x64",
   "source": {
-    "files": 314,
-    "codeFiles": 293,
+    "files": 343,
+    "codeFiles": 343,
     "loc": {
-      "ts": 71469,
-      "tsx": 29228,
-      "css": 25115,
-      "total": 125812
+      "ts": 85329,
+      "tsx": 37886,
+      "css": 37280,
+      "total": 160495
     }
   },
   "tests": {
     "unit": {
-      "suites": 14,
-      "cases": 952,
-      "passed": 944,
-      "skipped": 8,
-      "lines": 23070
+      "suites": 29,
+      "cases": 1008,
+      "passed": 1000,
+      "skipped": 8
     },
     "e2e": {
-      "suites": 17,
-      "cases": 209,
-      "passed": 197,
-      "skipped": 11,
-      "lines": 19236,
-      "fixturesLines": 1150,
-      "note": "上一轮全量基线；本轮未重跑完整套件，新增/修改用例已定向验证",
+      "suites": 26,
+      "cases": 224,
+      "targeted": "18/19/22/23/24 9/9",
       "packaged": {
-        "cases": 5,
-        "passed": 5,
+        "cases": 6,
+        "passed": 6,
         "skipped": 0,
-        "date": "2026-10-26",
-        "durationMs": 18200
+        "date": "2026-10-27",
+        "durationMs": 19600
+      },
+      "full": {
+        "suites": 26,
+        "cases": 224,
+        "passed": 213,
+        "skipped": 11,
+        "durationMs": 918000
       }
     },
-    "targeted": [
-      {
-        "name": "in-app ChatGPT login form",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "Morrow 内置 BrowserWindow 加载 auth.openai.com，完整显示欢迎回来/邮箱/Google/Apple/Microsoft/手机登录表单"
-      },
-      {
-        "name": "real Codex account import",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "用本机 ~/.codex/auth.json 真实导入 ChatGPT 账号，服务返回 connected + quota；未输出凭据"
-      },
-      {
-        "name": "in-app subscription channels",
-        "cases": 8,
-        "passed": 7,
-        "skipped": 1,
-        "date": "2026-10-26",
-        "note": "Qoder/Kimi/GLM/MiniMax/Step/Command Code/Cline 均在内置窗口打开授权/登录页；Antigravity 缺 OAuth secret；OpenCode 本机 Key"
-      },
-      {
-        "name": "diff card typography",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26"
-      },
-      {
-        "name": "settings login retry",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26"
-      },
-      {
-        "name": "qoder in-app login",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "真实 Qoder 账号在设置页完成“允许登录 → 继续 → 登录成功”，窗口自动关闭，页面即时显示已连接/额度/账号接口返回的 15 个 chat 模型"
-      },
-      {
-        "name": "qoder account model metadata",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "账号接口返回 15 个 chat 模型；context_config 为 200K/400K/1M，默认 200K；设置页逐模型可调；以 max + 400K 发起真实请求成功"
-      },
-      {
-        "name": "qoder agent real calls",
-        "cases": 2,
-        "passed": 2,
-        "date": "2026-10-26",
-        "note": "Agent 真实调用 deepseek-v4.1-flash 与 qwen-3.8-flash，run_finished=complete，回复“链路正常”，无 tool/error"
-      },
-      {
-        "name": "composer order",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "模型选择在左、思考强度在右，computed bounding box 顺序断言"
-      },
-      {
-        "name": "login channel smoke",
-        "cases": 8,
-        "passed": 7,
-        "skipped": 1,
-        "date": "2026-10-26",
-        "note": "Codex/Kimi/GLM/MiniMax/Step/Command Code/Cline 内置登录页全部打开；Antigravity 按预期提示缺少 MORROW_ANTIGRAVITY_CLIENT_SECRET"
-      },
-      {
-        "name": "deepseek real efforts",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "默认 DeepSeek 选择器只出现 auto/off/low/high/max；medium/xhigh 不再出现"
-      },
-      {
-        "name": "model metadata/context",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "Mock 上下文档位 65,536/400,000 可选，400,000 通过 x-morrow-context-window 传给代理"
-      },
-      {
-        "name": "terminal scrollbar",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "空终端隐藏、输出 80 行后显示；Git Bash 默认；6px/999px/实色，复跑 1/1"
-      },
-      {
-        "name": "browser/iframe scrollbar",
-        "cases": 1,
-        "passed": 1,
-        "date": "2026-10-26",
-        "note": "内置浏览器注入轨道 8px、无渐变；iframe 规则由单元测试锁定 6px 实色/999px 全圆角；复跑 1/1"
-      },
-      {
-        "name": "packaged e2e",
-        "cases": 5,
-        "passed": 5,
-        "date": "2026-10-26",
-        "note": "r019 便携包实际解压启动，5/5（18.2s；受限令牌下 PTY 显式用 PowerShell 7）"
-      },
-      {
-        "name": "media vision priority",
-        "cases": 2,
-        "passed": 2,
-        "date": "2026-10-26",
-        "note": "当前模型优先；关闭思考/2048 输出；无本地视觉模型时拒绝乱选文本模型；请求层单测通过"
-      },
-      {
-        "name": "terminal default gitbash",
-        "cases": 2,
-        "passed": 2,
-        "date": "2026-10-26",
-        "note": "Git Bash 默认且移除 Windows PowerShell 5.1/CMD；终端与 Shell 选择 E2E 各 1/1"
-      },
-      {
-        "name": "guide screenshots",
-        "cases": 11,
-        "passed": 11,
-        "date": "2026-10-26",
-        "note": "真实 Electron E2E 生成 12 张指南图，manifest 记录来源与尺寸"
-      }
-    ],
-    "files": 66
+    "files": 69
   },
   "docs": {
-    "files": 15,
-    "markdown": 15,
-    "lines": 2142,
-    "guideScreens": 12,
-    "manifest": "docs/guide/screens/manifest.json"
+    "files": 13,
+    "markdown": 13,
+    "lines": 2767,
+    "guideScreens": 28,
+    "manifest": "docs/guide/screens/manifest.json",
+    "guideScreenshotBytes": 5534126,
+    "optimized": {
+      "maxWidth": 1600,
+      "colors": 256,
+      "format": "PNG-8",
+      "fromBytes": 14700000
+    }
+  },
+  "assets": {
+    "studioDemoBytes": 18515967,
+    "imageConversion": "PNG→JPEG"
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 362613074,
-    "mib": 345.81
+    "bytes": 391856458,
+    "mib": 373.7
   },
   "artifacts": [
     {
-      "name": "LICENSE",
-      "bytes": 1070,
+      "name": "Morrow-0.2.0-portable.exe",
+      "bytes": 222042112,
+      "mib": 211.76,
+      "sha256": "445edd4e5375ef14a42e09a3e5d7ea0819508679018f88352c8c71b5bd67e0ca"
+    },
+    {
+      "name": "Morrow-0.2.0-setup.exe",
+      "bytes": 169807561,
+      "mib": 161.94,
+      "sha256": "e6a85fef92e0957f62049b218ed135e7ba7cb7b0f61c6bec5814a2db6e15fe7c"
+    },
+    {
+      "name": "使用说明.txt",
+      "bytes": 5715,
       "mib": 0,
-      "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
-    },
-    {
-      "name": "Morrow-0.1.0-portable.exe",
-      "bytes": 205956096,
-      "mib": 196.41,
-      "sha256": "c6276d60c5aad2a4c785576ce9b854e7ff96e1b92e0f96bd6aa5aaab56ba96e3"
-    },
-    {
-      "name": "Morrow-0.1.0-setup.exe",
-      "bytes": 156651619,
-      "mib": 149.39,
-      "sha256": "17faadf2304d2312ca0d043a3fb92207433d87959b29060a56064c00a47a6141"
+      "sha256": "454dacd1ecc85000c9eaf92b9d83cc84374ad1cdfd2bf6bce1ac2f20380578a7"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "2125265725f6a22f2b7f196e8eb10833560016375ad3d8b3bb7000f4e4f0e77f"
+      "sha256": "61fad97b2f89fdc5ac59521febe47734b836ec780986e5c7c88d50845f139a9f"
     },
     {
-      "name": "使用说明.txt",
-      "bytes": 3951,
+      "name": "LICENSE",
+      "bytes": 1070,
       "mib": 0,
-      "sha256": "9926e526ec2554abb8b574c18747c663efbe8c657396cc2542c6a27120d909a6"
+      "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.1.0-r019",
-  "generatedAt": "2026-10-26T00:00:00.000Z",
-  "sourceArchive": {
-    "name": "Morrow-0.1.0-source.zip",
-    "bytes": 0,
-    "mib": 0,
-    "sha256": "sidecar",
-    "sidecar": "Morrow-0.1.0-source.zip.sha256",
-    "note": "源码包内文档为打包前快照；最终哈希以 release 侧车文件为准"
-  },
+  "runtimeCache": ".morrow-runtime-0.2.0-r035",
   "code": {
-    "files": 391,
-    "lines": 172164,
+    "files": 429,
+    "lines": 211316,
     "production": {
-      "files": 314,
-      "lines": 125812
+      "files": 343,
+      "lines": 160495
     },
     "tests": {
-      "files": 66,
-      "lines": 43456
+      "files": 69,
+      "lines": 46689
     },
-    "e2e": {
-      "files": 20,
-      "lines": 19236
-    },
-    "scriptsBuild": {
-      "files": 11,
-      "lines": 2896
+    "scripts": {
+      "files": 17,
+      "lines": 4132
     }
+  },
+  "generatedAt": "2026-10-27T17:34:24.988Z",
+  "lockedCaches": [],
+  "pendingCacheCleanup": [],
+  "sourceArchive": {
+    "name": "Morrow-0.2.0-source.zip",
+    "bytes": null,
+    "mib": null,
+    "sha256": "见 Morrow-0.2.0-source.zip.sha256 侧车",
+    "sidecar": "Morrow-0.2.0-source.zip.sha256",
+    "note": "由当前工作树的临时 Git index 生成；包内文档不含源码包自身哈希，以交付目录侧车为准。"
   }
 }

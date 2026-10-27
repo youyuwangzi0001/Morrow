@@ -36,7 +36,6 @@ function write(level: 'info' | 'warn' | 'error', message: string, meta?: unknown
     rotate()
     appendFileSync(logFile(), line, 'utf8')
   } catch {
-    // ignore
   }
   if (!process.env.MORROW_TEST || level === 'error') {
     const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log

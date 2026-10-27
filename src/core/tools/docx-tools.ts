@@ -1,16 +1,4 @@
-/**
- * DOCX 类工具：read_docx / edit_docx。
- *
- * 解析与写入都用 jszip 直接操作 OOXML 包（纯 JS，Electron asar 可用）：
- * - read_docx 按文档顺序输出标题/段落/表格文本（保留 Heading/Title 样式与列表标记），并列出 {{占位符}}；
- * - edit_docx 先完整复制输入包，只改 `word/*.xml` 里文字节点（w:t），其余部件逐字节保留，
- *   因此标题、表格、保密条款、样式、图片等都不会丢；输入文件不动。
- *
- * 可靠性设计：
- * - 占位符可能被 Word 拆到多个 run（`{{NA` + `ME}}`），替换前先合并同一段落的文字再匹配；
- * - 替换后重新解析 XML 校验良构性；结构不支持的文档（如文本框嵌套段落）会明确报错而不是写坏文件；
- * - 输出前备份旧文件（可撤销），并核对输入文件哈希未变。
- */
+// DOCX 类工具：read_docx / edit_docx。
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import JSZip from 'jszip'
 import type { ToolResult } from '../../shared/types'
@@ -29,8 +17,6 @@ const MAX_CHARS_LIMIT = 200_000
 const MAX_REPLACEMENTS = 50
 const MAX_PLACEHOLDERS = 100
 const DOCX_PARTS_WITH_TEXT = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/
-
-/* ── XML 小工具（OOXML 文本节点的转义/反转义） ────────────────── */
 
 export function decodeXmlText(text: string): string {
   return text.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (_match, entity: string) => {
@@ -120,8 +106,6 @@ async function readZipText(zip: JSZip, entryName: string): Promise<string> {
   return text
 }
 
-/* ── DOCX 文本结构提取（读） ──────────────────────────────────── */
-
 interface ParagraphRender {
   line: string
   style: string
@@ -196,8 +180,6 @@ function uniquePlaceholders(text: string): string[] {
   }
   return [...found]
 }
-
-/* ── read_docx ────────────────────────────────────────────────── */
 
 export const readDocxTool: ToolImpl = {
   definition: {
@@ -277,8 +259,6 @@ export const readDocxTool: ToolImpl = {
     })
   }
 }
-
-/* ── edit_docx：占位符替换 ────────────────────────────────────── */
 
 export interface DocxReplacement {
   find: string

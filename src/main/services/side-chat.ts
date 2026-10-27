@@ -1,11 +1,4 @@
-/**
- * 侧边聊天（/btw）：基于当前主对话上下文的只读问答。
- *
- * - 不写入主对话、不创建检查点、不进入会话用量；
- * - 不提供任何工具（模型无法改文件/跑命令/联网），只回答；
- * - 最近主对话文本作为只读上下文附加在系统提示里；
- * - 由主进程直接调用当前会话模型，不做审批（因为没有任何副作用）。
- */
+// 侧边聊天（/btw）：基于当前主对话上下文的只读问答。
 import { createProvider } from '../../core/providers'
 import { messagePlainText } from '../../shared/message'
 import type { ChatMessage, ReasoningEffort, Usage } from '../../shared/types'

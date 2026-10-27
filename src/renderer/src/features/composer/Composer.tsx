@@ -70,8 +70,6 @@ const REASONING_DESCRIPTIONS: Record<ReasoningEffort, string> = {
   max: '尽可能深入，最慢、最贵'
 }
 
-/* ── 权限模式文案 ─────────────────────────────────────────────── */
-
 const PERMISSION_OPTIONS: { value: PermissionMode; label: string; description: string }[] = [
   {
     value: 'read-only',
@@ -89,8 +87,6 @@ const PERMISSION_OPTIONS: { value: PermissionMode; label: string; description: s
     description: '不再询问：写入、命令、危险操作和访问文件夹外都直接执行'
   }
 ]
-
-/* ── 对话模式（聊天 / 工作）文案 ──────────────────────────────── */
 
 type ComposerMode = 'chat' | 'work'
 
@@ -112,8 +108,6 @@ const MODE_DESCRIPTION: Record<ComposerMode, string> = {
   work: '工作模式：可以读写文件、执行命令、推进目标；深度研究用 /research 调取（按权限档位）。'
 }
 
-/* ── 斜杠命令（可执行子集） ───────────────────────────────────── */
-
 interface CommandDef {
   name: string
   label: string
@@ -123,8 +117,6 @@ interface CommandDef {
   custom?: boolean
   run?: () => void
 }
-
-/* ── 工具函数 ─────────────────────────────────────────────────── */
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -342,8 +334,6 @@ async function attachmentFromFile(file: File): Promise<Attachment> {
     ? base
     : { ...base, note: '没有拿到这个文件的磁盘路径，无法读取内容；请用回形针重新选择这个文件。' }
 }
-
-/* ── Composer ────────────────────────────────────────────────── */
 
 export function Composer(): React.JSX.Element {
   const ready = useAppStore((s) => s.ready)
@@ -1388,6 +1378,7 @@ export function Composer(): React.JSX.Element {
       <div
         className={[
           'composer-shell',
+          'chat-gold-frame',
           dragging ? 'is-dragging' : '',
           running ? 'is-running' : '',
           backgroundRun ? 'is-background-run' : '',
@@ -1406,7 +1397,6 @@ export function Composer(): React.JSX.Element {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        <span className="composer-horizon" aria-hidden />
         {sweep ? <span className="composer-sweep" aria-hidden /> : null}
 
         {backgroundRun ? (

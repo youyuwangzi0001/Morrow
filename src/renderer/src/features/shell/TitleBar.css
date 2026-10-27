@@ -260,3 +260,41 @@
   font-size: var(--fs-3xs);
   letter-spacing: var(--ls-label);
 }
+
+
+/* 创作台入口：标题栏唯一新增项，金色只用于羽毛与悬停描边 */
+.tb-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  height: 26px;
+  margin-left: 2px;
+  padding: 0 10px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  color: var(--gold);
+  background: linear-gradient(120deg, var(--gold-ghost), transparent 70%);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  -webkit-app-region: no-drag;
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+
+.tb-create:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.tb-create span {
+  letter-spacing: var(--ls-label);
+}
+
+@media (max-width: 1120px) {
+  .tb-create {
+    padding: 0 8px;
+  }
+}

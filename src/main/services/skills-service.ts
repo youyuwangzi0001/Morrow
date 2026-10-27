@@ -46,8 +46,6 @@ import {
   type SkillsStateEntry
 } from '@core/tools/skills'
 
-/* ── 限制与白名单 ─────────────────────────────────────────────── */
-
 const MAX_SKILLS = 200
 const MAX_INSTALL_FILES = 300
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -104,8 +102,6 @@ const BLOCKED_EXTENSIONS = new Set([
 ])
 
 const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
-
-/* ── 返回给渲染层的纯数据类型 ─────────────────────────────────── */
 
 export interface SkillFileEntry {
   /** 相对技能目录的路径（/ 分隔） */
@@ -170,8 +166,6 @@ export interface SkillsServiceOptions {
   /** 应用数据目录（<dataDir>/skills 为用户技能库，<dataDir>/skills-state.json 为启停状态） */
   dataDir: string
 }
-
-/* ── 小工具 ───────────────────────────────────────────────────── */
 
 function safeStat(path: string): Stats | null {
   try {
@@ -330,8 +324,6 @@ function normalizeWritableSkill(name: string, description: string, markdown: str
   return raw
 }
 
-/* ── 服务 ─────────────────────────────────────────────────────── */
-
 export class SkillsService {
   readonly dataDir: string
   readonly userDir: string
@@ -373,8 +365,6 @@ export class SkillsService {
     return { userDir: this.userDir, stateFile: this.stateFile }
   }
 
-  /* ── 状态读写 ───────────────────────────────────────────────── */
-
   private readState(): SkillsState {
     return readSkillsState(this.stateFile)
   }
@@ -400,8 +390,6 @@ export class SkillsService {
     else skills[key] = { ...(skills[key] ?? {}), ...entry }
     this.writeState({ version: 1, skills })
   }
-
-  /* ── 列表 ───────────────────────────────────────────────────── */
 
   private buildEntry(skill: SkillInfo, workspaceSkills: SkillInfo[]): SkillView {
     this.ensureDirs()
@@ -566,8 +554,6 @@ export class SkillsService {
     }
   }
 
-  /* ── 启停 ───────────────────────────────────────────────────── */
-
   /** 启用/禁用技能（写入状态文件；Agent 下一次 discoverSkills 立即生效） */
   setEnabled(id: string, enabled: boolean, workspace: string | null): SkillsSnapshot {
     if (typeof enabled !== 'boolean') throw new Error('enabled 必须是布尔值。')
@@ -576,8 +562,6 @@ export class SkillsService {
     this.setStateEntry(skillStateKey(skill), { enabled })
     return this.list(workspace)
   }
-
-  /* ── 删除 ───────────────────────────────────────────────────── */
 
   /** 删除用户技能（只能删用户技能库内的目录；工作区技能不允许在这里删除） */
   remove(id: string, workspace: string | null): SkillsSnapshot {
@@ -601,8 +585,6 @@ export class SkillsService {
     this.setStateEntry(view.id, null)
     return this.list(workspace)
   }
-
-  /* ── 安装 ───────────────────────────────────────────────────── */
 
   async install(sourcePath: string, workspace: string | null, options: InstallSkillOptions = {}): Promise<InstallResult> {
     this.ensureDirs()
@@ -795,8 +777,6 @@ export class SkillsService {
     return skipped
   }
 
-  /* ── 自进化：从文本创建 / 更新用户技能 ─────────────────────── */
-
   /**
    * 从建议文本创建用户技能。只写 SKILL.md，不复制或执行任何脚本。
    * 调用方需保证目录名不冲突；冲突时明确报错，由调用方决定改名或更新。
@@ -873,8 +853,6 @@ export class SkillsService {
     if (!updated) throw new Error('技能已更新，但重新扫描时没有找到；请刷新技能库。')
     return updated
   }
-
-  /* ── 其它 ───────────────────────────────────────────────────── */
 
   /** 清理状态里指向已删除用户技能 / 已不存在工作区技能的记录（重新扫描时调用） */
   pruneState(workspace: string | null): SkillsSnapshot {

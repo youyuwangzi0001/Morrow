@@ -4,6 +4,7 @@ import { useAppStore } from '../../store'
 import { IconButton } from '../../ui'
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
 import { openWorkbench } from '../workbench/events'
+import { useStudioStore } from '../studio/studio-store'
 import './TitleBar.css'
 
 /** 当前对话标题：双击（或 F2）就地重命名 */
@@ -265,6 +266,15 @@ export function TitleBar(): React.JSX.Element {
           <PanelLeft size={15} strokeWidth={1.5} aria-hidden />
         </IconButton>
         <WorkspaceChip />
+        <button
+          type="button"
+          className="tb-create"
+          title="打开创作台"
+          aria-label="打开创作台"
+          onClick={() => void useStudioStore.getState().openStudio()}
+        >
+          <span>创作台</span>
+        </button>
       </div>
 
       <div className="tb-center">

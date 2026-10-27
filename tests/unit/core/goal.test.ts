@@ -157,11 +157,11 @@ describe('goal.test.ts', () => {
   describe('工具列表按模式注入 update_goal', () => {
     it('TOOL_DEFINITIONS 保持基础工具；goal 模式追加 update_goal', () => {
       const baseNames = TOOL_DEFINITIONS.map((tool) => tool.name)
-      expect(baseNames).toHaveLength(57)
+      expect(baseNames).toHaveLength(68)
       expect(baseNames).not.toContain('update_goal')
       const goalTools = toolDefinitionsForRun(true)
       expect(goalTools.map((tool) => tool.name)).toContain('update_goal')
-      expect(goalTools).toHaveLength(57)
+      expect(goalTools).toHaveLength(68)
       const goalTool = goalTools.find((tool) => tool.name === 'update_goal')
       expect(goalTool).toMatchObject({ category: 'meta', risk: 'low' })
       expect(goalTool?.parameters).toMatchObject({ required: ['status'] })

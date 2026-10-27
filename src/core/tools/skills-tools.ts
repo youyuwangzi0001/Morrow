@@ -1,9 +1,4 @@
-/**
- * 技能类工具：list_skills / read_skill。
- *
- * 技能发现由 skills.ts 负责（`.morrow/skills/<name>/SKILL.md` 等约定，见该文件注释）。
- * 两个工具都是只读（category: read），因此聊天模式/只读上下文也能使用。
- */
+// 技能类工具：list_skills / read_skill。
 import { basename, dirname } from 'node:path'
 import { readFileSync } from 'node:fs'
 import type { ToolResult } from '../../shared/types'
@@ -20,8 +15,6 @@ const MAX_SKILL_OUTPUT = 64 * 1024
 function skillSummaryLines(skill: SkillInfo): string[] {
   return [`- ${skill.name}：${skill.description}`, `  路径：${skill.displayDir}/SKILL.md`]
 }
-
-/* ── list_skills ──────────────────────────────────────────────── */
 
 export const listSkillsTool: ToolImpl = {
   definition: {
@@ -65,8 +58,6 @@ export const listSkillsTool: ToolImpl = {
     return okResult(lines.join('\n'), meta)
   }
 }
-
-/* ── read_skill ───────────────────────────────────────────────── */
 
 export const readSkillTool: ToolImpl = {
   definition: {

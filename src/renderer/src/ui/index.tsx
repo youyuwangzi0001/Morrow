@@ -18,8 +18,6 @@ import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import './ui.css'
 
-/* ── Button ───────────────────────────────────────────────────── */
-
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
@@ -80,8 +78,6 @@ export function IconButton({ label, size = 30, active, tone = 'default', classNa
   )
 }
 
-/* ── Kbd / Badge ──────────────────────────────────────────────── */
-
 export function Kbd({ children }: { children: ReactNode }): React.JSX.Element {
   return <kbd className="kbd">{children}</kbd>
 }
@@ -98,8 +94,6 @@ export function Badge({
   return <span className={['badge', `badge-${tone}`, mono ? 'mono' : ''].join(' ')}>{children}</span>
 }
 
-/* ── Spinner / Loader ─────────────────────────────────────────── */
-
 export function Spinner({ size = 14, label }: { size?: number; label?: string }): React.JSX.Element {
   return (
     <span className="spinner" role="status" aria-label={label ?? '加载中'}>
@@ -115,8 +109,6 @@ export function HorizonLoader({ active = true }: { active?: boolean }): React.JS
     </div>
   )
 }
-
-/* ── Input / Field ────────────────────────────────────────────── */
 
 export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
@@ -236,8 +228,6 @@ export function Segmented<T extends string>({
     </div>
   )
 }
-
-/* ── Select（自绘、键盘可达的 listbox） ───────────────────────── */
 
 export interface SelectOption<T extends string> {
   value: T
@@ -361,8 +351,6 @@ export function Select<T extends string>({
   )
 }
 
-/* ── Dropdown（菜单） ─────────────────────────────────────────── */
-
 export interface DropdownItem {
   id: string
   label: string
@@ -456,8 +444,6 @@ export function Dropdown({
     </span>
   )
 }
-
-/* ── Modal ────────────────────────────────────────────────────── */
 
 const ModalStackContext = createContext<{ depth: number }>({ depth: 0 })
 
@@ -613,8 +599,6 @@ export function Modal({
   )
 }
 
-/* ── Tooltip（轻量 CSS 实现，适合图标按钮） ──────────────────── */
-
 export function WithTooltip({
   label,
   children,
@@ -630,8 +614,6 @@ export function WithTooltip({
     </span>
   )
 }
-
-/* ── 空状态 / 错误状态的小型通用结构 ────────────────────────── */
 
 export function EmptyHint({ children }: { children: ReactNode }): React.JSX.Element {
   return <p className="empty-hint">{children}</p>
@@ -687,9 +669,6 @@ export function useClickOutside(onOutside: () => void, enabled = true): React.Re
   }, [enabled, handler])
   return ref
 }
-
-
-/* ── ResizeHandle：侧栏 / 画布通用拖拽调宽手柄 ───────────────── */
 
 export interface ResizeHandleProps {
   value: number

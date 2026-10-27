@@ -238,7 +238,6 @@ function posixSpecs(): ShellSpec[] {
   return specs
 }
 
-
 export class TerminalManager {
   private records = new Map<string, ManagedRecord>()
   private counter = 0
@@ -542,7 +541,6 @@ export class TerminalManager {
       try {
         pty.kill()
       } catch {
-        // ignore
       }
       return
     }
@@ -555,20 +553,17 @@ export class TerminalManager {
       try {
         pty.kill()
       } catch {
-        // ignore
       }
       return
     }
     try {
       pty.kill('SIGTERM')
     } catch {
-      // ignore
     }
     setTimeout(() => {
       try {
         pty.kill('SIGKILL')
       } catch {
-        // ignore
       }
     }, KILL_GRACE_MS).unref?.()
   }
@@ -586,14 +581,12 @@ export class TerminalManager {
       try {
         child.kill('SIGTERM')
       } catch {
-        // ignore
       }
       // child.killed 在 SIGTERM 成功后就为 true，不能作为是否升级 SIGKILL 的依据
       setTimeout(() => {
         try {
           child.kill('SIGKILL')
         } catch {
-          // ignore
         }
       }, KILL_GRACE_MS).unref?.()
     }

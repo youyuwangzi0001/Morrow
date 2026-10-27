@@ -216,7 +216,6 @@ export function revealPath(path: string): void {
   void revealInFileManager(path)
 }
 
-
 /** 手写目录复制/删除：避免 Windows 上 fs.cpSync / rmSync 在特殊路径下的 EPERM */
 function copyTree(source: string, target: string): void {
   mkdirSync(target, { recursive: true })

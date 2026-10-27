@@ -1,36 +1,36 @@
 {
   "product": "Morrow",
-  "version": "0.1.0",
-  "capturedAt": "2026-10-26",
-  "runtime": "r019",
-  "theme": "dark",
+  "version": "0.2.0",
+  "capturedAt": "2026-10-28",
+  "runtime": "r035",
+  "theme": "dark + light",
   "images": [
     {
       "file": "01-onboarding-dark.png",
       "alt": "首次启动：认识 Morrow、连接模型、选择工作文件夹",
-      "width": 2100,
-      "height": 1200,
+      "width": 1600,
+      "height": 914,
       "source": "tests/e2e/01-ui-smoke.spec.ts · brand-onboarding-dark"
     },
     {
       "file": "02-chat-home-dark.png",
       "alt": "主界面：工作模式、建议任务、会话输入与画布入口",
-      "width": 2100,
-      "height": 1200,
+      "width": 1600,
+      "height": 914,
       "source": "tests/e2e/01-ui-smoke.spec.ts · r7-final-layout-dark"
     },
     {
       "file": "03-permission-card-dark.png",
       "alt": "审批卡：高风险写入的影响范围、允许一次与拒绝",
-      "width": 2102,
-      "height": 1203,
+      "width": 1600,
+      "height": 916,
       "source": "tests/e2e/14-journey.spec.ts · permission-card-dark"
     },
     {
       "file": "04-editor-canvas-dark.png",
       "alt": "画布与代码编辑器：多标签文件、语法高亮与只读状态",
-      "width": 2102,
-      "height": 1203,
+      "width": 1600,
+      "height": 916,
       "source": "tests/e2e/06-editor.spec.ts · r10-editor-open"
     },
     {
@@ -64,30 +64,148 @@
     {
       "file": "09-browser-tabs-dark.png",
       "alt": "内置浏览器：多标签、地址栏、页面内容与前进后退",
-      "width": 2100,
-      "height": 1200,
+      "width": 1600,
+      "height": 916,
       "source": "tests/e2e/07-browser.spec.ts · browser-tabs-dark"
     },
     {
       "file": "10-terminal-dark.png",
       "alt": "真实终端：PTY、多标签、命令输出与终端设置",
-      "width": 2100,
-      "height": 1200,
+      "width": 1600,
+      "height": 914,
       "source": "tests/e2e/11-terminal-git.spec.ts · terminal-dark"
     },
     {
       "file": "11-memory-center-dark.png",
       "alt": "记忆中心：项目记忆、长期记忆、任务经验与注入预览",
-      "width": 2100,
-      "height": 1200,
+      "width": 1600,
+      "height": 914,
       "source": "tests/e2e/09-panels.spec.ts · r10-memory-center-dark"
     },
     {
       "file": "12-projects-dark.png",
       "alt": "项目主页：项目背景、资料、会话与工作区入口",
-      "width": 1560,
-      "height": 990,
+      "width": 1562,
+      "height": 993,
       "source": "tests/e2e/09-panels.spec.ts · a1-project-home"
+    },
+    {
+      "file": "13-studio-home-dark.png",
+      "alt": "创作台作品库：三份样例、一句话入口与蓝图选项",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-home-dark"
+    },
+    {
+      "file": "14-studio-timeline-dark.png",
+      "alt": "创作台时间线：监视器、五轨剪辑与时间码",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-timeline-dark"
+    },
+    {
+      "file": "15-studio-storyboard-dark.png",
+      "alt": "创作台分镜：镜头卡、画面与单镜详情",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-storyboard-dark"
+    },
+    {
+      "file": "16-studio-delivery-dark.png",
+      "alt": "创作台交付：成片预览、交付物与导出入口",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-delivery-dark"
+    },
+    {
+      "file": "17-studio-writing-dark.png",
+      "alt": "创作台写作：卷章大纲、深色纸页与协作助手",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-writing-dark"
+    },
+    {
+      "file": "18-studio-assistant-dark.png",
+      "alt": "创作台协作助手：大白话修改计划与影响范围",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-assistant-dark"
+    },
+    {
+      "file": "19-studio-home-light.png",
+      "alt": "创作台素纸主题：米白纸页与深墨文字",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-home-light"
+    },
+    {
+      "file": "20-studio-about-dark.png",
+      "alt": "设置 · 关于：仅保留 Morrow 主应用信息",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/18-studio.spec.ts · studio-about-dark"
+    },
+    {
+      "file": "21-studio-guide-dark.png",
+      "alt": "创作台首次使用指引：完全对齐启动引导的三步轨道与无外框正文",
+      "width": 1600,
+      "height": 917,
+      "source": "tests/e2e/24-studio-layout.spec.ts · studio-guide-refined-dark"
+    },
+    {
+      "file": "22-studio-demo-dark.png",
+      "alt": "创作台演示：底部控制条驱动真实分镜、镜头详情与真实样例数据",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/20-studio-ux.spec.ts · studio-demo-dark"
+    },
+    {
+      "file": "23-studio-corpus-novel.png",
+      "alt": "真实语料《极速曙光》：章节、事实、配图与候选",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/19-studio-corpus.spec.ts · studio-corpus-novel"
+    },
+    {
+      "file": "24-studio-corpus-drama.png",
+      "alt": "真实语料《0.12秒》交付页：音轨格式、四格漫画与交付记录",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/19-studio-corpus.spec.ts · studio-corpus-drama"
+    },
+    {
+      "file": "25-studio-canvas-dark.png",
+      "alt": "漫剧画布：镜头、音频、文本节点与连线组成的真实工作流",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/21-studio-canvas.spec.ts · studio-canvas-dark"
+    },
+    {
+      "file": "26-studio-voice-audit-dark.png",
+      "alt": "人物语气审稿：角色句长、问句比例、高频用语与趋同提醒",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/22-studio-insights.spec.ts · studio-voice-audit-dark"
+    },
+    {
+      "file": "27-studio-timeline-waveform-dark.png",
+      "alt": "时间线真实音频峰值波形与 540p 低清预览入口",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/22-studio-insights.spec.ts · studio-timeline-waveform-dark"
+    },
+    {
+      "file": "28-studio-settings-dark.png",
+      "alt": "创作台设置：模型与预算、配音与引擎、历史版本、数据与安全四页整合",
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/24-studio-layout.spec.ts · studio-settings-dark"
     }
-  ]
+  ],
+  "optimized": {
+    "maxWidth": 1600,
+    "colors": 256,
+    "format": "PNG-8",
+    "updatedAt": "2026-10-28"
+  }
 }

@@ -1,9 +1,4 @@
-/**
- * PPTX 读取：用 jszip 解析 OOXML，按演示顺序提取每页文本与演讲者备注。
- *
- * 限制：只提取文字，不做图片 OCR；图片版幻灯片会明确返回“没有可提取文字”。
- * 路径：工作区内文件，或用户在本会话消息中显式附加的文件（只读）。
- */
+// PPTX 读取：用 jszip 解析 OOXML，按演示顺序提取每页文本与演讲者备注。
 import { readFileSync, statSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import JSZip from 'jszip'

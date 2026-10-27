@@ -1,14 +1,4 @@
-/**
- * R10 功能扩展的窄 IPC 注册中心。
- *
- * 设计目的：文件树 / 编辑器历史 / 浏览器 / 记忆 / 项目 / MCP / 技能 / 全局搜索
- * 分属不同队友，如果每人都改 src/main/ipc.ts 和 preload 会产生大量冲突。
- * 这里统一用 `feature:<name>:<action>` 频道：
- *   - 功能模块在 src/main/features/<name>.ts 里 registerFeatureHandler(...)
- *   - Lead 在 src/main/features/index.ts 统一 import 模块（触发注册）
- *   - preload 只暴露 window.morrow.features.invoke(channel, payload)
- *   - 主进程只接受已注册的精确频道，并统一返回 Result<T>。
- */
+// R10 功能扩展的窄 IPC 注册中心。
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import type { Result } from '../shared/types'
 

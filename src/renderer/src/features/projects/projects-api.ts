@@ -1,8 +1,4 @@
-/**
- * R10-E Projects：渲染层 API 客户端（只通过 window.morrow.features.invoke 访问主进程）。
- *
- * 类型与 `src/main/services/project-service.ts` 的公开类型一一对应（wire contract）。
- */
+// R10-E Projects：渲染层 API 客户端（只通过 window.morrow.features.invoke 访问主进程）。
 
 import type { MemoryInjection } from '../memory/memory-api'
 

@@ -105,8 +105,6 @@ async function readZipText(zip: JSZip, entry: string): Promise<string | null> {
   return text.length > MAX_XML_TEXT_BYTES ? text.slice(0, MAX_XML_TEXT_BYTES) : text
 }
 
-/* ── XLSX ─────────────────────────────────────────────────────── */
-
 function columnIndex(ref: string): number {
   const letters = /^([A-Z]+)/i.exec(ref)?.[1] ?? ''
   let index = 0
@@ -209,8 +207,6 @@ export async function convertXlsxToPreview(workspace: string, inputPath: string)
   return { sheets, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
 
-/* ── PPTX ─────────────────────────────────────────────────────── */
-
 function slideNumber(path: string): number {
   return Number(/slide(\d+)\.xml$/i.exec(path)?.[1] ?? 0)
 }
@@ -246,8 +242,6 @@ export async function convertPptxToPreview(workspace: string, inputPath: string)
   if (slides.length === 0) warnings.push('没有从幻灯片中提取到文本内容（可能全部是图片或形状）。')
   return { slides, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
-
-/* ── RTF / ODF / EPUB ─────────────────────────────────────────── */
 
 function paragraphsToHtml(paragraphs: string[], title?: string): string {
   const body = paragraphs.slice(0, MAX_DOC_PARAGRAPHS).map((paragraph) => {
@@ -380,8 +374,6 @@ export async function convertDocumentToPreview(workspace: string, inputPath: str
   if (!html.trim()) warnings.push('没有从文档中提取到可读正文。')
   return { html, format, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
-
-/* ── ZIP/JAR ──────────────────────────────────────────────────── */
 
 export async function listArchive(workspace: string, inputPath: string): Promise<ArchivePreviewResult> {
   const stat = statWorkspaceFile(workspace, inputPath)

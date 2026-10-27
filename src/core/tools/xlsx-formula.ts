@@ -1,13 +1,4 @@
-/**
- * 极简 Excel 公式求值器：只为 write_xlsx 计算「缓存值」用（写入真公式的同时带上正确结果，
- * 这样 openpyxl(data_only=True)、预览器、其他不重算的读取方也能看到正确数字）。
- *
- * 支持范围（刻意保守）：
- * - 数字/字符串/布尔字面量、单元格引用（A1、$B$2）、区域（A1:B4，仅作为函数参数）；
- * - 运算符：+ - * / ^ %（百分号后缀）&（字符串连接）比较运算；
- * - 函数：SUM / AVERAGE / MIN / MAX / COUNT / COUNTA / ROUND / ABS / IF。
- * 任何不支持的结构（未知函数、INDIRECT、循环引用等）都不求值，只是不写缓存值——公式本身依旧保真写入。
- */
+// 极简 Excel 公式求值器：只为 write_xlsx 计算「缓存值」用（写入真公式的同时带上正确结果，
 
 export type CellValue = string | number | boolean | null
 export type CellInput = CellValue | undefined
@@ -46,8 +37,6 @@ export function cellRefToCoord(ref: string): { column: number; row: number } | n
   if (column < 1 || column > 16_384 || row < 1 || row > 1_048_576) return null
   return { column: column - 1, row: row - 1 }
 }
-
-/* ── 词法分析 ─────────────────────────────────────────────────── */
 
 type Token =
   | { type: 'number'; value: number }
@@ -122,8 +111,6 @@ function tokenize(formula: string): Token[] {
   }
   return tokens
 }
-
-/* ── 递归下降解析 ─────────────────────────────────────────────── */
 
 type RangeValue = { range: CellInput[][] }
 type RuntimeValue = CellValue | RangeValue

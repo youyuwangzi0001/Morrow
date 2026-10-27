@@ -38,6 +38,7 @@ import './connectors'
 import './search'
 import './terminal'
 import './media'
+import './studio'
 import './sidechat'
 import { registerEvolutionFeature, registerMemoryFeature } from './memory'
 import { registerProjectsFeature } from './projects'
@@ -54,8 +55,6 @@ function payloadOf(payload: unknown): Record<string, unknown> {
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
-
-/* ── 发现类：集群成员、自定义命令、规则文件 ─────────────────── */
 
 function requestedWorkspace(input: Record<string, unknown>): string {
   return typeof input.workspace === 'string' ? input.workspace.trim() : ''
@@ -91,8 +90,6 @@ registerFeatureHandler('feature:rules:list', (payload) => {
     truncated: discovery.truncated
   }
 })
-
-/* ── 工作区权限规则与审批日志 ───────────────────────────────── */
 
 function permissionWorkspace(input: Record<string, unknown>): string {
   const raw = typeof input.workspace === 'string' ? input.workspace.trim() : ''
@@ -137,8 +134,6 @@ registerFeatureHandler('feature:permissions:list-log', (payload) => {
   }
   return { entries: getPermissionRulesService().listLog(workspace) }
 })
-
-/* ── Git 工作台 ─────────────────────────────────────────────── */
 
 function gitWorkspace(payload: unknown): string {
   const input = payloadOf(payload)
@@ -198,8 +193,6 @@ registerFeatureHandler('feature:git:show', (payload) => {
   return gitService.show(gitWorkspace(payload), input.hash)
 })
 
-/* ── 模型订阅 ───────────────────────────────────────────────── */
-
 registerFeatureHandler('feature:subscriptions:status', async () => {
   return getSubscriptionService().status()
 })
@@ -231,8 +224,6 @@ registerFeatureHandler('feature:subscriptions:pick-codex-auth', async (_payload,
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
-/* ── 定时任务 ───────────────────────────────────────────────── */
-
 function scheduleRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('参数格式不正确')
   return payload as Record<string, unknown>
@@ -262,8 +253,6 @@ registerFeatureHandler('feature:schedules:set-enabled', (payload) => {
 })
 
 registerFeatureHandler('feature:schedules:run-now', (payload) => runScheduleNow(scheduleId(payload)))
-
-/* ── app ready 后注册的模块 ─────────────────────────────────── */
 
 export function registerFeatureModules(): void {
   registerMemoryFeature(registerFeatureHandler)

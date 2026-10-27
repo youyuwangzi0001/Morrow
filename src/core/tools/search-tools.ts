@@ -1,8 +1,4 @@
-/**
- * 搜索类工具：glob / grep。
- * 刻意用纯 JS 实现，不依赖 rg / fd —— 用户机器上不需要额外二进制，行为可控。
- * 跳过 node_modules/.git/.morrow、二进制文件、超大文件；有数量上限。
- */
+// 搜索类工具：glob / grep。
 import { readFileSync, readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ToolResult } from '../../shared/types'
@@ -77,8 +73,6 @@ async function walkFiles(
   return { files, scanned, truncated }
 }
 
-/* ── glob ─────────────────────────────────────────────────────── */
-
 function escapeRegexChar(char: string): string {
   return /[.*+?^${}()|[\]\\]/.test(char) ? `\\${char}` : char
 }
@@ -136,8 +130,6 @@ function matchGlob(entry: WalkEntry, regExp: RegExp, mode: 'path' | 'basename'):
   if (regExp.test(entry.relative)) return true
   return mode === 'basename' && regExp.test(entry.name)
 }
-
-/* ── grep ─────────────────────────────────────────────────────── */
 
 function compileInclude(include: string): RegExp {
   return globToRegExp(include)

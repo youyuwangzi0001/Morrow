@@ -93,8 +93,6 @@ function safeIsFile(path: string): boolean {
   }
 }
 
-/* ── 主进程注入的路径 ─────────────────────────────────────────── */
-
 function dataDirFallback(): string | null {
   const dataDir = process.env.MORROW_DATA_DIR?.trim()
   return dataDir ? resolve(dataDir) : null
@@ -167,8 +165,6 @@ export function isSkillEnabled(skill: Pick<SkillInfo, 'source' | 'name' | 'dir'>
   return state.skills[skillStateKey(skill)]?.enabled !== false
 }
 
-/* ── SKILL.md 解析 ────────────────────────────────────────────── */
-
 function oneLine(text: string, max = MAX_DESCRIPTION): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > max ? `${flat.slice(0, max)}…` : flat
@@ -210,8 +206,6 @@ export function describeSkill(raw: string): { description: string; declaredName?
   }
   return { description: oneLine(heading) || '（没有说明）', declaredName }
 }
-
-/* ── 扫描 ─────────────────────────────────────────────────────── */
 
 function displayDirFor(dir: string, source: SkillSource, name: string, workspaceRoot: string | null): string {
   if (source === 'user') return `技能库/${name}`
@@ -385,8 +379,6 @@ export function findAnySkill(workspace: string | null, name: string): SkillInfo 
   )
 }
 
-/* ── 读取 ─────────────────────────────────────────────────────── */
-
 /** 读取技能正文（去掉 frontmatter；超大文件截断） */
 export function readSkillContent(skill: SkillInfo, maxChars = 64 * 1024): SkillReadResult {
   const raw = readFileSync(skill.skillPath, 'utf8')
@@ -415,8 +407,6 @@ export function listSkillResources(skill: SkillInfo): string[] {
     return []
   }
 }
-
-/* ── 系统提示词 ───────────────────────────────────────────────── */
 
 /**
  * 系统提示词里的「可用技能」段。没有技能时返回空串（不占提示词预算）。

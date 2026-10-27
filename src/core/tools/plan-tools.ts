@@ -1,10 +1,4 @@
-/**
- * 计划模式工具：submit_plan。
- *
- * 只允许在计划模式（session.planMode=true）下调用。模型先只读探索，
- * 再把可执行计划提交给用户审批；内核不执行任何写入，批准由主进程在
- * 用户点击「执行计划」后触发。
- */
+// 计划模式工具：submit_plan。
 import type { Artifact, PlanStep, SessionPlan } from '../../shared/types'
 import type { ToolContext } from '../types'
 import { newId, truncateText } from '../util'

@@ -12,7 +12,7 @@
 
 .welcome-inner {
   width: 100%;
-  max-width: 1000px;
+  max-width: var(--welcome-max);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -256,5 +256,95 @@
 
   .welcome-paper.is-wide {
     grid-column: auto;
+  }
+}
+
+
+/* 创作台欢迎卡：一张整纸，不与普通建议卡抢层级 */
+.welcome-studio {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 22px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(ellipse at 4% 0%, var(--gold-dim), transparent 38%),
+    linear-gradient(120deg, var(--surface), transparent 72%);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    transform var(--dur-fast) ease;
+}
+
+.welcome-studio:hover {
+  transform: translateY(-1px);
+  border-color: var(--gold);
+  background:
+    radial-gradient(ellipse at 4% 0%, var(--gold-dim), transparent 42%),
+    linear-gradient(120deg, var(--surface-hover), transparent 76%);
+}
+
+.welcome-studio-feather {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--line-gold);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.welcome-studio-feather img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.welcome-studio-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.welcome-studio-title {
+  margin-top: 3px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-title-sm);
+  font-weight: var(--fw-medium);
+}
+
+.welcome-studio-desc {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-studio-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 760px) {
+  .welcome-studio-desc {
+    white-space: normal;
+  }
+  .welcome-studio-cta {
+    display: none;
   }
 }

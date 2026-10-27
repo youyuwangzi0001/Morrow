@@ -340,7 +340,6 @@ export class WebSearchService {
       try {
         reader.releaseLock()
       } catch {
-        // ignore
       }
     }
     if (total === 0) return ''

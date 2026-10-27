@@ -1069,6 +1069,16 @@ export interface IslandSnapshot {
   updatedAt: number
   /** 任务完成后还没回主窗口看过 */
   unread: boolean
+  /** 当前展示的是 Agent 还是创作台；缺省 = Agent */
+  mode?: 'agent' | 'studio'
+  studioProjectId?: string | null
+  studioProjectTitle?: string
+  studioKind?: 'short' | 'novel' | 'drama'
+  studioStage?: string
+  studioJobLabel?: string
+  studioJobProgress?: number | null
+  studioJobActive?: boolean
+  studioJobs?: number
 }
 
 /* ── 会话操作参数 ─────────────────────────────────────────────── */

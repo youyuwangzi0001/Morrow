@@ -1,10 +1,4 @@
-/**
- * Qoder 订阅 → 本地 OpenAI 兼容代理。
- *
- * Qoder 的对话不是 OpenAI/Anthropic：请求包在 RemoteChatAsk 信封里，body 自定义
- * alphabet 编码，COSY 头签名，应答是信封 SSE。这里按参考仓库的公开算法逐字实现
- * COSY/编码，并把信封内层 OpenAI chunk 转回 Morrow 的 Chat Completions。
- */
+// Qoder 订阅 → 本地 OpenAI 兼容代理。
 import { createHash, createCipheriv, createDecipheriv, publicEncrypt, constants, randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import type { ModelInfo, ReasoningEffort } from '../../shared/types'

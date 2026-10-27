@@ -1,7 +1,4 @@
-/**
- * A2 定时任务面板：新建 / 编辑 / 暂停 / 立即运行 / 查看上次结果。
- * 所有执行由主进程 ScheduleRuntime 真实完成；这里只做配置与状态展示。
- */
+// A2 定时任务面板：新建 / 编辑 / 暂停 / 立即运行 / 查看上次结果。
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlarmClock,
@@ -33,8 +30,6 @@ import { useAppStore } from '../../store'
 import { Button, IconButton, Modal, Segmented, Spinner, Switch, TextArea, TextInput } from '../../ui'
 import { errorText } from '../../lib'
 import './schedules.css'
-
-/* ── feature:schedules:* 客户端 ───────────────────────────────── */
 
 interface ScheduleState {
   tasks: ScheduledTask[]
@@ -122,8 +117,6 @@ function buildSpec(form: TaskForm): ScheduleSpec {
   if (form.kind === 'weekly') return { kind: 'weekly', time: form.time, weekday: form.weekday }
   return { kind: 'daily', time: form.time }
 }
-
-
 
 function shortenPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)

@@ -2,9 +2,8 @@ import { ArrowUpRight } from 'lucide-react'
 import { BrandMark } from '../../components/BrandMark'
 import { SUGGESTIONS, findModel } from '@shared/models'
 import { useAppStore } from '../../store'
+import { useStudioStore } from '../studio/studio-store'
 import './Welcome.css'
-
-/* ── 编辑感问候：按时段变化 ───────────────────────────────────── */
 
 function greetingOf(hour: number): string {
   if (hour < 5) return '夜深了'
@@ -36,8 +35,6 @@ function noteOf(date: Date): string {
   return DAILY_NOTES[day % DAILY_NOTES.length]
 }
 
-/* ── Welcome ─────────────────────────────────────────────────── */
-
 export function Welcome(): React.JSX.Element {
   const demoAvailable = useAppStore((s) => s.demoAvailable)
   const startDemo = useAppStore((s) => s.startDemo)
@@ -46,6 +43,7 @@ export function Welcome(): React.JSX.Element {
   const modelRef = useAppStore((s) => s.settings.defaultModel)
   const providers = useAppStore((s) => s.settings.providers)
   const openSettings = useAppStore((s) => s.openSettings)
+  const openStudio = useStudioStore((s) => s.openStudio)
 
   const now = new Date()
   const greeting = greetingOf(now.getHours())
@@ -73,6 +71,18 @@ export function Welcome(): React.JSX.Element {
             </button>
           </div>
         ) : null}
+
+        <button
+          type="button"
+          className="welcome-studio"
+          onClick={() => void openStudio()}
+        >
+          <span className="welcome-studio-copy">
+            <span className="welcome-studio-title">把一句话，做成一部作品</span>
+            <span className="welcome-studio-desc">中短篇、长篇、漫剧共用同一个作品底座：蓝图、纸页、分镜、配音、时间线与成片。</span>
+          </span>
+          <span className="welcome-studio-cta">进入创作台 <ArrowUpRight size={13} strokeWidth={1.5} aria-hidden /></span>
+        </button>
 
         <div className="welcome-papers">
           {SUGGESTIONS.map((suggestion, index) => (

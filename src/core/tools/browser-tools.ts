@@ -88,8 +88,6 @@ function requireWritableContext(ctx: ToolContext): ToolResult | null {
   return null
 }
 
-/* ── browser_open ─────────────────────────────────────────────── */
-
 const browserOpenTool: ToolImpl = {
   definition: {
     name: 'browser_open',
@@ -133,8 +131,6 @@ const browserOpenTool: ToolImpl = {
   }
 }
 
-/* ── browser_click ────────────────────────────────────────────── */
-
 const browserClickTool: ToolImpl = {
   definition: {
     name: 'browser_click',
@@ -171,8 +167,6 @@ const browserClickTool: ToolImpl = {
     }
   }
 }
-
-/* ── browser_type ─────────────────────────────────────────────── */
 
 const browserTypeTool: ToolImpl = {
   definition: {
@@ -218,8 +212,6 @@ const browserTypeTool: ToolImpl = {
   }
 }
 
-/* ── browser_read ─────────────────────────────────────────────── */
-
 const browserReadTool: ToolImpl = {
   definition: {
     name: 'browser_read',
@@ -259,8 +251,6 @@ const browserReadTool: ToolImpl = {
     }
   }
 }
-
-/* ── browser_screenshot ───────────────────────────────────────── */
 
 function screenshotArtifactPath(workspace: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -319,8 +309,6 @@ const browserScreenshotTool: ToolImpl = {
   }
 }
 
-/* ── browser_back / browser_forward ──────────────────────────── */
-
 function historyTool(direction: 'back' | 'forward'): ToolImpl {
   return {
     definition: {
@@ -359,8 +347,6 @@ function historyTool(direction: 'back' | 'forward'): ToolImpl {
     }
   }
 }
-
-/* ── browser_reload / browser_scroll / browser_close ─────────── */
 
 const browserReloadTool: ToolImpl = {
   definition: {

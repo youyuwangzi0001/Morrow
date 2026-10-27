@@ -1,11 +1,4 @@
-/**
- * PDF 类工具：read_pdf。
- *
- * 解析用 pdf-parse（pdf.js 的 Node 封装，纯 JS）。可靠性优先：
- * - 先校验 %PDF- 文件头与大小上限，损坏/加密文件给可读错误，不把底层异常抛给 Agent；
- * - 保留分页（pdf.js 用 \f 分页），支持 pages 选择；
- * - 抽不出文本时明确告知「可能是扫描件/图片型 PDF」，让模型去要文字版，而不是猜内容。
- */
+// PDF 类工具：read_pdf。
 import { readFileSync, statSync } from 'node:fs'
 import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import type { ToolResult } from '../../shared/types'

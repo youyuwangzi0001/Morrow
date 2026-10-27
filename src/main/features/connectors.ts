@@ -58,8 +58,6 @@ export const CONNECTOR_CHANNELS = {
 
 export type ConnectorChannel = (typeof CONNECTOR_CHANNELS)[keyof typeof CONNECTOR_CHANNELS]
 
-/* ── 参数校验小工具 ───────────────────────────────────────────── */
-
 function asRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('参数格式错误：payload 必须是一个对象。')
@@ -201,8 +199,6 @@ function readSaveInput(payload: Record<string, unknown>, scope: ConnectorScope, 
     ...(oauth !== undefined ? { oauth } : {})
   }
 }
-
-/* ── 频道注册（import 即生效） ────────────────────────────────── */
 
 registerFeatureHandler(CONNECTOR_CHANNELS.list, (payload) => {
   const record = asRecord(payload)

@@ -1,5 +1,5 @@
 /**
- * 交付收尾：把 E2E 截图收敛为 12 张图文指南，清理历史验证图片、媒体证据与打包缓存。
+ * 交付收尾：把 E2E 截图收敛为 28 张图文指南，清理历史验证图片、媒体证据与打包缓存。
  *
  * 安全边界：
  * - 从不触碰 deliver/（尤其是用户数据 deliver/Morrow Data 与交付产物）。
@@ -31,7 +31,23 @@ const guideMap = {
   '09-browser-tabs-dark.png': 'browser-tabs-dark.png',
   '10-terminal-dark.png': 'terminal-dark.png',
   '11-memory-center-dark.png': 'r10-memory-center-dark.png',
-  '12-projects-dark.png': 'a1-project-home.png'
+  '12-projects-dark.png': 'a1-project-home.png',
+  '13-studio-home-dark.png': 'studio-home-dark.png',
+  '14-studio-timeline-dark.png': 'studio-timeline-dark.png',
+  '15-studio-storyboard-dark.png': 'studio-storyboard-dark.png',
+  '16-studio-delivery-dark.png': 'studio-delivery-dark.png',
+  '17-studio-writing-dark.png': 'studio-writing-dark.png',
+  '18-studio-assistant-dark.png': 'studio-assistant-dark.png',
+  '19-studio-home-light.png': 'studio-home-light.png',
+  '20-studio-about-dark.png': 'studio-about-dark.png',
+  '21-studio-guide-dark.png': 'studio-guide-refined-dark.png',
+  '22-studio-demo-dark.png': 'studio-demo-dark.png',
+  '23-studio-corpus-novel.png': 'studio-corpus-novel.png',
+  '24-studio-corpus-drama.png': 'studio-corpus-drama.png',
+  '25-studio-canvas-dark.png': 'studio-canvas-dark.png',
+  '26-studio-voice-audit-dark.png': 'studio-voice-audit-dark.png',
+  '27-studio-timeline-waveform-dark.png': 'studio-timeline-waveform-dark.png',
+  '28-studio-settings-dark.png': 'studio-settings-dark.png'
 }
 
 function runningMorrow() {
@@ -62,11 +78,16 @@ mkdirSync(guide, { recursive: true })
 const missing = []
 for (const [dest, source] of Object.entries(guideMap)) {
   const from = join(screens, source)
+  const target = join(guide, dest)
   if (!existsSync(from)) {
+    if (existsSync(target)) {
+      console.warn(`[finalize] 保留已有指南截图 ${dest}（本次未跑对应套件）`)
+      continue
+    }
     missing.push(source)
     continue
   }
-  copyFileSync(from, join(guide, dest))
+  copyFileSync(from, target)
 }
 if (missing.length > 0) {
   console.error(`[finalize] 缺少指南截图：${missing.join('、')}`)
@@ -74,10 +95,22 @@ if (missing.length > 0) {
 }
 console.log(`[finalize] 指南截图 ${Object.keys(guideMap).length} 张 → docs/guide/screens/`)
 
-// 打包冒烟截图是唯一保留在 verification 下的图片证据。
-const smokeShot = join(screens, 'packaged-smoke.png')
-if (existsSync(smokeShot)) {
-  copyFileSync(smokeShot, join(root, 'docs', 'verification', 'packaged-smoke.png'))
+// 打包冒烟截图是唯一保留在 verification 根目录的图片证据。
+for (const name of ['packaged-smoke.png', 'packaged-folder-smoke.png']) {
+  const smokeShot = join(screens, name)
+  if (existsSync(smokeShot)) {
+    copyFileSync(smokeShot, join(root, 'docs', 'verification', name))
+  }
+}
+// 1280/3840 响应式矩阵作为质量证据保留，不进指南。
+const matrix = join(screens, 'matrix')
+if (existsSync(matrix)) {
+  const target = join(root, 'docs', 'verification', 'matrix')
+  mkdirSync(target, { recursive: true })
+  for (const name of readdirSync(matrix)) {
+    if (name.endsWith('.png')) copyFileSync(join(matrix, name), join(target, name))
+  }
+  console.log('[finalize] 1280/1920/3840 矩阵截图 → docs/verification/matrix')
 }
 
 // 历史媒体证据移到内部归档，不随交付发布。
@@ -93,7 +126,7 @@ if (existsSync(media)) {
 // 只保留本次打包/冒烟日志。
 const logs = join(root, 'docs', 'verification', 'logs')
 if (existsSync(logs)) {
-  const keep = /^(?:dist-portable|smoke-packaged-portable)\.log$/
+  const keep = /^(?:dist-all|dist-portable|smoke-packaged-portable)\.log$/
   for (const name of readdirSync(logs)) {
     if (!keep.test(name)) remove(join(logs, name))
   }

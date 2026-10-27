@@ -10,6 +10,10 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { root } from './launch'
 
+const appVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string
+const portableFolder = `Morrow-${appVersion}-portable`
+const portableExe = `Morrow-${appVersion}-portable.exe`
+
 let pending: Promise<string | null> | null = null
 
 /** 单文件启动器可能已把应用拉起来并脱离父进程；清理运行时目录前先结束该目录下的进程。 */
@@ -39,10 +43,10 @@ async function resolvePackagedAppExe(): Promise<string | null> {
   if (override && existsSync(override)) return override
 
   // 内部 --all 构建仍存在文件夹版时直接复用，避免多余的首次解压
-  const folderExe = join(root, 'deliver', 'Morrow-0.1.0-portable', 'Morrow-app.exe')
+  const folderExe = join(root, 'deliver', portableFolder, 'Morrow-app.exe')
   if (existsSync(folderExe)) return folderExe
 
-  const single = join(root, 'deliver', 'Morrow-0.1.0-portable.exe')
+  const single = join(root, 'deliver', portableExe)
   if (!existsSync(single)) return null
 
   const hash = createHash('sha256').update(readFileSync(single)).digest('hex')
@@ -72,7 +76,7 @@ async function resolvePackagedAppExe(): Promise<string | null> {
   await delay(400)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
-  const launcher = join(dir, 'Morrow-0.1.0-portable.exe')
+  const launcher = join(dir, portableExe)
   copyFileSync(single, launcher)
   writeFileSync(marker, `${hash}\n`, 'utf8')
 
@@ -101,7 +105,7 @@ async function resolvePackagedAppExe(): Promise<string | null> {
       await delay(300)
     }
     if (!resolvedExe) {
-      throw new Error('单文件便携版运行时解压失败：请检查 deliver/Morrow-0.1.0-portable.exe')
+      throw new Error(`单文件便携版运行时解压失败：请检查 deliver/${portableExe}`)
     }
   } finally {
     try {

@@ -1,11 +1,4 @@
-/**
- * 按需加载的 Shiki 单例。
- *
- * - 首次渲染代码块时才创建 highlighter（不阻塞首屏）；
- * - 语言包按需 `loadLanguage`，同一语言只加载一次；
- * - 超大代码直接放弃高亮，避免卡住渲染进程；
- * - 双主题：输出 `--shiki-dark/--shiki-light` CSS 变量，由 Markdown.css 按 data-theme 切换。
- */
+// 按需加载的 Shiki 单例。
 import { bundledLanguages, createHighlighter, type BundledLanguage, type Highlighter } from 'shiki'
 import { morrowDark, morrowLight } from './themes'
 

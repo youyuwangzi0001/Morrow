@@ -1,9 +1,4 @@
-/**
- * 画布编辑器控制器：多标签文档、文件读写、脏标记、外部修改冲突、保存/另存、版本历史入口。
- *
- * 与 Canvas 的分工：Canvas 负责渲染（tabs/header/body/dialog/history drawer），
- * 这里负责状态机与主进程调用，便于单元测试和后续复用。
- */
+// 画布编辑器控制器：多标签文档、文件读写、脏标记、外部修改冲突、保存/另存、版本历史入口。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
 import type { Artifact } from '@shared/types'
@@ -89,8 +84,6 @@ const CONFLICT_PREFIX = '文件在编辑器打开后被外部修改了'
 function docIdFor(absPath: string): string {
   return `doc:${absPath.replace(/\\/g, '/').toLowerCase()}`
 }
-
-
 
 export function useEditorDocs(): {
   docs: EditorDocument[]
@@ -571,7 +564,6 @@ export function useEditorDocs(): {
         try {
           await recordHistory({ path: doc.absPath, content: savedContent, source: 'user', mtimeMs: written.mtimeMs })
         } catch {
-          // ignore
         }
         return stillCurrent
       } catch (error) {
@@ -665,7 +657,6 @@ export function useEditorDocs(): {
             label: '外部写入'
           })
         } catch {
-          // ignore
         }
         replaceDoc({
           ...doc,
@@ -967,7 +958,6 @@ export function useEditorDocs(): {
             label: `恢复 ${versionId}`
           })
         } catch {
-          // ignore
         }
         notify('success', '已恢复到这个版本。')
         return true

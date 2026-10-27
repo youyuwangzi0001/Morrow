@@ -1,9 +1,4 @@
-/**
- * terminal：持久终端与后台任务（由主进程注入 TerminalToolHandler）。
- * - run：一次性命令，等待结束（默认 120s）
- * - start：后台任务，立即返回 id；配合 read/write/stop 管理
- * - list/read/write/stop/restart：查看与管理已有进程
- */
+// terminal：持久终端与后台任务（由主进程注入 TerminalToolHandler）。
 import type { TerminalToolResponse } from '../types'
 import { errorMessage } from '../util'
 import { getNumber, getString } from './args'

@@ -29,8 +29,6 @@ import type {
 import { DEFAULT_MODEL, DEMO_MODEL, defaultSettings } from '@shared/models'
 import { mergeSwarmTask, swarmTasksFromMeta } from '@shared/swarm'
 
-/* ── IPC 结果解包 ─────────────────────────────────────────────── */
-
 class IpcError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -44,8 +42,6 @@ async function call<T>(promise: Promise<Result<T>>): Promise<T> {
   if (!result.ok) throw new IpcError(result.error.code, result.error.message)
   return result.data
 }
-
-/* ── UI 类型 ──────────────────────────────────────────────────── */
 
 export interface Toast {
   id: string
@@ -276,8 +272,6 @@ export interface AppStore {
   undoFileChange: (snapshotPath: string, targetPath: string) => Promise<void>
 }
 
-/* ── 工具函数 ─────────────────────────────────────────────────── */
-
 const now = (): number => Date.now()
 const uid = (prefix: string): string => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
 
@@ -302,8 +296,22 @@ export function clampSidebarWidth(width: number): number {
 
 const CANVAS_MIN = 320
 const CANVAS_MAX = 960
-export function clampCanvasWidth(width: number): number {
-  return Math.min(CANVAS_MAX, Math.max(CANVAS_MIN, Math.round(width)))
+const CANVAS_CHAT_MIN = 560
+
+export function maxCanvasWidthForViewport(sidebarWidth: number, sidebarCollapsed: boolean): number {
+  if (typeof window === 'undefined' || window.innerWidth <= 1200) return CANVAS_MAX
+  const sidebar = sidebarCollapsed ? 0 : sidebarWidth + 3
+  return Math.max(CANVAS_MIN, Math.min(CANVAS_MAX, window.innerWidth - sidebar - CANVAS_CHAT_MIN))
+}
+
+export function clampCanvasWidth(width: number, max = CANVAS_MAX): number {
+  return Math.min(max, Math.max(CANVAS_MIN, Math.round(width)))
+}
+
+/** 默认 420px 的画布在宽屏上放大到更舒适的阅读宽度；用户手动调过的宽度保持原样。 */
+export function responsiveCanvasWidth(savedWidth: number, viewportWidth: number): number {
+  if (savedWidth !== 420 || viewportWidth < 1750) return savedWidth
+  return Math.max(420, Math.min(720, Math.round(viewportWidth * 0.24)))
 }
 
 const toast = (kind: Toast['kind'], message: string, extra?: Partial<Toast>): Toast => ({
@@ -419,8 +427,6 @@ function mergeUsage(prev: Usage, next: Usage): Usage {
     outputTokens: next.outputTokens ?? prev.outputTokens
   }
 }
-
-/* ── store ────────────────────────────────────────────────────── */
 
 let subscribed = false
 let sessionSelectRequest = 0
@@ -1594,12 +1600,26 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   toggleSidebar() {
     const sidebarCollapsed = !get().sidebarCollapsed
     set({ sidebarCollapsed })
+    if (!sidebarCollapsed) {
+      const state = get()
+      if (state.canvas.open || state.sideChatOpen) {
+        const max = maxCanvasWidthForViewport(state.sidebarWidth, false)
+        const nextCanvas = clampCanvasWidth(state.canvasWidth, max)
+        if (nextCanvas !== state.canvasWidth) set({ canvasWidth: nextCanvas })
+      }
+    }
     void call(window.morrow.settings.update({ sidebarCollapsed })).catch(() => undefined)
   },
 
   setSidebarWidth(width, persist = false) {
     const next = clampSidebarWidth(width)
+    const state = get()
     set({ sidebarWidth: next })
+    if (state.canvas.open || state.sideChatOpen) {
+      const max = maxCanvasWidthForViewport(next, state.sidebarCollapsed)
+      const nextCanvas = clampCanvasWidth(state.canvasWidth, max)
+      if (nextCanvas !== state.canvasWidth) set({ canvasWidth: nextCanvas })
+    }
     document.documentElement.style.setProperty('--sidebar-w', `${next}px`)
     if (persist) {
       void call(window.morrow.settings.update({ sidebarWidth: next }))
@@ -1609,7 +1629,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   },
 
   setCanvasWidth(width, persist = false) {
-    const next = clampCanvasWidth(width)
+    const state = get()
+    const max = maxCanvasWidthForViewport(state.sidebarWidth, state.sidebarCollapsed)
+    const next = clampCanvasWidth(width, max)
     set({ canvasWidth: next })
     if (persist) {
       void call(window.morrow.settings.update({ canvasWidth: next }))
@@ -1764,11 +1786,14 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     set({ canvas: { open: false, artifactId: null } })
   },
   openSideChat(question) {
+    const state = get()
+    const max = maxCanvasWidthForViewport(state.sidebarWidth, state.sidebarCollapsed)
     set({
       sideChatOpen: true,
       sideChatSeed: question?.trim() ? { question: question.trim(), nonce: Date.now() } : null,
       settingsOpen: false,
-      paletteOpen: false
+      paletteOpen: false,
+      canvasWidth: clampCanvasWidth(state.canvasWidth, max)
     })
   },
   closeSideChat() {
@@ -1975,7 +2000,6 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       const settings = await call(window.morrow.settings.update({ defaultModel: model }))
       set({ settings })
     } catch {
-      // 忽略
     }
   },
 
@@ -1997,7 +2021,6 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       const settings = await call(window.morrow.settings.update({ permissionMode: mode }))
       set({ settings })
     } catch {
-      // 忽略
     }
   },
 
@@ -2019,7 +2042,6 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       const settings = await call(window.morrow.settings.update({ reasoningEffort: effort }))
       set({ settings })
     } catch {
-      // 忽略
     }
   },
 

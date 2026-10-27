@@ -1,7 +1,7 @@
 {
   "name": "morrow",
   "productName": "Morrow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Morrow — 住在你电脑里的 AI 工作伙伴",
   "author": "Morrow Studio",
   "license": "MIT",
@@ -115,6 +115,10 @@
       {
         "from": "build/tray-light.png",
         "to": "tray-light.png"
+      },
+      {
+        "from": "resources/studio-demo",
+        "to": "studio-demo"
       }
     ],
     "compression": "maximum",
@@ -136,7 +140,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

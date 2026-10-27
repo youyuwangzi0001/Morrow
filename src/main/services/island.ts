@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, screen } from 'electron'
 import { join } from 'node:path'
+import type { IslandStudioSyncInput } from '../../shared/ipc'
 import type { IslandSnapshot, RuntimeEvent, TodoItem } from '../../shared/types'
 import {
   ISLAND_OPEN_CHANNEL,
@@ -69,6 +70,8 @@ function idleSnapshot(): IslandSnapshot {
 let snapshot: IslandSnapshot = idleSnapshot()
 /** 灵动岛跟随的主窗口会话；null = 尚未选择会话。 */
 let followedSessionId: string | null = null
+/** 创作台覆盖在 Agent 之上时，灵动岛优先显示创作台任务。 */
+let studioActive = false
 
 export function configureIsland(options: { openMain: () => void; requestClose?: () => void }): void {
   openMainHandler = options.openMain
@@ -280,6 +283,7 @@ export function getIslandSnapshot(): IslandSnapshot {
 /** 清除全部对话后把桌面小伙伴恢复为空闲，避免它继续指向已删除的会话。 */
 export function resetIslandAfterClear(): void {
   followedSessionId = null
+  studioActive = false
   snapshot = idleSnapshot()
   sendSnapshot()
 }
@@ -300,6 +304,7 @@ export function syncIslandSession(
   sessionId: string | null,
   active?: { startedAt: number; status: 'running' | 'waiting' } | null
 ): void {
+  studioActive = false
   followedSessionId = sessionId
   if (!sessionId) {
     snapshot = idleSnapshot()
@@ -323,6 +328,59 @@ export function syncIslandSession(
     startedAt: active?.startedAt ?? null,
     unread: false,
     updatedAt: Date.now()
+  }
+  sendSnapshot()
+}
+
+/**
+ * 主窗口切到创作台：灵动岛显示当前作品、活动任务与进度。
+ * active=false 时恢复跟随原 Agent 会话（不破坏原来的计划与耗时）。
+ */
+export function syncIslandStudio(input: IslandStudioSyncInput): void {
+  if (!input.active) {
+    studioActive = false
+    if (followedSessionId) syncIslandSession(followedSessionId, null)
+    else {
+      snapshot = idleSnapshot()
+      sendSnapshot()
+    }
+    return
+  }
+  studioActive = true
+  const active = input.jobStatus === 'queued' || input.jobStatus === 'running'
+  const done = input.jobStatus === 'done'
+  const failed = input.jobStatus === 'failed'
+  const queued = input.jobStatus === 'queued'
+  const status = active ? 'running' : failed ? 'error' : done ? 'done' : 'idle'
+  const progress = typeof input.jobProgress === 'number' ? Math.max(0, Math.min(100, Math.round(input.jobProgress))) : null
+  const projectTitle = input.projectTitle?.trim() || '作品库'
+  const detail = input.jobLabel
+    ? `${queued ? '排队中' : active ? '正在做' : done ? '已完成' : failed ? '需要看看' : ''}${input.jobLabel}${progress !== null && active ? ` · ${progress}%` : ''}`
+    : active
+      ? '正在处理创作台任务…'
+      : done
+        ? '创作台任务已完成'
+        : failed
+          ? '创作台任务失败，打开查看原因'
+          : '在创作台里等你'
+  snapshot = {
+    status,
+    sessionId: null,
+    sessionTitle: projectTitle,
+    detail,
+    todos: [],
+    startedAt: active ? input.startedAt ?? null : null,
+    updatedAt: Date.now(),
+    unread: done || failed ? !isMainFocused() : false,
+    mode: 'studio',
+    studioProjectId: input.projectId ?? null,
+    studioProjectTitle: projectTitle,
+    ...(input.kind ? { studioKind: input.kind } : {}),
+    ...(input.stage ? { studioStage: input.stage } : {}),
+    ...(input.jobLabel ? { studioJobLabel: input.jobLabel } : {}),
+    studioJobProgress: progress,
+    studioJobActive: active,
+    studioJobs: typeof input.jobs === 'number' ? input.jobs : 0
   }
   sendSnapshot()
 }
@@ -384,6 +442,8 @@ function inProgressDetail(todos: TodoItem[]): string | null {
  * 其他会话的事件不会抢走显示（后台任务仍可点击主窗口查看）。
  */
 export function ingestIslandRuntimeEvent(event: RuntimeEvent): void {
+  // 创作台打开时优先显示创作台任务，Agent 的后台事件不抢显示。
+  if (studioActive) return
   // 灵动岛显示主窗口当前会话；其它会话的后台事件不能抢走显示。
   if (followedSessionId === null) {
     if (event.type !== 'run_started') return

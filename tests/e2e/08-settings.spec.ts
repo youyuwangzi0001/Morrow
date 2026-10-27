@@ -1258,7 +1258,7 @@ test.describe('ChatGPT 登录交互', () => {
       const retry = settings.getByRole('button', { name: '重新打开登录页面' })
       await expect(retry).toBeVisible()
       await expect(retry).toBeEnabled()
-      await expect(settings.locator('.st-sub-busy')).toContainText('浏览器没有打开')
+      await expect(settings.locator('.st-sub-busy')).toContainText('登录窗口没有出现')
       await settings.getByRole('button', { name: '复制登录链接' }).click()
       await expect
         .poll(() => morrow.app.evaluate(({ clipboard }) => clipboard.readText()), { timeout: 5_000 })

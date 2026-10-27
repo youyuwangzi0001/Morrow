@@ -37,6 +37,11 @@
   --fs-micro: var(--fs-sm);
   --fs-code: var(--fs-base);
 
+  /* 侧栏与协作者面板：Agent 侧聊、创作台右栏共用同一套字号 */
+  --fs-panel-title: var(--fs-body-lg);
+  --fs-panel-body: var(--fs-ui-plus);
+  --fs-panel-meta: var(--fs-sm-plus);
+
   /* 字距：标题收紧，标签/快捷键按层级放宽 */
   --ls-tight: -0.01em;
   --ls-none: 0;
@@ -66,6 +71,20 @@
   --text-meta-size: var(--fs-sm-plus);
   --text-code-size: var(--fs-ui-plus);
   --text-code-weight: var(--fw-regular);
+
+  /* 设置弹窗：Agent 设置与创作台设置共用导航、面板与页头规格 */
+  --settings-nav-width: 148px;
+  --settings-nav-gap: 2px;
+  --settings-nav-pad-right: 12px;
+  --settings-nav-item-height: 34px;
+  --settings-nav-item-gap: 9px;
+  --settings-nav-item-pad: 0 10px;
+  --settings-nav-font-size: var(--fs-base-plus);
+  --settings-nav-icon-size: 15px;
+  --settings-pane-pad: 2px 4px 8px 20px;
+  --settings-page-head-gap: 14px;
+  --settings-body-height: min(calc(84vh - 200px), 620px);
+  --settings-foot-hint-size: var(--fs-sm);
 
   /* 权限卡排版角色：字体、字号、字重、行距全部从这里取 */
   --font-permission: var(--font-ui);
@@ -287,8 +306,9 @@
   --titlebar-h: 44px;
   --sidebar-w: 264px;
   --sidebar-mini-w: 64px;
-  --content-max: 800px;
-  --composer-max: 920px;
+  --content-max: clamp(800px, 40vw, 1100px);
+  --composer-max: clamp(920px, 46vw, 1320px);
+  --welcome-max: clamp(1000px, 48vw, 1360px);
   --canvas-w: 42%;
   --z-base: 0;
   --z-sticky: 10;
@@ -360,4 +380,95 @@
   --syntax-comment: #7b7569;
   --syntax-operator: #5c574d;
   --syntax-invalid: #a2543f;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   创作台 / 纸张 / 文档预览：顶层共享语义令牌
+   创作台与 Agent 共用；暗色主题使用暗纸，浅色主题使用素纸。
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --studio-topbar: 44px;
+  --ui-topbar: var(--studio-topbar);
+  --studio-left: 240px;
+  --studio-right: 420px;
+  --studio-ease: cubic-bezier(0.22, 0.72, 0.25, 1);
+
+  /* 创作台语义色 */
+  --studio-rust: var(--rust);
+  --studio-patina: var(--patina);
+  --studio-mauve: var(--mauve);
+  --studio-amber: var(--amber);
+  --studio-gate: var(--amber);
+  --studio-clip-selected: var(--gold-bright);
+  --studio-wave: rgba(255, 255, 255, 0.55);
+  --studio-track-video: rgba(200, 174, 125, 0.3);
+  --studio-track-dialogue: rgba(127, 162, 146, 0.28);
+  --studio-track-music: rgba(154, 143, 168, 0.28);
+  --studio-track-sfx: rgba(194, 121, 95, 0.2);
+  --studio-track-subtitle: rgba(201, 162, 39, 0.2);
+
+  /* 暗色纸张：墨夜中的暖炭纸 */
+  --studio-paper: #17191d;
+  --studio-paper-2: #111317;
+  --studio-paper-ink: #ece4d2;
+  --studio-paper-muted: #9b917d;
+  --studio-paper-line: rgba(237, 231, 218, 0.12);
+  --studio-paper-border: rgba(200, 174, 125, 0.22);
+  --studio-paper-fill: rgba(237, 231, 218, 0.045);
+  --studio-paper-fill-hover: rgba(237, 231, 218, 0.085);
+  --studio-paper-glow: rgba(200, 174, 125, 0.07);
+  --studio-paper-shadow: 0 42px 90px -48px rgba(0, 0, 0, 0.92), 0 2px 12px rgba(0, 0, 0, 0.42);
+
+  /* 文档预览 / PDF 暗色纸 */
+  --studio-doc-shell: #0d1117;
+  --studio-doc-page: #17191d;
+  --studio-doc-ink: #e8e0cf;
+  --studio-doc-muted: #9b917d;
+  --studio-doc-border: rgba(237, 231, 218, 0.12);
+  --studio-doc-table: rgba(237, 231, 218, 0.1);
+  --studio-doc-table-head: rgba(200, 174, 125, 0.09);
+  --studio-doc-accent: var(--gold);
+  --studio-doc-quote: #b9b09c;
+
+  /* 创作台排版语义 */
+  --fs-studio-hero: clamp(34px, 3.05vw, 47px);
+  --fs-studio-hero-compact: 39px;
+  --fs-studio-page: var(--fs-display);
+  --fs-studio-section: var(--fs-h1);
+  --fs-studio-paper-title: 35px;
+  --fs-studio-paper-body: 18px;
+  --fs-studio-poster-title: 30px;
+  --lh-paper: 2.02;
+  --ls-ultra: 0.22em;
+}
+
+[data-theme='light'] {
+  --studio-clip-selected: #6e5128;
+  --studio-wave: rgba(27, 26, 23, 0.42);
+  --studio-track-video: rgba(138, 106, 60, 0.32);
+  --studio-track-dialogue: rgba(79, 117, 102, 0.26);
+  --studio-track-music: rgba(108, 95, 122, 0.24);
+  --studio-track-sfx: rgba(155, 86, 62, 0.17);
+  --studio-track-subtitle: rgba(141, 111, 18, 0.17);
+
+  --studio-paper: #fffaf0;
+  --studio-paper-2: #f4ecdd;
+  --studio-paper-ink: #221f19;
+  --studio-paper-muted: #7b705c;
+  --studio-paper-line: rgba(34, 31, 25, 0.12);
+  --studio-paper-border: rgba(138, 106, 60, 0.26);
+  --studio-paper-fill: rgba(255, 255, 255, 0.34);
+  --studio-paper-fill-hover: rgba(255, 255, 255, 0.66);
+  --studio-paper-glow: rgba(255, 255, 255, 0.48);
+  --studio-paper-shadow: 0 42px 90px -48px rgba(50, 40, 20, 0.32), 0 2px 12px rgba(50, 40, 20, 0.12);
+
+  --studio-doc-shell: #e9e2d4;
+  --studio-doc-page: #f8f4eb;
+  --studio-doc-ink: #26231e;
+  --studio-doc-muted: #8c867a;
+  --studio-doc-border: rgba(38, 35, 30, 0.1);
+  --studio-doc-table: #d8d0c2;
+  --studio-doc-table-head: #efe8db;
+  --studio-doc-accent: #8a6a3c;
+  --studio-doc-quote: #5e574b;
 }

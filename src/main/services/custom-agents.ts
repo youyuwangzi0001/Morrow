@@ -1,10 +1,4 @@
-/**
- * 自定义集群成员角色（Swarm）。
- *
- * 来源：<workspace>/.morrow/agents/*.md 与 ~/.morrow/agents/*.md。
- * frontmatter：description / title；其余字段保留解析但不限制工具或权限。
- * 正文是角色专属系统提示。项目覆盖同名用户角色；内置角色名保留，不能被覆盖。
- */
+// 自定义集群成员角色（Swarm）。
 import { lstatSync, readdirSync, readFileSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'

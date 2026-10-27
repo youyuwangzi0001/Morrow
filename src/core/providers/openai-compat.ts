@@ -1,13 +1,4 @@
-/**
- * OpenAI 兼容 Chat Completions 流式 Provider。
- * 覆盖：DeepSeek（含 reasoning_content）、OpenAI、Kimi、以及任意 OpenAI 兼容网关。
- *
- * 协议要点：
- * - POST {baseUrl}/chat/completions，stream=true，stream_options.include_usage=true；
- * - SSE data 帧里 delta.content / delta.reasoning_content / delta.tool_calls 增量；
- * - tool_calls 按 index 拼接 id/name/arguments，arguments 是**字符串分片**；
- * - 429/5xx/网络错误按 DEFAULT_RETRY 指数退避重试（见 types.ts streamWithRetry）。
- */
+// OpenAI 兼容 Chat Completions 流式 Provider。
 import type { ChatMessage, ProviderConfig, Usage } from '../../shared/types'
 import type { Provider, ProviderStreamEvent, ProviderStreamRequest, ToolDefinition } from '../types'
 import { newId, parseToolArgs } from '../util'
@@ -51,8 +42,6 @@ interface OpenAIStreamChunk {
   }
   error?: { message?: string; type?: string } | string
 }
-
-/* ── 请求体转换（也导出给测试断言） ───────────────────────────── */
 
 export type OpenAIContentPart =
   | { type: 'text'; text: string }
@@ -168,8 +157,6 @@ function mapUsage(usage: NonNullable<OpenAIStreamChunk['usage']>): Usage {
     ...(typeof cached === 'number' && cached > 0 ? { cacheReadTokens: cached } : {})
   }
 }
-
-/* ── Provider ─────────────────────────────────────────────────── */
 
 export interface OpenAICompatProviderOptions {
   /** 测试用：自定义退避（毫秒数组） */

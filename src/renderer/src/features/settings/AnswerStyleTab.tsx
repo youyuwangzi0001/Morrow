@@ -1,7 +1,4 @@
-/**
- * 回答设置：回答风格 + 发送方式 + 自动命名 + 完成通知。
- * 选择会写入设置，主进程在下一轮运行时把回答风格拼进 system prompt。
- */
+// 回答设置：回答风格 + 发送方式 + 自动命名 + 完成通知。
 import { useEffect, useRef, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { ANSWER_STYLES, ANSWER_STYLE_MAX_CUSTOM } from '@shared/answer-style'

@@ -204,8 +204,6 @@ export function PlanCard(): React.JSX.Element | null {
   )
 }
 
-/* ── 执行提示行（主进程插入的计划续跑消息） ─────────────────── */
-
 export interface PlanNoticeInfo {
   kind: 'approved' | 'resume' | 'revise'
   title?: string

@@ -1,7 +1,4 @@
-/**
- * web_search：联网发现网页。搜索服务与 Key 由主进程注入（ToolContext.searchWeb）；
- * 未配置时工具不会暴露给模型。搜索结果与网页正文一样属于不可信数据。
- */
+// web_search：联网发现网页。搜索服务与 Key 由主进程注入（ToolContext.searchWeb）；
 import type { WebSearchResponse } from '../../shared/types'
 import type { ToolContext } from '../types'
 import { errorMessage, isAbortError, truncateText } from '../util'

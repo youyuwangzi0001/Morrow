@@ -178,7 +178,6 @@ function writeAtomic(path: string, content: string): void {
     try {
       unlinkSync(temp)
     } catch {
-      // ignore
     }
   }
 }

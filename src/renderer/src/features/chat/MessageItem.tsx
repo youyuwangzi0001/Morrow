@@ -70,8 +70,6 @@ function CopyButton({ text, label }: { text: string; label: string }): React.JSX
   )
 }
 
-/* ── 流式 Markdown（节流渲染，避免每个 delta 都重排整段） ─────── */
-
 function StreamingMarkdown({
   text,
   streaming,
@@ -115,8 +113,6 @@ function StreamingMarkdown({
     </div>
   )
 }
-
-/* ── 内容块渲染 ───────────────────────────────────────────────── */
 
 function InlineError({ block }: { block: Extract<ContentBlock, { type: 'error' }> }): React.JSX.Element {
   return (
@@ -241,8 +237,6 @@ function CompactionNotice({ message }: { message: ChatMessage }): React.JSX.Elem
     </article>
   )
 }
-
-/* ── 消息 ─────────────────────────────────────────────────────── */
 
 export interface MessageItemProps {
   message: ChatMessage

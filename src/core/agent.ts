@@ -1,16 +1,4 @@
-/**
- * Agent 运行时：一次用户输入 → 完整「思考 → 工具 → 回答」循环。
- *
- * 事件语义（与 src/shared/types.ts 的 RuntimeEvent 对齐）：
- * - run_started（携带 userMessage 与首个 assistantMessageId）→ 每个模型回合：
- *   message_started → N×message_delta → message_completed；
- * - 工具：tool_started（status='waiting'）→ [permission_requested → permission_resolved]
- *   → tool_progress(status='running') → 执行 → tool_finished；
- * - 中断：优雅收尾，给未完成的 tool_use 回填 interrupted 结果，assistant 消息带 interrupted=true；
- * - 结束：run_finished（complete / cancelled / error / max-steps）。
- *
- * 本模块不 import electron / react；provider / 工具实现均可注入，便于单测。
- */
+// Agent 运行时：一次用户输入 → 完整「思考 → 工具 → 回答」循环。
 import type {
   Artifact,
   AskUserAnswer,
@@ -95,8 +83,6 @@ import {
   truncateText
 } from './util'
 
-/* ── 公共契约 ─────────────────────────────────────────────────── */
-
 export interface RunAgentOptions {
   runId: string
   sessionId: string
@@ -145,6 +131,8 @@ export interface RunAgentOptions {
   terminal?: TerminalToolHandler
   /** 本地多媒体引擎处理器（主进程注入） */
   media?: MediaToolHandler
+  /** 创作台作品服务处理器（主进程注入） */
+  studio?: import('./types').StudioToolHandler
   /** 当前对话 Provider/模型（主进程注入；用于优先使用自带视觉能力） */
   vision?: { provider: Provider; model: ModelInfo }
   /** 写入记忆中心（由主进程注入；未注入时 remember 回退 MEMORY.md） */
@@ -202,8 +190,6 @@ export interface RunAgentResult {
   error?: ResultError
 }
 
-/* ── 会话级「始终允许」记忆 ───────────────────────────────────── */
-
 const sessionGrants = new Map<string, Set<string>>()
 
 function grantsFor(sessionId: string): Set<string> {
@@ -227,8 +213,6 @@ export function clearSessionPermissionGrants(sessionId: string): void {
 export function resetAllPermissionGrants(): void {
   sessionGrants.clear()
 }
-
-/* ── 内部状态 ─────────────────────────────────────────────────── */
 
 type EmitPayload = RuntimeEventPayload
 
@@ -452,8 +436,6 @@ function toResultError(err: unknown): ResultError {
   if (isAbortError(err)) return { code: 'aborted', message: '本轮运行已中断。', retryable: false }
   return { code: 'agent_error', message: errorMessage(err) }
 }
-
-/* ── 对外主入口 ───────────────────────────────────────────────── */
 
 /** 判断是否是「上下文窗口已满」类错误：这类错误应压缩后重试，而不是结束任务。 */
 function isContextOverflowError(error: { code?: string; message?: string }): boolean {
@@ -906,8 +888,6 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
   }
 }
 
-/* ── 模型回合：流式文本 + 工具调用累积 ─────────────────────────── */
-
 interface StreamedStep {
   message: ChatMessage
   toolCalls: ToolUseBlock[]
@@ -1140,16 +1120,12 @@ function extractToolCalls(message: ChatMessage): ToolUseBlock[] {
   return message.content.filter((block): block is ToolUseBlock => block.type === 'tool_use')
 }
 
-/* ── 工具执行（审批 → 执行） ──────────────────────────────────── */
-
 const INTERRUPTED_RESULT: ToolResult = {
   ok: false,
   output: '',
   error: '执行已中断（用户停止了本轮运行）。',
   meta: { interrupted: true }
 }
-
-/* ── 工具执行（审批 → 执行）：主代理与集群成员共用同一条链 ─────── */
 
 type ToolCallMode = 'main' | 'subagent'
 
@@ -1541,8 +1517,6 @@ function createPlainMessage(ctx: RunContext, id: string, text: string, interrupt
   }
 }
 
-/* ── 工具上下文 ───────────────────────────────────────────────── */
-
 function createToolContext(
   ctx: RunContext,
   block: ToolUseBlock,
@@ -1585,6 +1559,7 @@ function createToolContext(
     ...(opts.ocrPdf ? { ocrPdf: opts.ocrPdf } : {}),
     ...(opts.terminal ? { terminal: opts.terminal } : {}),
     ...(opts.media ? { media: opts.media } : {}),
+    ...(opts.studio ? { studio: opts.studio } : {}),
     ...(opts.vision ? { vision: opts.vision } : {}),
     ...(opts.commandShell ? { commandShell: opts.commandShell } : {}),
     askUser: async (request) => {
@@ -1673,8 +1648,6 @@ function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   ctx.emit({ type: 'goal_updated', goal: { ...next } })
   return next
 }
-
-/* ── 集群成员（与主代理同权限链、深度 1） ───────────────────────── */
 
 /**
  * 集群成员循环（R9.1：与主代理**权限完全一致**）：
@@ -2132,8 +2105,6 @@ async function runSwarmMemberLoop(
   }
 }
 
-/* ── 上下文压缩 ───────────────────────────────────────────────── */
-
 async function maybeCompact(
   ctx: RunContext,
   options: { force?: boolean; targetRatio?: number } = {}
@@ -2288,8 +2259,6 @@ async function summarizeHistory(
   return { text: truncateText(trimmed, 12_000), usage }
 }
 
-/* ── 手动 /compact 入口（主进程可直接调用） ───────────────────── */
-
 export interface CompactSessionOptions {
   provider: Provider
   model: ModelInfo
@@ -2363,8 +2332,6 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
     ...(summaryUsage ? { summaryUsage } : {})
   }
 }
-
-/* ── 便于主进程/测试使用的辅助导出 ────────────────────────────── */
 
 /** 只估算，不触发压缩：用于 UI 上下文条 */
 export function estimateContextUsage(

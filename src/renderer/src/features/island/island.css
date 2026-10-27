@@ -968,3 +968,50 @@ html.island-root[data-theme='light'] {
     transition-duration: 0.001ms !important;
   }
 }
+
+.island-mode-chip {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-xs);
+  color: var(--gold);
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caption);
+}
+
+.island-studio-actions {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--island-composer-bg);
+}
+
+.island-studio-actions p {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-readable);
+}
+
+.island-send.is-wide {
+  display: inline-flex;
+  width: auto;
+  height: 28px;
+  padding: 0 9px;
+  gap: 5px;
+  color: var(--text-on-gold);
+  font-size: var(--fs-xs);
+  background: var(--gold);
+}
+
+/* 创作台模式的主操作与 Agent 顶栏保持一致，使用微圆角矩形。 */
+.island-send.is-wide,
+.island-text-btn.is-gold {
+  border-radius: var(--r-xs);
+}
+
+.island-panel-foot .island-studio-open {
+  margin-left: auto;
+}

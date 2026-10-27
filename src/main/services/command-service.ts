@@ -1,15 +1,4 @@
-/**
- * 自定义斜杠命令（P1-12）。
- *
- * 来源：<workspace>/.morrow/commands/*.md（项目）与 ~/.morrow/commands/*.md（用户）。
- * 文件为 Markdown，可选 frontmatter：
- *   ---
- *   description: 生成发布说明
- *   argument-hint: 版本号
- *   ---
- *   模板正文，支持 $ARGUMENTS 与 $1..$9。
- * 项目命令覆盖同名用户命令；只读取普通文件，不跟随符号链接；单文件 64KB、正文 16KB 上限。
- */
+// 自定义斜杠命令（P1-12）。
 import { lstatSync, readdirSync, readFileSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'

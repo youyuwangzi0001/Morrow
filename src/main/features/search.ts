@@ -1,14 +1,4 @@
-/**
- * 全局搜索 feature 模块（feature:search:*）。
- *
- * 渲染层通过 window.morrow.features.invoke('feature:search:query', { q, workspace?, limit? }) 调用。
- *
- * 索引更新策略：
- * - 模块加载后后台构建一次；
- * - 每次查询前按会话 updatedAt/messageCount 与文件 mtime/size 自动增量刷新
- *   （会话保存/工具完成后无需主进程显式通知）；
- * - 也提供 feature:search:refresh / feature:search:session-updated，供保存后主动触发。
- */
+// 全局搜索 feature 模块（feature:search:*）。
 import { existsSync } from 'node:fs'
 import type { Session, SessionMeta } from '../../shared/types'
 import { registerFeatureHandler } from '../feature-ipc'
@@ -104,8 +94,6 @@ function ensureStarted(): Promise<void> {
 export function warmSearchIndex(): void {
   void ensureStarted()
 }
-
-
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null

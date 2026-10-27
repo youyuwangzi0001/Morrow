@@ -131,8 +131,6 @@ export interface EpisodeCaptureInput {
   enabled?: boolean
 }
 
-/* ── 常量与限制 ───────────────────────────────────────────────── */
-
 export const MEMORY_LEGACY_FILE = 'MEMORY.md'
 export const MEMORY_STORE_FILE = 'memories.json'
 export const MEMORY_GLOBAL_STORE_FILE = 'global.json'
@@ -187,8 +185,6 @@ interface LoadedEpisodeStore {
   workspace: string | null
   data: EpisodeStoreFile
 }
-
-/* ── 小工具 ───────────────────────────────────────────────────── */
 
 function sha1Short(text: string): string {
   return createHash('sha1').update(text).digest('hex').slice(0, 20)
@@ -416,8 +412,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-/* ── 旧 MEMORY.md 解析 ────────────────────────────────────────── */
-
 export interface LegacyMemoryItem {
   key: string
   text: string
@@ -449,8 +443,6 @@ export function parseLegacyMemory(markdown: string, fallbackTime = Date.now()): 
   }
   return items
 }
-
-/* ── 存储结构 ─────────────────────────────────────────────────── */
 
 interface LoadedStore {
   storePath: string
@@ -495,8 +487,6 @@ function coerceStore(raw: unknown): MemoryStoreFile {
   }
   return store
 }
-
-/* ── 服务 ─────────────────────────────────────────────────────── */
 
 export class MemoryService {
   private readonly dataDir: string
@@ -1087,8 +1077,6 @@ export class MemoryService {
   }
 }
 
-/* ── 注入/导出渲染辅助 ────────────────────────────────────────── */
-
 function clampInjectionTokens(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return MEMORY_DEFAULT_INJECTION_TOKENS
   return Math.min(4000, Math.max(64, Math.round(value)))
@@ -1184,8 +1172,6 @@ function formatStamp(timestamp: number): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`
 }
-
-/* ── 供主进程/Agent 集成使用的便捷函数 ───────────────────────── */
 
 let runtimeDataDir: string | null = null
 

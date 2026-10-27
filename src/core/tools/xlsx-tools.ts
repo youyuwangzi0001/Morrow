@@ -1,16 +1,4 @@
-/**
- * XLSX 类工具：read_xlsx / write_xlsx。
- *
- * 用 jszip 直接读写 OOXML 包（不依赖 ExcelJS，包体小、行为可控）：
- * - write_xlsx：二维 rows 写入工作表；字符串以 "=" 开头写成**真公式** `<f>`，并用内置求值器
- *   同时写入正确的缓存值 `<v>`（openpyxl data_only / 预览器无需重算也能读到结果）；
- *   `<calcPr fullCalcOnLoad="1"/>` 让 Excel/LibreOffice 打开时按公式重算。
- * - read_xlsx：解析 workbook / sharedStrings / sheet XML，输出表格与公式（含缓存值）；
- *   支持按工作表名或序号选择、A1 区域裁剪、行列上限。
- *
- * 限制（见 docs/DOCUMENT-TOOLS.md）：不解析富文本格式/图表/合并单元格样式；日期单元格按 Excel
- * 序列值输出；跨工作表引用不会被求值器计算缓存值（公式本身仍保真写入）。
- */
+// XLSX 类工具：read_xlsx / write_xlsx。
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import JSZip from 'jszip'
 import type { ToolResult } from '../../shared/types'
@@ -127,8 +115,6 @@ function cleanPathPart(part: string): string {
   return segments.join('/')
 }
 
-/* ── 工作簿结构解析 ───────────────────────────────────────────── */
-
 export interface WorkbookSheetRef {
   name: string
   sheetId: string
@@ -169,8 +155,6 @@ function parseSharedStrings(xml: string): string[] {
   }
   return strings
 }
-
-/* ── 单元格解析（读写校验共用） ───────────────────────────────── */
 
 export interface ParsedCell {
   ref: string
@@ -241,8 +225,6 @@ function parseSheetCells(sheetXml: string): ParsedSheetCells {
   }
   return { cells, truncated: false }
 }
-
-/* ── read_xlsx ────────────────────────────────────────────────── */
 
 interface ReadRange {
   startRow: number
@@ -442,8 +424,6 @@ export const readXlsxTool: ToolImpl = {
     })
   }
 }
-
-/* ── write_xlsx ───────────────────────────────────────────────── */
 
 interface WriteSheetInput {
   name: string

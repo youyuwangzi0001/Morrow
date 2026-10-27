@@ -91,7 +91,6 @@ function candidateWorkspaces(): string[] {
     const settings = getSettingsStore().get()
     if (settings.lastWorkspace) list.push(settings.lastWorkspace)
   } catch {
-    // ignore
   }
   try {
     const sessions = getSessionStore().list()
@@ -100,7 +99,6 @@ function candidateWorkspaces(): string[] {
       if (session.workspace) list.push(session.workspace)
     }
   } catch {
-    // ignore
   }
   const unique = [...new Set(list.map((item) => resolve(item)))]
   return unique.filter((item) => {
@@ -154,7 +152,6 @@ function resolveWorkspaceFromPayload(payload: Record<string, unknown>): string {
     try {
       if (existsSync(join(candidate, rawPath))) return candidate
     } catch {
-      // ignore
     }
   }
   const fromSettings = candidates[0]

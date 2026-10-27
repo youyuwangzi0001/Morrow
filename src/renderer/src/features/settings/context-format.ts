@@ -1,7 +1,4 @@
-/**
- * 上下文/模型的数字格式化（R5 设置重做 + 标题栏 + Composer 共用）。
- * 全部为纯函数，不依赖 store，方便各 feature 引用。
- */
+// 上下文/模型的数字格式化（R5 设置重做 + 标题栏 + Composer 共用）。
 import type { Usage } from '@shared/types'
 
 function trimNumber(value: number): string {

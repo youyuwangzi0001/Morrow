@@ -24,8 +24,6 @@ interface EvolutionSuggestionsProps {
   onMemoryApplied?: () => void
 }
 
-
-
 function kindLabel(suggestion: EvolutionSuggestion): string {
   if (suggestion.kind === 'skill') return '技能'
   return suggestion.scope === 'project' ? '项目记忆' : '全局记忆'

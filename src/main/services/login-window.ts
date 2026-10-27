@@ -1,10 +1,4 @@
-/**
- * 订阅登录窗口：在 Morrow 内部用独立 BrowserWindow 打开授权页。
- *
- * 本机 UAC 关闭时，外部 Edge 可能是 High 完整性，而 Morrow/其子进程可能是 Low，
- * 跨完整性会让 Edge 白屏并弹出「现有实例正在以提升权限运行」。内置 Chromium
- * 不经过 Edge 单例，也不依赖系统浏览器权限，因此所有登录入口统一走这里。
- */
+// 订阅登录窗口：在 Morrow 内部用独立 BrowserWindow 打开授权页。
 import { BrowserWindow, session } from 'electron'
 import { log } from './logger'
 

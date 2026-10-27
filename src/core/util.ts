@@ -1,7 +1,4 @@
-/**
- * 内核通用小工具：id、休眠、哈希、JSON 容错、文本截断。
- * 不依赖第三方库，保持 core 可脱离桌面独立测试。
- */
+// 内核通用小工具：id、休眠、哈希、JSON 容错、文本截断。
 import { createHash, randomUUID } from 'node:crypto'
 
 /** 生成带前缀的短 id：msg_lx3k9a1f2b3c */

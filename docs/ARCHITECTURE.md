@@ -1,6 +1,6 @@
 # Morrow 架构说明
 
-本文描述 Morrow 0.1.0（r019）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、数据写到哪里、哪些边界不可越过。
+本文描述 Morrow 0.2.0（r035）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、创作台如何落到作品文件、数据写到哪里、哪些边界不可越过。
 
 ## 1. 进程模型
 
@@ -60,6 +60,7 @@
   memories/          全局记忆
   projects/          项目元信息
   artifact-versions/ 成品版本
+  studio/           创作台作品、版本、素材与交付物
   usage/             Token 日账
   permissions/       审批日志
   secrets.json       safeStorage 加密的 API Key
@@ -85,6 +86,7 @@
 
 - 基础 IPC 覆盖 chat/send、session CRUD、settings、window、数据目录、归档等。
 - feature IPC 只挂载已注册的精确 `feature:*` 频道；返回值统一 `{ok:true,data}` 或 `{ok:false,error}`，避免 Electron 原始异常泄漏。
+- 创作台走 `feature:studio:action`：渲染层提交窄动作，主进程 `StudioService` 校验后只通过 `StudioStore` 读写作品；任务进度用 `feature:studio:event` 推送作品摘要与任务状态。外部 ComfyUI 任务号会写入任务记录；应用启动时若引擎在线，自动对账上次已提交的外部任务，也可在检查页手动取回。
 - 渲染层通过 preload 的 `window.morrow` 调用；没有裸 `ipcRenderer`。
 - Agent 运行产生 `RuntimeEvent`（started/delta/tool/permission/usage/compaction/notice/finished 等），带 `seq/runId/sessionId/at`；主进程先做敏感值脱敏、持久化、检查点登记、灵动岛更新，再广播 `morrow:event`。
 - feature 事件走 `feature:*` 并广播所有窗口；设置变更只发主窗。
@@ -116,7 +118,10 @@
 
 ### 4.2 工具注册
 
-工具按固定顺序注册：文件、PDF/DOCX/XLSX/PPTX、搜索、命令、技能、元工具、联网、终端、MCP、浏览器、computer-use、多媒体。`submit_plan/update_goal` 按模式注入。
+工具按固定顺序注册：文件、PDF/DOCX/XLSX/PPTX、搜索、命令、技能、元工具、联网、终端、MCP、浏览器、computer-use、多媒体、创作台。`submit_plan/update_goal` 按模式注入。
+
+- 创作台注册 11 个 `studio_*` 工具；读工具 `studio_project/studio_review` 进入只读集合，写工具仍走权限与审批。
+- 创作台工具不直接改文件，只调用与界面相同的 `StudioService`；因此 Agent、集群与 UI 共享一份状态。
 
 - 主代理工具调用串行执行；单个工具异常转 `ToolResult`，不炸整轮。
 - 连续 4 次完全相同工具调用判死循环。
@@ -186,6 +191,11 @@
 | 记忆 | 工作区 `.morrow/memories.json` / 全局 `memories/global.json` | 项目/全局长期记忆 |
 | 任务经验 | `.morrow/episodes.json` / `episodes/global.json` | 任务复盘 |
 | 成品版本 | `artifact-versions/<session>/<artifact>/` | 最多 30 版、单版 8MB |
+| 创作台作品 | `studio/projects/<id>/project.json` | 原子写入；版本在 `versions/`，素材按 SHA-256 去重，导出在 `exports/` |
+| 创作台分片 | `studio/projects/<id>/chunks/<chapter>/` | 超过 1.8 万字的章节按 1.2 万字分片，`project.json` 只留引用与哈希 |
+| 创作台派生 | `studio/projects/<id>/derived/` | 波形缓存 `waveforms/`、540p 代理 `proxies/`，可重建、不进入工程包 |
+| 创作台任务 | `studio/projects/<id>/jobs.jsonl` | 每次任务状态与消息流追加记录 |
+| 创作台回收 | `studio/trash/<id>-<time>/` | 删除作品先移到回收目录，不直接 `rm -rf` |
 | 技能 | `skills/` / 工作区 `.morrow/skills` | 用户/工作区技能 |
 | MCP | `mcp.json` / 工作区 `.morrow/mcp.json` | 工作区需 `mcp-trust.json` |
 | 定时任务 | `schedules/tasks.json` | 最多 50 |
@@ -200,10 +210,11 @@
 - 回环代理只绑 `127.0.0.1` 随机端口，要求随机本地 Bearer；上游 token 不进入渲染层。
 - 401/403 只刷新一次后重试；刷新先落盘再使用。
 - 官方接口变化时返回真实错误，不假装已连接。
-- 各渠道细节见 [订阅接入](SUBSCRIPTIONS.md)。
+- 各渠道细节见 [订阅接入](MODELS.md)。
 
-## 10. 终端、Git、浏览器与媒体
+## 10. 创作台、终端、Git、浏览器与媒体
 
+- 创作台：`StudioService` 是唯一写入口；`StudioStore` 负责项目原子读写、超长章节分片、版本快照、素材指纹与回收；`text` 负责策略化模型路由与预算估算；`local-creative` 负责本地结构稿；`prompt-library` 提供内部创作手法；`intent` 把大白话转成可审阅的修改计划；`voice-audit` 做人物的可核对语气分析；`media-derive` 生成真实波形与低清代理；`render/exporter` 产出视频与成书。界面在 `features/studio/`，数据契约在 `shared/studio.ts`。
 - `TerminalManager`：node-pty / ConPTY；Git Bash 默认；PowerShell 7 / WSL 可选；Windows PowerShell 5.1 与 CMD 移除（CMD 仅在无其他 Shell 时兼容回退）。
 - Git：`git-service` 封装工作区仓库操作；拒绝越界与父仓库根操作；diff 超长截断。
 - 浏览器：`BrowserService` 管理多标签/原生视图；普通页面与登录 session 分离；导航白名单、下载、权限与错误页有独立处理。
@@ -224,7 +235,7 @@
 - 构建：`npm run build`（typecheck + electron-vite）。
 - 打包：`npm run dist` / `dist:all`；便携版使用自研 C# 启动器，内嵌 zip，首次解压到 exe 同级 `.morrow-runtime-<version>-<revision>`。
 - 安装包：NSIS，按当前用户安装。
-- 单元测试：Vitest，14 个套件 / 952 用例。
-- E2E：Playwright `_electron`，17 个套件 / 209 用例；打包版另跑 5 个用例。
+- 单元测试：Vitest，29 个套件 / 1008 用例；其中创作台覆盖作品仓库、分片恢复、提示词、语气审稿、文本 diff、云端 TTS、路由、状态转移、时间线、修改计划与 Agent 工具。
+- E2E：Playwright `_electron`，26 个套件 / 224 用例；打包版 E2E 另跑 6 个用例（含创作台资产）。
 - 真实账号/媒体用例默认跳过，需环境变量与本机引擎。
-- 评测指标与复现命令见 [评测规范](EVALUATION.md)。
+- 评测指标、复现命令与当前结果见 [验收记录](verification/VERIFICATION.md)。

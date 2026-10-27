@@ -59,8 +59,6 @@ const LAYER_OPTIONS: { value: MemoryLayer; label: string; description: string }[
   { value: 'episodes', label: '任务经验', description: '任务完成后自动记录，只在相关任务中查找' }
 ]
 
-
-
 function parseTags(input: string): string[] {
   return input
     .split(/[,，\s#]+/)

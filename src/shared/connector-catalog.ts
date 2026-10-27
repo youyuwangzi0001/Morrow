@@ -1,12 +1,4 @@
-/**
- * 连接器目录（A3）：经过核对的官方远程端点 / 官方本机 MCP 服务。
- *
- * 原则：
- * - 只收录能给出准确地址或包名的连接器；目录条目会真实写入 mcp.json，不伪造连接成功。
- * - 本机服务需要用户电脑安装 Node.js（npx）；安装前会检测并明确提示。
- * - OAuth 专用远程服务（如 Sentry、Notion 远程）不放进一键目录，避免伪造授权；
- *   用户仍可在已安装页手动填写 OAuth 端点。
- */
+// 连接器目录（A3）：经过核对的官方远程端点 / 官方本机 MCP 服务。
 
 export type ConnectorCatalogCategory = 'remote' | 'local'
 export type ConnectorCatalogTransport = 'http' | 'stdio'

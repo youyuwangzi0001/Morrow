@@ -43,8 +43,6 @@ export interface FilePreviewMeta {
   note?: string
 }
 
-/* ── 文档预览数据（主进程转换 → 渲染层展示） ─────────────────── */
-
 export interface XlsxSheetPreview {
   name: string
   rows: string[][]

@@ -344,17 +344,23 @@
 
 .preview-pdf-page {
   flex: 0 0 auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--studio-doc-border);
   border-radius: var(--r-xs);
-  background: #fff;
+  background: var(--studio-doc-page);
   box-shadow: var(--shadow-float);
 }
 
 .preview-pdf-canvas {
+  display: none;
+}
+
+.preview-pdf-image {
   display: block;
   max-width: none;
-  background: #fff;
+  background: var(--studio-doc-page);
+  user-select: none;
 }
+
 
 .preview-pdf-pagenav {
   display: inline-flex;

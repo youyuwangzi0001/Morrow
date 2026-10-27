@@ -830,7 +830,18 @@ describe('index.test.ts', () => {
         'list_local_models',
         'manage_local_model',
         'manage_local_engine',
-        'run_local_model'
+        'run_local_model',
+        'studio_project',
+        'studio_create',
+        'studio_blueprint',
+        'studio_write',
+        'studio_storyboard',
+        'studio_media',
+        'studio_timeline',
+        'studio_edit',
+        'studio_review',
+        'studio_render',
+        'studio_export'
       ])
       for (const tool of core.TOOL_DEFINITIONS) {
         expect(tool.description.length).toBeGreaterThan(10)
@@ -860,7 +871,9 @@ describe('index.test.ts', () => {
         'inspect_media',
         'describe_media',
         'media_status',
-        'list_local_models'
+        'list_local_models',
+        'studio_project',
+        'studio_review'
       ])
     })
 

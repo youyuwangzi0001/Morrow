@@ -1,9 +1,4 @@
-/**
- * CodeMirror 语言按需加载与 Morrow 黑金语法配色。
- *
- * 语言包用动态 import，只有真正打开对应文件时才加载对应 chunk；
- * 高亮配色镜像 shiki 的 morrow-dark/morrow-light 主题（金关键字/铜绿字符串/琥珀数字/紫灰注释）。
- */
+// CodeMirror 语言按需加载与 Morrow 黑金语法配色。
 import { HighlightStyle, syntaxHighlighting, type LanguageSupport } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import type { Extension } from '@codemirror/state'

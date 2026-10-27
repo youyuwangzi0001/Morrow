@@ -1,20 +1,8 @@
-/**
- * 演示 Provider：离线剧本引擎（WOW 时刻）。
- *
- * 设计要点：
- * - 实现同一个 Provider 接口，Agent 循环完全不知道这是剧本；
- * - 剧本里的工具调用（list_dir / read_file / run_command / grep / write_file / open_artifact）
- *   全部由真实工具执行，数据来自用户工作区；
- * - 报告里的数字由本模块读取 CSV 后**真实计算**，与 run_command 的 PowerShell 聚合结果一致；
- * - 文本逐字流式、带思考段、约 35–50 秒（MORROW_DEMO_SPEED 可调速，测试用 0）；
- * - 没有可用数据文件时退回内置基准数据，剧本仍能完整跑完（避免首次演示失败）。
- */
+// 演示 Provider：离线剧本引擎（WOW 时刻）。
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join, relative, sep } from 'node:path'
 import type { Provider, ProviderStreamEvent, ProviderStreamRequest } from '../types'
 import { newId, sleep } from '../util'
-
-/* ── 数据结构 ─────────────────────────────────────────────────── */
 
 interface SalesRow {
   line: number
@@ -83,8 +71,6 @@ function demoEnvSpeed(): number {
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 ? value : 1
 }
-
-/* ── CSV 解析 ─────────────────────────────────────────────────── */
 
 function parseCsvLine(line: string): string[] {
   const out: string[] = []
@@ -175,8 +161,6 @@ function readTextFile(path: string): string {
     return ''
   }
 }
-
-/* ── 数据收集与计算 ───────────────────────────────────────────── */
 
 function isSalesHeader(rows: Array<Record<string, string>>): boolean {
   if (rows.length === 0) return false
@@ -468,8 +452,6 @@ export function collectDemoMetrics(workspace: string | null): DemoMetrics {
   }
 }
 
-/* ── 格式化 ───────────────────────────────────────────────────── */
-
 /** 千分位金额（不带 ¥） */
 export function fmtMoney(value: number): string {
   const sign = value < 0 ? '-' : ''
@@ -492,8 +474,6 @@ function esc(value: string): string {
 function psQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
-
-/* ── PowerShell 脚本（真实聚合/排查） ─────────────────────────── */
 
 function buildAggregateCommand(files: DemoMetrics['files']): string {
   const sales = psQuote(files.sales)
@@ -545,8 +525,6 @@ function buildQ2Command(files: DemoMetrics['files']): string {
     `"差额: $([math]::Round([double]$totalRow[0].'销售额' - $sum, 2))"`
   ].join('\n')
 }
-
-/* ── HTML 报告 ────────────────────────────────────────────────── */
 
 function svgBars(
   items: Array<{ label: string; value: number; note?: string }>,
@@ -856,8 +834,6 @@ export function renderDemoReportHtml(metrics: DemoMetrics, generatedAt: Date): s
 `
 }
 
-/* ── 剧本 ─────────────────────────────────────────────────────── */
-
 function buildDemoScript(workspace: string | null, now: Date): DemoStep[] {
   const m = collectDemoMetrics(workspace)
   const anomalyCount = m.anomalies.length
@@ -991,8 +967,6 @@ function buildDemoScript(workspace: string | null, now: Date): DemoStep[] {
     }
   ]
 }
-
-/* ── DemoProvider ─────────────────────────────────────────────── */
 
 export class DemoProvider implements Provider {
   readonly id = 'demo'

@@ -3,8 +3,6 @@ import { ChevronRight, FileDiff } from 'lucide-react'
 import { structuredPatch } from 'diff'
 import './DiffView.css'
 
-/* ── 数据模型 ─────────────────────────────────────────────────── */
-
 type RowKind = 'add' | 'del' | 'ctx' | 'note'
 
 interface DiffRow {
@@ -49,8 +47,6 @@ export interface DiffViewProps {
 }
 
 const HUNK_HEADER = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@/
-
-/* ── 解析 ─────────────────────────────────────────────────────── */
 
 function parseUnified(patch: string): ParsedDiffModel {
   const lines = patch.replace(/\r\n/g, '\n').split('\n')
@@ -168,8 +164,6 @@ function buildFromText(before: string, after: string, filePath: string, context:
   }
   return { hunks, added, removed, filePath, note: null }
 }
-
-/* ── 渲染 ─────────────────────────────────────────────────────── */
 
 interface RenderBlock {
   kind: 'rows' | 'collapsed'

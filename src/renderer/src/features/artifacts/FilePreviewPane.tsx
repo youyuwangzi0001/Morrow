@@ -15,6 +15,7 @@ import {
 import { formatBytes } from '@shared/usage'
 import { withMorrowScrollbar } from '@shared/scrollbar'
 import { IconButton } from '../../ui'
+import { documentPageTheme } from './document-theme'
 import type { EditorDocument } from './useEditorDocs'
 import { PdfPreview } from './PdfPreview'
 import { ArchivePreview, DocumentPreview, PptxPreview, XlsxPreview } from './OfficePreviews'
@@ -241,32 +242,31 @@ function escapeHtml(value: string): string {
 }
 
 function docxDocument(html: string, title: string, theme: 'dark' | 'light'): string {
-  const pageBackground = theme === 'dark' ? '#0d1117' : '#e9e2d4'
+  const t = documentPageTheme()
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><base target="_blank">
 <title>${escapeHtml(title)}</title>
 <style>
-  :root { color-scheme: light; }
-  html, body { margin: 0; padding: 0; background: ${pageBackground}; color: #26231e; }
+  :root { color-scheme: ${theme}; }
+  html, body { margin: 0; padding: 0; background: ${t.shell}; color: ${t.ink}; }
   body { padding: 24px 18px 40px; font-family: "Newsreader", "Noto Serif SC", "Songti SC", Georgia, serif; }
-  .docx-page { box-sizing: border-box; max-width: 820px; margin: 0 auto; padding: clamp(22px, 5vw, 54px); background: #f8f4eb; border: 1px solid rgba(38, 35, 30, .1); box-shadow: 0 18px 50px rgba(0, 0, 0, .12); font-size: 14.5px; line-height: 1.78; overflow-wrap: anywhere; }
+  .docx-page { box-sizing: border-box; max-width: 820px; margin: 0 auto; padding: clamp(22px, 5vw, 54px); background: ${t.page}; border: 1px solid ${t.border}; box-shadow: 0 18px 50px rgba(0, 0, 0, .18); font-size: 14.5px; line-height: 1.78; overflow-wrap: anywhere; }
   .docx-page p { margin: 0 0 .8em; }
   .docx-page p:last-child { margin-bottom: 0; }
   h1, h2, h3, h4 { margin: 1.1em 0 .55em; line-height: 1.35; font-weight: 600; }
   h1 { font-size: 1.75em; } h2 { font-size: 1.35em; } h3 { font-size: 1.15em; }
   table { width: 100%; margin: 16px 0; border-collapse: collapse; font-size: .92em; }
-  td, th { padding: 6px 9px; border: 1px solid #d8d0c2; vertical-align: top; }
-  th { background: #efe8db; text-align: left; }
+  td, th { padding: 6px 9px; border: 1px solid ${t.table}; vertical-align: top; }
+  th { background: ${t.tableHead}; text-align: left; }
   img { max-width: 100%; height: auto; }
-  a { color: #8a6a3c; text-decoration: underline; text-underline-offset: 2px; }
+  a { color: ${t.accent}; text-decoration: underline; text-underline-offset: 2px; }
   ul, ol { margin: .6em 0 .9em; padding-left: 1.5em; }
-  blockquote { margin: 1em 0; padding: .3em 0 .3em 1em; border-left: 3px solid #c8ae7d; color: #5e574b; }
-  hr { border: 0; border-top: 1px solid #d8d0c2; margin: 1.5em 0; }
-  .docx-empty { color: #8c867a; font-style: italic; }
+  blockquote { margin: 1em 0; padding: .3em 0 .3em 1em; border-left: 3px solid ${t.accent}; color: ${t.quote}; }
+  hr { border: 0; border-top: 1px solid ${t.border}; margin: 1.5em 0; }
+  .docx-empty { color: ${t.muted}; font-style: normal; }
 </style></head>
 <body><main class="docx-page">${html || '<p class="docx-empty">这个文档没有可显示的正文。</p>'}</main></body></html>`
 }
-
 function DocxPreview({ doc, theme }: { doc: EditorDocument; theme: 'dark' | 'light' }): React.JSX.Element {
   const documentHtml = useMemo(() => docxDocument(doc.content, doc.title, theme), [doc.content, doc.title, theme])
   return (

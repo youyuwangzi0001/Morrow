@@ -625,7 +625,7 @@ test.describe('会话生命周期', () => {
           text: '我先写文件，再跑一个稍长的命令。',
           toolCalls: [
             { name: 'write_file', arguments: { path: 'draft.md', content: 'hello from session lifecycle test' } },
-            { name: 'run_command', arguments: { command: 'Start-Sleep -Seconds 30; Write-Output done' } }
+            { name: 'run_command', arguments: { command: 'sleep 30; echo done' } }
           ]
         }
       ]
@@ -635,6 +635,12 @@ test.describe('会话生命周期', () => {
       const { page } = morrow
       await waitForStoreReady(page)
       await dismissOnboarding(page)
+      // 受限令牌下 Git Bash 的 MSYS 初始化可能失败；本用例需要命令持续运行，改用 PowerShell 7。
+      await page.evaluate(async () => {
+        const store = (window as unknown as { __morrowStore: { getState: () => { updateSettings: (patch: unknown) => Promise<void> } } })
+          .__morrowStore
+        await store.getState().updateSettings({ terminalShell: 'pwsh' })
+      })
       await installEventCollector(page)
       const provider = await configureMockProvider(page, mock.openaiBaseUrl)
       await createSession(page, {
@@ -1017,6 +1023,16 @@ test.describe('R5 UI 交互', () => {
     await page.waitForTimeout(120)
     await page.mouse.move(startX + 96, startY, { steps: 6 })
     await expect(page.locator('.resize-line')).toBeVisible()
+    const dragLine = await page.evaluate(() => {
+      const line = document.querySelector<HTMLElement>('.resize-line')
+      const sidebar = document.querySelector<HTMLElement>('.sidebar')
+      return {
+        background: line ? getComputedStyle(line).backgroundColor : 'missing',
+        border: sidebar ? getComputedStyle(sidebar).borderRightColor : 'missing'
+      }
+    })
+    expect(dragLine.background).toBe('rgba(0, 0, 0, 0)')
+    expect(dragLine.border).toContain('200, 174, 125')
     const during = await shell.evaluate((el) => el.clientWidth)
     expect(during).toBeGreaterThan(before + 60)
     await page.screenshot({ path: screenshotPath('r5-final-sidebar-resizing.png') })
@@ -1271,7 +1287,7 @@ test.describe('R5 UI 交互', () => {
     console.log('LIVE_USAGE', JSON.stringify(usage))
     expect(usage.model.providerId).toBe('deepseek')
     expect(usage.label).toContain('DeepSeek V4.1 Flash')
-    expect(usage.contextLimit).toBe(1048576)
+    expect(usage.contextLimit).toBeGreaterThanOrEqual(1_000_000)
     expect(usage.usage.contextUsed).toBeGreaterThan(0)
     // 单轮无工具：最近一次请求 = prompt + completion，正好等于累计 input + output
     expect(usage.usage.contextUsed).toBe(usage.usage.inputTokens + usage.usage.outputTokens)

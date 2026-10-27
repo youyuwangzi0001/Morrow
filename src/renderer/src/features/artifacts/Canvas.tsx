@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react'
 import type { Artifact, ArtifactKind } from '@shared/types'
-import { useAppStore } from '../../store'
+import { maxCanvasWidthForViewport, responsiveCanvasWidth, useAppStore } from '../../store'
 import { Button, ErrorNote, IconButton, Modal, ResizeHandle } from '../../ui'
 import { languageLabel } from '../../components/languages'
 import { previewKindForFileName, type FilePreviewKind } from '@shared/file-types'
@@ -180,6 +180,16 @@ function useNarrowViewport(): boolean {
   return narrow
 }
 
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
+  useEffect(() => {
+    const onResize = (): void => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return width
+}
+
 function toSvgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
@@ -198,6 +208,8 @@ export function Canvas(): React.JSX.Element | null {
   const openArtifactExternal = useAppStore((s) => s.openArtifactExternal)
   const copyText = useAppStore((s) => s.copyText)
   const canvasWidth = useAppStore((s) => s.canvasWidth)
+  const viewportWidth = useViewportWidth()
+  const displayCanvasWidth = responsiveCanvasWidth(canvasWidth, viewportWidth)
   const setCanvasWidth = useAppStore((s) => s.setCanvasWidth)
   const narrow = useNarrowViewport()
   const editor = useEditorDocs()
@@ -380,12 +392,16 @@ export function Canvas(): React.JSX.Element | null {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [fullscreen])
 
-  /* 窗口变窄时把画布宽度收回可视范围并持久化，避免内容被挤出屏幕 */
+  /* 窗口变窄时把画布宽度收回可视范围并持久化，避免对话列被挤到无法输入 */
   useEffect(() => {
     if (!canvas.open) return undefined
     const clampToWindow = (): void => {
-      const maxVisible = Math.min(960, Math.round(window.innerWidth * 0.68))
-      if (useAppStore.getState().canvasWidth > maxVisible) setCanvasWidth(maxVisible, true)
+      const state = useAppStore.getState()
+      const maxVisible =
+        window.innerWidth <= 1200
+          ? Math.min(960, Math.round(window.innerWidth * 0.68))
+          : maxCanvasWidthForViewport(state.sidebarWidth, state.sidebarCollapsed)
+      if (state.canvasWidth > maxVisible) setCanvasWidth(maxVisible, true)
     }
     clampToWindow()
     window.addEventListener('resize', clampToWindow)
@@ -517,7 +533,7 @@ export function Canvas(): React.JSX.Element | null {
       {!fullscreen && !narrow ? (
         <ResizeHandle
           edge="left"
-          value={canvasWidth}
+          value={displayCanvasWidth}
           min={320}
           max={960}
           label="拖动调整画布宽度（方向键微调，双击恢复默认）"
@@ -538,7 +554,7 @@ export function Canvas(): React.JSX.Element | null {
           .join(' ')}
         aria-label="画布"
         ref={rootRef}
-        style={!fullscreen && !narrow ? { width: canvasWidth } : undefined}
+        style={!fullscreen && !narrow ? { width: displayCanvasWidth } : undefined}
       >
         <header
           className={['canvas-head', !active && !activeDoc ? 'is-empty' : ''].filter(Boolean).join(' ')}

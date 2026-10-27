@@ -1,7 +1,4 @@
-/**
- * R10-H 技能库面板的渲染层类型与 IPC 客户端（与主进程 skills-service 返回的纯数据一致）。
- * 渲染层不 import 主进程代码，避免把 Node/electron 依赖带进 renderer 包。
- */
+// R10-H 技能库面板的渲染层类型与 IPC 客户端（与主进程 skills-service 返回的纯数据一致）。
 
 export interface SkillFileEntry {
   /** 相对技能目录的路径（/ 分隔） */

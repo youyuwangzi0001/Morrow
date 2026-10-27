@@ -17,6 +17,16 @@ html {
   background: var(--bg);
 }
 
+em,
+i,
+cite,
+dfn,
+var,
+address {
+  /* 全局禁用斜体：界面只靠字重、字号与颜色区分层级。 */
+  font-style: normal;
+}
+
 body {
   margin: 0;
   background: var(--bg);

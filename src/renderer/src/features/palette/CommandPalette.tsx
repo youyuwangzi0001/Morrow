@@ -6,6 +6,7 @@ import {
   Moon,
   PanelLeft,
   PlusCircle,
+  ArrowRight,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -16,6 +17,7 @@ import { useAppStore } from '../../store'
 import { dispatchOpenFile } from '../files/files-client'
 import { relativeToWorkspace } from '../artifacts/editor-api'
 import { Kbd, Modal } from '../../ui'
+import { useStudioStore } from '../studio/studio-store'
 import './CommandPalette.css'
 
 type ItemGroup = 'action' | 'session' | 'file'
@@ -101,6 +103,24 @@ export function CommandPalette(): React.JSX.Element | null {
         icon: <PlusCircle size={15} strokeWidth={1.5} />,
         shortcut: 'Ctrl N',
         run: () => void newSession()
+      },
+      {
+        id: 'action:studio-new',
+        group: 'action',
+        label: '新建作品',
+        description: '打开创作台，从一句话开始一部中短篇、长篇或漫剧',
+        icon: <PlusCircle size={15} strokeWidth={1.5} />,
+        run: () => {
+          void useStudioStore.getState().openStudio().then(() => useStudioStore.getState().setView('home'))
+        }
+      },
+      {
+        id: 'action:studio-continue',
+        group: 'action',
+        label: '继续创作',
+        description: '回到最近打开的作品与上次的创作现场',
+        icon: <ArrowRight size={15} strokeWidth={1.5} />,
+        run: () => void useStudioStore.getState().openStudio()
       },
       {
         id: 'action:temp',

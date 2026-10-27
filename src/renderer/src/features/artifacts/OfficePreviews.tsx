@@ -9,8 +9,7 @@ import type {
   XlsxPreviewResult
 } from '@shared/file-types'
 import type { EditorDocument } from './useEditorDocs'
-
-/* ── 通用工具 ─────────────────────────────────────────────────── */
+import { documentPageTheme } from './document-theme'
 
 function parseJson<T>(content: string): T | null {
   try {
@@ -42,8 +41,6 @@ function EmptyState({ title, detail }: { title: string; detail?: string }): Reac
     </div>
   )
 }
-
-/* ── CSV / TSV 表格（编辑器内预览） ──────────────────────────── */
 
 function parseDelimited(text: string, delimiter: string, maxRows = 500, maxCols = 60): string[][] {
   const rows: string[][] = []
@@ -138,8 +135,6 @@ export function TablePreview({ content, relPath }: { content: string; relPath: s
   )
 }
 
-/* ── XLSX ─────────────────────────────────────────────────────── */
-
 export function XlsxPreview({ doc }: { doc: EditorDocument }): React.JSX.Element {
   const data = parseJson<XlsxPreviewResult>(doc.content)
   const [active, setActive] = useState(0)
@@ -211,8 +206,6 @@ export function XlsxPreview({ doc }: { doc: EditorDocument }): React.JSX.Element
   )
 }
 
-/* ── PPTX ─────────────────────────────────────────────────────── */
-
 export function PptxPreview({ doc }: { doc: EditorDocument }): React.JSX.Element {
   const data = parseJson<PptxPreviewResult>(doc.content)
   if (!data || data.slides.length === 0) return <EmptyState title="演示文稿没有可显示的文本" detail={doc.previewNote ?? undefined} />
@@ -248,30 +241,27 @@ export function PptxPreview({ doc }: { doc: EditorDocument }): React.JSX.Element
   )
 }
 
-/* ── RTF / ODF / EPUB ─────────────────────────────────────────── */
-
 function documentShell(html: string, title: string, theme: 'dark' | 'light'): string {
-  const pageBackground = theme === 'dark' ? '#0d1117' : '#e9e2d4'
+  const t = documentPageTheme()
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><base target="_blank">
 <title>${escapeHtml(title)}</title>
 <style>
-  :root { color-scheme: light; }
-  html, body { margin: 0; padding: 0; background: ${pageBackground}; color: #26231e; }
+  :root { color-scheme: ${theme}; }
+  html, body { margin: 0; padding: 0; background: ${t.shell}; color: ${t.ink}; }
   body { padding: 24px 18px 40px; font-family: "Newsreader", "Noto Serif SC", "Songti SC", Georgia, serif; }
-  .doc-page { box-sizing: border-box; max-width: 820px; margin: 0 auto; padding: clamp(22px, 5vw, 54px); background: #f8f4eb; border: 1px solid rgba(38, 35, 30, .1); box-shadow: 0 18px 50px rgba(0, 0, 0, .12); font-size: 14.5px; line-height: 1.78; overflow-wrap: anywhere; }
+  .doc-page { box-sizing: border-box; max-width: 820px; margin: 0 auto; padding: clamp(22px, 5vw, 54px); background: ${t.page}; border: 1px solid ${t.border}; box-shadow: 0 18px 50px rgba(0, 0, 0, .18); font-size: 14.5px; line-height: 1.78; overflow-wrap: anywhere; }
   .doc-page p { margin: 0 0 .8em; }
   h1, h2, h3 { margin: 1.1em 0 .55em; line-height: 1.35; font-weight: 600; }
   h1 { font-size: 1.7em; } h2 { font-size: 1.3em; }
   table { width: 100%; margin: 16px 0; border-collapse: collapse; font-size: .92em; }
-  td, th { padding: 6px 9px; border: 1px solid #d8d0c2; vertical-align: top; }
-  th { background: #efe8db; text-align: left; }
-  hr { border: 0; border-top: 1px solid #d8d0c2; margin: 1.5em 0; }
+  td, th { padding: 6px 9px; border: 1px solid ${t.table}; vertical-align: top; }
+  th { background: ${t.tableHead}; text-align: left; }
+  hr { border: 0; border-top: 1px solid ${t.border}; margin: 1.5em 0; }
   ul, ol { margin: .6em 0 .9em; padding-left: 1.5em; }
 </style></head>
-<body><main class="doc-page">${html || '<p style="color:#8c867a;font-style:italic">这个文档没有可显示的正文。</p>'}</main></body></html>`
+<body><main class="doc-page">${html || `<p style="color:${t.muted};font-style: normal;">这个文档没有可显示的正文。</p>`}</main></body></html>`
 }
-
 export function DocumentPreview({ doc, theme }: { doc: EditorDocument; theme: 'dark' | 'light' }): React.JSX.Element {
   const html = doc.content
   const shell = useMemo(() => documentShell(html, doc.title, theme), [html, doc.title, theme])
@@ -297,8 +287,6 @@ export function DocumentPreview({ doc, theme }: { doc: EditorDocument; theme: 'd
     </div>
   )
 }
-
-/* ── ZIP/JAR ──────────────────────────────────────────────────── */
 
 export function ArchivePreview({ doc }: { doc: EditorDocument }): React.JSX.Element {
   const data = parseJson<ArchivePreviewResult>(doc.content)

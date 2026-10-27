@@ -1,7 +1,4 @@
-/**
- * Google Antigravity 的纯协议规则：OAuth 常量、可选模型 → 运行时模型映射、
- * OpenAI Chat Completions ↔ Gemini generateContent 的请求/流事件转换、额度解析。
- */
+// Google Antigravity 的纯协议规则：OAuth 常量、可选模型 → 运行时模型映射、
 import type { ModelInfo } from '../../shared/types'
 import type { AgentSubscriptionQuota } from '../../shared/subscriptions'
 import { asNumber, asRecord, asString, percentWindow, timestampMs } from './agent-protocol-utils'

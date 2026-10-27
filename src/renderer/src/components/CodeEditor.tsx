@@ -51,8 +51,6 @@ export interface CodeEditorProps {
   onCursor?: (line: number, column: number) => void
 }
 
-/* ── 主题 ─────────────────────────────────────────────────────── */
-
 const baseTheme = EditorView.theme({
   '&': {
     height: '100%',

@@ -1080,7 +1080,7 @@ button.message-diff-file-head:focus-visible {
 }
 
 .thinking-label {
-  font-style: italic;
+  font-style: normal;
 }
 
 .thinking.is-streaming .thinking-head {
@@ -1122,7 +1122,7 @@ button.message-diff-file-head:focus-visible {
   border-left: 1px solid var(--mauve-dim);
   color: var(--mauve);
   font-size: var(--fs-base-plus);
-  font-style: italic;
+  font-style: normal;
   line-height: var(--lh-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

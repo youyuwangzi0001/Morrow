@@ -19,8 +19,6 @@ import { FileTree } from '../files/FileTree'
 import { openWorkbench } from '../workbench/events'
 import './Sidebar.css'
 
-/* ── 工具 ─────────────────────────────────────────────────────── */
-
 function startOfDay(ts: number): number {
   const date = new Date(ts)
   date.setHours(0, 0, 0, 0)
@@ -61,8 +59,6 @@ function groupSessions(sessions: SessionMeta[]): SessionGroup[] {
   }
   return groups.filter((group) => group.items.length > 0)
 }
-
-/* ── 对话行（hover 出现重命名/删除，双击标题就地重命名） ────────── */
 
 function SessionRow({
   session,
@@ -186,8 +182,6 @@ function SessionRow({
   )
 }
 
-/* ── 折叠态 64px 图标栏 ──────────────────────────────────────── */
-
 function CollapsedRail(): React.JSX.Element {
   const sessions = useAppStore((s) => s.sessions)
   const activeId = useAppStore((s) => s.activeSessionId)
@@ -251,8 +245,6 @@ function CollapsedRail(): React.JSX.Element {
     </div>
   )
 }
-
-/* ── Sidebar ─────────────────────────────────────────────────── */
 
 export function Sidebar(): React.JSX.Element {
   const sessions = useAppStore((s) => s.sessions)
@@ -392,7 +384,6 @@ export function Sidebar(): React.JSX.Element {
           </span>
         </button>
       </footer>
-
 
       <Modal
         open={!!pendingDelete}

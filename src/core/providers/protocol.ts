@@ -1,10 +1,4 @@
-/**
- * Provider 协议归一化包装层。
- *
- * 所有模型（DeepSeek / Kimi / GLM / MiMo / Qwen / MiniMax / Anthropic / 本地网关）
- * 都会经过这一层：正文里的文本工具协议被剔除；如果网关没有把它放进 tool_calls，
- * 就解析成标准工具事件，避免“乱码”和“看起来执行了其实没执行”。
- */
+// Provider 协议归一化包装层。
 import type { Provider, ProviderStreamEvent, ProviderStreamRequest } from '../types'
 import { newId } from '../util'
 import { ToolProtocolStreamFilter, parseTextToolCalls } from '../../shared/tool-protocol'

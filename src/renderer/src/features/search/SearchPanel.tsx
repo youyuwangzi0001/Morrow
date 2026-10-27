@@ -1,13 +1,4 @@
-/**
- * R10-I 全局搜索面板（受控组件，Lead 挂载到命令面板/App）。
- *
- * 用法：
- *   <SearchPanel open={open} onClose={() => setOpen(false)} onNavigate={(hit) => { ... }} />
- * - 数据来自 window.morrow.features.invoke('feature:search:query', { q, workspace?, limit? })
- * - onNavigate(hit)：对话 hit 带 sessionId(/messageId)，文件带 absolutePath/path(/line)，
- *   artifact 带 artifactId/kind；由 App/命令面板决定跳转与画布打开。
- * - 也可以只把 open 由命令面板控制，Escape 关闭。
- */
+// R10-I 全局搜索面板（受控组件，Lead 挂载到命令面板/App）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { FileText, Loader2, MessageSquare, Palette, Search, X } from 'lucide-react'

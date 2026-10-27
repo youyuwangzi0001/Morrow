@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { IPC, WINDOW_STATE_CHANNEL, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/ipc'
+import { IPC, WINDOW_STATE_CHANNEL, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type IslandStudioSyncInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/ipc'
 import { DEFAULT_MODEL, findModel } from '../shared/models'
 import { isReasoningEffort } from '../shared/models'
 import type {
@@ -51,6 +51,7 @@ import {
   resetIslandAfterClear,
   setIslandExpanded,
   syncIslandSession,
+  syncIslandStudio,
   syncIslandVisibility
 } from './services/island'
 import { resolveWindowClose, setAppIconTheme } from './services/lifecycle'
@@ -172,8 +173,6 @@ function resolveWorkspacePath(raw: unknown, kind: 'file' | 'dir'): string | null
   }
   return null
 }
-
-/* ── 成品保存 ─────────────────────────────────────────────────── */
 
 const ARTIFACT_CONTENT_MAX_BYTES = 32 * 1024 * 1024
 const CODE_EXT: Record<string, string> = {
@@ -389,7 +388,6 @@ function pushSessionMeta(meta: SessionMeta): void {
 }
 
 export function registerIpcHandlers(): void {
-  /* ── 启动 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.bootstrap, async (): Promise<Result<unknown>> => {
     try {
       return ok(await createBootstrap())
@@ -520,7 +518,6 @@ export function registerIpcHandlers(): void {
           try {
             cleanTargetDataDir(target)
           } catch {
-            // ignore
           }
         }
         return fail('DATA_DIR_SAVE_FAILED', `保存数据目录失败：${err instanceof Error ? err.message : String(err)}`)
@@ -553,7 +550,6 @@ export function registerIpcHandlers(): void {
     return ok({ restarted: !dataDirTestMode() })
   })
 
-  /* ── 窗口 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.windowMinimize, (): Result<void> => {
     windowOf()?.minimize()
     return ok(undefined)
@@ -589,7 +585,6 @@ export function registerIpcHandlers(): void {
     })
   })
 
-  /* ── 设置 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.settingsGet, (): Result<unknown> => ok(getSettingsStore().get()))
 
   ipcMain.handle(IPC.settingsUpdate, (_e, patch: UpdateSettingsInput): Result<unknown> => {
@@ -605,7 +600,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 桌面灵动岛 ───────────────────────────────────────── */
   ipcMain.handle(IPC.islandState, (): Result<unknown> => ok(getIslandSnapshot()))
 
   ipcMain.handle(IPC.islandSyncSession, (_e, payload: { sessionId?: unknown } | undefined): Result<void> => {
@@ -614,6 +608,11 @@ export function registerIpcHandlers(): void {
       ? getAgentService(getSettingsStore(), getSessionStore()).activeRunInfo(sessionId)
       : null
     syncIslandSession(sessionId, active)
+    return ok(undefined)
+  })
+
+  ipcMain.handle(IPC.islandSyncStudio, (_e, payload: IslandStudioSyncInput): Result<void> => {
+    syncIslandStudio(payload ?? { active: false })
     return ok(undefined)
   })
 
@@ -790,7 +789,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 会话 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.sessionList, (): Result<SessionMeta[]> => ok(getSessionStore().list()))
 
   ipcMain.handle(IPC.sessionCreate, (_e, input: CreateSessionInput): Result<Session> => {
@@ -1063,7 +1061,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 目标（Goal 模式） ─────────────────────────────────── */
   const goalService = (): ReturnType<typeof getAgentService> => getAgentService(getSettingsStore(), getSessionStore())
 
   ipcMain.handle(IPC.goalStart, async (e, input: GoalStartInput): Promise<Result<GoalActionResult>> => {
@@ -1112,7 +1109,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 计划模式（P0-2） ───────────────────────────────────── */
   ipcMain.handle(IPC.planSetMode, (e, payload: { sessionId: string; enabled: boolean }): Result<SessionMeta> => {
     try {
       if (!payload || typeof payload.enabled !== 'boolean') return fail('INVALID_PLAN_MODE', '计划模式参数无效。')
@@ -1152,7 +1148,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 检查点与回退（P0-3） ─────────────────────────────── */
   const checkpointService = (): ReturnType<typeof getCheckpointService> => getCheckpointService(getSessionStore())
 
   ipcMain.handle(IPC.checkpointList, (_e, payload: { sessionId: string }): Result<unknown> => {
@@ -1227,7 +1222,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 运行中排队（P0-5） ─────────────────────────────────── */
   ipcMain.handle(IPC.queueList, (_e, payload: { sessionId: string }): Result<unknown> => {
     try {
       return ok(goalService().listQueue(payload.sessionId))
@@ -1269,7 +1263,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 工作区 ───────────────────────────────────────────── */
   ipcMain.handle(IPC.workspacePick, async (): Promise<Result<WorkspaceInfo | null>> => {
     try {
       const info = await pickWorkspace()
@@ -1325,7 +1318,6 @@ export function registerIpcHandlers(): void {
     })
   })
 
-  /* ── 文件 ─────────────────────────────────────────────── */
   ipcMain.handle(
     IPC.fileSearch,
     (_e, payload: { root?: unknown; query?: unknown; limit?: unknown } | undefined): Result<FileSearchResult[]> => {
@@ -1363,7 +1355,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 产物 ─────────────────────────────────────────────── */
   ipcMain.handle(
     IPC.artifactRead,
     async (
@@ -1636,7 +1627,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 对话与 Agent 运行 ────────────────────────────────── */
   const agentService = (): ReturnType<typeof getAgentService> =>
     getAgentService(getSettingsStore(), getSessionStore())
 

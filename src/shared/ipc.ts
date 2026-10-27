@@ -127,6 +127,7 @@ export const IPC = {
   islandOpenMain: 'island:open-main',
   islandQuickSend: 'island:quick-send',
   islandSyncSession: 'island:sync-session',
+  islandSyncStudio: 'island:sync-studio',
   fileRestoreSnapshot: 'file:restore-snapshot'
 } as const
 
@@ -153,6 +154,21 @@ export interface IslandOpenMainInput {
   sessionId?: string | null
   /** 打开后新建一个空对话 */
   newSession?: boolean
+  /** 打开主窗口并切到创作台 */
+  studio?: boolean
+}
+
+export interface IslandStudioSyncInput {
+  active: boolean
+  projectId?: string | null
+  projectTitle?: string
+  kind?: 'short' | 'novel' | 'drama'
+  stage?: string
+  jobLabel?: string
+  jobProgress?: number | null
+  jobStatus?: 'queued' | 'running' | 'review' | 'done' | 'failed' | 'cancelled'
+  startedAt?: number | null
+  jobs?: number
 }
 
 export interface CompactResult {
@@ -260,6 +276,8 @@ export interface MorrowApi {
     quickSend(input: IslandQuickSendInput): Promise<Result<void>>
     /** 主窗口切到哪个会话，灵动岛就跟随哪个会话（含计划、进度与运行耗时） */
     syncSession(sessionId: string | null): Promise<Result<void>>
+    /** 主窗口切到创作台时，灵动岛显示作品与任务进度 */
+    syncStudio(input: IslandStudioSyncInput): Promise<Result<void>>
     onState(listener: (snapshot: import('./types').IslandSnapshot) => void): () => void
     /** 仅主窗口使用：接收灵动岛转来的消息 */
     onQuickSend(listener: (input: IslandQuickSendInput) => void): () => void

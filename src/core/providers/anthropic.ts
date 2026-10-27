@@ -26,8 +26,6 @@ import {
 
 export const ANTHROPIC_VERSION = '2023-06-01'
 
-/* ── 请求体转换（导出供测试断言） ─────────────────────────────── */
-
 export type AnthropicBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
@@ -159,8 +157,6 @@ function mapAnthropicUsage(usage: {
   }
 }
 
-/* ── 流事件结构 ───────────────────────────────────────────────── */
-
 interface AnthropicStreamPayload {
   type?: string
   index?: number
@@ -176,8 +172,6 @@ interface AnthropicStreamPayload {
   usage?: Parameters<typeof mapAnthropicUsage>[0]
   error?: { type?: string; message?: string }
 }
-
-/* ── Provider ─────────────────────────────────────────────────── */
 
 export interface AnthropicProviderOptions {
   retryDelays?: number[]

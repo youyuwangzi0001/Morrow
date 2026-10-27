@@ -22,8 +22,20 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
   const [zoom, setZoom] = useState(1)
   const [containerWidth, setContainerWidth] = useState(0)
   const [reloadKey, setReloadKey] = useState(0)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark')
+  const [pageImage, setPageImage] = useState<string | null>(null)
+  const [pageSize, setPageSize] = useState({ width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const root = document.documentElement
+    const update = (): void => setTheme(root.dataset.theme === 'light' ? 'light' : 'dark')
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const element = containerRef.current
@@ -72,6 +84,7 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
     let cancelled = false
     let renderTask: ReturnType<pdfjsLib.PDFPageProxy['render']> | null = null
 
+    setPageImage(null)
     void (async () => {
       try {
         const page = await pdf.getPage(pageNumber)
@@ -86,6 +99,7 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
         canvas.height = Math.max(1, Math.floor(viewport.height * outputScale))
         canvas.style.width = `${Math.floor(viewport.width)}px`
         canvas.style.height = `${Math.floor(viewport.height)}px`
+        setPageSize({ width: Math.floor(viewport.width), height: Math.floor(viewport.height) })
         const context = canvas.getContext('2d')
         if (!context) throw new Error('无法创建 PDF 画布。')
         renderTask = page.render({
@@ -95,6 +109,15 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
           ...(outputScale !== 1 ? { transform: [outputScale, 0, 0, outputScale, 0, 0] } : {})
         })
         await renderTask.promise
+        if (!cancelled && theme === 'dark') {
+          // 深色主题下直接反相画布像素；CSS filter 在部分合成层截图中不生效。
+          context.save()
+          context.globalCompositeOperation = 'difference'
+          context.fillStyle = '#fff'
+          context.fillRect(0, 0, canvas.width, canvas.height)
+          context.restore()
+        }
+        if (!cancelled) setPageImage(canvas.toDataURL('image/png'))
       } catch (reason) {
         if (cancelled) return
         const name = (reason as { name?: string } | null)?.name
@@ -107,7 +130,7 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
       cancelled = true
       renderTask?.cancel()
     }
-  }, [pdf, pageNumber, zoom, containerWidth])
+  }, [pdf, pageNumber, zoom, containerWidth, theme])
 
   useEffect(() => {
     setPageDraft(String(pageNumber))
@@ -204,7 +227,17 @@ export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
           </div>
         ) : (
           <div className="preview-pdf-page" data-testid="pdf-canvas-wrap">
-            <canvas ref={canvasRef} className="preview-pdf-canvas" aria-label={`${title} 第 ${pageNumber} 页`} />
+            <canvas ref={canvasRef} className="preview-pdf-canvas" aria-hidden style={{ display: 'none' }} />
+            {pageImage ? (
+              <img
+                className="preview-pdf-image"
+                src={pageImage}
+                alt={`${title} 第 ${pageNumber} 页`}
+                width={pageSize.width || undefined}
+                height={pageSize.height || undefined}
+                draggable={false}
+              />
+            ) : null}
           </div>
         )}
       </div>

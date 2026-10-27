@@ -42,7 +42,6 @@ function atomicWrite(path: string, value: unknown): void {
     try {
       rmSync(tmp, { force: true })
     } catch {
-      // ignore
     }
     throw err
   }
@@ -57,7 +56,6 @@ function atomicWrite(path: string, value: unknown): void {
         try {
           rmSync(tmp, { force: true })
         } catch {
-          // ignore
         }
         throw err
       }
@@ -70,7 +68,6 @@ function atomicWrite(path: string, value: unknown): void {
           try {
             rmSync(tmp, { force: true })
           } catch {
-            // ignore
           }
           throw writeErr
         }
@@ -88,7 +85,6 @@ function readSafe(path: string): unknown | null {
     try {
       renameSync(path, `${path}.corrupt-${Date.now()}.bak`)
     } catch {
-      // ignore
     }
     return null
   }

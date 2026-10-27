@@ -48,8 +48,6 @@ export interface EpisodeInjection {
 export const EPISODE_CHANGED_EVENT = 'feature:memory:episodes-changed'
 export const MEMORY_CHANGED_EVENT = 'feature:memory:changed'
 
-/* ── 自进化建议（与任务经验同属记忆系统） ─────────────────────── */
-
 /**
  * 自进化建议（记忆中心）：任务后复盘产出的可采纳改进。
  *

@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 
 import '@fontsource-variable/manrope/wght.css'
 import '@fontsource-variable/newsreader/wght.css'
-import '@fontsource-variable/newsreader/wght-italic.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
 import '@fontsource/jetbrains-mono/400.css'

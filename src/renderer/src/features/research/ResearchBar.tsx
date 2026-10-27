@@ -1,7 +1,4 @@
-/**
- * 深度研究进度条：显示轮次、独立来源数、当前阶段与最终报告入口。
- * 数据来自主进程 research_updated 事件；不自己编造进度。
- */
+// 深度研究进度条：显示轮次、独立来源数、当前阶段与最终报告入口。
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, FileText, LoaderCircle, PencilLine, Play, Telescope, Square } from 'lucide-react'
 import { RESEARCH_DEPTHS } from '@shared/research'

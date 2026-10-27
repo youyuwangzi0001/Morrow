@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, MessageSquare, Square, X } from 'lucide-react'
-import { useAppStore } from '../../store'
+import { responsiveCanvasWidth, useAppStore } from '../../store'
 import { Button, ErrorNote, IconButton, ResizeHandle } from '../../ui'
 import { Markdown } from '../../components/Markdown'
 import './sidechat.css'
@@ -44,6 +44,16 @@ function useNarrowViewport(): boolean {
   return narrow
 }
 
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
+  useEffect(() => {
+    const onResize = (): void => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return width
+}
+
 /**
  * 侧边聊天：停靠在右侧栏，与画布共用宽度和拖拽习惯。
  * 只回答，不调用工具、不写主对话；关闭后本次问答仍保留。
@@ -57,6 +67,8 @@ export function SideChat(): React.JSX.Element | null {
   const canvasWidth = useAppStore((s) => s.canvasWidth)
   const setCanvasWidth = useAppStore((s) => s.setCanvasWidth)
   const narrow = useNarrowViewport()
+  const viewportWidth = useViewportWidth()
+  const displayCanvasWidth = responsiveCanvasWidth(canvasWidth, viewportWidth)
 
   const [messages, setMessages] = useState<SideMessage[]>([])
   const [input, setInput] = useState('')
@@ -225,7 +237,7 @@ export function SideChat(): React.JSX.Element | null {
       {!narrow ? (
         <ResizeHandle
           edge="left"
-          value={canvasWidth}
+          value={displayCanvasWidth}
           min={320}
           max={960}
           label="拖动调整侧边聊天宽度（方向键微调，双击恢复默认）"
@@ -238,7 +250,7 @@ export function SideChat(): React.JSX.Element | null {
       <aside
         className={['sidechat-rail', narrow ? 'is-overlay' : ''].filter(Boolean).join(' ')}
         aria-label="侧边聊天"
-        style={!narrow ? { width: canvasWidth } : undefined}
+        style={!narrow ? { width: displayCanvasWidth } : undefined}
       >
         <header className="sidechat-head">
           <span className="sidechat-head-icon" aria-hidden>
@@ -295,7 +307,7 @@ export function SideChat(): React.JSX.Element | null {
         </div>
 
         <div className="sidechat-compose">
-          <div className="sidechat-composer">
+          <div className="sidechat-composer chat-gold-frame">
             <textarea
               ref={inputRef}
               className="sidechat-input"

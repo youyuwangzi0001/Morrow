@@ -1,11 +1,4 @@
-/**
- * Codex 订阅 → OpenAI Chat Completions 本地兼容层。
- *
- * Morrow 的 Provider 体系只认识 OpenAI/Anthropic 两种线协议；ChatGPT 订阅走的是
- * Responses。这里在 127.0.0.1 起一个只绑定回环、需要本地随机令牌的代理：
- *   Morrow Provider → /v1/chat/completions → Responses → SSE 转回 Chat Completions。
- * 令牌、刷新与上游认证都留在主进程，不写进 provider 配置或渲染层。
- */
+// Codex 订阅 → OpenAI Chat Completions 本地兼容层。
 import { createServer, type Server } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import type { RequestListener } from 'node:http'

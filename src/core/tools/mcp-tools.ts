@@ -191,7 +191,6 @@ export function resolveMcpDataDir(
     const exeDir = dirname(execPath)
     if (existsSync(join(exeDir, 'portable.marker'))) return join(exeDir, 'Morrow Data')
   } catch {
-    // 忽略
   }
   if (env.PORTABLE_EXECUTABLE_DIR) return join(env.PORTABLE_EXECUTABLE_DIR, 'Morrow Data')
   if (platform === 'win32') return env.APPDATA ? join(env.APPDATA, 'Morrow') : null
@@ -959,7 +958,6 @@ export class McpClient implements McpConnection {
       try {
         this.writeMessage({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Morrow 客户端不支持服务端发起的请求' } })
       } catch {
-        // 忽略
       }
     }
   }
@@ -1205,7 +1203,6 @@ async function readCappedText(response: Response, maxBytes: number): Promise<str
         try {
           await reader.cancel()
         } catch {
-          // 忽略
         }
         throw new McpError(
           'protocol',
@@ -1223,7 +1220,6 @@ async function readCappedText(response: Response, maxBytes: number): Promise<str
     try {
       reader.releaseLock()
     } catch {
-      // 忽略
     }
   }
   const merged = new Uint8Array(total)
@@ -1312,7 +1308,6 @@ async function* readSseEvents(
     try {
       await reader.cancel()
     } catch {
-      // 忽略
     }
   }
 }
@@ -1661,7 +1656,6 @@ export class McpHttpClient implements McpConnection {
         try {
           await response.body?.cancel()
         } catch {
-          // 忽略
         }
         return
       }
@@ -1869,7 +1863,6 @@ export class McpSseClient implements McpConnection {
       try {
         await active.response.body?.cancel()
       } catch {
-        // 忽略
       }
       active.finish()
       if (this.stream === active) this.stream = null
@@ -1962,7 +1955,6 @@ export class McpSseClient implements McpConnection {
         try {
           await response.body?.cancel()
         } catch {
-          // 忽略
         }
         return
       }

@@ -8,8 +8,6 @@ import { TokenActivityService, type TokenUsageRecord } from './token-activity'
 import { getSessionStore } from './session-store'
 import { log } from './logger'
 
-/* ── 成品版本历史 ─────────────────────────────────────────────── */
-
 let artifactVersionStore: ArtifactVersionStore | null = null
 
 export function getArtifactVersionStore(): ArtifactVersionStore {
@@ -18,8 +16,6 @@ export function getArtifactVersionStore(): ArtifactVersionStore {
   }
   return artifactVersionStore
 }
-
-/* ── Token 活动账本 ───────────────────────────────────────────── */
 
 let tokenActivity: TokenActivityService | null = null
 let legacyUsageSynced = false
@@ -52,8 +48,6 @@ export function recordTokenUsage(input: TokenUsageRecord): void {
     log.warn('token activity record failed', { error: String(err) })
   }
 }
-
-/* ── 搜索索引失效（搜索模块未初始化时静默跳过） ─────────────── */
 
 type SearchInvalidationHandler = (sessionId: string) => void | Promise<void>
 

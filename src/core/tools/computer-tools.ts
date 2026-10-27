@@ -195,7 +195,6 @@ export function runPowerShellDefault(script: string, options: { signal: AbortSig
       try {
         child.kill()
       } catch {
-        // ignore
       }
       killProcessTree(child.pid)
       finish({ ok: false, stdout: '', stderr: '操作已取消。', exitCode: -1 })
@@ -217,7 +216,6 @@ export function runPowerShellDefault(script: string, options: { signal: AbortSig
       try {
         child.kill()
       } catch {
-        // ignore
       }
       killProcessTree(child.pid)
       finish({ ok: false, stdout: '', stderr: '电脑操作超时（20 秒），已终止。', exitCode: -1 })

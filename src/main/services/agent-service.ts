@@ -41,6 +41,7 @@ import {
 import type { SessionStore } from './session-store'
 import { deriveMeta } from './session-store'
 import type { SettingsStore } from './settings-store'
+import type { CommandShell } from '../../core/types'
 import { getProjectPrompt } from './project-service'
 import { getAgentRulesPrompt } from './agent-rules'
 import { getPermissionRulesService } from './permission-rules'
@@ -262,8 +263,6 @@ export class AgentService {
   isSessionBusy(sessionId: string): boolean {
     return this.isSessionRunning(sessionId) || this.compactingSessions.has(sessionId)
   }
-
-  /* ── 运行中消息排队（P0-5） ─────────────────────────────── */
 
   private queueOf(sessionId: string): QueuedMessage[] {
     return this.queues.get(sessionId) ?? []
@@ -753,7 +752,12 @@ export class AgentService {
     const reasoningEffort = session.reasoningEffort ?? this.settingsStore.get().reasoningEffort
     const agents = loadAgentRoles(session.workspace)
     const globalSettings = this.settingsStore.get()
-    const terminalShell = getTerminalManager().commandShell(globalSettings.terminalShell)
+    // 演示剧本的命令按 PowerShell 编写；离线演示固定走系统自带 PowerShell，避免用户默认 Git Bash 时命令失败。
+    const demoShell: CommandShell = { id: 'powershell', label: 'Windows PowerShell', file: 'powershell.exe' }
+    const terminalShell =
+      isDemo && process.platform === 'win32'
+        ? demoShell
+        : getTerminalManager().commandShell(globalSettings.terminalShell)
     const systemPrompt =
       researchPlanning && session.research
         ? [
@@ -832,6 +836,10 @@ export class AgentService {
           },
           terminal,
           media,
+          studio: async (input) => {
+            const { getStudioService } = await import('../studio/service')
+            return getStudioService().runAgentTool(input)
+          },
           vision: { provider: resolved.provider, model: resolved.modelInfo },
           permissionRules,
           reasoningEffort,
@@ -907,8 +915,6 @@ export class AgentService {
 
     return { runId, userMessage, assistantMessageId }
   }
-
-  /* ── 深度研究：轮次评估与自动续研 ─────────────────────────── */
 
   private emitResearch(session: Session, window: BrowserWindow | null): void {
     this.forward(
@@ -1212,8 +1218,6 @@ export class AgentService {
     }
   }
 
-  /* ── 消息操作：重新生成 / 编辑重发 / 删除后续 / 分支 ─────────── */
-
   regenerate(sessionId: string, window: BrowserWindow | null): SendMessageResult {
     const session = this.sessionStore.get(sessionId)
     if (!session) throw new Error('会话不存在，请新建对话。')
@@ -1380,8 +1384,6 @@ export class AgentService {
     }
   }
 
-  /* ── 显式会话模式（聊天 / 工作） ─────────────────────────── */
-
   /**
    * 切换显式「聊天 / 工作」模式：
    * - 运行中拒绝切换（运行中的任务不能跨模式继续，先停下再切）；
@@ -1429,8 +1431,6 @@ export class AgentService {
     log.info('session mode changed', { sessionId, mode: next })
     return deriveMeta(session)
   }
-
-  /* ── 计划模式 ─────────────────────────────────────────────── */
 
   private assertPlanIdle(sessionId: string): void {
     if (this.isSessionRunning(sessionId)) throw new Error('这个对话正在运行：先停止本次运行，再操作计划。')
@@ -1570,8 +1570,6 @@ export class AgentService {
     const result = this.startRun(session, { sessionId, text: buildPlanRevisionPrompt(previous, raw) }, window)
     return { plan: previous ?? null, runId: result.runId }
   }
-
-  /* ── Goal 模式 ─────────────────────────────────────────────── */
 
   private saveGoal(session: Session, goal: Goal | null): void {
     session.goal = goal
@@ -1960,8 +1958,6 @@ export class AgentService {
     }
     this.forward(event, window)
   }
-
-  /* ── 运行中增量落盘（崩溃/退出恢复的证据） ─────────────────── */
 
   private scheduleIncrementalSave(active: ActiveRun, immediate = false): void {
     if (active.incrementalTimer) return
@@ -3029,7 +3025,6 @@ export class AgentService {
     try {
       win?.flashFrame(true)
     } catch {
-      // ignore
     }
     if (!Notification.isSupported()) return
     try {

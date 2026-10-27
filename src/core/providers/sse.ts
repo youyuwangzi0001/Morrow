@@ -1,13 +1,4 @@
-/**
- * SSE（text/event-stream）增量解析。
- *
- * 为什么自己写：双协议（OpenAI / Anthropic）都需要处理跨 chunk 的半行、CRLF、
- * 多条 data 行、注释帧；Node 的 fetch 只给 ReadableStream<Uint8Array>，没有现成解析器。
- * 解析器做成「纯状态机 + push/flush」，便于单元测试任意切片。
- *
- * 按 SSE 规范逐行解析：行结束符允许 CRLF / LF / CR 混用；空行派发一帧。
- * 旧实现用「空行正则」直接切帧，遇到 `\n\r\n` 这类混用会漏切，代理后面可能整轮无输出。
- */
+// SSE（text/event-stream）增量解析。
 
 export interface SSEFrame {
   event: string | null

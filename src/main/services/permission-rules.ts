@@ -1,11 +1,4 @@
-/**
- * P1-10 工作区权限规则持久化 + 审批日志。
- *
- * - 规则按工作区保存到 `<dataDir>/permissions.json`，重启后仍生效；
- * - 支持工具级、命令前缀、写入路径前缀三种规则；deny 优先；
- * - 「始终允许」会把当前操作转成一条持久 allow 规则；
- * - 审批日志追加到 `<dataDir>/permissions/approval-log.jsonl`，只记录用户审批结果。
- */
+// P1-10 工作区权限规则持久化 + 审批日志。
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -56,7 +49,6 @@ function atomicWrite(path: string, content: string): void {
     try {
       rmSync(tmp, { force: true })
     } catch {
-      // ignore
     }
     throw err
   }

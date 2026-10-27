@@ -231,13 +231,11 @@ export class BrowserService {
         try {
           pending.item.cancel()
         } catch {
-          // 忽略
         }
       }
       try {
         rmSync(pending.holdingPath, { force: true })
       } catch {
-        // 忽略
       }
     }
     this.pendingDownloads.clear()
@@ -408,7 +406,6 @@ export class BrowserService {
     try {
       tab.view.setVisible(false)
     } catch {
-      // 忽略
     }
     setImmediate(() => {
       try {
@@ -965,7 +962,6 @@ export class BrowserService {
     try {
       rmSync(pending.holdingPath, { force: true })
     } catch {
-      // 忽略
     }
   }
 
@@ -989,7 +985,6 @@ export class BrowserService {
       try {
         pending.item.cancel()
       } catch {
-        // 忽略
       }
     }
     this.removeHoldingWhenDone(pending)
@@ -1017,7 +1012,6 @@ export class BrowserService {
     try {
       pending.item.cancel()
     } catch {
-      // 忽略
     }
     this.removeHoldingWhenDone(pending)
     this.emitToOwner('feature:browser:download-resolved', {
@@ -1307,7 +1301,6 @@ export class BrowserService {
         try {
           webContents.stop()
         } catch {
-          // 忽略
         }
         this.reportError({
           code: 'LOAD_FAILED',

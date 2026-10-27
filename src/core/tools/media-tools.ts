@@ -145,8 +145,6 @@ function mediaSummary(result: MediaArtifactResult): string {
   return parts.join(' · ')
 }
 
-/* ── generate_image ──────────────────────────────────────────── */
-
 export const generateImageTool: ToolImpl = {
   definition: {
     name: 'generate_image',
@@ -232,8 +230,6 @@ export const generateImageTool: ToolImpl = {
     }
   }
 }
-
-/* ── generate_video ──────────────────────────────────────────── */
 
 export const generateVideoTool: ToolImpl = {
   definition: {
@@ -367,8 +363,6 @@ export const generateVideoTool: ToolImpl = {
     }
   }
 }
-
-/* ── edit_media ──────────────────────────────────────────────── */
 
 const EDIT_OPERATIONS = [
   'trim',
@@ -514,8 +508,6 @@ export const editMediaTool: ToolImpl = {
   }
 }
 
-/* ── inspect_media ───────────────────────────────────────────── */
-
 export const inspectMediaTool: ToolImpl = {
   definition: {
     name: 'inspect_media',
@@ -558,8 +550,6 @@ export const inspectMediaTool: ToolImpl = {
     }
   }
 }
-
-/* ── media_status ────────────────────────────────────────────── */
 
 export const mediaStatusTool: ToolImpl = {
   definition: {
@@ -604,8 +594,6 @@ export const mediaStatusTool: ToolImpl = {
     }
   }
 }
-
-/* ── generate_film ───────────────────────────────────────────── */
 
 export const generateFilmTool: ToolImpl = {
   definition: {
@@ -742,8 +730,6 @@ export const generateFilmTool: ToolImpl = {
   }
 }
 
-/* ── render_animation ───────────────────────────────────────── */
-
 export const renderAnimationTool: ToolImpl = {
   definition: {
     name: 'render_animation',
@@ -824,8 +810,6 @@ export const renderAnimationTool: ToolImpl = {
   }
 }
 
-/* ── describe_media ─────────────────────────────────────────── */
-
 export const describeMediaTool: ToolImpl = {
   definition: {
     name: 'describe_media',
@@ -890,8 +874,6 @@ export const describeMediaTool: ToolImpl = {
     }
   }
 }
-
-/* ── 通用模型/引擎目录 ──────────────────────────────────────── */
 
 function requireCatalog(ctx: ToolContext): NonNullable<MediaToolHandler['catalog']> {
   if (!ctx.media?.catalog) {
@@ -1118,8 +1100,6 @@ export const manageLocalEngineTool: ToolImpl = {
     }
   }
 }
-
-/* ── run_local_model ────────────────────────────────────────── */
 
 export const runLocalModelTool: ToolImpl = {
   definition: {

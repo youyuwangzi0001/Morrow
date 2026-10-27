@@ -1,7 +1,4 @@
-/**
- * 元信息类工具：todo_write / ask_user / remember / swarm / open_artifact。
- * 它们不直接操作文件系统（remember 除外），而是通过 ToolContext 回调影响会话状态。
- */
+// 元信息类工具：todo_write / ask_user / remember / swarm / open_artifact。
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -27,8 +24,6 @@ import { errResult, okResult, oneLineInput, type ToolImpl } from './types'
 
 const TODO_STATUSES: TodoStatus[] = ['pending', 'in_progress', 'completed']
 const MAX_TODOS = 20
-
-/* ── todo_write ───────────────────────────────────────────────── */
 
 export const todoWriteTool: ToolImpl = {
   definition: {
@@ -100,8 +95,6 @@ export const todoWriteTool: ToolImpl = {
     )
   }
 }
-
-/* ── ask_user ─────────────────────────────────────────────────── */
 
 function parseOptions(raw: unknown): AskUserOption[] {
   if (!Array.isArray(raw)) return []
@@ -175,8 +168,6 @@ export const askUserTool: ToolImpl = {
   }
 }
 
-/* ── remember ─────────────────────────────────────────────────── */
-
 export const rememberTool: ToolImpl = {
   definition: {
     name: 'remember',
@@ -236,8 +227,6 @@ export const rememberTool: ToolImpl = {
     })
   }
 }
-
-/* ── swarm（集群成员并行协作） ────────────────────────────────── */
 
 const MAX_SWARM_TASKS = 10
 const MAX_SWARM_PARALLEL = 10
@@ -470,8 +459,6 @@ export const swarmTool: ToolImpl = {
   }
 }
 
-/* ── open_artifact ────────────────────────────────────────────── */
-
 function normalizeKind(raw: string): ArtifactKind | null {
   const value = raw.trim().toLowerCase()
   if (!value) return null
@@ -603,8 +590,6 @@ export const openArtifactTool: ToolImpl = {
     })
   }
 }
-
-/* ── update_goal（仅 Goal 模式） ──────────────────────────────── */
 
 const UPDATABLE_GOAL_STATUSES = ['active', 'completed', 'blocked'] as const
 const MAX_EVIDENCE_ITEMS = 12

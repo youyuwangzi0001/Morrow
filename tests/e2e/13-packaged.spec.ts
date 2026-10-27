@@ -338,3 +338,39 @@ test('两份便携副本使用不同数据目录时都能启动', async () => {
 })
 
 })
+
+// ── 打包版创作台：演示资产随 extraResources 交付 ──────────────────────────────
+test.describe('packaged-studio.spec.ts', () => {
+test('打包版包含创作台演示资产，作品库与时间线可打开', async () => {
+  test.setTimeout(240_000)
+  const appExe = await getPackagedAppExe()
+  if (!appExe) {
+    test.skip(true, '需要先构建单文件便携包（npm run dist:all）再跑打包冒烟')
+    return
+  }
+  const morrow = await launchMorrow({ name: 'packaged-studio', executablePath: appExe, timeoutMs: 120_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    await setThemeViaStore(page, 'dark')
+    await page.locator('.tb-create').click()
+    await page.waitForSelector('.studio-home', { timeout: 60_000 })
+    if (await page.locator('.studio-guide').count()) await page.locator('.studio-guide-skip').click()
+    await expect(page.locator('.studio-project-card')).toHaveCount(7, { timeout: 60_000 })
+    await expect(page.locator('.studio-root')).not.toContainText('创作台')
+    await expect(page.locator('.studio-topbar img.studio-mark')).toHaveCount(0)
+
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
+    await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
+    await expect(page.locator('.studio-monitor img')).toHaveCount(1, { timeout: 30_000 })
+    await expect(page.locator('.studio-clip').first()).toBeVisible()
+    await expect
+      .poll(() => page.locator('.studio-root').evaluate((node) => getComputedStyle(node).getPropertyValue('--studio-paper').trim()))
+      .toBe('#17191d')
+    await page.screenshot({ path: screenshotPath('packaged-studio-dark.png') })
+  } finally {
+    await morrow.close()
+  }
+})
+})

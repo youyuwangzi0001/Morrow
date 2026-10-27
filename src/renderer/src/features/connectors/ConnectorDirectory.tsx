@@ -1,8 +1,4 @@
-/**
- * A3 连接器目录视图（渲染在 ConnectorsPanel 内，不是另一套连接器管理）。
- * - 目录条目来自 shared/connector-catalog；安装走 feature:connectors:install，真实写配置并可选真实测试。
- * - 本机服务会先检测 Node.js/npx；没有运行时明确提示，不伪造安装成功。
- */
+// A3 连接器目录视图（渲染在 ConnectorsPanel 内，不是另一套连接器管理）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
@@ -100,7 +96,6 @@ export function ConnectorDirectory({
       setRuntimeChecking(false)
     }
   }, [])
-
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)

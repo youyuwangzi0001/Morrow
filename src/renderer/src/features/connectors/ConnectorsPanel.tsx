@@ -123,8 +123,6 @@ function transportIcon(transport: ConnectorTransport): React.JSX.Element {
   return transport === 'stdio' ? <Terminal size={14} strokeWidth={1.5} aria-hidden /> : <Server size={14} strokeWidth={1.5} aria-hidden />
 }
 
-
-
 function SecretRows({
   label,
   hint,

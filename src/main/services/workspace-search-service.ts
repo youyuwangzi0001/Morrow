@@ -1,17 +1,7 @@
-/**
- * 全局搜索服务（无网络、纯本地索引）。
- *
- * 索引范围：会话标题/消息正文、工作区文件路径/文本内容、artifact 标题/内容。
- * - 每工作区独立文件索引，查询带 workspace 时严格隔离；
- * - 启动时构建一次；查询前按 updatedAt/mtime 增量刷新（保存/工具完成后搜得到）；
- * - 忽略 node_modules/.git/Morrow Data/二进制/超大文件；
- * - 不 import electron，便于单测（依赖注入会话/工作区读取）。
- */
+// 全局搜索服务（无网络、纯本地索引）。
 import { readdirSync, readFileSync, statSync, type Dirent } from 'node:fs'
 import { basename, join, relative, resolve } from 'node:path'
 import type { Artifact, ChatMessage, Session, SessionMeta } from '../../shared/types'
-
-/* ── 公共类型（渲染层复制同名类型，不改 shared 契约） ─────────── */
 
 export type SearchHitKind = 'session' | 'file' | 'artifact'
 
@@ -94,8 +84,6 @@ export interface WorkspaceSearchServiceOptions {
   /** 查询自动刷新节流（毫秒），默认 1500 */
   autoRefreshMs?: number
 }
-
-/* ── 内部结构 ─────────────────────────────────────────────────── */
 
 interface SessionDoc {
   id: string
@@ -197,8 +185,6 @@ function lineNumberAt(text: string, index: number): number {
   for (let i = 0; i < index && i < text.length; i += 1) if (text[i] === '\n') line += 1
   return line
 }
-
-/* ── 服务 ─────────────────────────────────────────────────────── */
 
 export class WorkspaceSearchService {
   private readonly deps: WorkspaceSearchServiceDeps
@@ -344,8 +330,6 @@ export class WorkspaceSearchService {
       index: this.status()
     }
   }
-
-  /* ── 索引构建 ───────────────────────────────────────────────── */
 
   private async ensureStarted(): Promise<void> {
     if (!this.started) await this.start()
@@ -518,8 +502,6 @@ export class WorkspaceSearchService {
     }
     return false
   }
-
-  /* ── 查询 ───────────────────────────────────────────────────── */
 
   private searchSessions(query: string, limit: number, workspace: string | null = null): SearchHit[] {
     const hits: SearchHit[] = []

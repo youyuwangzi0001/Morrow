@@ -25,10 +25,6 @@
   z-index: 7;
 }
 
-.canvas-resizer::before {
-  left: 1px;
-}
-
 /* 拖动时 iframe 不吃指针事件，保证跨过预览区也能顺畅拖动 */
 .is-resizing-panel .canvas-frame,
 .is-resizing-panel .canvas-frame-placeholder {
@@ -777,4 +773,16 @@
 
 .canvas-resizer.is-dragging ~ .canvas-root {
   border-left-color: transparent !important;
+}
+
+
+/* 拖动/悬浮分隔线时只高亮画布自身的 1px 左边框。 */
+.canvas-root {
+  transition: border-color var(--dur-fast) ease;
+}
+
+.app-main:has(> .canvas-resizer:hover) .canvas-root,
+.app-main:has(> .canvas-resizer.is-dragging) .canvas-root,
+.app-main:has(> .canvas-resizer:focus-visible) .canvas-root {
+  border-left-color: var(--gold);
 }

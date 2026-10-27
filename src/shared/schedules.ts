@@ -1,7 +1,4 @@
-/**
- * 定时任务：共享的调度规则、校验与展示文案。
- * 只做纯时间计算，不依赖 Electron，主进程与渲染层共用。
- */
+// 定时任务：共享的调度规则、校验与展示文案。
 
 export type ScheduleKind = 'once' | 'daily' | 'weekly'
 export type ScheduledPermission = 'read-only' | 'auto'

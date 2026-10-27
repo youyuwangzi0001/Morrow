@@ -45,8 +45,6 @@ const MAX_LIST_ENTRIES = 400
 const SKIP_DIRS = new Set(['node_modules', '.git', '.morrow', '.svn', '.hg'])
 const MAX_OUTPUT_CHARS = 64 * 1024
 
-/* ── 内部工具函数 ─────────────────────────────────────────────── */
-
 function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
@@ -249,8 +247,6 @@ function relativeOrAbsolute(absolute: string, ctx: ToolContext): string {
   return displayPath(absolute, ctx.workspace)
 }
 
-/* ── read_file ────────────────────────────────────────────────── */
-
 export const readFileTool: ToolImpl = {
   definition: {
     name: 'read_file',
@@ -316,8 +312,6 @@ export const readFileTool: ToolImpl = {
     })
   }
 }
-
-/* ── write_file ───────────────────────────────────────────────── */
 
 export const writeFileTool: ToolImpl = {
   definition: {
@@ -426,8 +420,6 @@ export const writeFileTool: ToolImpl = {
   }
 }
 
-/* ── edit_file ────────────────────────────────────────────────── */
-
 /** 在 old_string 直接匹配失败时尝试适配文件的行尾风格（Windows CRLF 是常见坑） */
 function findMatchVariant(text: string, oldString: string): { needle: string; count: number } {
   const candidates: string[] = [oldString]
@@ -523,8 +515,6 @@ export const editFileTool: ToolImpl = {
   }
 }
 
-/* ── delete_file ──────────────────────────────────────────────── */
-
 export const deleteFileTool: ToolImpl = {
   definition: {
     name: 'delete_file',
@@ -599,8 +589,6 @@ export const deleteFileTool: ToolImpl = {
     )
   }
 }
-
-/* ── list_dir ─────────────────────────────────────────────────── */
 
 interface TreeEntry {
   name: string
@@ -697,8 +685,6 @@ export const listDirTool: ToolImpl = {
     })
   }
 }
-
-/* ── move_file / copy_file / make_dir ────────────────────────── */
 
 export const moveFileTool: ToolImpl = {
   definition: {

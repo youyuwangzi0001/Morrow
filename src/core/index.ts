@@ -11,7 +11,6 @@
  * 本模块只依赖 Node 内置能力与 src/shared 契约，不依赖 electron / react / DOM。
  */
 
-/* ── Agent 循环 ───────────────────────────────────────────────── */
 export {
   runAgent,
   compactSession,
@@ -25,7 +24,6 @@ export {
   type CompactSessionResult
 } from './agent'
 
-/* ── Provider ─────────────────────────────────────────────────── */
 export {
   createProvider,
   testProviderConnection,
@@ -49,7 +47,6 @@ export {
 } from './providers'
 export type { ConnectionTestOptions } from './types'
 
-/* ── 工具 ─────────────────────────────────────────────────────── */
 export {
   TOOL_DEFINITIONS,
   READ_ONLY_TOOL_DEFINITIONS,
@@ -69,7 +66,6 @@ export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tool
 export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools/paths'
 export { createUnifiedDiff, diffSummary } from './tools/diff'
 
-/* ── 权限 ─────────────────────────────────────────────────────── */
 export {
   evaluatePermission,
   detectDangerousCommand,
@@ -82,7 +78,6 @@ export {
   type DangerousCommandInfo
 } from './permissions'
 
-/* ── 提示词 / 上下文 ──────────────────────────────────────────── */
 export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './prompt'
 export {
   estimateTokens,
@@ -95,7 +90,6 @@ export {
   type CompactionPlan
 } from './context'
 
-/* ── 共享类型再导出（方便主进程只 import 一处） ───────────────── */
 export type {
   Artifact,
   AskUserAnswer,

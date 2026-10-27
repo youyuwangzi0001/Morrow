@@ -39,7 +39,6 @@ function terminateProcessTree(child: ChildProcess): void {
     try {
       child.kill('SIGKILL')
     } catch {
-      // ignore
     }
     return
   }
@@ -52,7 +51,6 @@ function terminateProcessTree(child: ChildProcess): void {
       try {
         child.kill()
       } catch {
-        // ignore
       }
     })
     killer.unref()
@@ -60,7 +58,6 @@ function terminateProcessTree(child: ChildProcess): void {
     try {
       child.kill()
     } catch {
-      // ignore
     }
   }
 }

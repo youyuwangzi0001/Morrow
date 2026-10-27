@@ -81,6 +81,7 @@ const api: MorrowApi = {
     openMain: (input?: IslandOpenMainInput) => invoke<void>(IPC.islandOpenMain, input ?? {}),
     quickSend: (input: IslandQuickSendInput) => invoke<void>(IPC.islandQuickSend, input),
     syncSession: (sessionId: string | null) => invoke<void>(IPC.islandSyncSession, { sessionId }),
+    syncStudio: (input: import('../shared/ipc').IslandStudioSyncInput) => invoke<void>(IPC.islandSyncStudio, input),
     onState: (listener: (snapshot: import('../shared/types').IslandSnapshot) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, payload: import('../shared/types').IslandSnapshot): void =>
         listener(payload)

@@ -1,10 +1,4 @@
-/**
- * 内置集群成员类型（Agent Swarm）。
- *
- * 参考 Kimi Agent Swarm 的“按任务动态专长”思路：主代理可以为每个子任务选择最贴近的成员类型，
- * 也可以在 specialist 类型下用任务 prompt 定义专属领域。所有成员与主代理拥有相同的工作区权限，
- * 类型只改变工作重点与专属提示，不限制工具、不降低权限，也不能绕过审批。
- */
+// 内置集群成员类型（Agent Swarm）。
 import type { SwarmMemberRole } from './types'
 
 function member(body: string): string {

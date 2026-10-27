@@ -1,8 +1,4 @@
-/**
- * 设置弹窗的「打开到指定 Tab」请求通道。
- * store 的 openSettings() 不带参数（Lead 拥有），这里用一个 feature 内部的小通道：
- * 任意组件 requestSettingsTab('context') 后再 openSettings()，设置弹窗打开时取走请求。
- */
+// 设置弹窗的「打开到指定 Tab」请求通道。
 export type SettingsTabId =
   | 'models'
   | 'subscriptions'

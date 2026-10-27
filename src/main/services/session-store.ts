@@ -327,7 +327,6 @@ export class SessionStore {
           try {
             unlinkSync(tmp)
           } catch {
-            // ignore
           }
           renamed = true
           log.warn('session rename retried out, wrote in place', { id: session.id, code })
