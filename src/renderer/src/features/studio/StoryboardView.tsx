@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUp,
+  AudioLines,
   Captions,
   Check,
   ChevronRight,
   Clapperboard,
   Clock3,
   Film,
+  GalleryHorizontalEnd,
   Image as ImageIcon,
+  Info,
   Images,
   Loader2,
   Lock,
   LockOpen,
+  Mic,
   Mic2,
   Music2,
   Play,
@@ -22,6 +25,7 @@ import {
   Sparkles,
   Upload,
   Video,
+  Wand2,
   WandSparkles,
   X
 } from 'lucide-react'
@@ -335,7 +339,7 @@ function ShotInspector({ shot, onClose }: { shot: StudioShot; onClose: () => voi
           <div className="studio-reference-row">
             {character ? <span className="studio-ref-chip is-character"><i>{character.name.slice(0, 1)}</i>{character.name}</span> : <span className="studio-ref-chip is-empty">没有人物参考</span>}
             {place ? <span className="studio-ref-chip is-place">{place.name}</span> : null}
-            <button type="button" className="studio-ref-library-btn" onClick={() => setReferenceOpen(true)}><Images size={11} /> 参考图库</button>
+            <button type="button" className="studio-ref-library-btn" onClick={() => setReferenceOpen(true)}><GalleryHorizontalEnd size={11} /> 参考图库</button>
             <button type="button" className={['studio-lock-btn', shot.lockedReference ? 'is-on' : ''].filter(Boolean).join(' ')} onClick={() => void run('save-shot', { shotId: shot.id, lockedReference: !shot.lockedReference })}>
               {shot.lockedReference ? <Lock size={11} /> : <LockOpen size={11} />}
               {shot.lockedReference ? '取消固定' : '固定参考'}
@@ -588,7 +592,7 @@ export function StoryboardView(): React.JSX.Element {
             <button type="button" className={storyboardTab === 'script' ? 'is-active' : ''} onClick={() => setStoryboardTab('script')}><Film size={12} /> 剧本</button>
             <button type="button" className={storyboardTab === 'board' ? 'is-active' : ''} onClick={() => setStoryboardTab('board')}><Images size={12} /> 分镜板</button>
           </div>
-          <Button variant="gold" size="sm" icon={batchBusy ? <Loader2 size={12} className="studio-spin" /> : <Sparkles size={12} />} onClick={() => void batchImages()} disabled={Boolean(job)}>
+          <Button variant="gold" size="sm" icon={batchBusy ? <Loader2 size={12} className="studio-spin" /> : <Wand2 size={12} />} onClick={() => void batchImages()} disabled={Boolean(job)}>
             {missing.length ? `补齐 ${missing.length} 镜画面` : '重新生成全部画面'}
           </Button>
           <Button variant="ghost" size="sm" icon={<SlidersHorizontal size={12} />} onClick={() => setBulkOpen(true)} title="批量调整镜头" aria-label="批量调整">批量调整</Button>
@@ -622,14 +626,14 @@ export function StoryboardView(): React.JSX.Element {
             </SectionTitle>
             <div className="studio-script-tools">
               <Button variant="ghost" size="sm" icon={<RefreshCw size={12} />} onClick={() => void run('generate-storyboard').then(() => notify('info', '已按蓝图更新镜头字段；已有画面不受影响。'))}>重排镜头</Button>
-              <Button variant="ghost" size="sm" icon={voiceBusy ? <Loader2 size={12} className="studio-spin" /> : <Mic2 size={12} />} onClick={() => void voices()} disabled={voiceBusy || Boolean(job)}>补齐配音</Button>
+              <Button variant="ghost" size="sm" icon={voiceBusy ? <Loader2 size={12} className="studio-spin" /> : <AudioLines size={12} />} onClick={() => void voices()} disabled={voiceBusy || Boolean(job)}>补齐配音</Button>
             </div>
           </div>
           <div className="studio-script-grid">
             {sceneGroups.map(({ scene }, index) => <SceneScript key={scene.id} sceneIndex={index} />)}
           </div>
           <div className="studio-script-foot">
-            <span><Sparkles size={12} /> 台词与动作已经进入镜头计划</span>
+            <span><Info size={12} /> 台词与动作已经进入镜头计划</span>
             <span className="mono">TOTAL {formatTimecode(total, 30)}</span>
           </div>
         </div>
@@ -639,7 +643,7 @@ export function StoryboardView(): React.JSX.Element {
             <div className="studio-board-toolbar-left">
               <span className="studio-board-count"><b>{visuals}</b> / {shots.length} 镜有画面</span>
               <span className="studio-board-missing">{missing.length ? `${missing.length} 镜待生成` : '画面齐全'}</span>
-              <Button variant="ghost" size="sm" icon={voiceBusy ? <Loader2 size={12} className="studio-spin" /> : <Mic2 size={12} />} onClick={() => void voices()} disabled={voiceBusy || Boolean(job)}>补齐配音</Button>
+              <Button variant="ghost" size="sm" icon={voiceBusy ? <Loader2 size={12} className="studio-spin" /> : <AudioLines size={12} />} onClick={() => void voices()} disabled={voiceBusy || Boolean(job)}>补齐配音</Button>
               <Button variant="ghost" size="sm" icon={musicBusy ? <Loader2 size={12} className="studio-spin" /> : <Music2 size={12} />} onClick={() => void makeMusic('music')} disabled={musicBusy || Boolean(job)}>生成配乐</Button>
             </div>
             <div className="studio-board-toolbar-right">
@@ -678,7 +682,7 @@ export function StoryboardView(): React.JSX.Element {
                           <span className="studio-shot-number mono">{String(item.number).padStart(2, '0')}</span>
                           <span className="studio-shot-duration mono">{item.durationSec}s</span>
                           {item.videoAssetId ? <span className="studio-shot-video-tag"><Video size={10} /> VIDEO</span> : null}
-                          {item.dialogue ? <span className={['studio-shot-voice', hasVoice ? 'is-on' : ''].filter(Boolean).join(' ')}><Mic2 size={10} /></span> : null}
+                          {item.dialogue ? <span className={['studio-shot-voice', hasVoice ? 'is-on' : ''].filter(Boolean).join(' ')}><Mic size={10} /></span> : null}
                           {item.imageCandidates.length + item.videoCandidates.length > 1 ? <span className="studio-shot-candidates mono">{item.imageCandidates.length + item.videoCandidates.length} 张候选</span> : null}
                         </div>
                         <div className="studio-shot-info">
@@ -696,7 +700,7 @@ export function StoryboardView(): React.JSX.Element {
           <footer className="studio-board-foot">
             <span><Clock3 size={12} /> 时长合计 {formatDuration(total)} · 24/30fps 可选</span>
             <span><Lock size={12} /> 参考锁定后角色更稳定</span>
-            <span><Sparkles size={12} /> 单镜重做会保留旧画面</span>
+            <span><Info size={12} /> 单镜重做会保留旧画面</span>
           </footer>
         </>
       )}

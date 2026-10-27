@@ -23,7 +23,7 @@ import { SensitiveGuard } from '../../../src/main/services/output-guard'
 import { createServer, type Server } from 'node:http'
 import { syncProviderModels } from '../../../src/main/services/model-sync'
 import { type AddressInfo } from 'node:net'
-import { WebSearchError, WebSearchService, parseBingResults } from '../../../src/main/services/web-search'
+import { WebSearchError, WebSearchService, isTechnicalQuery, parseBingResults, rankSearchSources } from '../../../src/main/services/web-search'
 import { type SettingsStore } from '../../../src/main/services/settings-store'
 import { executeTool } from '../../../src/core/tools/registry'
 
@@ -1866,6 +1866,29 @@ describe('search-web.test.ts', () => {
         getWebSearchKey: () => null
       } as never)
       expect(disabled.isConfigured()).toBe(false)
+    })
+
+    it('技术查询会过滤词典/美妆结果并优先官方来源', () => {
+      expect(isTechnicalQuery('three.js')).toBe(true)
+      expect(isTechnicalQuery('怎么修伞')).toBe(false)
+      const sources = [
+        { rank: 1, title: 'three是什么意思_three的翻译_音标', url: 'https://www.iciba.com/word?w=three', snippet: 'three 的翻译' },
+        { rank: 2, title: 'Three.js – JavaScript 3D Library', url: 'https://threejs.org/', snippet: 'JavaScript 3D library' },
+        { rank: 3, title: 'THREE 中国官网', url: 'https://threecosmetics.net.cn/', snippet: '彩妆' },
+        { rank: 4, title: 'mrdoob/three.js: JavaScript 3D Library', url: 'https://github.com/mrdoob/three.js', snippet: 'GitHub repository' },
+        { rank: 5, title: '随便一篇文章', url: 'https://example.com/post', snippet: '无关内容' }
+      ]
+      const ranked = rankSearchSources('three.js', sources, 5)
+      expect(ranked.map((source) => new URL(source.url).hostname)).toEqual(['threejs.org', 'github.com'])
+      expect(ranked.map((source) => source.rank)).toEqual([1, 2])
+    })
+
+    it('普通中文查询仍保留多个来源，不做技术性过滤', () => {
+      const ranked = rankSearchSources('雨伞铺', [
+        { rank: 1, title: '雨伞铺的故事', url: 'https://example.com/a', snippet: '雨伞铺' },
+        { rank: 2, title: '旧城雨伞铺', url: 'https://example.com/b', snippet: '修伞' }
+      ], 2)
+      expect(ranked).toHaveLength(2)
     })
 
     it('限制结果数，空页面安全返回空数组', () => {

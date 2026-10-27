@@ -2,18 +2,18 @@
   "ok": true,
   "kind": "nsis-installer",
   "mode": "per-machine-default-path-silent",
-  "exe": "tmp/final3-deliver/Morrow-0.2.0-setup.exe",
-  "exeSha256": "8825806ef14760c9b2bd52ca929d8cbff475265f4d514c07fd82b23f967b3bc8",
-  "exeSizeBytes": 168082496,
+  "exe": "tmp/final4-deliver/Morrow-0.2.0-setup.exe",
+  "exeSha256": "e999a264ad50b67cc6b342777a3c4242c209af39f402764ad9a1a072693fd379",
+  "exeSizeBytes": 168210275,
   "silentArgs": "/S",
   "installDir": "C:\\Program Files\\Morrow",
   "installedFiles": 363,
-  "installedBytes": 540239850,
+  "installedBytes": 540378577,
   "installExitCode": 0,
   "launch": {
     "ok": true,
     "windowTitle": "Morrow",
-    "dataDirOverride": "C:\\Temp\\MorrowInstalledData3"
+    "dataDirOverride": "C:\\Temp\\MorrowInstalledData4"
   },
   "uninstall": {
     "exitCode": 0,
@@ -24,6 +24,6 @@
     "emptyDirCleanedAfterTest": true,
     "userDataPreserved": true
   },
-  "testedAt": "2026-10-28T02:24:00.000Z",
-  "notes": "最终 r036 安装包为 per-machine（Program Files，需要管理员权限）。内置三份样例，真实语料夹具不随包。默认路径静默安装、启动与卸载均通过；卸载后只余空目录，测试结束后已清理。未改动交付目录的 Morrow Data。"
+  "testedAt": "2026-10-28T04:36:00.000Z",
+  "notes": "最终 r037 安装包为 per-machine（Program Files，需要管理员权限）。内置三份样例，真实语料夹具不随包。默认路径静默安装、启动与卸载均通过；卸载后只余空目录，测试结束后已清理。未改动交付目录的 Morrow Data。"
 }

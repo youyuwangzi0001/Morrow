@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Folder, Ghost, Globe, Minus, PanelLeft, PanelRight, Square, SquareTerminal, Target, X } from 'lucide-react'
+import { ChevronDown, Folder, Ghost, Globe, Minus, Moon, PanelLeft, PanelRight, Square, SquareTerminal, Sun, Target, X } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { IconButton } from '../../ui'
 import { GOAL_STATUS_LABEL } from '../goal/goal-format'
@@ -199,6 +199,21 @@ function CanvasToggle(): React.JSX.Element {
   )
 }
 
+/** 主题切换：Agent 与创作台共用同一状态，在两种模式顶栏常驻。 */
+function ThemeToggle(): React.JSX.Element {
+  const theme = useAppStore((s) => s.theme)
+  const setTheme = useAppStore((s) => s.setTheme)
+  return (
+    <IconButton
+      label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+      size={30}
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+    >
+      {theme === 'dark' ? <Sun size={15} strokeWidth={1.5} aria-hidden /> : <Moon size={15} strokeWidth={1.5} aria-hidden />}
+    </IconButton>
+  )
+}
+
 function WindowControls(): React.JSX.Element {
   const maximized = useAppStore((s) => s.windowState.maximized)
 
@@ -293,6 +308,7 @@ export function TitleBar(): React.JSX.Element {
         <BrowserToggle />
         <TerminalToggle />
         <CanvasToggle />
+        <ThemeToggle />
         <WindowControls />
       </div>
     </header>

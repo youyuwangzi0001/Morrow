@@ -2,7 +2,7 @@
   "product": "Morrow",
   "version": "0.2.0",
   "capturedAt": "2026-10-28",
-  "runtime": "r036",
+  "runtime": "r037",
   "theme": "dark + light",
   "images": [
     {
@@ -65,7 +65,7 @@
       "file": "09-browser-tabs-dark.png",
       "alt": "内置浏览器：多标签、地址栏、页面内容与前进后退",
       "width": 1600,
-      "height": 916,
+      "height": 914,
       "source": "tests/e2e/07-browser.spec.ts · browser-tabs-dark"
     },
     {

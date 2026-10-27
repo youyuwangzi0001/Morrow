@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
+  BookMarked,
   BookOpen,
   Check,
   ChevronDown,
-  Clock3,
   Eye,
+  Flag,
   FileClock,
   Globe2,
+  FolderPlus,
   ImagePlus,
   Layers,
+  Library,
+  Network,
+  PackagePlus,
+  PlusCircle,
   Loader2,
   Maximize2,
   Minimize2,
@@ -394,7 +399,7 @@ function RelationshipGraph({ characters, onPick }: { characters: StudioCharacter
           ))}
         </svg>
       ) : <p className="studio-hint">还没有人物，先在蓝图里建立人物。</p>}
-      <p className="studio-relationship-hint"><Users size={11} /> {edges.length} 条关系 · 点击人物继续编辑</p>
+      <p className="studio-relationship-hint"><Network size={11} /> {edges.length} 条关系 · 点击人物继续编辑</p>
     </div>
   )
 }
@@ -470,7 +475,7 @@ function FactPanel({ onEditCharacter }: { onEditCharacter: (character: StudioCha
       </header>
       <div className="studio-fact-tabs">
         <button type="button" className={tab === 'people' ? 'is-active' : ''} onClick={() => setTab('people')}><Users size={12} /> 人物</button>
-        <button type="button" className={tab === 'facts' ? 'is-active' : ''} onClick={() => setTab('facts')}><BookOpen size={12} /> 设定</button>
+        <button type="button" className={tab === 'facts' ? 'is-active' : ''} onClick={() => setTab('facts')}><BookMarked size={12} /> 设定</button>
         <button type="button" className={tab === 'world' ? 'is-active' : ''} onClick={() => setTab('world')}><Globe2 size={12} /> 世界</button>
         <button type="button" className={tab === 'story' ? 'is-active' : ''} onClick={() => setTab('story')}><BookOpen size={12} /> 章节</button>
         <button type="button" className={tab === 'checks' ? 'is-active' : ''} onClick={() => setTab('checks')}><Eye size={12} /> 检查</button>
@@ -517,10 +522,10 @@ function FactPanel({ onEditCharacter }: { onEditCharacter: (character: StudioCha
         {tab === 'world' ? (
           <div className="studio-world-panel">
             <section>
-              <header><b>势力</b><em>{active.factions.length}</em><button type="button" onClick={() => setWorldEditor({ kind: 'faction', item: null })}><Plus size={11} /> 新增</button></header>
+              <header><b>势力</b><em>{active.factions.length}</em><button type="button" onClick={() => setWorldEditor({ kind: 'faction', item: null })}><PlusCircle size={11} /> 新增</button></header>
               {active.factions.length ? active.factions.map((item) => (
                 <button key={item.id} type="button" className="studio-world-row" onClick={() => setWorldEditor({ kind: 'faction', item })}>
-                  <Users size={13} />
+                  <Flag size={13} />
                   <span><b>{item.name}</b><p>{item.description || '还没有说明。'}</p></span>
                   <Pencil size={11} />
                 </button>
@@ -537,7 +542,7 @@ function FactPanel({ onEditCharacter }: { onEditCharacter: (character: StudioCha
               )) : <p className="studio-hint">还没有规则。世界的代价越具体，选择就越有重量。</p>}
             </section>
             <section>
-              <header><b>道具</b><em>{active.props.length}</em><button type="button" onClick={() => setWorldEditor({ kind: 'prop', item: null })}><Plus size={11} /> 新增</button></header>
+              <header><b>道具</b><em>{active.props.length}</em><button type="button" onClick={() => setWorldEditor({ kind: 'prop', item: null })}><PackagePlus size={11} /> 新增</button></header>
               {active.props.length ? active.props.map((item) => (
                 <button key={item.id} type="button" className="studio-world-row" onClick={() => setWorldEditor({ kind: 'prop', item })}>
                   <Layers size={13} />
@@ -938,7 +943,7 @@ export function WritingView(): React.JSX.Element {
               {generatingJob ? '写作中' : chapter?.content.trim() ? '生成候选稿' : 'AI 写这一章'}
             </Button>
             {engine?.text.configured && chapter?.content.trim() ? (
-              <Button variant="ghost" size="sm" icon={polishing ? <Loader2 size={13} className="studio-spin" /> : <Sparkles size={13} />} onClick={() => void polish()} disabled={polishing || Boolean(generatingJob)} title="生成润色候选稿" aria-label="润色">润色</Button>
+              <Button variant="ghost" size="sm" icon={polishing ? <Loader2 size={13} className="studio-spin" /> : <WandSparkles size={13} />} onClick={() => void polish()} disabled={polishing || Boolean(generatingJob)} title="生成润色候选稿" aria-label="润色">润色</Button>
             ) : null}
             <Button
               variant="ghost"
@@ -959,7 +964,7 @@ export function WritingView(): React.JSX.Element {
 
         {!chapter ? (
           <div className="studio-writing-empty">
-            <span className="studio-empty-mark"><BookOpen size={24} strokeWidth={1.2} /></span>
+            <span className="studio-empty-mark"><Library size={24} strokeWidth={1.2} /></span>
             <h2>这本书还没有章节</h2>
             <p>先建立第一章，或者回到蓝图确认章节安排。</p>
             <Button variant="gold" icon={<Plus size={14} />} onClick={addChapter}>新建第一章</Button>
@@ -1078,7 +1083,7 @@ export function WritingView(): React.JSX.Element {
                 </div>
                 <div className="studio-outline-add-row">
                   <button type="button" className="studio-outline-add" onClick={addChapter}><Plus size={12} /> 新建一章</button>
-                  <button type="button" className="studio-outline-add" onClick={() => setVolumeEditor({ volume: null })}><Plus size={12} /> 新建分卷</button>
+                  <button type="button" className="studio-outline-add" onClick={() => setVolumeEditor({ volume: null })}><FolderPlus size={12} /> 新建分卷</button>
                 </div>
                 <div className="studio-outline-foot">
                   <span>已写 {active.chapters.filter((item) => item.content.trim()).length}/{active.chapters.length} 章</span>
@@ -1131,7 +1136,7 @@ export function WritingView(): React.JSX.Element {
 
                 {candidates.length ? (
                   <div className="studio-candidate-banner">
-                    <span><Sparkles size={12} /> {candidates.length} 版候选稿等你决定，正文没有变。</span>
+                    <span><Layers size={12} /> {candidates.length} 版候选稿等你决定，正文没有变。</span>
                     <div>
                       {candidates.slice(0, 2).map((candidate) => (
                         <button key={candidate.id} type="button" onClick={() => setDiffCandidate(candidate)}>{candidate.label}</button>

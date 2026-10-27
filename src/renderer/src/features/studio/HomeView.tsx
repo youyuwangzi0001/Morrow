@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
-  BookOpen,
+  ArrowUpRight,
+  BookMarked,
   Clapperboard,
+  Library,
   Copy,
   Plus,
   Search,
@@ -85,8 +87,8 @@ const FILTERS: Array<{ id: 'all' | 'recent' | 'drama' | 'short' | 'novel' | 'tem
 
 const KIND_OPTIONS: Array<{ value: StudioKind; title: string; desc: string; icon: React.ReactNode }> = [
   { value: 'drama', title: '漫剧', desc: '30–180 秒 · 分镜 · 配音 · 成片', icon: <Clapperboard size={16} strokeWidth={1.5} /> },
-  { value: 'short', title: '中短篇', desc: '3–8 万字 · 章节 · 情绪起伏', icon: <BookOpen size={16} strokeWidth={1.5} /> },
-  { value: 'novel', title: '长篇', desc: '20–100 万字 · 分卷分章 · 人物与设定', icon: <BookOpen size={18} strokeWidth={1.5} /> }
+  { value: 'short', title: '中短篇', desc: '3–8 万字 · 章节 · 情绪起伏', icon: <BookMarked size={16} strokeWidth={1.5} /> },
+  { value: 'novel', title: '长篇', desc: '20–100 万字 · 分卷分章 · 人物与设定', icon: <Library size={18} strokeWidth={1.5} /> }
 ]
 
 function ProjectCard({ project, onDelete, onDuplicate }: { project: StudioProjectSummary; onDelete: () => void; onDuplicate: () => void }): React.JSX.Element {
@@ -111,7 +113,7 @@ function ProjectCard({ project, onDelete, onDuplicate }: { project: StudioProjec
         </div>
         <div className="studio-project-actions">
           <button type="button" className="studio-link-btn" onClick={() => void openProject(project.id)}>
-            继续创作 <ArrowRight size={12} />
+            继续创作 <ArrowUpRight size={12} />
           </button>
           <div className="studio-project-icon-actions">
             <button type="button" title="复制作品" aria-label="复制作品" onClick={onDuplicate}><Copy size={13} /></button>
@@ -365,7 +367,7 @@ export function HomeView(): React.JSX.Element {
                   <span>{template.logline}</span>
                 </span>
                 <span className="studio-template-tags">{template.tags.map((tag) => <i key={tag}>{tag}</i>)}</span>
-                <span className="studio-template-use">用这个开始 <ArrowRight size={12} /></span>
+                <span className="studio-template-use">用这个开始 <ArrowUpRight size={12} /></span>
               </button>
             ))}
           </div>

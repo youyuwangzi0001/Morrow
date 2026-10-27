@@ -3,9 +3,11 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  FileText,
   Loader2,
   Pencil,
+  PencilLine,
+  SquarePen,
+  WandSparkles,
   RefreshCw,
   SlidersHorizontal,
   Sparkles,
@@ -344,7 +346,7 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
             <p>{active.logline}</p>
           </div>
           <div className="studio-blueprint-actions">
-            <Button variant="ghost" icon={<Pencil size={13} />} onClick={() => setEditBrief(true)}>修改资料</Button>
+            <Button variant="ghost" icon={<PencilLine size={13} />} onClick={() => setEditBrief(true)}>修改资料</Button>
             <Button variant="gold" icon={<Sparkles size={14} />} onClick={() => void generate(false)} loading={Boolean(job) || regenerating}>
               {job ? '正在生成蓝图' : '生成故事蓝图'}
             </Button>
@@ -376,7 +378,7 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
           <div className="studio-blueprint-title-row">
             <h1>{active.title}</h1>
             <button type="button" className="studio-blueprint-edit-link" onClick={() => setEditBrief(true)} title="修改作品名与一句话">
-              <Pencil size={12} /> 修改资料
+              <PencilLine size={12} /> 修改资料
             </button>
           </div>
           <p>{active.logline}</p>
@@ -392,7 +394,7 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
             <div className="studio-dropdown-group">
               <Button variant="ghost" icon={<RefreshCw size={13} />} loading={regenerating || Boolean(job)} onClick={() => void generate(false)} title={approved ? '用本机重新生成' : '不调用模型；确认蓝图后可用模型重写'}>重新生成</Button>
               {engine?.text.configured && approved ? (
-                <Button variant="ghost" icon={<Sparkles size={13} />} onClick={() => void generate(true)} disabled={regenerating || Boolean(job)}>用模型重写</Button>
+                <Button variant="ghost" icon={<WandSparkles size={13} />} onClick={() => void generate(true)} disabled={regenerating || Boolean(job)}>用模型重写</Button>
               ) : null}
             </div>
           ) : null}
@@ -430,7 +432,7 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
           <div className="studio-bp-index mono">
             01 / 故事主线
             <button type="button" className="studio-bp-edit" onClick={() => setEditBlueprint(true)}>
-              <Pencil size={11} /> 修改
+              <SquarePen size={11} /> 修改
             </button>
           </div>
           <h2>{blueprint.storyCore}</h2>

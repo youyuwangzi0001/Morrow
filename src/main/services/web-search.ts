@@ -193,6 +193,92 @@ export function parseBaiduResults(html: string, maxResults: number): WebSearchSo
   return sources
 }
 
+
+const TECH_QUERY = /(?:^|[^a-z0-9])(?:three\.js|react|vue|svelte|angular|next\.js|node|deno|bun|npm|pnpm|typescript|javascript|js|ts|css|html|webgl|python|rust|golang|java|kotlin|swift|docker|kubernetes|api|sdk|llm|openai|deepseek|sql|git|github)(?:$|[^a-z0-9])/i
+const TRUSTED_TECH_HOST = /(^|\.)(?:threejs\.org|github\.com|gitlab\.com|developer\.mozilla\.org|stackoverflow\.com|npmjs\.com|nodejs\.org|reactjs\.org|vuejs\.org|svelte\.dev|python\.org|docs\.python\.org|rust-lang\.org|go\.dev|docker\.com|kubernetes\.io|webglfundamentals\.org)$/i
+const OFF_TOPIC_TECH_HOST = /(^|\.)(?:iciba\.com|youdao\.com|baike\.baidu\.com|dict\.cn|translate\.google\.[a-z.]+|merriam-webster\.com|dictionary\.com|threecosmetics\.com|sephora\.[a-z.]+|amazon\.[a-z.]+|taobao\.com|tmall\.com|jd\.com|pinduoduo\.com)$/i
+
+/** 技术型查询需要英文市场与相关性过滤，避免 three.js 被词典/美妆结果淹没。 */
+export function isTechnicalQuery(query: string): boolean {
+  const text = query.trim()
+  if (!/[a-z]/i.test(text)) return false
+  return TECH_QUERY.test(text) || (/[./#+_-]/.test(text) && /\b[a-z]{2,}\b/i.test(text))
+}
+
+function queryTokens(query: string): string[] {
+  const text = query.toLowerCase()
+  const latin = text.match(/[a-z][a-z0-9.+#_-]{1,}/g) ?? []
+  const cjk = text.match(/[\u4e00-\u9fff]{2,}/g) ?? []
+  return [...new Set([...latin, ...cjk])].filter((token) => token.length >= 2)
+}
+
+function compact(value: string): string {
+  return value.toLowerCase().replace(/[\s._\-/]+/g, '')
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
+function sourceScore(query: string, source: WebSearchSource, index: number, technical: boolean): number {
+  const title = source.title.toLowerCase()
+  const url = source.url.toLowerCase()
+  const snippet = (source.snippet ?? '').toLowerCase()
+  const haystack = `${title} ${url} ${snippet}`
+  const tokens = queryTokens(query)
+  let score = 0
+  const exact = compact(query)
+  if (exact.length >= 2 && compact(haystack).includes(exact)) score += 12
+  let hits = 0
+  for (const token of tokens) {
+    if (haystack.includes(token)) {
+      hits += 1
+      score += token.includes('.') || token.length >= 5 ? 3 : 2
+    }
+  }
+  if (!technical) return score + Math.max(0, 3 - index * 0.05)
+  if (tokens.length >= 2 && hits < Math.min(2, tokens.length) && !(exact.length >= 2 && compact(haystack).includes(exact))) {
+    score -= 7
+  }
+  const host = hostOf(source.url)
+  if (TRUSTED_TECH_HOST.test(host)) score += 6
+  if (OFF_TOPIC_TECH_HOST.test(host)) score -= 12
+  return score
+}
+
+/** 合并多个引擎的结果：按 URL 去重，再按查询相关性排序；技术查询会过滤明确无关的来源。 */
+export function rankSearchSources(query: string, sources: WebSearchSource[], maxResults: number): WebSearchSource[] {
+  const technical = isTechnicalQuery(query)
+  const seen = new Set<string>()
+  const candidates: Array<{ source: WebSearchSource; score: number; index: number }> = []
+  for (const [index, source] of sources.entries()) {
+    let key = source.url
+    try {
+      const parsed = new URL(source.url)
+      parsed.hash = ''
+      for (const name of [...parsed.searchParams.keys()]) {
+        if (/^(utm_|ref|source|spm|from|share)/i.test(name)) parsed.searchParams.delete(name)
+      }
+      key = parsed.toString().replace(/\/$/, '')
+    } catch {
+      // keep original key
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    const score = sourceScore(query, source, index, technical)
+    if (technical && score <= 0) continue
+    candidates.push({ source, score, index })
+  }
+  return candidates
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, maxResults)
+    .map((item, index) => ({ ...item.source, rank: index + 1 }))
+}
+
 export class WebSearchService {
   private cache = new Map<string, CachedEntry>()
   private requests: number[] = []
@@ -352,32 +438,44 @@ export class WebSearchService {
     return new TextDecoder('utf-8').decode(merged)
   }
 
-  /** 内置多引擎：Bing → 百度 → DuckDuckGo → Mojeek，任一返回来源即采用。 */
+  /** 内置多引擎并行：Bing / 百度 / DuckDuckGo / Mojeek 合并、去重、按相关性排序。 */
   private async searchBuiltin(
     query: string,
     maxResults: number,
     signal: AbortSignal
   ): Promise<WebSearchResponse> {
-    const engines: Array<{ name: string; run: () => Promise<WebSearchResponse> }> = [
-      { name: 'Bing', run: () => this.searchBing(query, maxResults, signal) },
-      { name: '百度', run: () => this.searchBaidu(query, maxResults, signal) },
-      { name: 'DuckDuckGo', run: () => this.searchDuckDuckGo(query, maxResults, signal) },
-      { name: 'Mojeek', run: () => this.searchMojeek(query, maxResults, signal) }
+    const technical = isTechnicalQuery(query)
+    // 技术查询去掉中文疑问词，只把英文技术词交给搜索引擎；保留原始 query 用于展示与缓存。
+    const engineQuery = technical ? query.replace(/[一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim() || query : query
+    const perEngine = Math.min(10, maxResults + 4)
+    const engines: Array<{ name: string; run: (limit: number, engineSignal: AbortSignal) => Promise<WebSearchResponse> }> = [
+      { name: 'Bing', run: (limit, engineSignal) => this.searchBing(engineQuery, limit, engineSignal) },
+      { name: '百度', run: (limit, engineSignal) => this.searchBaidu(engineQuery, limit, engineSignal) },
+      { name: 'DuckDuckGo', run: (limit, engineSignal) => this.searchDuckDuckGo(engineQuery, limit, engineSignal) },
+      { name: 'Mojeek', run: (limit, engineSignal) => this.searchMojeek(engineQuery, limit, engineSignal) }
     ]
-    const errors: string[] = []
-    for (const engine of engines) {
-      if (signal.aborted) throw new Error('aborted')
-      try {
-        const response = await engine.run()
-        if (response.sources.length > 0) return response
-      } catch (err) {
-        errors.push(`${engine.name}：${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
-    throw new WebSearchError(
-      `内置搜索暂不可用（${errors.slice(0, 3).join('；') || '无结果'}）。`,
-      '检查网络连接；也可以在设置 → 搜索配置 Tavily / Brave / Serper / SearXNG 作为补充。'
+    const settled = await Promise.allSettled(
+      engines.map(async (engine) => {
+        const engineSignal = AbortSignal.any([signal, AbortSignal.timeout(8_000)])
+        return engine.run(perEngine, engineSignal)
+      })
     )
+    const merged: WebSearchSource[] = []
+    const errors: string[] = []
+    for (const [index, result] of settled.entries()) {
+      if (result.status === 'fulfilled') merged.push(...result.value.sources)
+      else errors.push(`${engines[index].name}：${result.reason instanceof Error ? result.reason.message : String(result.reason)}`)
+    }
+    const sources = rankSearchSources(query, merged, maxResults)
+    if (sources.length === 0) {
+      throw new WebSearchError(
+        `内置搜索暂不可用（${errors.slice(0, 3).join('；') || '没有与查询匹配的来源'}）。`,
+        technical
+          ? '换一个更具体的英文技术关键词；也可以在设置 → 搜索配置 Tavily / Brave / Serper / SearXNG。'
+          : '检查网络连接；也可以在设置 → 搜索配置 Tavily / Brave / Serper / SearXNG 作为补充。'
+      )
+    }
+    return { query, provider: PROVIDER_LABEL.builtin, sources, elapsedMs: 0 }
   }
 
   private async searchBing(
@@ -388,8 +486,9 @@ export class WebSearchService {
     const url = new URL('https://www.bing.com/search')
     url.searchParams.set('q', query)
     url.searchParams.set('count', String(Math.min(20, maxResults + 3)))
-    url.searchParams.set('setlang', 'zh-Hans')
-    url.searchParams.set('mkt', 'zh-CN')
+    const technical = isTechnicalQuery(query)
+    url.searchParams.set('setlang', technical ? 'en-US' : 'zh-Hans')
+    url.searchParams.set('mkt', technical ? 'en-US' : 'zh-CN')
     let response: Response
     try {
       response = await fetch(url, {

@@ -67,25 +67,28 @@ test('协作侧栏不挤压主区，菜单层级、字幕与演示控制条对�
         }
       })
       const borderDuring = await page.locator(panelSelector).evaluate((element, prop) => getComputedStyle(element).getPropertyValue(prop), borderProp)
+      const accent = await page.locator(selector).evaluate((element) => getComputedStyle(element, '::after').backgroundColor)
       if (shotName) await page.screenshot({ path: screenshotPath(shotName) })
       await page.mouse.up()
       await page.waitForTimeout(160)
-      return { lineWidth: line.width, lineBackground: line.background, borderBefore, borderDuring, value: line.label }
+      return { lineWidth: line.width, lineBackground: line.background, borderBefore, borderDuring, accent, value: line.label }
     }
     const leftDrag = await dragPanel('.studio-left-resizer', 36, 'studio-resize-line-dark.png')
     expect(leftDrag.lineWidth).toBe(1)
     expect(leftDrag.lineBackground).toBe('rgba(0, 0, 0, 0)')
     expect(leftDrag.borderBefore).not.toBe(leftDrag.borderDuring)
+    expect(leftDrag.accent).not.toBe('rgba(0, 0, 0, 0)')
     expect(leftDrag.value).toBe('276px')
     expect(await page.evaluate(() => Math.round(document.querySelector<HTMLElement>('.studio-left')?.getBoundingClientRect().width ?? 0))).toBe(276)
     await page.locator('.studio-left-resizer').dblclick()
     await page.waitForTimeout(160)
     expect(await page.evaluate(() => localStorage.getItem('morrow.studio.leftWidth'))).toBe('240')
 
-    const rightDrag = await dragPanel('.studio-right-resizer', -48)
+    const rightDrag = await dragPanel('.studio-right-resizer', -48, 'studio-resize-line-right-dark.png')
     expect(rightDrag.lineWidth).toBe(1)
     expect(rightDrag.lineBackground).toBe('rgba(0, 0, 0, 0)')
     expect(rightDrag.borderBefore).not.toBe(rightDrag.borderDuring)
+    expect(rightDrag.accent).not.toBe('rgba(0, 0, 0, 0)')
     expect(rightDrag.value).toBe('468px')
     expect(await page.evaluate(() => Math.round(document.querySelector<HTMLElement>('.studio-assistant')?.getBoundingClientRect().width ?? 0))).toBe(468)
     await page.locator('.studio-right-resizer').dblclick()

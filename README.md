@@ -86,7 +86,7 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r036`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r037`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
 - 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
@@ -156,7 +156,7 @@ npm run test:unit     # Vitest
 npm run test:e2e      # Playwright（完整套件约 15 分钟）
 ```
 
-当前基线：单元 **29 个套件 / 1008 个用例**（1000 passed + 8 skipped）；E2E **26 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
+当前基线：单元 **29 个套件 / 1010 个用例**（1002 passed + 8 skipped）；E2E **26 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
 
 ## 开发与打包
 

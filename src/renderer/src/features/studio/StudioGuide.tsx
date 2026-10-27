@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Check } from 'lucide-react'
+import { ArrowRight, Check, ChevronRight } from 'lucide-react'
 import { Button } from '../../ui'
 import { useAppStore } from '../../store'
 import { useStudioStore } from './studio-store'
@@ -132,7 +132,7 @@ export function StudioGuide(): React.JSX.Element | null {
                 {STAGE_NOTES.map((note, index) => (
                   <span key={note}>
                     <em>{note}</em>
-                    {index < STAGE_NOTES.length - 1 ? <ArrowRight size={11} aria-hidden /> : null}
+                    {index < STAGE_NOTES.length - 1 ? <ChevronRight size={11} aria-hidden /> : null}
                   </span>
                 ))}
               </div>

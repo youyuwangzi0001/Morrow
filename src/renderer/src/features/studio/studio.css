@@ -307,6 +307,19 @@
   margin: 0;
 }
 
+/* 拖动手柄自身再画一条 1px 金线，避免右侧分隔线在拖动重排时被相邻滚动条盖住。 */
+.studio-left-resizer.is-dragging::after,
+.studio-right-resizer.is-dragging::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--gold);
+  pointer-events: none;
+}
+
 .studio-left-resizer {
   left: calc(var(--studio-left) - 2px);
 }
@@ -620,6 +633,14 @@
 }
 
 .studio-center {
+  /* 主区域专用字号：只影响内容区，不改变左右栏与顶栏密度。 */
+  --fs-3xs: var(--fs-studio-micro);
+  --fs-xs: var(--fs-studio-meta);
+  --fs-sm: var(--fs-studio-label);
+  --fs-sm-plus: var(--fs-studio-meta);
+  --fs-base: var(--fs-studio-copy);
+  --fs-base-plus: var(--fs-studio-copy);
+  --fs-ui: var(--fs-studio-body);
   position: relative;
   display: flex;
   flex-direction: column;

@@ -4,13 +4,14 @@ import {
   ArrowRight,
   BookOpen,
   Check,
-  CheckCircle2,
   Clapperboard,
   Download,
   ExternalLink,
   FileArchive,
+  FileCode2,
   FileSearch,
   FileText,
+  FileType,
   Film,
   FolderOpen,
   Image as ImageIcon,
@@ -22,7 +23,6 @@ import {
   ShieldCheck,
   Sparkles,
   Subtitles,
-  Upload,
   X
 } from 'lucide-react'
 import type { StudioDelivery, StudioExportPreflight } from '@shared/studio'
@@ -37,11 +37,14 @@ function deliveryIcon(kind: StudioDelivery['kind']): React.JSX.Element {
     case 'mp4':
       return <Film size={15} />
     case 'epub':
+      return <BookOpen size={15} />
     case 'pdf':
+      return <FileType size={15} />
     case 'docx':
+      return <FileText size={15} />
     case 'txt':
     case 'md':
-      return <BookOpen size={15} />
+      return <FileCode2 size={15} />
     case 'srt':
     case 'ass':
       return <Subtitles size={15} />
@@ -222,10 +225,10 @@ export function DeliveryView(): React.JSX.Element {
 
   const bookFormats = [
     { format: 'epub' as const, title: 'EPUB', desc: '电子书 · 手机和阅读器打开，带目录', icon: <BookOpen size={16} /> },
-    { format: 'pdf' as const, title: 'PDF', desc: 'A4 排版稿 · 适合打印或发给编辑', icon: <FileText size={16} /> },
+    { format: 'pdf' as const, title: 'PDF', desc: 'A4 排版稿 · 适合打印或发给编辑', icon: <FileType size={16} /> },
     { format: 'docx' as const, title: 'Word', desc: 'DOCX · 可以继续改字', icon: <FileText size={16} /> },
-    { format: 'txt' as const, title: 'TXT', desc: '纯文本 · 哪里都能打开', icon: <FileText size={16} /> },
-    { format: 'md' as const, title: 'Markdown', desc: '方便逐行比较和版本管理', icon: <FileText size={16} /> },
+    { format: 'txt' as const, title: 'TXT', desc: '纯文本 · 哪里都能打开', icon: <FileCode2 size={16} /> },
+    { format: 'md' as const, title: 'Markdown', desc: '方便逐行比较和版本管理', icon: <FileCode2 size={16} /> },
     { format: 'package' as const, title: '工程包', desc: '可继续编辑 · 素材都在', icon: <Package size={16} /> }
   ]
 

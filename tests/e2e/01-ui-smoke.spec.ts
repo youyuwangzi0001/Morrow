@@ -82,6 +82,7 @@ test.describe('Morrow 桌面冒烟', () => {
     try {
       const { page } = morrow
       await page.waitForLoadState('load')
+      await dismissOnboarding(page)
 
       const readTheme = () =>
         page.evaluate(() => {
@@ -99,10 +100,8 @@ test.describe('Morrow 桌面冒烟', () => {
       expect(dark.bodyBg.replace(/\s/g, '')).toBe('rgb(11,13,16)')
       await page.screenshot({ path: screenshotPath('e2e-theme-dark.png') })
 
-      // 切到素纸（light）主题：token 与底色必须真的变化
-      await page.evaluate(() => {
-        document.documentElement.setAttribute('data-theme', 'light')
-      })
+      // 顶栏主题按钮在 Agent 常驻：真实点击切到浅色
+      await page.getByRole('button', { name: '切换到浅色主题' }).click()
       await page.waitForTimeout(400)
       const light = await readTheme()
       expect(light.themeAttr).toBe('light')
@@ -111,9 +110,7 @@ test.describe('Morrow 桌面冒烟', () => {
       await page.screenshot({ path: screenshotPath('e2e-theme-light.png') })
 
       // 切回深色，确认可逆
-      await page.evaluate(() => {
-        document.documentElement.setAttribute('data-theme', 'dark')
-      })
+      await page.getByRole('button', { name: '切换到深色主题' }).click()
       await page.waitForTimeout(200)
       const back = await readTheme()
       expect(back.bodyBg.replace(/\s/g, '')).toBe('rgb(11,13,16)')

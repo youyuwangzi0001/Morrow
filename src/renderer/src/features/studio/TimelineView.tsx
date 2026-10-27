@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AudioLines,
+  AudioWaveform,
   Captions,
-  ChevronLeft,
-  ChevronRight,
   Clapperboard,
+  Copy,
+  Disc3,
   Film,
   Image as ImageIcon,
   Layers,
@@ -11,18 +13,17 @@ import {
   Music2,
   Pause,
   Play,
-  Plus,
   Redo2,
   Save,
   Scissors,
+  Shuffle,
   SkipBack,
   SkipForward,
   SlidersHorizontal,
-  Sparkles,
   Square,
   Trash2,
   Undo2,
-  Video,
+  Upload,
   Volume2,
   VolumeX,
   Wand2,
@@ -36,7 +37,7 @@ import { Button, Modal } from '../../ui'
 import { useStudioStore } from './studio-store'
 import { AssetImage } from './components'
 
-const TRACK_HEIGHT: Record<StudioTrack['kind'], number> = { video: 78, dialogue: 46, music: 44, sfx: 40, subtitle: 48 }
+const TRACK_HEIGHT: Record<StudioTrack['kind'], number> = { video: 78, dialogue: 46, music: 44, sfx: 40, subtitle: 52 }
 const RULER_HEIGHT = 26
 const TRACK_LABELS: Record<string, string> = {
   'track-video': '画面',
@@ -440,7 +441,7 @@ function ClipInspector({
             <input type="checkbox" checked={Boolean(clip.loop)} onChange={(event) => onChange({ loop: event.target.checked })} />
           </label>
           <div className="studio-audio-library-line">
-            <Button variant="ghost" size="sm" icon={<Music2 size={12} />} onClick={() => setAudioOpen(true)}>从音频库替换</Button>
+            <Button variant="ghost" size="sm" icon={<AudioLines size={12} />} onClick={() => setAudioOpen(true)}>从音频库替换</Button>
             <span>{(() => { const asset = active?.assets.find((item) => item.id === clip.assetId); if (!asset) return '未选择音频'; if (asset.origin?.source === 'sapi') return '本机配音 · 仅用于本项目'; if (asset.origin?.source === 'cloud-tts') return '云端配音 · 按服务商条款'; if (asset.origin?.source === 'local') return STUDIO_AUDIO_LICENSE; return '用户导入 · 需自行确认授权' })()}</span>
           </div>
         </>
@@ -469,7 +470,7 @@ function ClipInspector({
       <div className="studio-clip-actions">
         <Button variant="ghost" size="sm" icon={<Undo2 size={12} />} onClick={onUndoClip} disabled={!canUndoClip}>撤销此片段</Button>
         <Button variant="ghost" size="sm" icon={<Scissors size={12} />} onClick={onSplit}>分割</Button>
-        <Button variant="ghost" size="sm" icon={<Plus size={12} />} onClick={onDuplicate}>复制片段</Button>
+        <Button variant="ghost" size="sm" icon={<Copy size={12} />} onClick={onDuplicate}>复制片段</Button>
         <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={onDelete}>删除</Button>
       </div>
       <Modal open={audioOpen} onClose={() => setAudioOpen(false)} title="音频库" description="项目音频与内置素材；每个素材都标注来源和授权。" width={680}>
@@ -498,7 +499,7 @@ function ClipInspector({
                     }
                   }}
                 >
-                  {libraryBusy === item.id ? <Loader2 size={15} className="studio-spin" /> : item.kind === 'music' ? <Music2 size={15} /> : <Sparkles size={15} />}
+                  {libraryBusy === item.id ? <Loader2 size={15} className="studio-spin" /> : item.kind === 'music' ? <Disc3 size={15} /> : <AudioLines size={15} />}
                   <span><b>{item.label}</b><em>{item.description}</em></span>
                   <i>{item.kind === 'music' ? `${item.seconds}s 配乐` : `${item.seconds}s 音效`}</i>
                 </button>
@@ -1071,7 +1072,7 @@ export function TimelineView(): React.JSX.Element {
           <span className="studio-toolbar-sep" />
           <button type="button" className={subtitleOn ? 'is-active' : ''} onClick={() => setSubtitleOn((value) => !value)} title="显示 / 隐藏字幕"><Captions size={14} /> 字幕</button>
           <button type="button" className={muted ? 'is-active' : ''} onClick={() => setMuted((value) => !value)} title="静音预览">{muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
-          <button type="button" onClick={addSubtitle} title="在播放头添加字幕"><Plus size={13} /> 字幕</button>
+          <button type="button" onClick={addSubtitle} title="在播放头添加字幕"><Captions size={13} /> 字幕</button>
           <button type="button" className={assetsOpen ? 'is-active' : ''} onClick={() => setAssetsOpen((value) => !value)} title="素材"><Layers size={13} /> 素材</button>
           <button type="button" className={timelineInspectorOpen ? 'is-active' : ''} onClick={() => { setTimelineInspectorOpen(!timelineInspectorOpen); if (!timelineInspectorOpen && !selectedClipId) selectClip(draft.clips[0]?.id ?? null) }} title="片段属性"><SlidersHorizontal size={13} /> 片段</button>
         </div>
@@ -1169,7 +1170,7 @@ export function TimelineView(): React.JSX.Element {
                     setDrag({ clipId: clip.id, mode: 'trim-left', startX: event.clientX, originalStart: clip.start, originalDuration: clip.duration, originalSrcIn: clip.srcIn })
                   }} />
                   <span className="studio-clip-label">
-                    {clip.kind === 'video' ? <ImageIcon size={9} /> : clip.kind === 'dialogue' ? <Volume2 size={9} /> : clip.kind === 'music' ? <Music2 size={9} /> : clip.kind === 'subtitle' ? <Captions size={9} /> : <Sparkles size={9} />}
+                    {clip.kind === 'video' ? <ImageIcon size={9} /> : clip.kind === 'dialogue' ? <Volume2 size={9} /> : clip.kind === 'music' ? <Music2 size={9} /> : clip.kind === 'subtitle' ? <Captions size={9} /> : <AudioWaveform size={9} />}
                     <span className="truncate">{clip.kind === 'subtitle' ? clip.label : (clip.text || clip.label)}</span>
                   </span>
                   {clip.kind !== 'subtitle' && clip.kind !== 'video' ? (
@@ -1180,7 +1181,7 @@ export function TimelineView(): React.JSX.Element {
                     </span>
                   ) : null}
                   {clip.kind === 'subtitle' ? <span className="studio-clip-subtitle">{clip.text}</span> : null}
-                  {clip.transition !== 'cut' ? <span className="studio-clip-transition"><Sparkles size={8} /></span> : null}
+                  {clip.transition !== 'cut' ? <span className="studio-clip-transition"><Shuffle size={8} /></span> : null}
                   <span className="studio-clip-edge is-right" onPointerDown={(event) => {
                     if (track?.locked) return
                     event.stopPropagation()
@@ -1205,16 +1206,16 @@ export function TimelineView(): React.JSX.Element {
           <div>
             {active.assets.filter((asset) => asset.kind === 'image' || asset.kind === 'video' || asset.kind === 'audio').map((asset) => (
               <button key={asset.id} type="button" onClick={() => addAsset(asset)} title="添加到时间线">
-                {asset.kind === 'image' ? <img src={asset.thumbUrl ?? asset.url} alt="" /> : asset.kind === 'video' ? <video src={asset.url} muted aria-hidden /> : <span className="studio-asset-audio"><Music2 size={16} /></span>}
+                {asset.kind === 'image' ? <img src={asset.thumbUrl ?? asset.url} alt="" /> : asset.kind === 'video' ? <video src={asset.url} muted aria-hidden /> : <span className="studio-asset-audio"><AudioLines size={16} /></span>}
                 <span>{asset.title}</span>
                 <em>{asset.kind === 'image' ? '图片' : asset.kind === 'video' ? '视频' : '音频'}</em>
               </button>
             ))}
             <button type="button" className="studio-asset-import" onClick={() => void useStudioStore.getState().importAssets('audio')}>
-              <Plus size={14} /><span>导入音频</span><em>文件</em>
+              <Upload size={14} /><span>导入音频</span><em>文件</em>
             </button>
             <button type="button" className="studio-asset-import" onClick={() => void useStudioStore.getState().importAssets('video')}>
-              <Plus size={14} /><span>导入视频</span><em>文件</em>
+              <Upload size={14} /><span>导入视频</span><em>文件</em>
             </button>
           </div>
         </div>

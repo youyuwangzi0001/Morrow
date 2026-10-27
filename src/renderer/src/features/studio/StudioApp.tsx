@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   ChevronDown,
   SlidersHorizontal,
+  FilePlus2,
   FolderOpen,
   Loader2,
-  Maximize2,
   Minus,
   PanelRight,
   Plus,
@@ -369,7 +369,7 @@ export function StudioApp(): React.JSX.Element | null {
         <ProjectSwitcher />
         {active && !isHome ? (
           <button type="button" className="studio-new-link" title="新建作品" aria-label="新建作品" onClick={newProject}>
-            <Plus size={12} strokeWidth={1.5} /> 新建作品
+            <FilePlus2 size={12} strokeWidth={1.5} /> 新建作品
           </button>
         ) : null}
         {active?.kind === 'drama' && view !== 'canvas' && !isHome ? (

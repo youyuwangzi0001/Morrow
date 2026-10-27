@@ -41,6 +41,12 @@
   --fs-panel-title: var(--fs-body-lg);
   --fs-panel-body: var(--fs-ui-plus);
   --fs-panel-meta: var(--fs-sm-plus);
+  /* 创作台主区域：比紧凑侧栏再上一级，保证正文与元信息可读 */
+  --fs-studio-micro: 10.5px;
+  --fs-studio-meta: 11.5px;
+  --fs-studio-label: 12.5px;
+  --fs-studio-copy: 13px;
+  --fs-studio-body: 13.5px;
 
   /* 字距：标题收紧，标签/快捷键按层级放宽 */
   --ls-tight: -0.01em;
