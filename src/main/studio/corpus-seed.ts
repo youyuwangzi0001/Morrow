@@ -8,15 +8,27 @@ import { emptyTimeline } from '../../shared/studio'
 import { StudioStore, nowMs, studioId } from './store'
 import { buildTimelineFromProject } from './timeline'
 
-function assetDir(): string | null {
-  const candidates = [join(process.resourcesPath, 'studio-demo'), join(app.getAppPath(), 'resources', 'studio-demo')]
-  return candidates.find((dir) => existsSync(dir)) ?? null
+function assetDirs(): string[] {
+  const roots = [process.resourcesPath, app.getAppPath()]
+  return [...new Set(roots.flatMap((root) => [
+    join(root, 'studio-corpus'),
+    join(root, 'resources', 'studio-corpus'),
+    join(root, 'studio-demo'),
+    join(root, 'resources', 'studio-demo')
+  ]))].filter((dir) => existsSync(dir))
 }
 
-function addImage(store: StudioStore, project: StudioProject, dir: string | null, file: string, title: string, tags: string[], metadata: Record<string, number> = {}): StudioAsset | null {
-  if (!dir) return null
-  const path = join(dir, file)
-  if (!existsSync(path)) return null
+function assetPath(dirs: string[], file: string): string | null {
+  for (const dir of dirs) {
+    const path = join(dir, file)
+    if (existsSync(path)) return path
+  }
+  return null
+}
+
+function addImage(store: StudioStore, project: StudioProject, dirs: string[], file: string, title: string, tags: string[], metadata: Record<string, number> = {}): StudioAsset | null {
+  const path = assetPath(dirs, file)
+  if (!path) return null
   try {
     const bytes = readFileSync(path)
     return store.addAsset(project, {
@@ -33,10 +45,9 @@ function addImage(store: StudioStore, project: StudioProject, dir: string | null
   }
 }
 
-function addAudio(store: StudioStore, project: StudioProject, dir: string | null, file: string, title: string, tags: string[]): StudioAsset | null {
-  if (!dir) return null
-  const path = join(dir, file)
-  if (!existsSync(path)) return null
+function addAudio(store: StudioStore, project: StudioProject, dirs: string[], file: string, title: string, tags: string[]): StudioAsset | null {
+  const path = assetPath(dirs, file)
+  if (!path) return null
   try {
     return store.addAsset(project, {
       bytes: readFileSync(path),
@@ -113,7 +124,7 @@ function blueprintOf(
 
 function seedNovel(
   store: StudioStore,
-  dir: string | null,
+  dirs: string[],
   source: typeof CORPUS.jisu | typeof CORPUS.zaizao | typeof CORPUS.short,
   kind: 'short' | 'novel',
   coverFile: string
@@ -200,18 +211,18 @@ function seedNovel(
     source: 'local',
     createdAt: nowMs()
   }))
-  const cover = addImage(store, project, dir, coverFile, `《${source.title}》封面`, ['cover', 'demo'], { width: 768, height: 1024 })
+  const cover = addImage(store, project, dirs, coverFile, `《${source.title}》封面`, ['cover', 'demo'], { width: 768, height: 1024 })
   if (cover) project.coverAssetId = cover.id
   if (isJisu) {
     for (const [index, file] of ['jisu-02.jpg', 'jisu-04.jpg', 'jisu-05.jpg'].entries()) {
-      const ref = addImage(store, project, dir, file, `角色参考 · ${characters[index]?.name ?? ''}`, ['reference', 'character', 'demo'], { width: 1344, height: 768 })
+      const ref = addImage(store, project, dirs, file, `角色参考 · ${characters[index]?.name ?? ''}`, ['reference', 'character', 'demo'], { width: 1344, height: 768 })
       if (ref && characters[index]) characters[index].refAssetIds = [ref.id]
     }
-    const illustration = addImage(store, project, dir, 'jisu-06.jpg', '配图 · 雨停后的赛道', ['illustration', 'demo'], { width: 1344, height: 768 })
+    const illustration = addImage(store, project, dirs, 'jisu-06.jpg', '配图 · 雨停后的赛道', ['illustration', 'demo'], { width: 1344, height: 768 })
     if (illustration && chapterList[0]) chapterList[0].illustrations.push({ id: studioId('ill'), assetId: illustration.id, afterParagraph: 1, caption: '雨停后的赛道', source: 'import', createdAt: nowMs() })
   }
   if (isZaizao) {
-    const illustration = addImage(store, project, dir, 'huaxia-01.jpg', '配图 · 邺城战场', ['illustration', 'demo'], { width: 1344, height: 768 })
+    const illustration = addImage(store, project, dirs, 'huaxia-01.jpg', '配图 · 邺城战场', ['illustration', 'demo'], { width: 1344, height: 768 })
     if (illustration && chapterList[0]) chapterList[0].illustrations.push({ id: studioId('ill'), assetId: illustration.id, afterParagraph: 1, caption: '邺城战场', source: 'import', createdAt: nowMs() })
   }
   const written = chapterList.filter((chapter) => chapter.content.trim()).length
@@ -230,7 +241,7 @@ function seedNovel(
   return project
 }
 
-function seedDrama(store: StudioStore, dir: string | null): StudioProject {
+function seedDrama(store: StudioStore, dirs: string[]): StudioProject {
   const source = CORPUS.drama
   const project = store.newProject({
     kind: 'drama',
@@ -279,10 +290,10 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
   project.characters = characters
   project.places = places
   project.stage = 'timeline'
-  const cover = addImage(store, project, dir, 'jisu-cover.jpg', '《0.12秒》封面', ['cover', 'demo'], { width: 768, height: 1024 })
+  const cover = addImage(store, project, dirs, 'jisu-cover.jpg', '《0.12秒》封面', ['cover', 'demo'], { width: 768, height: 1024 })
   const images: StudioAsset[] = []
   for (const file of ['jisu-01.jpg', 'jisu-02.jpg', 'jisu-03.jpg', 'jisu-04.jpg', 'jisu-05.jpg', 'jisu-06.jpg']) {
-    const asset = addImage(store, project, dir, file, `分镜画面 · ${file.replace('.png', '')}`, ['image', 'storyboard', 'demo'], { width: 1344, height: 768 })
+    const asset = addImage(store, project, dirs, file, `分镜画面 · ${file.replace('.png', '')}`, ['image', 'storyboard', 'demo'], { width: 1344, height: 768 })
     if (asset) images.push(asset)
   }
   if (cover) project.coverAssetId = cover.id
@@ -293,7 +304,7 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
   }
   const voices: Record<string, StudioAsset | null> = {}
   for (const file of ['voice-jisu-01.wav', 'voice-jisu-02.wav', 'voice-jisu-03.wav', 'voice-jisu-04.wav']) {
-    voices[file] = addAudio(store, project, dir, file, `配音 · ${file.replace('voice-jisu-', '').replace('.wav', '')}`, ['voice', 'demo'])
+    voices[file] = addAudio(store, project, dirs, file, `配音 · ${file.replace('voice-jisu-', '').replace('.wav', '')}`, ['voice', 'demo'])
   }
   const scene = { id: studioId('scene'), episodeId: null, number: 1, title: '蒙扎雨战', synopsis: '最后一圈与0.12秒的偏差', location: '蒙扎赛道', timeOfDay: '雨夜', characters: ['陈雁', '林烨', '苏小楠'], beat: '救车→夺冠→质疑', updatedAt: nowMs() }
   project.scenes = [scene]
@@ -324,9 +335,9 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
     status: 'done',
     updatedAt: nowMs()
   })) as StudioShot[]
-  const music = addAudio(store, project, dir, 'music-rain.wav', '配乐 · 雨幕与引擎', ['music', 'demo'])
+  const music = addAudio(store, project, dirs, 'music-rain.wav', '配乐 · 雨幕与引擎', ['music', 'demo'])
   for (const [file, tag] of [['sfx-rain.wav', 'rain'], ['sfx-heartbeat.wav', 'heartbeat']] as const) {
-    addAudio(store, project, dir, file, `音效 · ${tag}`, ['sfx', tag, 'demo'])
+    addAudio(store, project, dirs, file, `音效 · ${tag}`, ['sfx', tag, 'demo'])
   }
   project.timeline = buildTimelineFromProject(project)
   project.timeline.version = 2
@@ -348,13 +359,13 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
 export function ensureCorpusProjects(store: StudioStore): void {
   const marker = join(store.root, '.corpus-seeded-v1')
   if (existsSync(marker)) return
-  const dir = assetDir()
+  const dirs = assetDirs()
   try {
-    if (!store.summaries().some((summary) => summary.title === CORPUS.jisu.title)) seedNovel(store, dir, CORPUS.jisu, 'novel', 'jisu-cover.jpg')
-    if (!store.summaries().some((summary) => summary.title === CORPUS.zaizao.title)) seedNovel(store, dir, CORPUS.zaizao, 'novel', 'huaxia-cover.jpg')
-    if (!store.summaries().some((summary) => summary.title === CORPUS.short.title)) seedNovel(store, dir, CORPUS.short, 'short', 'jisu-short-cover.jpg')
-    if (!store.summaries().some((summary) => summary.title === CORPUS.drama.title)) seedDrama(store, dir)
-    writeFileSync(marker, `${JSON.stringify({ seededAt: new Date().toISOString(), assets: Boolean(dir), projects: 4 })}\n`, 'utf8')
+    if (!store.summaries().some((summary) => summary.title === CORPUS.jisu.title)) seedNovel(store, dirs, CORPUS.jisu, 'novel', 'jisu-cover.jpg')
+    if (!store.summaries().some((summary) => summary.title === CORPUS.zaizao.title)) seedNovel(store, dirs, CORPUS.zaizao, 'novel', 'huaxia-cover.jpg')
+    if (!store.summaries().some((summary) => summary.title === CORPUS.short.title)) seedNovel(store, dirs, CORPUS.short, 'short', 'jisu-short-cover.jpg')
+    if (!store.summaries().some((summary) => summary.title === CORPUS.drama.title)) seedDrama(store, dirs)
+    writeFileSync(marker, `${JSON.stringify({ seededAt: new Date().toISOString(), assets: dirs.length > 0, projects: 4 })}\n`, 'utf8')
   } catch {
     // 单个样例失败不阻断作品库；下次打开会重试
   }

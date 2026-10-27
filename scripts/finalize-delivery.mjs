@@ -42,8 +42,6 @@ const guideMap = {
   '20-studio-about-dark.png': 'studio-about-dark.png',
   '21-studio-guide-dark.png': 'studio-guide-refined-dark.png',
   '22-studio-demo-dark.png': 'studio-demo-dark.png',
-  '23-studio-corpus-novel.png': 'studio-corpus-novel.png',
-  '24-studio-corpus-drama.png': 'studio-corpus-drama.png',
   '25-studio-canvas-dark.png': 'studio-canvas-dark.png',
   '26-studio-voice-audit-dark.png': 'studio-voice-audit-dark.png',
   '27-studio-timeline-waveform-dark.png': 'studio-timeline-waveform-dark.png',

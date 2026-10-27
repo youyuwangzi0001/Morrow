@@ -191,7 +191,8 @@ export class StudioService {
     if (!DEMO_DISABLED) {
       try {
         ensureDemoProjects(this.store)
-        ensureCorpusProjects(this.store)
+        // 真实语料只作为测试夹具加载，不随安装包分发。
+        if (process.env.MORROW_SEED_CORPUS === '1') ensureCorpusProjects(this.store)
       } catch {
         // 样例失败不影响空作品库
       }

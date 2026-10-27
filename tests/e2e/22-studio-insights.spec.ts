@@ -5,7 +5,7 @@ import { dismissOnboarding, setThemeViaStore } from './store'
 
 test('人物语气审稿、完整任务消息流与真实波形', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'insights' })
+  const morrow = await launchMorrow({ name: 'insights', env: { MORROW_SEED_CORPUS: '1' } })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))

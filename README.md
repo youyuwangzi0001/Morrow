@@ -86,7 +86,7 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r035`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r036`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
 - 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
@@ -112,7 +112,7 @@ npm start
 | [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
 | [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（28 张，含创作台指引、真实界面演示、真实语料、漫剧画布、人物语气与真实波形；已压缩至约 5.3MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
+指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、真实界面演示、漫剧画布、人物语气与真实波形；已压缩至约 4.6MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
 
 ## 架构一览
 

@@ -4,7 +4,7 @@ import { dismissOnboarding, setThemeViaStore } from './store'
 
 test('协作侧栏不挤压主区，菜单层级、字幕与演示控制条对齐', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'layout' })
+  const morrow = await launchMorrow({ name: 'layout', env: { MORROW_SEED_CORPUS: '1' } })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))

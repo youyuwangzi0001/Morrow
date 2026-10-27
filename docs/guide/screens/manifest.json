@@ -2,7 +2,7 @@
   "product": "Morrow",
   "version": "0.2.0",
   "capturedAt": "2026-10-28",
-  "runtime": "r035",
+  "runtime": "r036",
   "theme": "dark + light",
   "images": [
     {
@@ -158,20 +158,6 @@
       "width": 1600,
       "height": 914,
       "source": "tests/e2e/20-studio-ux.spec.ts · studio-demo-dark"
-    },
-    {
-      "file": "23-studio-corpus-novel.png",
-      "alt": "真实语料《极速曙光》：章节、事实、配图与候选",
-      "width": 1600,
-      "height": 914,
-      "source": "tests/e2e/19-studio-corpus.spec.ts · studio-corpus-novel"
-    },
-    {
-      "file": "24-studio-corpus-drama.png",
-      "alt": "真实语料《0.12秒》交付页：音轨格式、四格漫画与交付记录",
-      "width": 1600,
-      "height": 914,
-      "source": "tests/e2e/19-studio-corpus.spec.ts · studio-corpus-drama"
     },
     {
       "file": "25-studio-canvas-dark.png",

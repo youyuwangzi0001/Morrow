@@ -4,7 +4,7 @@ import { dismissOnboarding, setThemeViaStore } from './store'
 
 test('漫剧画布：镜头、音频、文本节点与连线可编辑并持久化', async () => {
   test.setTimeout(180_000)
-  const morrow = await launchMorrow({ name: 'canvas' })
+  const morrow = await launchMorrow({ name: 'canvas', env: { MORROW_SEED_CORPUS: '1' } })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))

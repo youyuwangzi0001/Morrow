@@ -40,7 +40,7 @@ async function openCorpus(page: import('@playwright/test').Page, title: string):
 test.describe('创作台 · 真实语料协同', () => {
   test('长篇语料：章节、事实、配图、候选锁稿与真实导出', async () => {
     test.setTimeout(240_000)
-    const morrow = await launchMorrow({ name: 'studio-corpus-novel' })
+    const morrow = await launchMorrow({ name: 'studio-corpus-novel', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(String(error)))
@@ -187,7 +187,7 @@ test.describe('创作台 · 真实语料协同', () => {
 
   test('第二部长篇：连续写作只推进空章，真实事实来源可读', async () => {
     test.setTimeout(240_000)
-    const morrow = await launchMorrow({ name: 'studio-corpus-batch' })
+    const morrow = await launchMorrow({ name: 'studio-corpus-batch', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     try {
       await dismissOnboarding(page)
@@ -232,7 +232,7 @@ test.describe('创作台 · 真实语料协同', () => {
 
   test('真实语料漫剧：12 镜、配音、五轨时间线与真实草稿合成', async () => {
     test.setTimeout(300_000)
-    const morrow = await launchMorrow({ name: 'studio-corpus-drama' })
+    const morrow = await launchMorrow({ name: 'studio-corpus-drama', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     try {
       await dismissOnboarding(page)
@@ -296,7 +296,7 @@ test.describe('创作台 · 真实语料协同', () => {
   })
   test('长篇结构、世界设定、候选对照与任务重试', async () => {
     test.setTimeout(240_000)
-    const morrow = await launchMorrow({ name: 'studio-structure' })
+    const morrow = await launchMorrow({ name: 'studio-structure', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(String(error)))
@@ -403,7 +403,7 @@ test.describe('创作台 · 真实语料协同', () => {
 
   test('小说改编、参考库、批量镜头与逐句字幕', async () => {
     test.setTimeout(240_000)
-    const morrow = await launchMorrow({ name: 'studio-flow' })
+    const morrow = await launchMorrow({ name: 'studio-flow', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(String(error)))

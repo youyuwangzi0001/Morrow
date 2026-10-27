@@ -5,7 +5,7 @@ import { dismissOnboarding, setThemeViaStore, waitUntil } from './store'
 test.describe('创作台 · 首次指引、演示与灵动岛', () => {
   test('首次进入指引、随时观看的演示、无斜体、关于页与灵动岛真实状态', async () => {
     test.setTimeout(180_000)
-    const morrow = await launchMorrow({ name: 'studio-ux', env: { MORROW_ISLAND: '1' } })
+    const morrow = await launchMorrow({ name: 'studio-ux', env: { MORROW_ISLAND: '1', MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(String(error)))
@@ -147,7 +147,7 @@ test.describe('创作台 · 首次指引、演示与灵动岛', () => {
 
   test('导出任务会在灵动岛显示真实进度与完成状态', async () => {
     test.setTimeout(120_000)
-    const morrow = await launchMorrow({ name: 'studio-island-job' })
+    const morrow = await launchMorrow({ name: 'studio-island-job', env: { MORROW_SEED_CORPUS: '1' } })
     const page = morrow.page
     try {
       await dismissOnboarding(page)

@@ -29,10 +29,10 @@ test.describe('Morrow 创作台', () => {
       await expect(page.locator('.studio-guide')).toHaveCount(0)
       await page.waitForTimeout(1200)
 
-      // 首页：三份原有样例 + 四份真实语料样例；创作台内不再出现产品标题或品牌图标
+      // 首页：三份内置样例；创作台内不再出现产品标题或品牌图标
       await expect(page.locator('.studio-hero-title')).toContainText('变成作品')
-      await expect(page.locator('.studio-project-card')).toHaveCount(7)
-      for (const title of ['雨停之前', '雨伞铺的第七个夏天', '逆行的伞', '极速曙光', '再造华夏', '神迹与巫术', '0.12秒']) {
+      await expect(page.locator('.studio-project-card')).toHaveCount(3)
+      for (const title of ['雨停之前', '雨伞铺的第七个夏天', '逆行的伞']) {
         await expect(page.locator('.studio-project-card h3').filter({ hasText: title })).toHaveCount(1)
       }
       await expect(page.locator('.studio-logline-input')).toBeVisible()

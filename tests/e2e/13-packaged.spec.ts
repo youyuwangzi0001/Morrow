@@ -357,7 +357,7 @@ test('打包版包含创作台演示资产，作品库与时间线可打开', as
     await page.locator('.tb-create').click()
     await page.waitForSelector('.studio-home', { timeout: 60_000 })
     if (await page.locator('.studio-guide').count()) await page.locator('.studio-guide-skip').click()
-    await expect(page.locator('.studio-project-card')).toHaveCount(7, { timeout: 60_000 })
+    await expect(page.locator('.studio-project-card')).toHaveCount(3, { timeout: 60_000 })
     await expect(page.locator('.studio-root')).not.toContainText('创作台')
     await expect(page.locator('.studio-topbar img.studio-mark')).toHaveCount(0)
 

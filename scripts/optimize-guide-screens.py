@@ -9,6 +9,8 @@ Usage: python scripts/optimize-guide-screens.py
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import date
 from pathlib import Path
 
@@ -37,8 +39,17 @@ def main() -> None:
                 height = round(image.height * MAX_WIDTH / image.width)
                 image = image.resize((MAX_WIDTH, height), Image.Resampling.LANCZOS)
             quantized = image.quantize(colors=COLORS, method=Image.MEDIANCUT, dither=Image.Dither.NONE)
-            quantized.save(path, optimize=True)
+            temporary = path.with_name(f"{path.name}.tmp")
+            quantized.save(temporary, format='PNG', optimize=True)
             entry["width"], entry["height"] = quantized.size
+        for attempt in range(6):
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError:
+                if attempt == 5:
+                    raise
+                time.sleep(1)
         after = path.stat().st_size
         after_total += after
         print(f"{entry['file']}: {before / 1024:.0f} KB -> {after / 1024:.0f} KB")

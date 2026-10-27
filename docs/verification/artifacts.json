@@ -1,8 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "runtime": "r035",
-  "builtAt": "2026-10-27T17:30:55.900Z",
+  "runtime": "r036",
+  "builtAt": "2026-10-27T17:55:26.104Z",
   "platform": "win32-x64",
   "source": {
     "files": 343,
@@ -30,14 +30,14 @@
         "passed": 6,
         "skipped": 0,
         "date": "2026-10-27",
-        "durationMs": 19600
+        "durationMs": 25600
       },
       "full": {
         "suites": 26,
         "cases": 224,
         "passed": 213,
         "skipped": 11,
-        "durationMs": 918000
+        "durationMs": 882000
       }
     },
     "files": 69
@@ -45,10 +45,10 @@
   "docs": {
     "files": 13,
     "markdown": 13,
-    "lines": 2767,
-    "guideScreens": 28,
+    "lines": 2763,
+    "guideScreens": 26,
     "manifest": "docs/guide/screens/manifest.json",
-    "guideScreenshotBytes": 5534126,
+    "guideScreenshotBytes": 4775485,
     "optimized": {
       "maxWidth": 1600,
       "colors": 256,
@@ -62,33 +62,33 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 391856458,
-    "mib": 373.7
+    "bytes": 388323512,
+    "mib": 370.33
   },
   "artifacts": [
     {
       "name": "Morrow-0.2.0-portable.exe",
-      "bytes": 222042112,
-      "mib": 211.76,
-      "sha256": "445edd4e5375ef14a42e09a3e5d7ea0819508679018f88352c8c71b5bd67e0ca"
+      "bytes": 220234240,
+      "mib": 210.03,
+      "sha256": "f4428ec3308e2bfa345815872dc76194d8dd96b38020f88ef0aabd676c0a632f"
     },
     {
       "name": "Morrow-0.2.0-setup.exe",
-      "bytes": 169807561,
-      "mib": 161.94,
-      "sha256": "e6a85fef92e0957f62049b218ed135e7ba7cb7b0f61c6bec5814a2db6e15fe7c"
+      "bytes": 168082496,
+      "mib": 160.3,
+      "sha256": "8825806ef14760c9b2bd52ca929d8cbff475265f4d514c07fd82b23f967b3bc8"
     },
     {
       "name": "使用说明.txt",
-      "bytes": 5715,
+      "bytes": 5706,
       "mib": 0,
-      "sha256": "454dacd1ecc85000c9eaf92b9d83cc84374ad1cdfd2bf6bce1ac2f20380578a7"
+      "sha256": "4cfd113ccfd90ec71b22422b1e55ee49334e716b8d8651cd2f5db8d3f2f7727b"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "61fad97b2f89fdc5ac59521febe47734b836ec780986e5c7c88d50845f139a9f"
+      "sha256": "6cc2d1c49aa383878832fcecb2578cd8c8196a10302360bcf26f3b52e1ee93ce"
     },
     {
       "name": "LICENSE",
@@ -97,10 +97,10 @@
       "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.2.0-r035",
+  "runtimeCache": ".morrow-runtime-0.2.0-r036",
   "code": {
     "files": 429,
-    "lines": 211316,
+    "lines": 211325,
     "production": {
       "files": 343,
       "lines": 160495
@@ -111,10 +111,10 @@
     },
     "scripts": {
       "files": 17,
-      "lines": 4132
+      "lines": 4141
     }
   },
-  "generatedAt": "2026-10-27T17:34:24.988Z",
+  "generatedAt": "2026-10-27T18:34:21.482Z",
   "lockedCaches": [],
   "pendingCacheCleanup": [],
   "sourceArchive": {

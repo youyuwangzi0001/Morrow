@@ -4,7 +4,7 @@ import { dismissOnboarding, setThemeViaStore } from './store'
 
 test('自动推进在确认后排入补齐与草稿合成任务', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'studio-pipeline' })
+  const morrow = await launchMorrow({ name: 'studio-pipeline', env: { MORROW_SEED_CORPUS: '1' } })
   const page = morrow.page
   try {
     await dismissOnboarding(page)

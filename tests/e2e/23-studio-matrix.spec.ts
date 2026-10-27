@@ -8,7 +8,7 @@ test('创作台在小屏、中屏与大屏下均无横向溢出，监视器随�
   test.setTimeout(300_000)
   const outDir = join(screensDir, 'matrix')
   mkdirSync(outDir, { recursive: true })
-  const morrow = await launchMorrow({ name: 'matrix' })
+  const morrow = await launchMorrow({ name: 'matrix', env: { MORROW_SEED_CORPUS: '1' } })
   const page = morrow.page
   const resize = async (width: number, height: number): Promise<void> => {
     await morrow.app.evaluate(async ({ BrowserWindow }, target) => {

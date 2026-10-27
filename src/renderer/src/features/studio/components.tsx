@@ -280,7 +280,7 @@ export function CoverThumb({ project, summary, size = 'md' }: { project?: Studio
   const src = cover?.thumbUrl ?? cover?.url ?? summary?.coverUrl
   return (
     <div className={`studio-cover is-${kind} is-${size}`}>
-      {src ? <img src={src} alt="" loading="lazy" /> : <span className="studio-cover-glyph"><StageIcon stage={kind} size={size === 'lg' ? 34 : 22} /></span>}
+      {src ? <img src={src} alt="" loading={size === 'lg' ? 'eager' : 'lazy'} /> : <span className="studio-cover-glyph"><StageIcon stage={kind} size={size === 'lg' ? 34 : 22} /></span>}
       <span className="studio-cover-grain" aria-hidden />
     </div>
   )
