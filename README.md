@@ -38,7 +38,7 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 
 ### 模型、订阅与账号元信息
 
-- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta 等）与 Anthropic Claude 接入；也支持任意 OpenAI 兼容网关和本机服务。
+- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta Muse 等）与 Anthropic Claude 接入；也支持任意 OpenAI 兼容网关和本机服务。
 - **官方 Agent 订阅**：ChatGPT/Codex、Qoder、Kimi Code、GLM Coding Plan、MiniMax Code、Step Plan、Command Code、Cline Pass、Google Antigravity、OpenCode，以及第三方 coding plan。
 - **Qoder 账号驱动目录**：登录后读取账号接口返回的模型、200K/400K/1M 上下文档位与真实思考档位；设置页可按模型调整默认上下文。Morrow 不维护 Qoder 静态模型表。
 - **模型能力契约**：选择器只显示原始模型名；思考强度只列模型真实支持的档位；不支持时显示“不支持思考”；未知模型只保留“自动”。DeepSeek 的关闭思考在请求层映射为官方 `none`，Qoder 代理保持自己的 `off`。
@@ -86,7 +86,7 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r038`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r039`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
 - 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
 
@@ -156,7 +156,7 @@ npm run test:unit     # Vitest
 npm run test:e2e      # Playwright（完整套件约 15 分钟）
 ```
 
-当前基线：单元 **29 个套件 / 1010 个用例**（1002 passed + 8 skipped）；E2E **26 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
+当前基线：单元 **29 个套件 / 1011 个用例**（1003 passed + 8 skipped）；E2E **22 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
 
 ## 开发与打包
 

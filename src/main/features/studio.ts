@@ -1,10 +1,11 @@
 // 创作台 IPC：界面只能通过这一组窄动作读写作品。
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { registerFeatureHandler } from '../feature-ipc'
 import { getStudioService } from '../studio/service'
 import { getStudioStore, resetStudioStoreForTest } from '../studio/store'
+import { openPathFromUserShell, revealInFileManager } from '../services/reveal'
 import {
   cleanTargetDataDir,
   copyUserDataForMigration,
@@ -65,7 +66,8 @@ registerFeatureHandler('feature:studio:reveal', async (payload) => {
   const path = typeof input.path === 'string' ? input.path : ''
   if (!projectId || !path) throw new Error('缺少作品或文件路径。')
   const absolute = getStudioStore().deliveryAbsolute(projectId, { path })
-  shell.showItemInFolder(absolute)
+  const message = await revealInFileManager(absolute)
+  if (message) throw new Error(message)
   return true
 })
 
@@ -75,13 +77,13 @@ registerFeatureHandler('feature:studio:open-path', async (payload) => {
   const path = typeof input.path === 'string' ? input.path : ''
   if (!projectId || !path) throw new Error('缺少作品或文件路径。')
   const absolute = getStudioStore().deliveryAbsolute(projectId, { path })
-  const message = await shell.openPath(absolute)
+  const message = await openPathFromUserShell(absolute)
   if (message) throw new Error(message)
   return true
 })
 
 registerFeatureHandler('feature:studio:open-data-dir', async () => {
-  const message = await shell.openPath(getStudioStore().root)
+  const message = await openPathFromUserShell(getStudioStore().root)
   if (message) throw new Error(message)
   return true
 })
@@ -90,7 +92,7 @@ registerFeatureHandler('feature:studio:open-project-dir', async (payload) => {
   const input = recordOf(payload)
   const projectId = typeof input.projectId === 'string' ? input.projectId : ''
   if (!projectId) throw new Error('缺少作品。')
-  const message = await shell.openPath(getStudioStore().projectDir(projectId))
+  const message = await openPathFromUserShell(getStudioStore().projectDir(projectId))
   if (message) throw new Error(message)
   return true
 })

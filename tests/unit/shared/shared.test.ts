@@ -334,6 +334,18 @@ describe('reasoning-cost.test.ts', () => {
       expect(pricingForModel('unknown-model')).toBeUndefined()
     })
 
+    it('exposes Meta Muse Wonder with frontier context, vision and pricing', () => {
+      const meta = builtinProviders().find((provider) => provider.id === 'meta')
+      const model = meta?.models.find((item) => item.id === 'muse-wonder-1.0')
+      expect(model?.label).toBe('Muse Wonder 1.0')
+      expect(model?.contextWindow).toBe(1_048_576)
+      expect(model?.supportsVision).toBe(true)
+      expect(model?.supportsTools).toBe(true)
+      expect(model?.reasoningEfforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+      expect(model?.pricing).toMatchObject({ inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 })
+      expect(pricingForModel('muse-wonder-1.0')).toMatchObject({ inputPerMTok: 4, outputPerMTok: 20 })
+    })
+
     it('classifies loopback and private LAN services without treating public hosts as local', () => {
       expect(isLocalServiceUrl('http://127.0.0.1:11434/v1')).toBe(true)
       expect(isLocalServiceUrl('http://localhost:1234/v1')).toBe(true)

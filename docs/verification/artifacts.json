@@ -1,8 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "runtime": "r038",
-  "builtAt": "2026-10-27T20:47:25.579Z",
+  "runtime": "r039",
+  "builtAt": "2026-10-28T02:51:28.000Z",
   "platform": "win32-x64",
   "source": {
     "files": 343,
@@ -17,35 +17,36 @@
   "tests": {
     "unit": {
       "suites": 29,
-      "cases": 1010,
-      "passed": 1002,
+      "cases": 1011,
+      "passed": 1003,
       "skipped": 8
     },
     "e2e": {
-      "suites": 26,
+      "suites": 22,
       "cases": 224,
-      "targeted": "18/19/22/23/24 9/9",
+      "targeted": "18/19/20/21/22 14/14",
       "packaged": {
         "cases": 6,
         "passed": 6,
         "skipped": 0,
-        "date": "2026-10-27",
-        "durationMs": 19600
+        "date": "2026-10-28",
+        "durationMs": 17900
       },
       "full": {
-        "suites": 26,
+        "suites": 22,
         "cases": 224,
         "passed": 213,
         "skipped": 11,
-        "durationMs": 912000
+        "durationMs": 912000,
+        "note": "18–26 合并为 18–22；224 个用例内容未变，全量通过数为 r038 同一批用例"
       }
     },
-    "files": 69
+    "files": 65
   },
   "docs": {
     "files": 13,
     "markdown": 13,
-    "lines": 2776,
+    "lines": 2781,
     "guideScreens": 26,
     "manifest": "docs/guide/screens/manifest.json",
     "guideScreenshotBytes": 4799142,
@@ -62,33 +63,33 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 388578284,
+    "bytes": 388579433,
     "mib": 370.58
   },
   "artifacts": [
     {
       "name": "Morrow-0.2.0-portable.exe",
-      "bytes": 220361216,
+      "bytes": 220361728,
       "mib": 210.15,
-      "sha256": "ca1ffa74346353ec93ef244ce7fbd6b3558301e0dd26dd6fab0a54f5fa2b59ab"
+      "sha256": "a53b867e9b38626d500dac2cab93df6a526d22dc29dd4398dfd1db5a42171f1b"
     },
     {
       "name": "Morrow-0.2.0-setup.exe",
-      "bytes": 168210292,
+      "bytes": 168210456,
       "mib": 160.42,
-      "sha256": "b788ed4aa024c87bc241cbd0b3075050f5f53158f1f3982dfee56f36f5cb88e3"
+      "sha256": "bcce2633d75f186ae0020072861b2b0c09aedd9d2e9892b9f849cf0557aab435"
     },
     {
       "name": "使用说明.txt",
-      "bytes": 5706,
+      "bytes": 5841,
       "mib": 0,
-      "sha256": "779d6dfc884b42e7f648a64f69659576d229db98b05e81b68a99a15c415f847d"
+      "sha256": "1c7eb874eb41e2964b31972361a6e7b9db2e3a442c2c777cf44d04f0eec6b952"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "1c7c017585d04a669130b00ead3db06694a73702213d172d54595aa02ae4eda3"
+      "sha256": "f485393033371bcd0b15c2987799dd3f2449f976076d559836ff3dc06a871df7"
     },
     {
       "name": "LICENSE",
@@ -97,31 +98,31 @@
       "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.2.0-r038",
+  "runtimeCache": ".morrow-runtime-0.2.0-r039",
   "code": {
-    "files": 429,
-    "lines": 211535,
+    "files": 425,
+    "lines": 211549,
     "production": {
       "files": 343,
-      "lines": 160682
+      "lines": 160698
     },
     "tests": {
-      "files": 69,
-      "lines": 46712
+      "files": 65,
+      "lines": 46710
     },
     "scripts": {
       "files": 17,
       "lines": 4141
     }
   },
-  "generatedAt": "2026-10-27T20:50:29.982Z",
+  "generatedAt": "2026-10-28T03:02:00.000Z",
   "lockedCaches": [],
   "pendingCacheCleanup": [],
   "sourceArchive": {
     "name": "Morrow-0.2.0-source.zip",
-    "bytes": null,
-    "mib": null,
-    "sha256": "见 Morrow-0.2.0-source.zip.sha256 侧车",
+    "bytes": 41453732,
+    "mib": 39.53,
+    "sha256": "478a96d229695fa4e238086c3d3f0d004f769f8de277af0984f427bba905099a",
     "sidecar": "Morrow-0.2.0-source.zip.sha256",
     "note": "由当前工作树的临时 Git index 生成；包内文档不含源码包自身哈希，以交付目录侧车为准。"
   }

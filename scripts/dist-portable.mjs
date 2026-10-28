@@ -604,7 +604,8 @@ function buildUsageText(_singleOnly = false) {
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
     '- 创作台侧栏：左右栏可拖动调宽，默认 240 / 420px，拖动时 1px 香槟金线；三种聊天输入框统一流金边框，深/浅主题一致。',
     '- 设置与时间线：预算“不设上限”、模型“先用哪边”、工具能力白话；开始位置、素材起点、剪开、前后一帧等日常表述。',
-    '- 测试：29 个单元套件 / 1010 用例；全量 E2E 213 passed + 11 skipped（环境边界），打包版 6 项通过；源码与构建脚本包含在源码包中。',
+    '- Meta 模型目录新增 Muse Wonder 1.0（1M 上下文、视觉/工具、五档思考）；Muse Spark 1.3 保留。',
+    '- 测试：29 个单元套件 / 1011 用例；全量 E2E 213 passed + 11 skipped（环境边界），定向 14 项，打包版 6 项通过；源码与构建脚本包含在源码包中。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [

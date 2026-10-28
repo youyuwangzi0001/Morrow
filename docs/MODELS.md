@@ -28,6 +28,7 @@ Morrow 把“模型是什么、能看什么、能想多深、能吃多长上下�
 | 智谱 | GLM-5.3 / GLM-5.3 Flash | 1,000,000 | 128,000 | low / high / max |
 | MiniMax | M3.1 Flash / M3 | 1,000,000 | 65,536 / 512,000 | low / medium / high / xhigh / max |
 | 小米 | MiMo V2.6 Pro / Flash | 1,048,576 | 131,072 | 仅自动（族规则未公开） |
+| Meta | Muse Wonder 1.0 | 1,048,576 | 131,072 | low / medium / high / xhigh / max |
 | Meta | Muse Spark 1.3 | 1,048,576 | 131,072 | low / medium / high / xhigh |
 | xAI | Grok 4.7 / 4.6 | 500,000 | 65,536 | low / medium / high / xhigh |
 
@@ -35,6 +36,7 @@ Morrow 把“模型是什么、能看什么、能想多深、能吃多长上下�
 
 - **DeepSeek** 官方使用 `none` 表示关闭思考；Morrow UI 统一显示 `off`。直接 DeepSeek Provider 会把 `off` 映射为 `none`；Qoder 代理仍按自己的 `off` 处理。
 - **GLM-5.2** 不在官方 API 模型列表内，Morrow 不提供该型号。
+- **Muse Wonder 1.0** 是 Meta 2026-10 发布的旗舰模型，Model API 参考价 $4 / $20 每百万 token，缓存读取 $0.20；支持文本、图片与视频输入。Muse Wonder Full 仅面向 Muse Code 订阅，不进入 API 目录。
 - **未知模型**只显示“自动”，不猜测档位；旧设置中的非法档位在请求前回退 `auto`。
 - 价格表只用于成本估算，不是账单依据。
 

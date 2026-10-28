@@ -271,6 +271,18 @@ const xiaomiModels: ModelInfo[] = [
 
 const metaModels: ModelInfo[] = [
   {
+    id: 'muse-wonder-1.0',
+    label: 'Muse Wonder 1.0',
+    contextWindow: 1_048_576,
+    maxOutput: 131_072,
+    supportsTools: true,
+    supportsVision: true,
+    supportsReasoning: true,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    note: 'Meta 2026-10 新旗舰；支持文本、图片与视频输入',
+    pricing: { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 }
+  },
+  {
     id: 'muse-spark-1.3',
     label: 'Muse Spark 1.3',
     contextWindow: 1_048_576,
@@ -350,6 +362,7 @@ const PRICING_TABLE: Array<[RegExp, { inputPerMTok: number; outputPerMTok: numbe
   [/claude.*fable/i, { inputPerMTok: 10, outputPerMTok: 50, cacheReadPerMTok: 2.5 }],
   [/claude.*haiku/i, { inputPerMTok: 0.8, outputPerMTok: 4 }],
   [/claude/i, { inputPerMTok: 3, outputPerMTok: 15, cacheReadPerMTok: 0.3 }],
+  [/muse.*wonder/i, { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 }],
   [/muse.*spark/i, { inputPerMTok: 1.25, outputPerMTok: 4.25, cacheReadPerMTok: 0.15 }],
   [/gpt-6|gpt-5/i, { inputPerMTok: 2.5, outputPerMTok: 10, cacheReadPerMTok: 0.25 }],
   [/gemini.*flash/i, { inputPerMTok: 0.3, outputPerMTok: 1.2 }],

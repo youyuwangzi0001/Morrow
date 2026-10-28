@@ -2,7 +2,7 @@
   "product": "Morrow",
   "version": "0.2.0",
   "capturedAt": "2026-10-28",
-  "runtime": "r038",
+  "runtime": "r039",
   "theme": "dark + light",
   "images": [
     {
@@ -150,7 +150,7 @@
       "alt": "创作台首次使用指引：完全对齐启动引导的三步轨道与无外框正文",
       "width": 1600,
       "height": 917,
-      "source": "tests/e2e/24-studio-layout.spec.ts · studio-guide-refined-dark"
+      "source": "tests/e2e/21-studio-workspace.spec.ts · studio-guide-refined-dark"
     },
     {
       "file": "22-studio-demo-dark.png",
@@ -164,28 +164,28 @@
       "alt": "漫剧画布：镜头、音频、文本节点与连线组成的真实工作流",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/21-studio-canvas.spec.ts · studio-canvas-dark"
+      "source": "tests/e2e/21-studio-workspace.spec.ts · studio-canvas-dark"
     },
     {
       "file": "26-studio-voice-audit-dark.png",
       "alt": "人物语气审稿：角色句长、问句比例、高频用语与趋同提醒",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/22-studio-insights.spec.ts · studio-voice-audit-dark"
+      "source": "tests/e2e/21-studio-workspace.spec.ts · studio-voice-audit-dark"
     },
     {
       "file": "27-studio-timeline-waveform-dark.png",
       "alt": "时间线真实音频峰值波形与 540p 低清预览入口",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/22-studio-insights.spec.ts · studio-timeline-waveform-dark"
+      "source": "tests/e2e/21-studio-workspace.spec.ts · studio-timeline-waveform-dark"
     },
     {
       "file": "28-studio-settings-dark.png",
       "alt": "创作台设置：模型与预算、配音与引擎、历史版本、数据与安全四页整合",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/24-studio-layout.spec.ts · studio-settings-dark"
+      "source": "tests/e2e/21-studio-workspace.spec.ts · studio-settings-dark"
     }
   ],
   "optimized": {

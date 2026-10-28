@@ -1132,7 +1132,7 @@ test.describe('R5 UI 交互', () => {
       ['DeepSeek', ['DeepSeek V4.1 Flash', 'DeepSeek V4 Pro']],
       ['Anthropic Claude', ['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']],
       ['小米 MiMo', ['MiMo V2.6 Pro', 'MiMo V2.6 Flash']],
-      ['Meta（Muse）', ['Muse Spark 1.3']],
+      ['Meta（Muse）', ['Muse Wonder 1.0', 'Muse Spark 1.3']],
       ['MiniMax', ['MiniMax M3', 'MiniMax M3.1 Flash']],
       ['通义千问（阿里云）', ['Qwen3.8 Max', 'Qwen3.8 Flash Next']]
     ]

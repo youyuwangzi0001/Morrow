@@ -1,6 +1,6 @@
 # Morrow 用户指南
 
-本指南按真实使用顺序编写：先安装和连接模型，再选择工作区，最后用对话、画布、终端和创作台完成任务。所有说明以当前 0.2.0（r038）实现为准。
+本指南按真实使用顺序编写：先安装和连接模型，再选择工作区，最后用对话、画布、终端和创作台完成任务。所有说明以当前 0.2.0（r039）实现为准。
 
 ## 1. 安装与首次启动
 
@@ -8,7 +8,7 @@
 
 Morrow 提供两种 Windows x64 交付形态：
 
-- **单文件便携版** `Morrow-0.2.0-portable.exe`：首次运行在 exe 同级解压 `.morrow-runtime-0.2.0-r038`，之后秒开；数据默认也在 exe 同级的 `Morrow Data`。
+- **单文件便携版** `Morrow-0.2.0-portable.exe`：首次运行在 exe 同级解压 `.morrow-runtime-0.2.0-r039`，之后秒开；数据默认也在 exe 同级的 `Morrow Data`。
 - **NSIS 安装包** `Morrow-0.2.0-setup.exe`：默认安装到 Program Files（需要管理员权限），创建开始菜单/桌面快捷方式；数据默认在 `%APPDATA%\Morrow`。
 
 当前构建未配置代码签名，首次运行可能弹出 SmartScreen：点“更多信息 → 仍要运行”。下载后建议用 `SHA256SUMS.txt` 核对文件完整性。
@@ -250,7 +250,7 @@ Git 面板提供：
 
 ### 11.1 接入模型
 
-- 内置 API：DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Anthropic Claude、OpenAI、Gemini、Grok、Meta Muse。
+- 内置 API：DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Anthropic Claude、OpenAI、Gemini、Grok、Meta Muse（Muse Wonder 1.0 / Muse Spark 1.3）。
 - 自定义 OpenAI 兼容：填 Base URL、Key、模型 ID；本机/局域网服务允许空 Key。
 - 同步模型列表：读取 `/models` 的上下文、输出、推理档位等元数据，最多 200 个；缺失字段保留本地值。
 
@@ -436,7 +436,7 @@ Get-FileHash .\Morrow-0.2.0-portable.exe -Algorithm SHA256
 
 ## 功能速查
 
-本文按使用域列出 Morrow 当前（0.2.0 / r038）的入口、能力与边界。上文是操作步骤；创作台细节见 [创作台](STUDIO.md)，实现细节见 [架构说明](ARCHITECTURE.md)。
+本文按使用域列出 Morrow 当前（0.2.0 / r039）的入口、能力与边界。上文是操作步骤；创作台细节见 [创作台](STUDIO.md)，实现细节见 [架构说明](ARCHITECTURE.md)。
 
 ### 1. 对话与任务
 

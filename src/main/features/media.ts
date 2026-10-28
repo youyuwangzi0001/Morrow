@@ -1,10 +1,11 @@
-import { BrowserWindow, dialog, shell } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import { copyFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { registerFeatureHandler } from '../feature-ipc'
 import { getMediaService } from '../services/media-service'
 import { getMediaCatalog } from '../services/media-catalog'
+import { openPathFromUserShell } from '../services/reveal'
 import type { MediaCatalogAction } from '../../shared/media-models'
 
 registerFeatureHandler('feature:media:status', async () => {
@@ -87,7 +88,7 @@ registerFeatureHandler('feature:media:open-model-dir', async (payload) => {
   const catalog = await getMediaCatalog().status()
   const engine = catalog.engines.find((item) => item.id === engineId)
   if (!engine?.modelDir) throw new Error('这个引擎还没有模型目录；请先配置引擎目录。')
-  const message = await shell.openPath(engine.modelDir)
+  const message = await openPathFromUserShell(engine.modelDir)
   if (message) throw new Error(message)
   return engine.modelDir
 })
