@@ -198,13 +198,15 @@ export async function revealInFileManager(absolutePath: string): Promise<string 
     }
   }
 
-  const broker = await askLauncher('REVEAL', absolutePath)
-  if (broker.kind === 'ok') return null
-  if (broker.kind === 'error') log.warn('launcher reveal failed', { path: absolutePath, error: broker.message })
-
+  // Windows 受限会话里启动器代理可能卡在 Shell COM；先走 PowerShell Shell 助手，
+  // 只有助手失败时才回退到启动器代理。
   const helperError = await runShellHelper(absolutePath, 'REVEAL')
   if (!helperError) return null
   log.warn('shell helper reveal failed', { path: absolutePath, error: helperError })
+
+  const broker = await askLauncher('REVEAL', absolutePath)
+  if (broker.kind === 'ok') return null
+  if (broker.kind === 'error') log.warn('launcher reveal failed', { path: absolutePath, error: broker.message })
 
   return broker.kind === 'error' ? broker.message : helperError
 }
@@ -213,16 +215,13 @@ export async function revealInFileManager(absolutePath: string): Promise<string 
 export async function openPathFromUserShell(absolutePath: string): Promise<string | null> {
   if (!existingTarget(absolutePath)) return '文件不存在或已被移动。'
 
-  const broker = await askLauncher('OPEN', absolutePath)
-  if (broker.kind === 'ok') return null
-  if (broker.kind === 'error') log.warn('launcher open failed', { path: absolutePath, error: broker.message })
-
   if (process.platform !== 'win32') {
     const error = await shell.openPath(absolutePath)
     return error || null
   }
 
   // 目录必须交给现有 Shell 打开；shell.openPath(目录) 会新建 explorer.exe 并弹 0xC0000142。
+  // 先走 PowerShell Shell 助手，避免启动器代理在部分会话里卡在 Shell COM。
   if (isDirectoryPath(absolutePath)) {
     // 自动化测试里不拉起真实的资源管理器窗口，直接走 shell.openPath 便于断言错误。
     if (process.env.MORROW_TEST === '1') {
@@ -231,8 +230,15 @@ export async function openPathFromUserShell(absolutePath: string): Promise<strin
     }
     const helperError = await runShellHelper(absolutePath, 'EXPLORE')
     if (!helperError) return null
+    log.warn('shell helper open failed', { path: absolutePath, error: helperError })
+    const broker = await askLauncher('OPEN', absolutePath)
+    if (broker.kind === 'ok') return null
     return broker.kind === 'error' ? broker.message : helperError
   }
+
+  const broker = await askLauncher('OPEN', absolutePath)
+  if (broker.kind === 'ok') return null
+  if (broker.kind === 'error') log.warn('launcher open failed', { path: absolutePath, error: broker.message })
 
   // 非 HTML 文件优先用 ShellExecute；HTML 成品已由画布内置浏览器处理，不会再触发 Edge 提权提示。
   const shellError = await shell.openPath(absolutePath)

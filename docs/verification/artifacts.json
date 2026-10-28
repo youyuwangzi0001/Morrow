@@ -1,8 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "runtime": "r039",
-  "builtAt": "2026-10-28T02:51:28.000Z",
+  "runtime": "r040",
+  "builtAt": "2026-10-28T03:18:20.000Z",
   "platform": "win32-x64",
   "source": {
     "files": 343,
@@ -30,7 +30,7 @@
         "passed": 6,
         "skipped": 0,
         "date": "2026-10-28",
-        "durationMs": 17900
+        "durationMs": 19300
       },
       "full": {
         "suites": 22,
@@ -63,7 +63,7 @@
   },
   "delivery": {
     "fileCount": 5,
-    "bytes": 388579433,
+    "bytes": 388579387,
     "mib": 370.58
   },
   "artifacts": [
@@ -71,25 +71,25 @@
       "name": "Morrow-0.2.0-portable.exe",
       "bytes": 220361728,
       "mib": 210.15,
-      "sha256": "a53b867e9b38626d500dac2cab93df6a526d22dc29dd4398dfd1db5a42171f1b"
+      "sha256": "3c3cb55f41c8cb2eff614519d2a8324781200acaad46658dabc349cd856fb96e"
     },
     {
       "name": "Morrow-0.2.0-setup.exe",
-      "bytes": 168210456,
+      "bytes": 168210410,
       "mib": 160.42,
-      "sha256": "bcce2633d75f186ae0020072861b2b0c09aedd9d2e9892b9f849cf0557aab435"
+      "sha256": "1c07214c0c4cf3a0579cf75e553e4ed551e6d6a361ee42891a38cffe1b26975d"
     },
     {
       "name": "使用说明.txt",
       "bytes": 5841,
       "mib": 0,
-      "sha256": "1c7eb874eb41e2964b31972361a6e7b9db2e3a442c2c777cf44d04f0eec6b952"
+      "sha256": "f02df9f8881314a7a0139610e46bab3cdc3397e794a45cf997ab0b04e7fdc0a8"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 338,
       "mib": 0,
-      "sha256": "f485393033371bcd0b15c2987799dd3f2449f976076d559836ff3dc06a871df7"
+      "sha256": "f5ad7e1c4a9ddc62873a6652d3e451f3d04aaeddf7b385e71aa7435af244ce75"
     },
     {
       "name": "LICENSE",
@@ -98,31 +98,31 @@
       "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.2.0-r039",
+  "runtimeCache": ".morrow-runtime-0.2.0-r040",
   "code": {
     "files": 425,
-    "lines": 211549,
+    "lines": 211556,
     "production": {
       "files": 343,
-      "lines": 160698
+      "lines": 160704
     },
     "tests": {
       "files": 65,
-      "lines": 46710
+      "lines": 46711
     },
     "scripts": {
       "files": 17,
       "lines": 4141
     }
   },
-  "generatedAt": "2026-10-28T03:02:00.000Z",
+  "generatedAt": "2026-10-28T03:30:00.000Z",
   "lockedCaches": [],
   "pendingCacheCleanup": [],
   "sourceArchive": {
     "name": "Morrow-0.2.0-source.zip",
-    "bytes": 41453732,
+    "bytes": 41453690,
     "mib": 39.53,
-    "sha256": "478a96d229695fa4e238086c3d3f0d004f769f8de277af0984f427bba905099a",
+    "sha256": "7579e7ea7d62b8d5dbe5766bcd7036c3161f32f11b6b6c8bec0278d91085774f",
     "sidecar": "Morrow-0.2.0-source.zip.sha256",
     "note": "由当前工作树的临时 Git index 生成；包内文档不含源码包自身哈希，以交付目录侧车为准。"
   }

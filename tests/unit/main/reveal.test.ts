@@ -1434,9 +1434,10 @@ describe('reveal in file manager', () => {
     expect(showItemMock).not.toHaveBeenCalled()
   })
 
-  it('启动器代理存在时通过命名管道执行，不依赖 Electron 的 GUI 子进程', async () => {
+  it('Shell 助手失败时回退到启动器命名管道代理', async () => {
     if (process.platform !== 'win32') return
     const path = tempFile()
+    spawnMock.mockReturnValue(fakeChild(true, 1))
     const pipe = `morrow-test-${process.pid}-${Date.now()}`
     const server = createServer((socket) => {
       socket.setEncoding('utf8')
@@ -1451,7 +1452,7 @@ describe('reveal in file manager', () => {
     await new Promise<void>((resolve) => server.listen(`\\\\.\\pipe\\${pipe}`, resolve))
     process.env.MORROW_LAUNCHER_PIPE = pipe
     await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(spawnMock).not.toHaveBeenCalled()
+    expect(spawnMock).toHaveBeenCalledTimes(1)
   })
 
   it('系统应用打开文件优先走 ShellExecute，不启动 Explorer 转发', async () => {
