@@ -611,7 +611,7 @@ function buildUsageText(_singleOnly = false) {
     '- 创作台侧栏：左右栏可拖动调宽，默认 240 / 420px，拖动时 1px 香槟金线；三种聊天输入框统一流金边框，深/浅主题一致。',
     '- 设置与时间线：预算“不设上限”、模型“先用哪边”、工具能力白话；开始位置、素材起点、剪开、前后一帧等日常表述。',
     '- Meta 模型目录新增 Muse Wonder 1.0（1M 上下文、视觉/工具、五档思考）；Muse Spark 1.3 保留。',
-    '- 测试：32 个单元套件 / 1029 用例（1020 passed + 9 skipped）；E2E 33 套件 / 232 用例（212 passed + 20 skipped，0 failed）；源码与构建脚本包含在源码包中。',
+    '- 测试：14 个单元套件 / 1020 用例（1011 passed + 9 skipped）；E2E 7 个领域 spec / 221 用例（201 passed + 20 skipped，0 failed）；源码与构建脚本包含在源码包中。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
