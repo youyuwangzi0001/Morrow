@@ -284,7 +284,7 @@ test.describe('Morrow 创作台', () => {
 
 test('自动推进在确认后排入补齐与草稿合成任务', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'studio-pipeline', env: { MORROW_SEED_CORPUS: '1' } })
+  const morrow = await launchMorrow({ name: 'studio-pipeline' })
   const page = morrow.page
   try {
     await dismissOnboarding(page)
@@ -292,7 +292,7 @@ test('自动推进在确认后排入补齐与草稿合成任务', async () => {
     await page.locator('.tb-create').click()
     await page.waitForSelector('.studio-home', { timeout: 30_000 })
     if (await page.locator('.studio-guide').count()) await page.locator('.studio-guide-skip').click()
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
     await page.locator('.studio-stage-item', { hasText: '检查' }).click()
     await page.waitForSelector('.studio-review', { timeout: 20_000 })

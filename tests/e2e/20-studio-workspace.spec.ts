@@ -5,7 +5,7 @@ import { dismissOnboarding, setThemeViaStore } from './store'
 
 test('漫剧画布：镜头、音频、文本节点与连线可编辑并持久化', async () => {
   test.setTimeout(180_000)
-  const morrow = await launchMorrow({ name: 'canvas', env: { MORROW_SEED_CORPUS: '1' } })
+  const morrow = await launchMorrow({ name: 'canvas' })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -20,8 +20,8 @@ test('漫剧画布：镜头、音频、文本节点与连线可编辑并持久�
       const response = await window.morrow.features.invoke('feature:studio:action', { type: 'list' })
       return response.ok ? response.data : null
     })
-    const target = list.projects.find((item: any) => item.title === '0.12秒')
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    const target = list.projects.find((item: any) => item.title === '逆行的伞')
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
     await page.locator('.studio-canvas-link').click()
     await page.waitForSelector('.studio-canvas-view', { timeout: 20_000 })
@@ -139,7 +139,7 @@ test('漫剧画布：镜头、音频、文本节点与连线可编辑并持久�
 
 test('人物语气审稿、完整任务消息流与真实波形', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'insights', env: { MORROW_SEED_CORPUS: '1' } })
+  const morrow = await launchMorrow({ name: 'insights' })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -153,8 +153,8 @@ test('人物语气审稿、完整任务消息流与真实波形', async () => {
       const response = await window.morrow.features.invoke('feature:studio:action', { type: 'list' })
       return response.ok ? response.data : null
     })
-    const target = list.projects.find((item: any) => item.title === '0.12秒')
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    const target = list.projects.find((item: any) => item.title === '逆行的伞')
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
 
     await page.locator('.studio-stage-item', { hasText: '检查' }).click()
@@ -224,7 +224,7 @@ test('人物语气审稿、完整任务消息流与真实波形', async () => {
 
 test('协作侧栏不挤压主区，菜单层级、字幕与演示控制条对齐', async () => {
   test.setTimeout(240_000)
-  const morrow = await launchMorrow({ name: 'layout', env: { MORROW_SEED_CORPUS: '1' } })
+  const morrow = await launchMorrow({ name: 'layout' })
   const page = morrow.page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -239,7 +239,7 @@ test('协作侧栏不挤压主区，菜单层级、字幕与演示控制条对�
     await page.locator('.tb-create').click()
     await page.waitForSelector('.studio-home', { timeout: 30_000 })
     if (await page.locator('.studio-guide').count()) await page.locator('.studio-guide-skip').click()
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
     await page.waitForTimeout(700)
 

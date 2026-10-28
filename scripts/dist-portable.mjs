@@ -580,6 +580,7 @@ function buildUsageText(_singleOnly = false) {
     '',
     '本版重点',
     '- 创作台：从一句话到可交付作品。中短篇、长篇与漫剧共用同一个作品底座，蓝图批准后才开始批量生成。',
+    '- 文件管理器：打开作品文件夹/数据目录、在资源管理器中定位导出文件由系统任务代理完成，受限会话下也能正常打开。',
     '- 内置三份可编辑样例：中短篇《雨停之前》、长篇《雨伞铺的第七个夏天》、漫剧《逆行的伞》；演示使用漫剧样例。',
     '- 首次指引与演示：首次进入创作台的三页指引已完全对齐启动引导；「看演示」驱动真实工作台走完一句话到交付。',
     '- 小说链路：分卷 CRUD/跨卷拖拽、全部候选与段落对照、世界设定与关系图、章节配图嵌入 EPUB/DOCX/PDF、DOCX 目录。',
@@ -605,7 +606,7 @@ function buildUsageText(_singleOnly = false) {
     '- 创作台侧栏：左右栏可拖动调宽，默认 240 / 420px，拖动时 1px 香槟金线；三种聊天输入框统一流金边框，深/浅主题一致。',
     '- 设置与时间线：预算“不设上限”、模型“先用哪边”、工具能力白话；开始位置、素材起点、剪开、前后一帧等日常表述。',
     '- Meta 模型目录新增 Muse Wonder 1.0（1M 上下文、视觉/工具、五档思考）；Muse Spark 1.3 保留。',
-    '- 测试：29 个单元套件 / 1011 用例；全量 E2E 213 passed + 11 skipped（环境边界），定向 14 项，打包版 6 项通过；源码与构建脚本包含在源码包中。',
+    '- 测试：29 个单元套件 / 1012 用例；定向 E2E 18–21 共 9 项，打包版 6 项通过；源码与构建脚本包含在源码包中。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
@@ -717,6 +718,42 @@ function ensureMediumIntegrity(filePath) {
     fail(`无法设置 Medium 完整性标签（${filePath}）：${(result.stdout || '') + (result.stderr || '')}`)
   }
   logLine(`[dist] 完整性标签 Medium：${relPath(filePath)}`)
+}
+
+/**
+ * 目录树统一 Medium：目录本身带 (OI)(CI) 继承标签，之后解压的运行时、用户作品与
+ * 派生产物都不会再继承宿主工作区的 Low 标签。icacls /T 处理已有文件；逐目录补
+ * 继承标记，确保新建文件也不会回到 Low。
+ */
+function ensureMediumTree(rootDir) {
+  if (process.platform !== 'win32' || !existsSync(rootDir)) return
+  const icacls = join(process.env.SystemRoot || 'C:\Windows', 'System32', 'icacls.exe')
+  const run = (args, label, required) => {
+    const result = spawnSync(icacls, args, { encoding: 'utf8', windowsHide: true })
+    if (result.status !== 0) {
+      const detail = (result.stdout || '') + (result.stderr || '')
+      if (required) fail(`无法设置 Medium 完整性标签（${label}）：${detail}`)
+      logLine(`[dist] 警告：完整性标签未能应用到 ${label}（文件可能被占用）`)
+    }
+  }
+  run([rootDir, '/T', '/C', '/Q', '/setintegritylevel', 'Medium'], '交付目录树', false)
+  const stack = [rootDir]
+  let applied = 0
+  while (stack.length > 0) {
+    const current = stack.pop()
+    run([current, '/Q', '/setintegritylevel', '(OI)(CI)Medium'], relPath(current), current === rootDir)
+    applied += 1
+    let entries = []
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.isSymbolicLink()) stack.push(join(current, entry.name))
+    }
+  }
+  logLine(`[dist] 完整性标签 Medium（含继承）：${relPath(rootDir)} · ${applied} 个目录`)
 }
 
 function compileLauncher(outPath, options = {}) {
@@ -904,6 +941,7 @@ function stageDelivery() {
   staged.totalSizeMB = Number((staged.totalSizeBytes / 1024 / 1024).toFixed(2))
   staged.totalFileCount = total.fileCount - (localData?.fileCount ?? 0)
   staged.localData = localData
+  ensureMediumTree(deliverDir)
   return staged
 }
 

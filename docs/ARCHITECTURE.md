@@ -235,7 +235,7 @@
 - 构建：`npm run build`（typecheck + electron-vite）。
 - 打包：`npm run dist` / `dist:all`；便携版使用自研 C# 启动器，内嵌 zip，首次解压到 exe 同级 `.morrow-runtime-<version>-<revision>`。
 - 安装包：NSIS，默认安装到 Program Files（需要管理员权限）。
-- 单元测试：Vitest，29 个套件 / 1011 用例；其中创作台覆盖作品仓库、分片恢复、提示词、语气审稿、文本 diff、云端 TTS、路由、状态转移、时间线、修改计划与 Agent 工具。
+- 单元测试：Vitest，29 个套件 / 1012 用例；其中创作台覆盖作品仓库、分片恢复、提示词、语气审稿、文本 diff、云端 TTS、路由、状态转移、时间线、修改计划与 Agent 工具。
 - E2E：Playwright `_electron`，22 个套件 / 224 用例；打包版 E2E 另跑 6 个用例（含创作台资产）。
 - 真实账号/媒体用例默认跳过，需环境变量与本机引擎。
 - 评测指标、复现命令与当前结果见 [验收记录](verification/VERIFICATION.md)。

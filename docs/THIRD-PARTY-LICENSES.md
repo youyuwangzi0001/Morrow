@@ -55,7 +55,6 @@
 - **FFmpeg**：Morrow 不内置 FFmpeg 二进制，调用用户本机安装或设置中指定的 `ffmpeg.exe`。FFmpeg 的许可取决于所下载构建（通常为 LGPL-2.1+ 或 GPL-2.0+）；分发或商用前请核对所选构建的许可与 `--enable-gpl` / `--enable-nonfree` 选项。
 - **ComfyUI 与模型权重**：不在 Morrow 安装包内，由用户本机安装；Qwen-Image、MiniMax-H3 等模型按其各自许可使用。
 - **系统语音（Windows SAPI / WinRT）**：由操作系统提供，不随应用分发。
-- **真实语料样例**：仅用于本地验收测试；正式分发前请确认语料权利。
 
 ## 独立实现说明
 

@@ -8,7 +8,7 @@ test('创作台在小屏、中屏与大屏下均无横向溢出，监视器随�
   test.setTimeout(300_000)
   const outDir = join(screensDir, 'matrix')
   mkdirSync(outDir, { recursive: true })
-  const morrow = await launchMorrow({ name: 'matrix', env: { MORROW_SEED_CORPUS: '1' } })
+  const morrow = await launchMorrow({ name: 'matrix' })
   const page = morrow.page
   const resize = async (width: number, height: number): Promise<void> => {
     await morrow.app.evaluate(async ({ BrowserWindow }, target) => {
@@ -35,7 +35,7 @@ test('创作台在小屏、中屏与大屏下均无横向溢出，监视器随�
     await page.locator('.tb-create').click()
     await page.waitForSelector('.studio-home', { timeout: 30_000 })
     if (await page.locator('.studio-guide').count()) await page.locator('.studio-guide-skip').click()
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
 
     const sizes = [
@@ -94,7 +94,7 @@ test('创作台在小屏、中屏与大屏下均无横向溢出，监视器随�
     await page.waitForSelector('.studio-home', { timeout: 20_000 })
     await resize(1280, 800)
     expect(await overflow(), '1280 首页横向溢出').toBeLessThanOrEqual(2)
-    await page.locator('.studio-project-card', { hasText: '0.12秒' }).first().locator('.studio-project-cover').click()
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
     await page.waitForSelector('.studio-timeline-view', { timeout: 30_000 })
     await page.locator('.studio-stage-item', { hasText: '分镜' }).click()
     await page.waitForSelector('.studio-storyboard', { timeout: 20_000 })

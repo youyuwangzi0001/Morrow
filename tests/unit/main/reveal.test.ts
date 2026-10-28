@@ -25,11 +25,9 @@ import { createServer, type Server } from 'node:net'
 import { openPathFromUserShell, revealInFileManager } from '../../../src/main/services/reveal'
 
 const electronState = vi.hoisted(() => ({ dataDir: '' }))
-const spawnMock = vi.hoisted(() => vi.fn())
 const openPathMock = vi.hoisted(() => vi.fn(async () => ''))
 const showItemMock = vi.hoisted(() => vi.fn())
 
-vi.mock('node:child_process', () => ({ spawn: spawnMock }))
 vi.mock('electron', () => ({
   app: {
     getPath: (name: string) => (name === 'userData' ? electronState.dataDir : join(electronState.dataDir, name))
@@ -1381,20 +1379,29 @@ function tempFile(name = '报告 1.html'): string {
   return path
 }
 
-function fakeChild(autoExit = true, exitCode = 0): Record<string, unknown> {
-  const child: Record<string, unknown> = {}
-  child.on = vi.fn((event: string, callback: (code?: number) => void) => {
-    if (autoExit && event === 'exit') queueMicrotask(() => callback(exitCode))
-    return child
+async function servePipe(pipe: string, response: string, onRequest?: (line: string) => void): Promise<void> {
+  const server = createServer((socket) => {
+    socket.setEncoding('utf8')
+    let buffer = ''
+    socket.on('data', (chunk: string) => {
+      buffer += chunk
+      if (!buffer.includes('\n')) return
+      onRequest?.(buffer.trim())
+      socket.end(`${response}\n`)
+    })
   })
-  child.unref = vi.fn(() => child)
-  child.kill = vi.fn()
-  return child
+  servers.push(server)
+  await new Promise<void>((resolve) => server.listen(`\\\\.\\pipe\\${pipe}`, resolve))
+}
+
+function usePipe(): string {
+  const pipe = `morrow-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  process.env.MORROW_LAUNCHER_PIPE = pipe
+  return pipe
 }
 
 afterEach(async () => {
   delete process.env.MORROW_LAUNCHER_PIPE
-  spawnMock.mockReset()
   openPathMock.mockReset()
   openPathMock.mockResolvedValue('')
   showItemMock.mockReset()
@@ -1409,71 +1416,62 @@ afterEach(async () => {
 })
 
 describe('reveal in file manager', () => {
-  it('没有启动器代理时用现有 Shell 定位，不创建 Explorer 子进程', async () => {
-    const path = tempFile()
-    spawnMock.mockReturnValue(fakeChild())
-    await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(spawnMock).toHaveBeenCalledTimes(1)
-    const [command, args, options] = spawnMock.mock.calls[0] ?? []
-    expect(command).toBe('powershell.exe')
-    expect(args).toContain('-EncodedCommand')
-    expect(options).toMatchObject({ windowsHide: true })
-    expect((options as { env: Record<string, string> }).env).toMatchObject({
-      MORROW_SHELL_MODE: 'REVEAL',
-      MORROW_SHELL_TARGET: path
-    })
-    expect(openPathMock).not.toHaveBeenCalled()
-    expect(showItemMock).not.toHaveBeenCalled()
-  })
-
-  it('Shell 辅助进程失败时返回真实原因，不弹 Explorer 错误框', async () => {
-    const path = tempFile()
-    spawnMock.mockReturnValue(fakeChild(true, 1))
-    await expect(revealInFileManager(path)).resolves.toContain('退出码 1')
-    expect(openPathMock).not.toHaveBeenCalled()
-    expect(showItemMock).not.toHaveBeenCalled()
-  })
-
-  it('Shell 助手失败时回退到启动器命名管道代理', async () => {
+  it('打包版优先走启动器代理并传递目标', async () => {
     if (process.platform !== 'win32') return
     const path = tempFile()
-    spawnMock.mockReturnValue(fakeChild(true, 1))
-    const pipe = `morrow-test-${process.pid}-${Date.now()}`
-    const server = createServer((socket) => {
-      socket.setEncoding('utf8')
-      socket.once('data', (data: string) => {
-        const [command, encoded] = data.trim().split(' ')
-        expect(command).toBe('REVEAL')
-        expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(path)
-        socket.end('OK\n')
-      })
-    })
-    servers.push(server)
-    await new Promise<void>((resolve) => server.listen(`\\\\.\\pipe\\${pipe}`, resolve))
-    process.env.MORROW_LAUNCHER_PIPE = pipe
+    const pipe = usePipe()
+    let request = ''
+    await servePipe(pipe, 'OK', (line) => { request = line })
     await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(spawnMock).toHaveBeenCalledTimes(1)
+    const [command, encoded] = request.split(' ')
+    expect(command).toBe('REVEAL')
+    expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(path)
+    expect(showItemMock).not.toHaveBeenCalled()
   })
 
-  it('系统应用打开文件优先走 ShellExecute，不启动 Explorer 转发', async () => {
+  it('代理报错时返回真实原因，不再调用 Electron Shell', async () => {
+    if (process.platform !== 'win32') return
+    const path = tempFile()
+    const pipe = usePipe()
+    await servePipe(pipe, 'ERR\t启动器代理没有权限')
+    await expect(revealInFileManager(path)).resolves.toBe('启动器代理没有权限')
+    expect(showItemMock).not.toHaveBeenCalled()
+  })
+
+  it('没有代理时用 Electron 定位（开发模式）', async () => {
+    const path = tempFile()
+    await expect(revealInFileManager(path)).resolves.toBeNull()
+    expect(showItemMock).toHaveBeenCalledWith(path)
+    expect(openPathMock).not.toHaveBeenCalled()
+  })
+
+  it('打开文件优先走启动器代理，不调用会崩溃的 shell.openPath', async () => {
+    if (process.platform !== 'win32') return
+    const path = tempFile()
+    const pipe = usePipe()
+    let request = ''
+    await servePipe(pipe, 'OK', (line) => { request = line })
+    await expect(openPathFromUserShell(path)).resolves.toBeNull()
+    const [command, encoded] = request.split(' ')
+    expect(command).toBe('OPEN')
+    expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(path)
+    expect(openPathMock).not.toHaveBeenCalled()
+  })
+
+  it('代理失败时返回原因，不偷偷回退到 ShellExecute', async () => {
+    if (process.platform !== 'win32') return
+    const path = tempFile()
+    const pipe = usePipe()
+    await servePipe(pipe, 'ERR\t系统文件管理器未能打开目标')
+    await expect(openPathFromUserShell(path)).resolves.toBe('系统文件管理器未能打开目标')
+    expect(openPathMock).not.toHaveBeenCalled()
+  })
+
+  it('没有代理时走 Electron Shell（开发模式）', async () => {
     const path = tempFile()
     await expect(openPathFromUserShell(path)).resolves.toBeNull()
     expect(openPathMock).toHaveBeenCalledWith(path)
-    expect(spawnMock).not.toHaveBeenCalled()
-  })
-
-  it('目录交给现有 Shell 打开，即使 ShellExecute 失败也不创建 Explorer 进程', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'morrow-reveal-'))
-    tempDirs.push(dir)
-    spawnMock.mockReturnValue(fakeChild())
-    await expect(openPathFromUserShell(dir)).resolves.toBeNull()
-    const [command, , options] = spawnMock.mock.calls[0] ?? []
-    expect(command).toBe('powershell.exe')
-    expect((options as { env: Record<string, string> }).env).toMatchObject({
-      MORROW_SHELL_MODE: 'EXPLORE',
-      MORROW_SHELL_TARGET: dir
-    })
-    expect(openPathMock).not.toHaveBeenCalled()
+    expect(showItemMock).not.toHaveBeenCalled()
   })
 })
 })
