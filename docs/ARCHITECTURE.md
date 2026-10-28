@@ -1,6 +1,6 @@
 # Morrow 架构说明
 
-本文描述 Morrow 0.2.0（r040）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、创作台如何落到作品文件、数据写到哪里、哪些边界不可越过。
+本文描述 Morrow 0.2.0（r049）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、创作台如何落到作品文件、数据写到哪里、哪些边界不可越过。
 
 ## 1. 进程模型
 
@@ -9,8 +9,10 @@
 │ index.ts        启动、单实例、窗口/灵动岛/托盘、安全策略、崩溃处理            │
 │ ipc.ts          chat/session/settings/window 等基础 IPC                       │
 │ feature-ipc.ts  feature:* 白名单注册与 Result 包装                            │
-│ services/       AgentService、订阅代理、终端、Git、媒体、记忆、项目、MCP...  │
-│ core/           agent 循环、工具、权限、上下文、Provider                       │
+│ main/*.ts       扁平模块：agent/studio/features/workspace/runtime/session/     │
+│                  settings/subscriptions/memory/media/artifacts/terminal-manager│
+│ core/*.ts       扁平模块：agent/tools/tool-kit/tool-files/tool-media/          │
+│                  tool-extra/providers/types/util                                │
 └───────────────────────────────────┬───────────────────────────────────────────┘
                                     │ contextBridge / ipcRenderer.invoke
 ┌───────────────────────────────────▼───────────────────────────────────────────┐
@@ -20,7 +22,7 @@
                                     │
 ┌───────────────────────────────────▼───────────────────────────────────────────┐
 │ renderer（React 19 + Zustand）                                                │
-│ TitleBar/Sidebar/Transcript/Composer/Canvas/Workbench/Settings/Island        │
+│ features/*.tsx  每个功能域一个扁平组件文件；components.tsx 承载共享 UI            │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,7 +37,15 @@
 5. `whenReady`：安全策略 → 协议处理器 → 菜单置空 → 基础 IPC → feature 模块 → 订阅恢复 → Token 账本 → 主窗 → 灵动岛 → 托盘 → 定时任务 → 全局快捷键。
 6. 打包版启动本地 crashReporter；主进程安装未捕获异常/未处理 Promise/子进程消失日志。
 
-### 1.2 窗口与生命周期
+### 1.2 扁平结构约束
+
+生产源码只保留 8 个目录（`src/main`、`src/core`、`src/preload`、`src/renderer`、`src/renderer/assets`、`src/renderer/features`、`src/shared` 与根）。规则：
+
+- 主进程/核心不再按 `services/`、`features/`、`studio/`、`tools/`、`providers/` 分层；同类实现合并到领域文件。
+- 渲染层每个功能域只保留 `<域>.tsx`（组件）与 `<域>-core.ts`（纯逻辑，若有）；CSS 合并为 `<域>.css`。
+- 新增模块先判断能否并入现有领域文件；只有确实独立的边界才新建文件。
+
+## 1.3 窗口与生命周期
 
 - 主窗默认按 2100×1200 物理像素换算 DIP；最小 1200×760 物理像素左右。
 - 关闭动作由 `settings.closeAction` 决定：每次询问、最小化到任务栏、完全退出。
@@ -129,7 +139,7 @@
 
 ## 5. 权限与审批
 
-权限模型在 `core/permissions.ts`，持久化在 `services/permission-rules.ts`。
+权限模型在 `core/agent.ts`，持久化在 `main/runtime.ts`。
 
 | 档位 | 普通写/命令 | 危险命令 | 越界路径 | 外部副作用 |
 |---|---|---|---|---|
@@ -204,7 +214,7 @@
 
 ## 9. 订阅与代理
 
-订阅服务在 `main/services/*-subscription.ts`，协议在 `*-protocol.ts`。共同结构：
+订阅服务与协议统一在 `main/subscriptions.ts`。共同结构：
 
 - 登录/导入 → 凭据加密落盘 → 账号/额度校验 → 模型目录 → 本地回环代理 → Provider。
 - 回环代理只绑 `127.0.0.1` 随机端口，要求随机本地 Bearer；上游 token 不进入渲染层。
@@ -214,11 +224,11 @@
 
 ## 10. 创作台、终端、Git、浏览器与媒体
 
-- 创作台：`StudioService` 是唯一写入口；`StudioStore` 负责项目原子读写、超长章节分片、版本快照、素材指纹与回收；`text` 负责策略化模型路由与预算估算；`local-creative` 负责本地结构稿；`prompt-library` 提供内部创作手法；`intent` 把大白话转成可审阅的修改计划；`voice-audit` 做人物的可核对语气分析；`media-derive` 生成真实波形与低清代理；`render/exporter` 产出视频与成书。界面在 `features/studio/`，数据契约在 `shared/studio.ts`。
+- 创作台：`StudioService` 是唯一写入口；`StudioStore` 负责项目原子读写、超长章节分片、版本快照、素材指纹与回收；文本路由、蓝图落地、样例数据、创作手法库与七维质检、意图解析、语气分析、波形代理、视频与成书导出都扁平合并在 `main/studio.ts`。界面在 `renderer/features/studio.tsx` 与 `studio-core.ts`，数据契约在 `shared/studio.ts`。
 - `TerminalManager`：node-pty / ConPTY；Git Bash 默认；PowerShell 7 / WSL 可选；Windows PowerShell 5.1 与 CMD 移除（CMD 仅在无其他 Shell 时兼容回退）。
 - Git：`git-service` 封装工作区仓库操作；拒绝越界与父仓库根操作；diff 超长截断。
 - 浏览器：`BrowserService` 管理多标签/原生视图；普通页面与登录 session 分离；导航白名单、下载、权限与错误页有独立处理。
-- 媒体：`MediaService` + `media-catalog` 管理引擎/模型/下载/启动；ComfyUI、llama.cpp、Ollama、LM Studio；ffmpeg 由系统或设置提供；产物写入 `media/`。
+- 媒体：`MediaService` + `media-catalog` 管理引擎/模型/下载/启动；ComfyUI（Qwen 图片、MiniMax 视频、ACE-Step 配乐）、llama.cpp、Ollama、LM Studio；ffmpeg 由系统或设置提供；产物写入 `media/`。创作台的画面/视频/配乐都走同一套媒体服务，模型未就绪时明确失败。
 
 ## 11. 安全边界
 

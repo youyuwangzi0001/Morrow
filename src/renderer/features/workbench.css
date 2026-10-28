@@ -1,0 +1,19 @@
+/* workbench 功能域样式：由 1 个样式表按原引用顺序合并。 */
+
+/* 功能面板只保留浏览器全屏宿主；原工作台菜单样式已删除。 */
+.workbench-browser-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--bg);
+  -webkit-app-region: no-drag;
+}
+
+/* 浏览器面板独占顶部；保留标题栏的原生拖动区会让地址栏出现分块焦点。 */
+body.is-browser-surface-open .titlebar {
+  display: none;
+}
+
+.workbench-browser-overlay.is-hidden {
+  display: none;
+}

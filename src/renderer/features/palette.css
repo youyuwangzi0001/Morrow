@@ -1,0 +1,198 @@
+/* palette 功能域样式：由 1 个样式表按原引用顺序合并。 */
+
+/* 命令面板（shell 拥有）：玻璃浮层，操作 / 会话 / 文件三组 */
+
+.modal-palette .modal-body {
+  padding: 0;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 搜索行 */
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.palette-search-icon {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  letter-spacing: var(--ls-ui);
+  user-select: text;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--text-3);
+}
+
+.palette-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: var(--fs-body-lg);
+  line-height: var(--lh-none);
+}
+
+.palette-clear:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.palette-esc {
+  flex: 0 0 auto;
+  opacity: 0.68;
+}
+
+/* 结果列表 */
+.palette-list {
+  max-height: min(52vh, 430px);
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette-group {
+  padding: 2px 0;
+}
+
+.palette-group + .palette-group {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.palette-group-label {
+  padding: 5px 10px 4px;
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-display);
+}
+
+.palette-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  text-align: left;
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.palette-item.is-active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.palette-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--gold);
+}
+
+.palette-item-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.palette-item.is-active .palette-item-icon {
+  color: var(--gold);
+}
+
+.palette-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.palette-item-label {
+  color: inherit;
+  font-size: var(--fs-base-plus);
+}
+
+.palette-item-desc {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.palette-item-shortcut {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-caps);
+}
+
+.palette-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-readable);
+}
+
+.palette-empty-hint {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-sm-plus);
+}
+
+/* 底部提示 */
+.palette-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 15px;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+}
+
+.palette-foot-keys {
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caps);
+}
+
+.palette-foot-workspace {
+  max-width: 230px;
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caps);
+  opacity: 0.8;
+}

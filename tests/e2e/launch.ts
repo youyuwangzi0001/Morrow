@@ -10,8 +10,8 @@
  * 启动的是构建产物：`out/main/index.js`（先 `npm run build`）。
  */
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdirSync, rmSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 // 项目没有 "type": "module"，Playwright 会按 CJS 转译 .ts，因此这里用 __dirname。
 // launch.ts 位于 tests/e2e/ → 根目录是 ../..
@@ -126,6 +126,15 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
   const dataDir = opts.dataDir ?? join(tmpDir, `data-${id}`)
   mkdirSync(chromiumDir, { recursive: true })
   mkdirSync(dataDir, { recursive: true })
+
+  // 缺少构建产物时 Electron 会弹「Unable to find Electron app」模态框并挂起整轮 E2E；
+  // 在启动前先失败，把原因直接写进测试报告。
+  if (!opts.executablePath) {
+    const mainEntry = join(root, 'out', 'main', 'index.js')
+    if (!existsSync(mainEntry)) {
+      throw new Error('缺少构建产物 out/main/index.js：请先运行 npm run build，且 E2E 运行期间不要重新构建 out。')
+    }
+  }
 
   const app = await electron.launch({
     ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),

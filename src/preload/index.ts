@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_CLOSE_REQUEST_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/ipc'
+import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_CLOSE_REQUEST_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/contracts'
 import type {
   CompactResult,
   GoalActionResult,
@@ -15,7 +15,7 @@ import type {
   SaveWebSearchInput,
   UpdateSettingsInput,
   WebSearchTestResult
-} from '../shared/ipc'
+} from '../shared/contracts'
 import type {
   Artifact,
   ArtifactExportFormat,
@@ -81,7 +81,7 @@ const api: MorrowApi = {
     openMain: (input?: IslandOpenMainInput) => invoke<void>(IPC.islandOpenMain, input ?? {}),
     quickSend: (input: IslandQuickSendInput) => invoke<void>(IPC.islandQuickSend, input),
     syncSession: (sessionId: string | null) => invoke<void>(IPC.islandSyncSession, { sessionId }),
-    syncStudio: (input: import('../shared/ipc').IslandStudioSyncInput) => invoke<void>(IPC.islandSyncStudio, input),
+    syncStudio: (input: import('../shared/contracts').IslandStudioSyncInput) => invoke<void>(IPC.islandSyncStudio, input),
     onState: (listener: (snapshot: import('../shared/types').IslandSnapshot) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, payload: import('../shared/types').IslandSnapshot): void =>
         listener(payload)

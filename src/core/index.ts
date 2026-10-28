@@ -61,10 +61,10 @@ export {
   toolCategory,
   toolRiskFor,
   toolTitleFor
-} from './tools/registry'
-export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools/types'
-export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools/paths'
-export { createUnifiedDiff, diffSummary } from './tools/diff'
+} from './tools'
+export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools'
+export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools'
+export { createUnifiedDiff, diffSummary } from './tools'
 
 export {
   evaluatePermission,
@@ -76,9 +76,9 @@ export {
   type PermissionPolicyContext,
   type PermissionTarget,
   type DangerousCommandInfo
-} from './permissions'
+} from './agent'
 
-export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './prompt'
+export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './agent'
 export {
   estimateTokens,
   estimateMessageTokens,
@@ -88,7 +88,7 @@ export {
   serializeMessagesForSummary,
   hasDanglingToolUse,
   type CompactionPlan
-} from './context'
+} from './agent'
 
 export type {
   Artifact,

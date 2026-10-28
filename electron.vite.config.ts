@@ -9,7 +9,6 @@ export default defineConfig({
       alias: {
         '@shared': resolve(__dirname, 'src/shared'),
         '@core': resolve(__dirname, 'src/core'),
-        '@builtin-skills': resolve(__dirname, 'src/main/builtin-skill-content')
       }
     },
     build: {
@@ -29,7 +28,7 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     resolve: {
       alias: {
-        '@renderer': resolve(__dirname, 'src/renderer/src'),
+        '@renderer': resolve(__dirname, 'src/renderer'),
         '@shared': resolve(__dirname, 'src/shared')
       }
     },

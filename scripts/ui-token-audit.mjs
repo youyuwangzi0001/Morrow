@@ -6,9 +6,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const root = process.cwd()
-const cssRoot = join(root, 'src', 'renderer', 'src')
-const tokensFile = join(cssRoot, 'styles', 'tokens.css')
-const tsxRoot = join(root, 'src', 'renderer', 'src')
+const cssRoot = join(root, 'src', 'renderer')
+const tokensFile = join(cssRoot, 'styles.css')
+const tsxRoot = join(root, 'src', 'renderer')
 
 function walk(dir, extensions) {
   const out = []
@@ -23,11 +23,11 @@ function walk(dir, extensions) {
 const cssFiles = walk(cssRoot, ['.css']).filter((file) => file !== tokensFile)
 const tsxFiles = walk(tsxRoot, ['.tsx'])
 const files = [...cssFiles, ...tsxFiles]
-const allowlist = new Set(['FilePreviewPane.tsx', 'OfficePreviews.tsx', 'TerminalPanel.tsx'])
+const allowlist = new Set(['artifacts.tsx', 'terminal.tsx'])
 const violations = []
 for (const file of files) {
   if (allowlist.has(file.split(/[\\/]/).pop())) continue
-  const text = readFileSync(file, 'utf8')
+  const text = readFileSync(file, 'utf8').replace(/\/\* ui-token-audit:off \*\/[\s\S]*?\/\* ui-token-audit:on \*\//g, '')
   const lines = text.split(/\r?\n/)
   lines.forEach((line, index) => {
     if (/font-size:\s*[0-9.]+px/.test(line) || /font-weight:\s*[0-9]+/.test(line) || /line-height:\s*[0-9.]+;/.test(line) || /letter-spacing:\s*-?[0-9.]+em/.test(line) || /fontSize:\s*'[0-9.]+px'/.test(line) || /fontWeight:\s*[0-9]+/.test(line)) {

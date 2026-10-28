@@ -14,6 +14,8 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 - **先看蓝图再生产**：故事主线、人物、结构、风格与预算一次说清；蓝图确认前不批量生成正文或画面。
 - **三条完整链路**：小说从大纲、纸页、候选稿、事实连续性到成书；漫剧从分镜、画面、配音、音乐、五轨时间线、检查到成片。
 - **候选不覆盖手改**：用户改过的章节只接受手动采纳，模型候选不会自动写回；每章保留最近 30 个版本。
+- **精简 Office 写作台**：撤销/重做、查找替换、字号/行距/页宽、字数统计与导出 Word，排版只改视图不改正文。
+- **回收站**：删除的作品先进入创作台设置 → 回收站，可恢复到作品库或彻底删除。
 - **大白话改片**：先说“镜 01 慢 20%，雨声压低一点”，助手给出修改计划与费用，确认后才改时间线。
 - **本机引擎**：Qwen-Image 2.1 Turbo、MiniMax 图生视频、Windows 本机语音与 ffmpeg；未就绪时明确失败，不伪造结果。
 - **数据可自定义**：创作台作品目录可在设置 → 数据与安全单独更换并迁移，Agent 对话与设置不移动。
@@ -86,9 +88,9 @@ npm start
 
 发布包提供单文件便携版与 NSIS 安装包：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r040`；之后启动更快，运行中不要删除。
+- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r049`；之后启动更快，运行中不要删除。
 - 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
-- 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
+- 当前构建未配置代码签名，首次运行可能触发 SmartScreen；SHA-256 见 [验收记录](docs/verification/VERIFICATION.md) 第 5 节（交付目录只保留便携包、安装包、源码包三项）。
 
 ### 首次使用
 
@@ -112,7 +114,7 @@ npm start
 | [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
 | [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、真实界面演示、漫剧画布、人物语气与真实波形；已压缩至约 4.6MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
+指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、40 秒线性制作演示、漫剧画布、人物语气与真实波形；已压缩至约 4.6MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
 
 ## 架构一览
 
@@ -136,16 +138,16 @@ npm start
 
 ## 项目规模
 
-> 统计口径：`wc -l`；代码包含 `src/`、`tests/`（含 E2E）、`scripts/`、`build/`；文档为根目录与 `docs/` 下的 Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
+> 统计口径：`wc -l`；代码包含 `src/`（TS/TSX/CSS/HTML）、`tests/`（含夹具与 E2E）、`scripts/`；文档为根目录与 `docs/` 下的 Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
 
 | 范围 | 文件 | 行数 |
 |---|---:|---:|
-| 生产源码 `src/` | 343 | 159,978 |
-| 测试 `tests/`（含 E2E） | 68 | 46,520 |
-| 其中 E2E 套组 `tests/e2e/` | 29 | 21,089 |
-| 构建脚本 `scripts/` + `build/` | 14 | 3,681 |
-| **代码合计** | **425** | **210,179** |
-| Markdown 文档 | 15 | 2,952 |
+| 生产源码 `src/` | 104 | 166,526 |
+| 测试 `tests/`（含 E2E 与夹具） | 57 | 48,420 |
+| 其中 E2E 套组 `tests/e2e/` | 10 | 20,384 |
+| 构建脚本 `scripts/` | 15 | 3,516 |
+| **代码合计** | **176** | **218,462** |
+| Markdown 文档 | 14 | 3,000 |
 
 ## 测试与质量
 
@@ -156,7 +158,7 @@ npm run test:unit     # Vitest
 npm run test:e2e      # Playwright（完整套件约 15 分钟）
 ```
 
-当前基线：单元 **29 个套件 / 1011 个用例**（1003 passed + 8 skipped）；E2E **22 个套件 / 224 个用例**（213 passed + 11 skipped；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
+当前基线：单元 **14 个套件 / 1020 个用例**（1011 passed + 9 skipped）；E2E **7 个领域套件 / 221 个用例**（201 passed + 20 skipped，0 failed；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)；创作层与质检层的融合见 [质检提示词框架](docs/QUALITY-FRAMEWORK.md)。
 
 ## 开发与打包
 
@@ -167,7 +169,7 @@ npm run dist:all       # 便携版 + 安装包
 npm run pack:source    # 从当前提交生成源码包
 ```
 
-打包脚本会把 Electron 缓存、临时解包目录与交付暂存放到可清理目录；交付目录保留五个分发文件、源码包和用户数据 `Morrow Data`。详细约定见 [贡献指南](CONTRIBUTING.md)。
+打包脚本会清理 Electron 缓存、临时解包目录与旧交付物；最终 `deliver/` 只保留便携包、安装包、源码包三项，用户数据不再放进交付目录。详细约定见 [贡献指南](CONTRIBUTING.md)。
 
 ## 安全与隐私
 

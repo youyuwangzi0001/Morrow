@@ -5,21 +5,21 @@ import { existsSync } from 'node:fs'
 import { disposeAgentRuntime, registerIpcHandlers } from './ipc'
 import { installFeatureIpc } from './feature-ipc'
 import { registerFeatureModules } from './features'
-import { getSubscriptionService } from './services/subscriptions'
-import { getQoderSubscriptionService } from './services/qoder-subscription'
-import { allAgentServices } from './services/agent-subscriptions'
-import { openExternalQuiet } from './services/external-open'
-import { handlePreviewProtocol } from './services/file-preview'
-import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './services/artifact-preview'
-import { ensureDataDirs, resolveDataDir } from './services/paths'
-import { installMcpRuntimeEnv } from './services/mcp-service'
-import { configureMemoryRuntime } from './services/memory-service'
-import { configureProjectsRuntime } from './services/project-service'
-import { getTerminalManager } from './services/terminal-manager'
-import { configurePermissionRulesRuntime } from './services/permission-rules'
-import { initializeTokenActivity } from './services/runtime'
-import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
-import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
+import { getSubscriptionService } from './subscriptions'
+import { getQoderSubscriptionService } from './subscriptions'
+import { allAgentServices } from './subscriptions'
+import { openExternalQuiet } from './workspace'
+import { handlePreviewProtocol } from './workspace'
+import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './artifacts'
+import { ensureDataDirs, resolveDataDir } from './workspace'
+import { installMcpRuntimeEnv } from './memory'
+import { configureMemoryRuntime } from './memory'
+import { configureProjectsRuntime } from './runtime'
+import { getTerminalManager } from './terminal-manager'
+import { configurePermissionRulesRuntime } from './runtime'
+import { initializeTokenActivity } from './runtime'
+import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './runtime'
+import { disposeScheduleRuntime, initializeScheduleRuntime } from './schedules'
 import {
   appIconPath,
   attachIconTray,
@@ -31,9 +31,9 @@ import {
   markAppQuitting,
   quitApp,
   requestCloseFromIsland
-} from './services/lifecycle'
-import { log } from './services/logger'
-import { isLoginSession } from './services/login-window'
+} from './runtime'
+import { log } from './logger'
+import { isLoginSession } from './workspace'
 
 protocol.registerSchemesAsPrivileged([
   {

@@ -2,7 +2,7 @@
   "product": "Morrow",
   "version": "0.2.0",
   "capturedAt": "2026-10-28",
-  "runtime": "r040",
+  "runtime": "r047",
   "theme": "dark + light",
   "images": [
     {
@@ -65,7 +65,7 @@
       "file": "09-browser-tabs-dark.png",
       "alt": "内置浏览器：多标签、地址栏、页面内容与前进后退",
       "width": 1600,
-      "height": 914,
+      "height": 916,
       "source": "tests/e2e/07-browser.spec.ts · browser-tabs-dark"
     },
     {
@@ -94,104 +94,106 @@
       "alt": "创作台作品库：三份样例、一句话入口与蓝图选项",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-home-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-home-dark"
     },
     {
       "file": "14-studio-timeline-dark.png",
       "alt": "创作台时间线：监视器、五轨剪辑与时间码",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-timeline-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-timeline-dark"
     },
     {
       "file": "15-studio-storyboard-dark.png",
       "alt": "创作台分镜：镜头卡、画面与单镜详情",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-storyboard-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-storyboard-dark"
     },
     {
       "file": "16-studio-delivery-dark.png",
       "alt": "创作台交付：成片预览、交付物与导出入口",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-delivery-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-delivery-dark"
     },
     {
       "file": "17-studio-writing-dark.png",
-      "alt": "创作台写作：卷章大纲、深色纸页与协作助手",
+      "alt": "创作台写作：文档工具条、卷章大纲、深色纸页与协作助手",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-writing-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-writing-dark"
     },
     {
       "file": "18-studio-assistant-dark.png",
       "alt": "创作台协作助手：大白话修改计划与影响范围",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-assistant-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-assistant-dark"
     },
     {
       "file": "19-studio-home-light.png",
       "alt": "创作台素纸主题：米白纸页与深墨文字",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-home-light"
+      "source": "tests/e2e/studio.spec.ts · studio-home-light"
     },
     {
       "file": "20-studio-about-dark.png",
       "alt": "设置 · 关于：仅保留 Morrow 主应用信息",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/18-studio.spec.ts · studio-about-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-about-dark"
     },
     {
       "file": "21-studio-guide-dark.png",
       "alt": "创作台首次使用指引：完全对齐启动引导的三步轨道与无外框正文",
       "width": 1600,
       "height": 917,
-      "source": "tests/e2e/20-studio-workspace.spec.ts · studio-guide-refined-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-guide-refined-dark"
     },
     {
       "file": "22-studio-demo-dark.png",
       "alt": "创作台演示：底部控制条驱动真实分镜、镜头详情与真实样例数据",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/19-studio-ux.spec.ts · studio-demo-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-demo-dark"
     },
     {
       "file": "25-studio-canvas-dark.png",
       "alt": "漫剧画布：镜头、音频、文本节点与连线组成的真实工作流",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/20-studio-workspace.spec.ts · studio-canvas-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-canvas-dark"
     },
     {
       "file": "26-studio-voice-audit-dark.png",
       "alt": "人物语气审稿：角色句长、问句比例、高频用语与趋同提醒",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/20-studio-workspace.spec.ts · studio-voice-audit-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-voice-audit-dark"
     },
     {
       "file": "27-studio-timeline-waveform-dark.png",
       "alt": "时间线真实音频峰值波形与 540p 低清预览入口",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/20-studio-workspace.spec.ts · studio-timeline-waveform-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-timeline-waveform-dark"
     },
     {
       "file": "28-studio-settings-dark.png",
-      "alt": "创作台设置：模型与预算、配音与引擎、历史版本、数据与安全四页整合",
+      "alt": "创作台设置：模型与预算、配音与引擎、历史版本、回收站、数据与安全五页整合",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/20-studio-workspace.spec.ts · studio-settings-dark"
+      "source": "tests/e2e/studio.spec.ts · studio-settings-dark"
     }
   ],
   "optimized": {
     "maxWidth": 1600,
     "colors": 256,
     "format": "PNG-8",
-    "updatedAt": "2026-10-28"
+    "updatedAt": "2026-10-28",
+    "fromBytes": 13308367,
+    "toBytes": 4837496
   }
 }

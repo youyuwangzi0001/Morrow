@@ -1,0 +1,206 @@
+/* checkpoints 功能域样式：由 1 个样式表按原引用顺序合并。 */
+
+/* 回退确认：只承担“确认一次”，不再有轮次列表与范围选择面板。 */
+
+.rewind-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rewind-confirm-turn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text-3);
+}
+
+.rewind-confirm-turn svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.rewind-confirm-time {
+  flex: 0 0 auto;
+  font-size: var(--fs-2xs);
+}
+
+.rewind-confirm-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewind-confirm-summary {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-base-plus);
+  line-height: var(--lh-body);
+}
+
+.rewind-confirm-files {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 180px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.rewind-confirm-files li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 5px 0;
+}
+
+.rewind-confirm-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-xs-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewind-confirm-action {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: var(--fs-xs-plus);
+}
+
+.rewind-confirm-files li.is-conflict .rewind-confirm-path,
+.rewind-confirm-files li.is-conflict .rewind-confirm-action {
+  color: var(--rust);
+}
+
+.rewind-confirm-conflicts {
+  padding: 9px 10px;
+  border: 1px solid var(--rust-dim);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--rust) 5%, transparent);
+}
+
+.rewind-confirm-conflicts-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 7px;
+  color: var(--rust);
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-medium);
+}
+
+.rewind-confirm-conflicts ul {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding-left: 14px;
+  list-style: disc;
+}
+
+.rewind-confirm-conflicts li {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
+  overflow-wrap: anywhere;
+}
+
+.rewind-confirm-conflicts li .mono {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-xs-plus);
+}
+
+.rewind-confirm-recheck {
+  margin-top: 8px;
+  padding: 0;
+  color: var(--gold);
+  font-size: var(--fs-xs-plus);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rewind-confirm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--amber);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--amber-dim);
+  color: var(--text-2);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
+}
+
+.rewind-confirm-warning svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--amber);
+}
+
+.rewind-confirm-error {
+  margin: 0;
+  color: var(--rust);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
+}
+
+.rewind-confirm-note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-readable);
+}
+
+.rewind-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-medium);
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.rewind-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.rewind-btn.is-primary {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.rewind-btn.is-primary:hover:not(:disabled) {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 24%, transparent);
+}
+
+.rewind-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

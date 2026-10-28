@@ -24,13 +24,13 @@ npm start
 ## 2. 目录
 
 ```text
-src/main/        Electron 主进程、服务、IPC
-src/core/        Agent 循环、工具、权限、Provider
+src/main/        Electron 主进程（扁平：agent/studio/features/runtime/session）
+src/core/        Agent 循环、工具、权限、Provider（扁平：agent/tools/tool-kit）
 src/preload/     白名单 contextBridge
-src/renderer/    React UI 与 Zustand store
-src/shared/      共享类型、模型、命令、协议常量
-tests/unit/      Vitest
-tests/e2e/       Playwright 真实 Electron
+src/renderer/    React UI 与 Zustand store（features 每个功能域 1 TSX + 1 CSS）
+src/shared/      共享契约（types/studio/contracts）
+tests/unit/      Vitest（按领域合并为 14 个套件）
+tests/e2e/       Playwright 真实 Electron（按领域合并为 7 个 spec）
 docs/            用户/架构/设计/验收文档
 scripts/         构建、打包、截图、审计
 build/           图标、启动器、安装器资源
@@ -58,7 +58,7 @@ UI/桌面行为改动请跑受影响 E2E；发布前再跑全量：
 ```powershell
 npx playwright test
 npm run dist:all
-npx playwright test tests/e2e/13-packaged.spec.ts
+npx playwright test tests/e2e/packaged.spec.ts
 ```
 
 ## 5. 代码风格
@@ -90,7 +90,7 @@ npx playwright test tests/e2e/13-packaged.spec.ts
 
 ### 1. 评估口径
 
-扫描范围：`src/` 下全部 `.ts` / `.tsx`（不含 `.d.ts`），共 **334 个文件**。
+扫描范围：`src/` 下全部 `.ts` / `.tsx`（不含 `.d.ts`），共 **75 个文件**。
 统计口径：以行首块注释、行注释计为注释行；不把字符串与正则中的 `//` 当成注释。
 
 | 指标 | 精简前 | 精简后 |

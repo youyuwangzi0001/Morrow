@@ -4,9 +4,9 @@ import { writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { IPC, WINDOW_STATE_CHANNEL, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type IslandStudioSyncInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/ipc'
-import { DEFAULT_MODEL, findModel } from '../shared/models'
-import { isReasoningEffort } from '../shared/models'
+import { IPC, WINDOW_STATE_CHANNEL, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type IslandStudioSyncInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/contracts'
+import { DEFAULT_MODEL, findModel } from '../shared/contracts'
+import { isReasoningEffort } from '../shared/contracts'
 import type {
   Artifact,
   ArtifactExportFormat,
@@ -29,19 +29,19 @@ import type {
   WorkspaceInfo
 } from '../shared/types'
 import { getMainWindow } from './index'
-import { createBootstrap } from './services/bootstrap'
-import { getSettingsStore } from './services/settings-store'
+import { createBootstrap } from './runtime'
+import { getSettingsStore } from './settings'
 import { testProviderConnection } from '@core/index'
-import { getAgentService } from './services/agent-service'
-import { openExternalUrl } from './services/external-open'
-import { deriveMeta, getSessionStore } from './services/session-store'
-import { getCheckpointService } from './services/checkpoint-service'
-import { sessionExportContent } from './services/session-export'
-import { getWebSearchService } from './services/web-search'
-import { syncProviderModels } from './services/model-sync'
-import { restoreSnapshotSafely } from './services/snapshot-restore'
-import { registerArtifactHtml } from './services/artifact-preview'
-import { buildExportHtml, buildExportMarkdown, buildExportText } from './services/artifact-export'
+import { getAgentService } from './agent'
+import { openExternalUrl } from './workspace'
+import { deriveMeta, getSessionStore } from './session'
+import { getCheckpointService } from './session'
+import { sessionExportContent } from './session'
+import { getWebSearchService } from './memory'
+import { syncProviderModels } from './settings'
+import { restoreSnapshotSafely } from './session'
+import { registerArtifactHtml } from './artifacts'
+import { buildExportHtml, buildExportMarkdown, buildExportText } from './artifacts'
 import {
   clearIslandSession,
   getIslandSnapshot,
@@ -53,8 +53,8 @@ import {
   syncIslandSession,
   syncIslandStudio,
   syncIslandVisibility
-} from './services/island'
-import { resolveWindowClose, setAppIconTheme } from './services/lifecycle'
+} from './runtime'
+import { resolveWindowClose, setAppIconTheme } from './runtime'
 import {
   createDemoWorkspace,
   describeWorkspace,
@@ -62,20 +62,20 @@ import {
   pickWorkspace,
   readTextSafe,
   searchWorkspaceFiles
-} from './services/workspace'
-import { describeAttachment } from './services/attachments'
-import { clearScheduleSessionReferences } from './services/schedule-runtime'
-import { abortAllSideChats } from './features/sidechat'
+} from './workspace'
+import { describeAttachment } from './artifacts'
+import { clearScheduleSessionReferences } from './schedules'
+import { abortAllSideChats } from './features'
 import {
   clearSearchIndex,
   getArtifactVersionStore,
   getTokenActivityService,
   initializeTokenActivity,
   invalidateSearchSession
-} from './services/runtime'
-import { openPathFromUserShell, revealInFileManager } from './services/reveal'
-import { log } from './services/logger'
-import { cleanTargetDataDir, copyUserDataForMigration } from './services/paths'
+} from './runtime'
+import { openPathFromUserShell, revealInFileManager } from './workspace'
+import { log } from './logger'
+import { cleanTargetDataDir, copyUserDataForMigration } from './workspace'
 import {
   canChangeDataDir,
   dataDirInfo,
@@ -85,7 +85,7 @@ import {
   resolveDefaultDataDir,
   samePath,
   writeDataLocation
-} from './services/paths'
+} from './workspace'
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
 const fail = (code: string, message: string, hint?: string): Result<never> => ({

@@ -474,7 +474,7 @@ export interface MediaRunWorkflowInput {
   workspace: string
   modelId: string
   modelLabel: string
-  workflow: import('../shared/media-models').MediaWorkflowSpec
+  workflow: import('../shared/studio').MediaWorkflowSpec
   prompt: string
   negativePrompt?: string
   referencePaths: string[]
@@ -502,21 +502,21 @@ export interface MediaRenderAnimationInput {
 }
 
 export interface MediaCatalogHandler {
-  status(): Promise<import('../shared/media-models').MediaCatalogStatus>
-  manifest(id: string): Promise<import('../shared/media-models').MediaModelManifest>
+  status(): Promise<import('../shared/studio').MediaCatalogStatus>
+  manifest(id: string): Promise<import('../shared/studio').MediaModelManifest>
   installModel(
     id: string,
     onProgress: (update: MediaProgressUpdate) => void,
     signal: AbortSignal
-  ): Promise<import('../shared/media-models').MediaCatalogStatus>
-  uninstallModel(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  installEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  startEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  stopEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  registerModel(manifest: Record<string, unknown>): Promise<import('../shared/media-models').MediaCatalogStatus>
-  removeModel(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  registerEngine(manifest: Record<string, unknown>): Promise<import('../shared/media-models').MediaCatalogStatus>
-  removeEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
+  ): Promise<import('../shared/studio').MediaCatalogStatus>
+  uninstallModel(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  installEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  startEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  stopEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  registerModel(manifest: Record<string, unknown>): Promise<import('../shared/studio').MediaCatalogStatus>
+  removeModel(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  registerEngine(manifest: Record<string, unknown>): Promise<import('../shared/studio').MediaCatalogStatus>
+  removeEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
 }
 
 export interface MediaToolHandler {

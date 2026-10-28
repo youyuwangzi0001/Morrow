@@ -1,127 +1,121 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "runtime": "r043",
-  "builtAt": "2026-10-28T04:45:00.000Z",
+  "runtime": "r049",
+  "builtAt": "2026-10-28T21:59:31.493+08:00",
   "platform": "win32-x64",
   "source": {
-    "files": 341,
-    "codeFiles": 341,
+    "files": 367,
+    "codeFiles": 345,
     "loc": {
-      "ts": 84803,
-      "tsx": 37935,
-      "css": 37307,
-      "total": 160045
+      "ts": 86233,
+      "tsx": 38405,
+      "css": 37843,
+      "total": 162481
     }
   },
   "tests": {
     "unit": {
-      "suites": 29,
-      "cases": 1012,
-      "passed": 1004,
-      "skipped": 8
+      "suites": 32,
+      "cases": 1030,
+      "passed": 1021,
+      "skipped": 9
     },
     "e2e": {
-      "suites": 21,
-      "cases": 219,
-      "targeted": "18/19/20/21 9/9",
-      "packaged": {
-        "cases": 6,
-        "passed": 6,
-        "skipped": 0,
-        "date": "2026-10-28",
-        "durationMs": 27600
-      },
+      "suites": 33,
+      "cases": 232,
       "full": {
-        "suites": 21,
-        "cases": 219,
-        "rerun": false,
-        "note": "本轮未重跑全量；移除语料套组后受影响 18–21 9/9。上一轮全量 213 passed + 11 skipped 为移除前结果。"
+        "suites": 33,
+        "cases": 232,
+        "passed": 212,
+        "skipped": 20,
+        "rerun": true,
+        "note": "r049 全量 E2E：212 passed + 20 skipped，0 failed，14.6m。"
       }
     },
-    "files": 64
+    "files": 101
   },
   "docs": {
-    "files": 13,
-    "markdown": 13,
-    "lines": 695,
+    "files": 462,
+    "markdown": 11,
+    "lines": 2588,
     "guideScreens": 26,
     "manifest": "docs/guide/screens/manifest.json",
-    "guideScreenshotBytes": 4799142,
-    "optimized": {
-      "maxWidth": 1600,
-      "colors": 256,
-      "format": "PNG-8",
-      "fromBytes": 14700000
-    }
+    "guideScreenshotBytes": 4837496
   },
   "assets": {
     "studioDemoBytes": 16437176,
     "imageConversion": "PNG→JPEG"
   },
   "delivery": {
-    "fileCount": 5,
-    "bytes": 388564723,
-    "mib": 370.56
+    "fileCount": 3,
+    "bytes": 436472187,
+    "mib": 416.25,
+    "layout": "portable exe + setup exe + source zip only"
   },
   "artifacts": [
     {
       "name": "Morrow-0.2.0-portable.exe",
-      "bytes": 220356096,
-      "mib": 210.15,
-      "sha256": "955153443de07b6f6dcab713d335625c6d8c492126db7366f92c5d1a873e9952"
+      "bytes": 220395008,
+      "mib": 210.19,
+      "sha256": "1bb7151babcec704260fd301efcc417005a939a2f9623ac9d875611bc1bb88fb"
     },
     {
       "name": "Morrow-0.2.0-setup.exe",
-      "bytes": 168201254,
-      "mib": 160.41,
-      "sha256": "efd05b67d2589f10d8546bf77bbcbc0c699d9c2d3821bef67a41049bc3f6fe6f"
+      "bytes": 168231196,
+      "mib": 160.44,
+      "sha256": "3638cf563683f59784fddb67a131c3af9e34e9c9a0dca988a46bf4956cfe866b"
     },
     {
-      "name": "使用说明.txt",
-      "bytes": 5965,
-      "mib": 0,
-      "sha256": "4e8f7c71dd9396458da0cb4c132d685b1298ac9072cfb8a6add7bcf07e260611"
-    },
-    {
-      "name": "SHA256SUMS.txt",
-      "bytes": 338,
-      "mib": 0,
-      "sha256": "e5e3f32d0c9db940877a05f8707e3d79b0bff38bba1d5eb6e657de5a10a5ef55"
-    },
-    {
-      "name": "LICENSE",
-      "bytes": 1070,
-      "mib": 0,
-      "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
+      "name": "Morrow-0.2.0-source.zip",
+      "bytes": 47845983,
+      "mib": 45.63,
+      "sha256": "5c75e03cebb8b3e6fbada31ee1ebc9a1562f13a0b350551fd0b0017c3ada76e7"
     }
   ],
-  "runtimeCache": ".morrow-runtime-0.2.0-r043",
+  "runtimeCache": ".morrow-runtime-0.2.0-r049",
   "code": {
-    "files": 418,
-    "lines": 210184,
+    "files": 468,
+    "lines": 210535,
     "production": {
-      "files": 341,
-      "lines": 160045
+      "files": 367,
+      "lines": 162481
     },
     "tests": {
-      "files": 64,
-      "lines": 46239
+      "files": 101,
+      "lines": 48054
     },
     "scripts": {
-      "files": 13,
-      "lines": 3900
+      "files": 15,
+      "lines": 3528
     }
   },
-  "generatedAt": "2026-10-28T04:45:00.000Z",
+  "generatedAt": "2026-10-28T22:23:09.901+08:00",
   "lockedCaches": [],
   "pendingCacheCleanup": [],
   "sourceArchive": {
     "name": "Morrow-0.2.0-source.zip",
-    "bytes": 39617279,
-    "mib": 37.78,
-    "sha256": "5cbb14f38a972df452fefff731431fbcc1d7a388dbfb47579c2b3e2cc49b9bec",
-    "sidecar": "Morrow-0.2.0-source.zip.sha256",
-    "note": "大小与 SHA-256 见交付目录侧车；源码包内本文件为打包前快照。"
+    "bytes": 47845983,
+    "mib": 45.63,
+    "sha256": "5c75e03cebb8b3e6fbada31ee1ebc9a1562f13a0b350551fd0b0017c3ada76e7",
+    "note": "交付目录只保留便携包、安装包、源码包三项；源码包内本文件为打包前快照。"
+  },
+  "modelFirst": {
+    "localCreativeEngine": "removed",
+    "blueprint": "text model only",
+    "outline": "text model; long novels batch 12 chapters",
+    "storyboard": "text model; existing assets preserved",
+    "adaptation": "text model with sourceChapterId",
+    "music": "ComfyUI ACE-Step 1.5; procedural only as explicit draft",
+    "samples": "frozen demo data (3 projects)",
+    "realModelTest": "r049 未重新执行真实模型联调；r046 漫剧9步/中短篇5步/长篇6步/改编/配乐通过",
+    "notes": "r049 新增质量门禁、模型审稿、一键试做与导出闸门；真实模型链路仍需用户本机引擎。"
+  },
+  "smoke": {
+    "mode": "portable+folder",
+    "passed": 2,
+    "cases": 2,
+    "durationMs": 9600,
+    "note": "r049 便携 exe 与文件夹版启动、渲染、截图通过；文件夹版 portable.marker 通过；冒烟后交付目录已清理为三项"
   }
 }
