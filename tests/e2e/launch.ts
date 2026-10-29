@@ -124,12 +124,13 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
   const tmpDir = join(root, 'tmp')
   const chromiumDir = opts.chromiumDir ?? join(tmpDir, `chromium-${id}`)
   const dataDir = opts.dataDir ?? join(tmpDir, `data-${id}`)
+  const executablePath = opts.executablePath ?? process.env.MORROW_E2E_EXE
   mkdirSync(chromiumDir, { recursive: true })
   mkdirSync(dataDir, { recursive: true })
 
   // 缺少构建产物时 Electron 会弹「Unable to find Electron app」模态框并挂起整轮 E2E；
   // 在启动前先失败，把原因直接写进测试报告。
-  if (!opts.executablePath) {
+  if (!executablePath) {
     const mainEntry = join(root, 'out', 'main', 'index.js')
     if (!existsSync(mainEntry)) {
       throw new Error('缺少构建产物 out/main/index.js：请先运行 npm run build，且 E2E 运行期间不要重新构建 out。')
@@ -137,7 +138,7 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
   }
 
   const app = await electron.launch({
-    ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),
+    ...(executablePath ? { executablePath } : {}),
     args: [
       '.',
       '--no-sandbox',

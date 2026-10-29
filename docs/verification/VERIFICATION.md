@@ -14,7 +14,8 @@
 | 40 秒创作台演示 | 六幕线性播放（一句话 → 蓝图 → 分镜 → 声音 → 剪辑 → 交付），真实 12 镜头样例、暂停/重播/关闭与结尾 CTA；无上一步/下一步跳转 | `19-studio-ux` + `demo-enter-sample` 通过；1280/1920、明暗主题逐幕截图无遮挡 |
 | 生产/测试扁平化 | 生产代码收敛到 `src/main`、`src/core`、`src/renderer/features`；测试合并为 7 个领域 spec + 共享启动器 | `typecheck` 0 error；单元 14 套件 / 1020 用例（1011 passed + 9 skipped） |
 | 全量 E2E | 7 个 spec 依次执行，未并发重建 `out` | **201 passed + 20 skipped，0 failed**；打包版专项 6/6（win-unpacked 与 deliver 文件夹各复跑一次） |
-| 画布/交付/检查页布局 | 画布操作条上限 960px、按钮不收缩；交付视频按容器高度填充、信息层移至顶部，原生控件不再被裁切；检查页页脚整项换行、短语不断词 | `31-studio-layout` 2/2；1360/1680/2100 实图核对 |
+| 布局与截图回归 | 画布操作条上限 960px、按钮不收缩；交付视频按容器高度填充、信息层移至顶部，原生控件不再被裁切；检查页页脚整项换行、短语不断词 | `31-studio-layout` 2/2；1360/1680/2100 实图核对 |
+| 文档截图重截 | E2E 通过 `MORROW_E2E_EXE` 直接启动最新打包版 Morrow，重跑 UI/旅程/工作区/创作台用例，生成 26 张指南图并压缩 | manifest `capturedAt=2026-10-29`、`runtime=v0.2.0 packaged`；图片约 4.7MB |
 | 打包冒烟 | `dist:all` 重建便携 exe、安装包、文件夹版；`smoke-packaged --all` 真实启动两种形态 | 单文件便携 **通过**、文件夹版 **通过**；源码包已按当前工作树重打 |
 | E2E 启动弹窗 | 启动前预检 `out/main/index.js`，缺失时直接给出可读错误，不再让 Electron 弹「Unable to find Electron app」并挂起 | 7 个 spec 全程无启动弹窗 |
 | 创作台排版统一 | 演示区取消 `ui-token-audit:off` 豁免；字号/字重/行高/字距全部映射到 Agent 令牌；新增 `--lh-reading-tight/reading/loose` 供长文纸页使用 | `npm run audit:ui` 通过：27 CSS + 29 TSX，0 处裸排版值 |

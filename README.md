@@ -114,7 +114,7 @@ npm start
 | [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
 | [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、40 秒线性制作演示、漫剧画布、人物语气与真实波形；已压缩至约 4.6MB）；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
+指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、40 秒线性制作演示、漫剧画布、人物语气与真实波形；已压缩至约 4.7MB）；截图由 E2E 直接启动最新打包版 Morrow 生成，记录在 manifest 中。
 
 ## 架构一览
 

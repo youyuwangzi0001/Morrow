@@ -173,7 +173,7 @@
 - 深色主题的纸页、文档页与 PDF 预览使用深色底和暖色文字；浅色主题使用米白纸与深墨文字。两套主题都通过同一组语义令牌切换。
 - `npm run audit:ui` 扫描所有 CSS/TSX 的裸排版值；文档预览 iframe 仅保留白名单。
 - 主要证据：`tests/e2e/studio.spec.ts` 覆盖入口、作品库、时间线、分镜、交付、写作、候选、助手修改与撤销、首次指引、40 秒演示、灵动岛与回收站；`tests/unit/studio-runtime.test.ts` 与 `studio-store.test.ts` 等覆盖作品仓库、时间线、修改计划与工具注册。
-- 截图见 `docs/guide/screens/13-studio-home-dark.png` 至 `28-studio-settings-dark.png`（深/浅主题，真实 Electron 窗口）。26 张指南图已压到最长边 1600px、PNG-8 256 色，约 4.6MB。
+- 截图见 `docs/guide/screens/13-studio-home-dark.png` 至 `28-studio-settings-dark.png`（深/浅主题，最新打包版真实窗口）。26 张指南图已压到最长边 1600px、PNG-8 256 色，约 4.7MB。
 
 ## 14. 已知边界
 

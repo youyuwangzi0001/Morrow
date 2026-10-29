@@ -1,8 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "capturedAt": "2026-10-28",
-  "runtime": "r047",
+  "capturedAt": "2026-10-29",
+  "runtime": "v0.2.0 packaged (Morrow-app.exe)",
   "theme": "dark + light",
   "images": [
     {
@@ -10,84 +10,84 @@
       "alt": "首次启动：认识 Morrow、连接模型、选择工作文件夹",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/01-ui-smoke.spec.ts · brand-onboarding-dark"
+      "source": "tests/e2e/ui.spec.ts · brand-onboarding-dark"
     },
     {
       "file": "02-chat-home-dark.png",
       "alt": "主界面：工作模式、建议任务、会话输入与画布入口",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/01-ui-smoke.spec.ts · r7-final-layout-dark"
+      "source": "tests/e2e/ui.spec.ts · r7-final-layout-dark"
     },
     {
       "file": "03-permission-card-dark.png",
       "alt": "审批卡：高风险写入的影响范围、允许一次与拒绝",
       "width": 1600,
       "height": 916,
-      "source": "tests/e2e/14-journey.spec.ts · permission-card-dark"
+      "source": "tests/e2e/journey.spec.ts · permission-card-dark"
     },
     {
       "file": "04-editor-canvas-dark.png",
       "alt": "画布与代码编辑器：多标签文件、语法高亮与只读状态",
       "width": 1600,
       "height": 916,
-      "source": "tests/e2e/06-editor.spec.ts · r10-editor-open"
+      "source": "tests/e2e/workspace.spec.ts · r10-editor-open"
     },
     {
       "file": "05-settings-models-dark.png",
       "alt": "设置 · 模型：服务商、API Key、当前默认模型与思考档位",
-      "width": 1320,
-      "height": 966,
-      "source": "tests/e2e/08-settings.spec.ts · settings-title-models-dark"
+      "width": 1600,
+      "height": 914,
+      "source": "tests/e2e/ui.spec.ts · r5-final-settings-models"
     },
     {
       "file": "06-subscriptions-dark.png",
       "alt": "设置 · 订阅：ChatGPT/Codex 与 Qoder 等官方账号接入",
       "width": 1322,
       "height": 969,
-      "source": "tests/e2e/08-settings.spec.ts · subscription-detail-codex-dark"
+      "source": "tests/e2e/ui.spec.ts · subscriptions-dark"
     },
     {
       "file": "07-settings-appearance-dark.png",
       "alt": "设置 · 外观：主题、应用字号、代码字号与字体",
-      "width": 1320,
-      "height": 966,
-      "source": "tests/e2e/08-settings.spec.ts · settings-title-appearance-dark"
+      "width": 1600,
+      "height": 916,
+      "source": "tests/e2e/ui.spec.ts · settings-appearance-dark"
     },
     {
       "file": "08-media-models-dark.png",
       "alt": "设置 · 多媒体：本机引擎、模型目录与导入模型入口",
       "width": 1320,
       "height": 966,
-      "source": "tests/e2e/16-media.spec.ts · media-settings-models-dark"
+      "source": "tests/e2e/journey.spec.ts · media-settings-models-dark"
     },
     {
       "file": "09-browser-tabs-dark.png",
       "alt": "内置浏览器：多标签、地址栏、页面内容与前进后退",
       "width": 1600,
       "height": 916,
-      "source": "tests/e2e/07-browser.spec.ts · browser-tabs-dark"
+      "source": "tests/e2e/workspace.spec.ts · browser-tabs-dark"
     },
     {
       "file": "10-terminal-dark.png",
       "alt": "真实终端：PTY、多标签、命令输出与终端设置",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/11-terminal-git.spec.ts · terminal-dark"
+      "source": "tests/e2e/workspace.spec.ts · terminal-dark"
     },
     {
       "file": "11-memory-center-dark.png",
       "alt": "记忆中心：项目记忆、长期记忆、任务经验与注入预览",
       "width": 1600,
       "height": 914,
-      "source": "tests/e2e/09-panels.spec.ts · r10-memory-center-dark"
+      "source": "tests/e2e/ui.spec.ts · r10-memory-center-dark"
     },
     {
       "file": "12-projects-dark.png",
       "alt": "项目主页：项目背景、资料、会话与工作区入口",
       "width": 1562,
       "height": 993,
-      "source": "tests/e2e/09-panels.spec.ts · a1-project-home"
+      "source": "tests/e2e/ui.spec.ts · a1-project-home"
     },
     {
       "file": "13-studio-home-dark.png",
@@ -149,8 +149,8 @@
       "file": "21-studio-guide-dark.png",
       "alt": "创作台首次使用指引：完全对齐启动引导的三步轨道与无外框正文",
       "width": 1600,
-      "height": 917,
-      "source": "tests/e2e/studio.spec.ts · studio-guide-refined-dark"
+      "height": 914,
+      "source": "tests/e2e/studio.spec.ts · studio-guide-dark"
     },
     {
       "file": "22-studio-demo-dark.png",
@@ -192,8 +192,6 @@
     "maxWidth": 1600,
     "colors": 256,
     "format": "PNG-8",
-    "updatedAt": "2026-10-28",
-    "fromBytes": 13308367,
-    "toBytes": 4837496
+    "updatedAt": "2026-10-29"
   }
 }

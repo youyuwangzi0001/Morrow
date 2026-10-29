@@ -242,6 +242,8 @@ test.describe('Morrow 创作台', () => {
       // 历史版本：已并入创作台设置子页
       await page.locator('.studio-top-icon[title="创作台设置"]').click()
       await page.waitForSelector('.studio-settings-layout', { timeout: 10_000 })
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: screenshotPath('studio-settings-dark.png') })
       await page.getByRole('tab', { name: '历史版本' }).click()
       await page.waitForSelector('.studio-version-row', { timeout: 10_000 })
       await expect(page.locator('.studio-version-row').first()).toBeVisible()
