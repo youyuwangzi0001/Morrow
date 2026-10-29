@@ -117,6 +117,14 @@ export function makeNovelProject(store: StudioStore): StudioProject {
     brief: { aspect: '16:9', targetWords: 120000 }
   })
   project.volumes = [{ id: 'vol-1', number: 1, title: '第一卷', summary: '', chapterIds: [] }]
+  project.characters = [
+    { id: 'char-1', name: '林晚', role: '主角', look: '短黑发，深色围裙', relationships: [{ target: '外婆', label: '外孙女' }], refAssetIds: [] },
+    { id: 'char-2', name: '少年', role: '失忆者', look: '湿透的薄外套，手里总拿着一把黑伞', relationships: [], refAssetIds: [] },
+    { id: 'char-3', name: '外婆', role: '已故亲人', look: '旧照片里的蓝布衫', relationships: [{ target: '林晚', label: '外孙女' }], refAssetIds: [] }
+  ]
+  project.places = [
+    { id: 'place-1', name: '老街伞铺', description: '旧木柜台，雨水顺着屋檐滴进铁皮桶。', refAssetIds: [] }
+  ]
   project.chapters = [
     {
       id: 'ch-1',
@@ -125,7 +133,7 @@ export function makeNovelProject(store: StudioStore): StudioProject {
       title: '修伞的人',
       synopsis: '林晚在雨夜捡到一把黑伞。',
       beats: ['异常出现'],
-      content: '雨是从傍晚开始下的。她把最后一把伞挂在门后。\n\n门外站着一个浑身湿透的少年。',
+      content: '雨是从傍晚开始下的。林晚把最后一把伞挂在门后。\n\n门外站着一个浑身湿透的少年。',
       wordTarget: 2000,
       status: 'done',
       revision: 1,

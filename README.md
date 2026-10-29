@@ -2,7 +2,7 @@
 
 > 住在你电脑里的 AI 工作伙伴。说清想要的结果，Morrow 会读文件、写代码、运行命令、检查成品，并把结果放回你的工作区。
 
-Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作模式、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务、本机多媒体与**创作台**放在同一个应用里。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
+Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务、本机多媒体与**创作台**放进同一个应用。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
 
 ![Morrow 主界面](docs/guide/screens/02-chat-home-dark.png)
 
@@ -11,28 +11,31 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 ### 创作台：从一句话到可交付作品
 
 - **一个作品底座**：中短篇、长篇与漫剧共用同一份作品文件，保存蓝图、章节、分镜、素材、剪辑表、任务与交付物；随时退出再继续。
-- **先看蓝图再生产**：故事主线、人物、结构、风格与预算一次说清；蓝图确认前不批量生成正文或画面。
-- **三条完整链路**：小说从大纲、纸页、候选稿、事实连续性到成书；漫剧从分镜、画面、配音、音乐、五轨时间线、检查到成片。
+- **先看蓝图再生产**：故事主线、人物、结构、风格与预算一次说清；蓝图确认前不批量生成正文或画面。蓝图、大纲、正文、分镜与模型审稿都只走真实文本模型，未连接时明确报错，不用本地模板冒充。
+- **三条完整链路**：小说从大纲、纸页、候选稿、事实连续性到成书；长篇按分卷与章节批次推进；漫剧从分镜、画面、声音、五轨时间线、检查到成片。
+- **协作者按当前步骤改**：在蓝图、大纲、写作、分镜、声音、时间线、检查、交付页直接说人话。协作者会带上当前页面与选中项，先给出可审阅的修改计划；确认后才写回，并能整体撤销。
+- **重排与替换是一等动作**：章节顺序、镜头顺序、局部大纲、人物/地点局部修改、单镜或全片配音、声线、音效、配乐、画面与视频都能按真实意图落到对应步骤；受影响的画面、配音、时间线、检查与交付会标记过期。
+- **三套大师方法已内嵌**：写作、编剧、导演三套提示词以压缩资源编译进主进程，按形态/任务/当前页面只选一套；不再读取桌面文件夹、`resources/prompts` 或旧的内嵌手法库。
 - **候选不覆盖手改**：用户改过的章节只接受手动采纳，模型候选不会自动写回；每章保留最近 30 个版本。
 - **精简 Office 写作台**：撤销/重做、查找替换、字号/行距/页宽、字数统计与导出 Word，排版只改视图不改正文。
 - **回收站**：删除的作品先进入创作台设置 → 回收站，可恢复到作品库或彻底删除。
-- **大白话改片**：先说“镜 01 慢 20%，雨声压低一点”，助手给出修改计划与费用，确认后才改时间线。
-- **本机引擎**：Qwen-Image 2.1 Turbo、MiniMax 图生视频、Windows 本机语音与 ffmpeg；未就绪时明确失败，不伪造结果。
+- **本机引擎**：Qwen-Image 2.1 Turbo、MiniMax 图生视频、Windows 本机语音 / Qwen3-TTS 与 ffmpeg；未就绪时明确失败，不伪造结果。
 - **数据可自定义**：创作台作品目录可在设置 → 数据与安全单独更换并迁移，Agent 对话与设置不移动。
-- **共用一个设计系统**：创作台没有单独的品牌标题或顶栏图标，深色主题使用深色纸页，文档/PDF 预览同样跟随主题。
 
 ![创作台](docs/guide/screens/13-studio-home-dark.png)
+
+![协作者修改计划](docs/guide/screens/18-studio-assistant-dark.png)
 
 ### Agent：从一句话到可验收的成品
 
 - **聊天 / 工作 / 计划 / 深度研究 / 长期目标**五种工作方式。聊天模式只读；工作模式可以写文件和执行命令；计划模式先给出可审阅的计划；研究模式会查证并保留来源；目标模式可以跨轮持续推进，直到交付可验证的结果。
-- **审批卡**把“它想做什么、会影响什么”写清楚。只读、询问、完全访问三档权限；危险命令、越界路径和外部副作用动作始终逐次确认。
+- **审批卡**把“它想做什么、会影响什么”写清楚。只读、询问、完全访问三档权限；询问档下危险命令、越界路径与外部副作用动作逐次确认，完全访问档直接执行。
 - **代码与成品**：文件树、CodeMirror 编辑器、多标签画布、HTML/Markdown/PDF/Office/图片/音视频预览、版本历史、导出与另存为。
 - **可恢复**：每个用户轮次有检查点，写文件前有快照；支持会话回退、文件回退和冲突校验。
 
 ### 真实终端、Git 与浏览器
 
-- **真实 PTY 终端**：多标签、后台任务、复制粘贴、拖动调高。默认终端是 **Git Bash**；旧版 Windows PowerShell 5.1 和 CMD 选项已移除，仍可选择 PowerShell 7 / WSL。
+- **真实 PTY 终端**：多标签、后台任务、复制粘贴、拖动调高。默认终端是 **Git Bash**；仍可选择 PowerShell 7 / WSL。
 - **Git 工作台**：变更、diff、暂存、提交、分支、历史、放弃改动；diff 超长时截断展示。
 - **内置浏览器**：多标签、地址栏、前进后退、真实网页内容；登录窗口与普通浏览共用同一套安全边界。
 
@@ -40,11 +43,13 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 
 ### 模型、订阅与账号元信息
 
-- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta Muse 等）与 Anthropic Claude 接入；也支持任意 OpenAI 兼容网关和本机服务。
+- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta Muse 等）、Anthropic 原生，以及 Ollama / llama.cpp / LM Studio 本机服务；也支持任意 OpenAI 兼容网关。
 - **官方 Agent 订阅**：ChatGPT/Codex、Qoder、Kimi Code、GLM Coding Plan、MiniMax Code、Step Plan、Command Code、Cline Pass、Google Antigravity、OpenCode，以及第三方 coding plan。
-- **Qoder 账号驱动目录**：登录后读取账号接口返回的模型、200K/400K/1M 上下文档位与真实思考档位；设置页可按模型调整默认上下文。Morrow 不维护 Qoder 静态模型表。
-- **模型能力契约**：选择器只显示原始模型名；思考强度只列模型真实支持的档位；不支持时显示“不支持思考”；未知模型只保留“自动”。DeepSeek 的关闭思考在请求层映射为官方 `none`，Qoder 代理保持自己的 `off`。
+- **Qoder 账号驱动目录**：登录后读取账号接口返回的模型、上下文档位与真实思考档位；Morrow 不维护 Qoder 静态模型表。
+- **模型能力契约**：选择器只显示原始模型名；思考强度只列模型真实支持的档位；不支持时显示“不支持思考”；未知模型只保留“自动”。
 - **本机多媒体**：ComfyUI、llama.cpp、Ollama、LM Studio；图片/视频生成、编辑、抽帧、拼接、审看。媒体审看始终优先当前对话模型，当前模型不支持或失败后才回退到声明视觉能力的本地模型。
+
+![模型设置](docs/guide/screens/05-settings-models-dark.png)
 
 ### 项目、记忆与自动化
 
@@ -54,12 +59,17 @@ Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 
 - **MCP**：stdio / Streamable HTTP / 旧版 SSE；工具、资源、提示词、OAuth 与工作区信任。
 - **定时任务**：一次/每天/每周，只读或可改文件；无人值守时自动拒绝需要审批的动作。
 - **集群与侧聊**：1–10 个集群成员并行处理独立子任务；`/btw` 侧聊不写主会话。
+- **灵动岛与 Token Activity**：桌面常驻进度、最近对话与快捷入口；每日/每周/累计 token 热力图。
+
+![记忆中心](docs/guide/screens/11-memory-center-dark.png)
 
 ### 本地优先与稳定性
 
 - 数据、会话、快照、日志与密钥都在本机；密钥用系统加密（Windows DPAPI / safeStorage）保存，渲染层永远拿不到明文。
 - 打包版启用本地崩溃转储；主进程未捕获异常、未处理 Promise、子进程消失与渲染进程崩溃都会记录；主窗口渲染进程崩溃会自动恢复（有频率上限），并记录无响应事件。
 - 应用不内置 Antigravity OAuth secret；使用 Antigravity 订阅时需自行设置 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
+
+![审批卡](docs/guide/screens/03-permission-card-dark.png)
 
 ## 快速开始
 
@@ -81,16 +91,17 @@ npm run dev
 
 ```powershell
 npm run build
-npm start
+npm run preview
 ```
 
 ### 使用发布包
 
-发布包提供单文件便携版与 NSIS 安装包：
+本轮交付只提供两个单文件产物：
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-r049`；之后启动更快，运行中不要删除。
-- 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
-- 当前构建未配置代码签名，首次运行可能触发 SmartScreen；SHA-256 见 [验收记录](docs/verification/VERIFICATION.md) 第 5 节（交付目录只保留便携包、安装包、源码包三项）。
+- `Morrow-0.2.0-portable.exe`：单文件便携版。首次运行会在 exe 同级解压 `.morrow-runtime-0.2.0-<修订>`，之后启动更快；运行中不要删除该目录。
+- `Morrow-0.2.0-setup.exe`：NSIS 安装包，按提示选择安装目录，创建开始菜单/桌面快捷方式。
+
+便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。当前构建未配置代码签名，首次运行可能触发 SmartScreen；请以验收记录中的 SHA-256 为准。交付目录不再包含文件夹版、zip 或源码包。
 
 ### 首次使用
 
@@ -104,8 +115,9 @@ npm start
 | 文档 | 适合谁 | 内容 |
 |---|---|---|
 | [用户指南](docs/USER-GUIDE.md) | 所有用户 | 从安装、首次启动到日常任务的操作手册、排障与功能速查 |
-| [创作台](docs/STUDIO.md) | 写作/漫剧创作者 | 一句话到成书/成片的完整工作流、快捷键与工具边界 |
-| [56 项任务对照](docs/STUDIO-TASKS.md) | 产品/验收 | 逐项实现状态、证据与剩余缺口 |
+| [创作台](docs/STUDIO.md) | 写作/漫剧创作者 | 一句话到成书/成片的完整工作流、协作者与工具边界 |
+| [创作能力对照](docs/STUDIO-TASKS.md) | 产品/验收 | 56 项能力卡、真实链路、剩余缺口 |
+| [底层提示词与质检](docs/QUALITY-FRAMEWORK.md) | 产品/研发 | 三套大师方法的内嵌、路由、预算、协作者契约与本地检查 |
 | [模型、订阅与多媒体](docs/MODELS.md) | 配置模型/账号/媒体的人 | 内置模型、上下文与思考档位、官方订阅、本机媒体引擎 |
 | [架构说明](docs/ARCHITECTURE.md) | 开发者 | 进程、IPC、Agent 循环、权限、持久化、Provider、测试 |
 | [设计系统](docs/DESIGN-SYSTEM.md) | 设计与前端 | 色彩、字体、间距、圆角、组件与可访问性 |
@@ -114,7 +126,7 @@ npm start
 | [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
 | [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（26 张，含创作台指引、40 秒线性制作演示、漫剧画布、人物语气与真实波形；已压缩至约 4.7MB）；截图由 E2E 直接启动最新打包版 Morrow 生成，记录在 manifest 中。
+指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)（40+ 张，含创作台指引、演示、蓝图、大纲、协作者计划、漫剧画布、人物语气与真实波形）。
 
 ## 架构一览
 
@@ -126,8 +138,9 @@ npm start
                                     │ IPC / feature:*
 ┌───────────────────────────────────▼─────────────────────────────────────────┐
 │ main (Electron)                                                             │
-│ AgentService ─ core/agent ─ providers（OpenAI 兼容 / Anthropic / demo）      │
+│ AgentService ─ core/agent ─ providers（OpenAI 兼容 / Anthropic / 本机）      │
 │ tools（文件/命令/终端/搜索/技能/MCP/浏览器/媒体） · permissions · snapshots  │
+│ StudioService/Store · creative-masters（内嵌三套大师） · media · exports     │
 │ session/settings/secrets/projects/memory/skills/schedules · 订阅代理        │
 └───────────────────────────────────┬─────────────────────────────────────────┘
                                     │
@@ -140,14 +153,11 @@ npm start
 
 > 统计口径：`wc -l`；代码包含 `src/`（TS/TSX/CSS/HTML）、`tests/`（含夹具与 E2E）、`scripts/`；文档为根目录与 `docs/` 下的 Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
 
-| 范围 | 文件 | 行数 |
-|---|---:|---:|
-| 生产源码 `src/` | 104 | 166,526 |
-| 测试 `tests/`（含 E2E 与夹具） | 57 | 48,420 |
-| 其中 E2E 套组 `tests/e2e/` | 10 | 20,384 |
-| 构建脚本 `scripts/` | 15 | 3,516 |
-| **代码合计** | **176** | **218,462** |
-| Markdown 文档 | 14 | 3,000 |
+| 范围 | 行数（约） |
+|---|---:|
+| 生产源码 `src/` | 164,700 |
+| 测试 `tests/`（含 E2E 与夹具） | 46,900 |
+| 构建脚本 `scripts/` | 3,700 |
 
 ## 测试与质量
 
@@ -158,18 +168,18 @@ npm run test:unit     # Vitest
 npm run test:e2e      # Playwright（完整套件约 15 分钟）
 ```
 
-当前基线：单元 **14 个套件 / 1020 个用例**（1011 passed + 9 skipped）；E2E **7 个领域套件 / 221 个用例**（201 passed + 20 skipped，0 failed；跳过项为真实账号、本机模型与真实短片生成，均为环境边界）。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)；创作层与质检层的融合见 [质检提示词框架](docs/QUALITY-FRAMEWORK.md)。
+当前基线：单元 **15 个套件 / 1046 个用例**（1037 passed + 9 skipped）；本轮截图回归 171 条 E2E（159 passed + 11 skipped + 1 failed，失败项修复后复验通过），包含协作者链路 3 条真实 UI 用例（声音页改配音、中短篇局部改大纲、长篇调章节顺序）。完整 E2E 不在每轮重跑；打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量指标、复现方式与当前结果见 [验收记录](docs/verification/VERIFICATION.md)。
 
 ## 开发与打包
 
 ```powershell
 npm run build          # 类型检查 + electron-vite build
 npm run dist           # 单文件便携版
-npm run dist:all       # 便携版 + 安装包
-npm run pack:source    # 从当前提交生成源码包
+npm run dist:final     # 最终交付：只保留便携 exe + 安装包 exe
+npm run dist:all       # 内部构建检查：文件夹版 + zip + 便携 + 安装包
 ```
 
-打包脚本会清理 Electron 缓存、临时解包目录与旧交付物；最终 `deliver/` 只保留便携包、安装包、源码包三项，用户数据不再放进交付目录。详细约定见 [贡献指南](CONTRIBUTING.md)。
+最终交付目录只保留 `Morrow-0.2.0-portable.exe` 与 `Morrow-0.2.0-setup.exe`。文件夹版、zip、源码包和旧的运行时缓存都属于中间产物，不进入交付目录；若构建机宿主占用了旧缓存，`deliver-clean/` 是干净的双文件副本。详细约定见 [贡献指南](CONTRIBUTING.md)。
 
 ## 安全与隐私
 
@@ -185,8 +195,8 @@ npm run pack:source    # 从当前提交生成源码包
 - 便携版/安装包未签名，SmartScreen 可能提示。
 - 终端默认 Git Bash；在受限令牌/低完整性环境中 Git Bash 的 MSYS 共享内存可能不可用，可在设置里切 PowerShell 7。
 - 真实本地模型、ffmpeg、ComfyUI 与视频生成依赖本机硬件和模型是否就绪；未配置时会如实报错，不会伪造结果。
-- 创作台的配音使用 Windows 本机语音；受限令牌/无语音环境会失败，可改用“导入配音”。打包机需在真实桌面复核语音。
-- 订阅渠道的服务端接口可能变化；Morrow 会在登录/额度/模型目录失败时明确提示。
+- 创作台配音可使用 Qwen3-TTS 本机声线或云端 TTS；受限令牌/无语音环境会失败，可改用“导入配音”。
+- 订阅渠道的服务端接口可能变化；Morrow 会在登录/额度/模型目录失败时明确提示，不伪造已连通或额度。
 
 ## License
 

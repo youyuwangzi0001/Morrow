@@ -24,8 +24,6 @@ import type { BrowserCallContext, BrowserState } from './util'
 import { BROWSER_LIMITS, BrowserUnavailableError, getBrowserBridge, normalizeBrowserAddress, validateBrowserTarget } from './util'
 import type { ComputerToolName } from './agent'
 
-
-
 const IMAGE_SIZES: Record<string, { width: number; height: number }> = {
   '1024x1024': { width: 1024, height: 1024 },
   '1344x768': { width: 1344, height: 768 },
@@ -34,11 +32,9 @@ const IMAGE_SIZES: Record<string, { width: number; height: number }> = {
   '1024x1536': { width: 1024, height: 1536 }
 }
 
-
 const VIDEO_ASPECTS = ['16:9', '9:16', '1:1'] as const
 
 const VIDEO_QUALITIES = ['fast', 'balanced', 'high'] as const
-
 
 /** 16:9 / 9:16 / 1:1 的常用档位，均对齐到 32 的倍数，兼顾显存与画质。 */
 const VIDEO_SIZES: Record<(typeof VIDEO_ASPECTS)[number], Record<(typeof VIDEO_QUALITIES)[number], { width: number; height: number }>> = {
@@ -59,7 +55,6 @@ const VIDEO_SIZES: Record<(typeof VIDEO_ASPECTS)[number], Record<(typeof VIDEO_Q
   }
 }
 
-
 function requireHandler(ctx: ToolContext): MediaToolHandler {
   if (!ctx.media) {
     throw new ToolInputError(
@@ -70,7 +65,6 @@ function requireHandler(ctx: ToolContext): MediaToolHandler {
   return ctx.media
 }
 
-
 function requireWorkspace(ctx: ToolContext): string {
   if (!ctx.workspace) {
     throw new ToolInputError(
@@ -80,7 +74,6 @@ function requireWorkspace(ctx: ToolContext): string {
   }
   return ctx.workspace
 }
-
 
 function resolveMediaInput(ctx: ToolContext, inputPath: string, label: string): string {
   const resolved = resolveWorkspacePath(inputPath, ctx.workspace, {
@@ -94,7 +87,6 @@ function resolveMediaInput(ctx: ToolContext, inputPath: string, label: string): 
   return resolved.absolute
 }
 
-
 function resolveOutputPath(ctx: ToolContext, outputPath: string): string {
   const resolved = resolveWorkspacePath(outputPath, ctx.workspace, {
     requireExist: false,
@@ -105,7 +97,6 @@ function resolveOutputPath(ctx: ToolContext, outputPath: string): string {
   }
   return resolved.absolute
 }
-
 
 function progressReporter(ctx: ToolContext, verb: string): (update: { stage: string; percent?: number }) => void {
   let last = -1
@@ -118,7 +109,6 @@ function progressReporter(ctx: ToolContext, verb: string): (update: { stage: str
     ctx.progress(update.stage, { title, ...(percent !== undefined ? { percent } : {}), status: 'running' })
   }
 }
-
 
 function mediaArtifact(
   result: MediaArtifactResult,
@@ -158,7 +148,6 @@ function mediaArtifact(
   return { artifact, meta }
 }
 
-
 function mediaSummary(result: MediaArtifactResult): string {
   const parts = [
     result.width && result.height ? `${result.width}×${result.height}` : '',
@@ -168,7 +157,6 @@ function mediaSummary(result: MediaArtifactResult): string {
   ].filter(Boolean)
   return parts.join(' · ')
 }
-
 
 export const generateImageTool: ToolImpl = {
   definition: {
@@ -255,7 +243,6 @@ export const generateImageTool: ToolImpl = {
     }
   }
 }
-
 
 export const generateVideoTool: ToolImpl = {
   definition: {
@@ -390,7 +377,6 @@ export const generateVideoTool: ToolImpl = {
   }
 }
 
-
 const EDIT_OPERATIONS = [
   'trim',
   'crop',
@@ -406,7 +392,6 @@ const EDIT_OPERATIONS = [
   'convert',
   'concat'
 ] as const
-
 
 export const editMediaTool: ToolImpl = {
   definition: {
@@ -536,7 +521,6 @@ export const editMediaTool: ToolImpl = {
   }
 }
 
-
 export const inspectMediaTool: ToolImpl = {
   definition: {
     name: 'inspect_media',
@@ -579,7 +563,6 @@ export const inspectMediaTool: ToolImpl = {
     }
   }
 }
-
 
 export const mediaStatusTool: ToolImpl = {
   definition: {
@@ -624,7 +607,6 @@ export const mediaStatusTool: ToolImpl = {
     }
   }
 }
-
 
 export const generateFilmTool: ToolImpl = {
   definition: {
@@ -761,7 +743,6 @@ export const generateFilmTool: ToolImpl = {
   }
 }
 
-
 export const renderAnimationTool: ToolImpl = {
   definition: {
     name: 'render_animation',
@@ -842,7 +823,6 @@ export const renderAnimationTool: ToolImpl = {
   }
 }
 
-
 export const describeMediaTool: ToolImpl = {
   definition: {
     name: 'describe_media',
@@ -908,14 +888,12 @@ export const describeMediaTool: ToolImpl = {
   }
 }
 
-
 function requireCatalog(ctx: ToolContext): NonNullable<MediaToolHandler['catalog']> {
   if (!ctx.media?.catalog) {
     throw new ToolInputError('通用模型目录不可用。', '请重启 Morrow 后重试。')
   }
   return ctx.media.catalog
 }
-
 
 function manifestExample(kind: 'model' | 'engine'): string {
   if (kind === 'model') {
@@ -983,7 +961,6 @@ function manifestExample(kind: 'model' | 'engine'): string {
   }, null, 2)
 }
 
-
 export const listLocalModelsTool: ToolImpl = {
   definition: {
     name: 'list_local_models',
@@ -1018,7 +995,6 @@ export const listLocalModelsTool: ToolImpl = {
     }
   }
 }
-
 
 export const manageLocalModelTool: ToolImpl = {
   definition: {
@@ -1076,7 +1052,6 @@ export const manageLocalModelTool: ToolImpl = {
     }
   }
 }
-
 
 export const manageLocalEngineTool: ToolImpl = {
   definition: {
@@ -1138,7 +1113,6 @@ export const manageLocalEngineTool: ToolImpl = {
     }
   }
 }
-
 
 export const runLocalModelTool: ToolImpl = {
   definition: {
@@ -1288,7 +1262,6 @@ export const runLocalModelTool: ToolImpl = {
   }
 }
 
-
 export const mediaTools: ToolImpl[] = [
   generateImageTool,
   generateVideoTool,
@@ -1303,7 +1276,6 @@ export const mediaTools: ToolImpl[] = [
   manageLocalEngineTool,
   runLocalModelTool
 ]
-
 
 /* ── 常量 ─────────────────────────────────────────────────────── */
 
@@ -1325,15 +1297,12 @@ export const WEB_FETCH_LIMITS = {
   maxUrlLength: 2048
 } as const
 
-
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
-
 
 const USER_AGENT = 'Morrow/1.0 web_fetch (+https://morrow.studio)'
 
 const DEFAULT_ACCEPT =
   'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.9,application/json;q=0.8,text/markdown;q=0.8,*/*;q=0.5'
-
 
 /* ── 错误类型 ─────────────────────────────────────────────────── */
 
@@ -1347,7 +1316,6 @@ export type WebFetchErrorKind =
   | 'binary'
   | 'redirect'
 
-
 /** 可预期的抓取失败：message 直接给模型/用户看，hint 给模型自修复建议 */
 export class WebFetchError extends Error {
   readonly kind: WebFetchErrorKind
@@ -1360,7 +1328,6 @@ export class WebFetchError extends Error {
     this.hint = hint
   }
 }
-
 
 /* ── SSRF：地址与主机名校验 ───────────────────────────────────── */
 
@@ -1376,7 +1343,6 @@ function ipv4ToInt(address: string): number | null {
   }
   return value
 }
-
 
 /** 内网/本地/保留 IPv4 段（含云元数据 link-local、CGNAT、文档与基准测试网段） */
 const BLOCKED_IPV4_CIDRS: ReadonlyArray<readonly [string, number]> = [
@@ -1396,7 +1362,6 @@ const BLOCKED_IPV4_CIDRS: ReadonlyArray<readonly [string, number]> = [
   ['240.0.0.0', 4] // 保留 + 广播
 ]
 
-
 function ipv4Blocked(address: string): boolean {
   const value = ipv4ToInt(address)
   if (value === null) return true // 解析不了就失败关闭
@@ -1408,7 +1373,6 @@ function ipv4Blocked(address: string): boolean {
   }
   return false
 }
-
 
 /** IPv6 文本 → 16 字节；支持 :: 压缩与内嵌 IPv4 */
 function ipv6ToBytes(address: string): number[] | null {
@@ -1444,7 +1408,6 @@ function ipv6ToBytes(address: string): number[] | null {
   return bytes
 }
 
-
 function ipv6Blocked(address: string): boolean {
   const bytes = ipv6ToBytes(address)
   if (!bytes) return true
@@ -1478,7 +1441,6 @@ function ipv6Blocked(address: string): boolean {
   return false
 }
 
-
 /**
  * 判断一个 IP 是否属于本地/内网/保留地址（无法解析的字符串按不安全处理）。
  * 导出以便单测逐段覆盖。
@@ -1490,10 +1452,8 @@ export function isBlockedAddress(address: string): boolean {
   return true
 }
 
-
 /** 本地主机名后缀：不查 DNS 直接拒绝（避免依赖系统 hosts 配置） */
 const BLOCKED_HOST_SUFFIXES = ['localhost', 'local', 'internal', 'home.arpa', 'lan', 'metadata.google.internal'] as const
-
 
 function isBlockedHostname(hostname: string): boolean {
   const host = hostname.trim().toLowerCase().replace(/\.$/, '')
@@ -1502,9 +1462,7 @@ function isBlockedHostname(hostname: string): boolean {
   return BLOCKED_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
 }
 
-
 export type HostResolver = (hostname: string) => Promise<Array<{ address: string; family: number }>>
-
 
 function defaultResolveHost(hostname: string): Promise<Array<{ address: string; family: number }>> {
   return new Promise((resolve, reject) => {
@@ -1517,7 +1475,6 @@ function defaultResolveHost(hostname: string): Promise<Array<{ address: string; 
     })
   })
 }
-
 
 export interface WebFetchOptions {
   /** 整体超时（含 DNS/重定向/读取），默认 15s，范围 100ms–60s */
@@ -1536,12 +1493,10 @@ export interface WebFetchOptions {
   resolveHost?: HostResolver
 }
 
-
 interface UrlValidationOptions {
   allowPrivateNetwork?: boolean
   resolveHost?: HostResolver
 }
-
 
 function ssrfMessage(hostname: string, details?: string): WebFetchError {
   return new WebFetchError(
@@ -1551,11 +1506,9 @@ function ssrfMessage(hostname: string, details?: string): WebFetchError {
   )
 }
 
-
 function invalidUrlMessage(raw: string, reason: string, hint?: string): WebFetchError {
   return new WebFetchError('invalid-url', `无法打开这个网页地址：${raw ? oneLineInput({ url: raw }, 'url', 120) : '（空）'}。${reason}`, hint)
 }
-
 
 /**
  * 校验 URL 是否允许抓取：协议白名单 + 无凭据 + 主机名 + DNS 解析结果全部为公网地址。
@@ -1620,7 +1573,6 @@ export async function validatePublicUrl(rawUrl: string, options: UrlValidationOp
   return url
 }
 
-
 /* ── HTML → 可读文本 ──────────────────────────────────────────── */
 
 function decodeCodePoint(value: number): string {
@@ -1631,7 +1583,6 @@ function decodeCodePoint(value: number): string {
     return ''
   }
 }
-
 
 /** 解码常见 HTML 实体（数字实体 + 命名实体；&amp; 最后处理避免二次解码） */
 function decodeEntities(text: string): string {
@@ -1647,11 +1598,9 @@ function decodeEntities(text: string): string {
     .replace(/&amp;/gi, '&')
 }
 
-
 function stripTags(fragment: string): string {
   return decodeEntities(fragment.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
 }
-
 
 function extractMetaContent(html: string, name: string): string {
   const pattern = new RegExp(`<meta\\b[^>]*(?:name|property)\\s*=\\s*["']${name}["'][^>]*>`, 'i')
@@ -1660,7 +1609,6 @@ function extractMetaContent(html: string, name: string): string {
   const content = /content\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1]
   return content ? stripTags(content) : ''
 }
-
 
 function normalizeReadableText(text: string): string {
   return text
@@ -1673,13 +1621,11 @@ function normalizeReadableText(text: string): string {
     .trim()
 }
 
-
 export interface ReadablePage {
   title: string
   description: string
   text: string
 }
-
 
 /**
  * HTML → 可读文本：优先 <main>/<article> 正文，否则 <body>；
@@ -1727,12 +1673,10 @@ export function htmlToReadable(html: string): ReadablePage {
   return { title, description, text }
 }
 
-
 /* ── 抓取实现 ─────────────────────────────────────────────────── */
 
 const TEXTUAL_CONTENT_TYPE =
   /^(?:text\/|application\/(?:xhtml\+xml|xml|json|ld\+json|javascript|x-javascript|ecmascript|markdown|x-www-form-urlencoded|yaml|x-yaml|csv)|image\/svg\+xml)/i
-
 
 interface RawResponse {
   status: number
@@ -1744,11 +1688,9 @@ interface RawResponse {
   redirectTo?: string
 }
 
-
 function isRedirect(status: number): boolean {
   return REDIRECT_STATUS.has(status)
 }
-
 
 function mapNetworkError(err: unknown, url: URL): Error {
   if (isAbortError(err)) return abortError()
@@ -1772,7 +1714,6 @@ function mapNetworkError(err: unknown, url: URL): Error {
   return new WebFetchError('network', `网络请求失败（${url.hostname}）：${message}`, '可以稍后重试，或换一个来源。')
 }
 
-
 type LookupAddress = { address: string; family: number }
 
 type LookupCallbackLike = (
@@ -1780,7 +1721,6 @@ type LookupCallbackLike = (
   address?: string | LookupAddress[],
   family?: number
 ) => void
-
 
 /**
  * 连接时二次校验 DNS 结果（防 DNS rebinding）：只连解析为公网地址的 IP。
@@ -1826,7 +1766,6 @@ export function createSafeLookup(resolver: HostResolver): LookupFunction {
     )
   }) as unknown as LookupFunction
 }
-
 
 /**
  * 发一次 GET（不跟随重定向）。返回内网校验后的响应或重定向目标。
@@ -1943,7 +1882,6 @@ function rawGet(
   })
 }
 
-
 function decodeBody(body: Buffer, contentType: string): string {
   const charset = /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1]
   if (charset && !/^utf-?8$/i.test(charset)) {
@@ -1955,7 +1893,6 @@ function decodeBody(body: Buffer, contentType: string): string {
   }
   return body.toString('utf8')
 }
-
 
 export interface WebFetchResult {
   requestedUrl: string
@@ -1971,7 +1908,6 @@ export interface WebFetchResult {
   redirects: string[]
   elapsedMs: number
 }
-
 
 /**
  * 抓取一个公网网页并转成可读文本（不依赖第三方库）。
@@ -2071,7 +2007,6 @@ export async function fetchWebPage(rawUrl: string, options: WebFetchOptions = {}
   }
 }
 
-
 /* ── 工具定义 ─────────────────────────────────────────────────── */
 
 function formatWebFetchResult(result: WebFetchResult): string {
@@ -2093,9 +2028,7 @@ function formatWebFetchResult(result: WebFetchResult): string {
   return lines.join('\n')
 }
 
-
 export type WebFetchToolOptions = WebFetchOptions
-
 
 /** 创建 web_fetch 工具（options 只给测试注入；模型参数里没有这些开关） */
 export function createWebFetchTool(options: WebFetchToolOptions = {}): ToolImpl {
@@ -2164,10 +2097,8 @@ export function createWebFetchTool(options: WebFetchToolOptions = {}): ToolImpl 
   }
 }
 
-
 /** 注册表使用的默认实例：生产环境禁止访问内网/本机 */
 export const webFetchTool: ToolImpl = createWebFetchTool()
-
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.morrow', '.svn', '.hg', 'dist', 'out', 'release'])
 
@@ -2183,7 +2114,6 @@ const MAX_GREP_LINE_CHARS = 400
 
 const MAX_GREP_FILES = 2000
 
-
 interface WalkEntry {
   absolute: string
   /** 相对搜索根目录，posix 分隔符 */
@@ -2191,7 +2121,6 @@ interface WalkEntry {
   name: string
   size: number
 }
-
 
 /** 递归收集文件（不返回目录）；早停由上限控制 */
 async function walkFiles(
@@ -2240,11 +2169,9 @@ async function walkFiles(
   return { files, scanned, truncated }
 }
 
-
 function escapeRegexChar(char: string): string {
   return /[.*+?^${}()|[\]\\]/.test(char) ? `\\${char}` : char
 }
-
 
 /** 极简 glob → RegExp：支持 **、*、?、[abc]、{a,b} */
 export function globToRegExp(pattern: string): RegExp {
@@ -2295,17 +2222,14 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${source}$`, process.platform === 'win32' ? 'i' : '')
 }
 
-
 function matchGlob(entry: WalkEntry, regExp: RegExp, mode: 'path' | 'basename'): boolean {
   if (regExp.test(entry.relative)) return true
   return mode === 'basename' && regExp.test(entry.name)
 }
 
-
 function compileInclude(include: string): RegExp {
   return globToRegExp(include)
 }
-
 
 /**
  * 在文件中搜索文本。返回的 matches 用于报告/调试，output 给模型。
@@ -2426,7 +2350,6 @@ export const grepTool: ToolImpl = {
   }
 }
 
-
 export const globTool: ToolImpl = {
   definition: {
     name: 'glob',
@@ -2474,9 +2397,7 @@ export const globTool: ToolImpl = {
   }
 }
 
-
 export const searchTools: ToolImpl[] = [globTool, grepTool]
-
 
 const DEFAULT_TIMEOUT_MS = 120_000
 
@@ -2486,10 +2407,8 @@ const MAX_OUTPUT_BYTES = 32 * 1024
 
 const MAX_COMMAND_CHARS = 8000
 
-
 /** 清除会泄露密钥的环境变量；补充让子进程输出稳定的变量 */
 const SENSITIVE_ENV = /(?:API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE[_-]?KEY|AUTH|COOKIE|SESSION[_-]?KEY|DEEPSEEK|OPENAI|ANTHROPIC|MOONSHOT|MORROW)/i
-
 
 export function sanitizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
@@ -2505,7 +2424,6 @@ export function sanitizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   out.CLICOLOR = '0'
   return out
 }
-
 
 /** 杀掉整个进程树：Windows 用 taskkill /T，Unix 用进程组 */
 export function killProcessTree(pid: number | undefined): void {
@@ -2533,7 +2451,6 @@ export function killProcessTree(pid: number | undefined): void {
   }
 }
 
-
 function buildLaunch(
   command: string,
   shell: Parameters<typeof buildOneShotInvocation>[0]
@@ -2546,14 +2463,12 @@ function buildLaunch(
   }
 }
 
-
 interface CapturedOutput {
   stdout: Buffer[]
   stderr: Buffer[]
   totalBytes: number
   truncated: boolean
 }
-
 
 function captureChunk(output: CapturedOutput, chunks: Buffer[], chunk: Buffer): void {
   if (output.totalBytes >= MAX_OUTPUT_BYTES) {
@@ -2570,7 +2485,6 @@ function captureChunk(output: CapturedOutput, chunks: Buffer[], chunk: Buffer): 
     output.totalBytes += chunk.length
   }
 }
-
 
 function formatTranscript(parts: {
   command: string
@@ -2607,7 +2521,6 @@ function formatTranscript(parts: {
   if (parts.truncated) lines.push('', `…（输出超过 ${MAX_OUTPUT_BYTES / 1024}KB，已截断）`)
   return lines.join('\n')
 }
-
 
 export const runCommandTool: ToolImpl = {
   definition: {
@@ -2824,16 +2737,13 @@ export const runCommandTool: ToolImpl = {
   }
 }
 
-
 const MAX_RESULT_CHARS = 12_000
-
 
 function requireBridge(): NonNullable<ReturnType<typeof getBrowserBridge>> {
   const bridge = getBrowserBridge()
   if (!bridge) throw new BrowserUnavailableError()
   return bridge
 }
-
 
 /** 读取 timeout_ms 参数并夹到安全区间 */
 function callContext(ctx: ToolContext, input: Record<string, unknown>): BrowserCallContext {
@@ -2843,7 +2753,6 @@ function callContext(ctx: ToolContext, input: Record<string, unknown>): BrowserC
   return { runId: ctx.runId, ...(timeoutMs ? { timeoutMs } : {}) }
 }
 
-
 function hostOf(url: string): string {
   try {
     return new URL(url).host
@@ -2852,14 +2761,12 @@ function hostOf(url: string): string {
   }
 }
 
-
 function summarizeState(state: BrowserState): string {
   const flags = [state.loading ? '加载中' : '已加载', state.canGoBack ? '可后退' : '', state.canGoForward ? '可前进' : '']
     .filter(Boolean)
     .join(' · ')
   return `${state.title || '(无标题)'}\n${state.url}（${flags}）`
 }
-
 
 function toolError(err: unknown, hint?: string): ToolResult {
   if (err instanceof BrowserUnavailableError) {
@@ -2869,12 +2776,10 @@ function toolError(err: unknown, hint?: string): ToolResult {
   return errResult(`浏览器操作失败：${message}`, hint)
 }
 
-
 function requireWritableContext(ctx: ToolContext): ToolResult | null {
   if (ctx.readOnly) return errResult('当前是只读上下文，不能控制浏览器。', '浏览器自动化只能在有权限的工作模式中使用。')
   return null
 }
-
 
 const browserOpenTool: ToolImpl = {
   definition: {
@@ -2919,7 +2824,6 @@ const browserOpenTool: ToolImpl = {
   }
 }
 
-
 const browserClickTool: ToolImpl = {
   definition: {
     name: 'browser_click',
@@ -2956,7 +2860,6 @@ const browserClickTool: ToolImpl = {
     }
   }
 }
-
 
 const browserTypeTool: ToolImpl = {
   definition: {
@@ -3002,7 +2905,6 @@ const browserTypeTool: ToolImpl = {
   }
 }
 
-
 const browserReadTool: ToolImpl = {
   definition: {
     name: 'browser_read',
@@ -3043,13 +2945,11 @@ const browserReadTool: ToolImpl = {
   }
 }
 
-
 function screenshotArtifactPath(workspace: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const random = Math.random().toString(36).slice(2, 8)
   return join(workspace, '.morrow', 'browser', `browser-${stamp}-${random}.png`)
 }
-
 
 const browserScreenshotTool: ToolImpl = {
   definition: {
@@ -3102,7 +3002,6 @@ const browserScreenshotTool: ToolImpl = {
   }
 }
 
-
 function historyTool(direction: 'back' | 'forward'): ToolImpl {
   return {
     definition: {
@@ -3142,7 +3041,6 @@ function historyTool(direction: 'back' | 'forward'): ToolImpl {
   }
 }
 
-
 const browserReloadTool: ToolImpl = {
   definition: {
     name: 'browser_reload',
@@ -3172,7 +3070,6 @@ const browserReloadTool: ToolImpl = {
     }
   }
 }
-
 
 const browserScrollTool: ToolImpl = {
   definition: {
@@ -3213,7 +3110,6 @@ const browserScrollTool: ToolImpl = {
   }
 }
 
-
 const browserCloseTool: ToolImpl = {
   definition: {
     name: 'browser_close',
@@ -3235,7 +3131,6 @@ const browserCloseTool: ToolImpl = {
   }
 }
 
-
 /** 导出给 registry 集成（Lead 在 registry.ts 里 spread；本文件不改 registry） */
 export const browserTools: ToolImpl[] = [
   browserOpenTool,
@@ -3250,12 +3145,9 @@ export const browserTools: ToolImpl[] = [
   browserCloseTool
 ]
 
-
 /* ── 常量与校验 ───────────────────────────────────────────────── */
 
-
 export type { ComputerToolName }
-
 
 export const COMPUTER_LIMITS = {
   maxTextLength: 2000,
@@ -3265,7 +3157,6 @@ export const COMPUTER_LIMITS = {
   commandTimeoutMs: 20_000
 } as const
 
-
 /** 动作间隔（毫秒）：降低失控风险（例如模型连续疯狂点击） */
 const DEFAULT_MIN_INTERVAL_MS: Record<ComputerToolName, number> = {
   computer_screenshot: 1200,
@@ -3274,13 +3165,10 @@ const DEFAULT_MIN_INTERVAL_MS: Record<ComputerToolName, number> = {
   computer_key: 300
 }
 
-
 const SENSITIVE_TITLE_PATTERN =
   /密码|口令|登录|登陆|验证码|支付|付款|收银|转账|银行|钱包|余额|密钥|凭证|凭据|password|passwd|login|sign[ -]?in|verification|2fa|otp|payment|pay\b|checkout|bank|wallet|credential|secret|api[ -]?key|keeper|1password|bitwarden|lastpass|settings|设置|控制面板|control panel|regedit|注册表|uac|用户账户|security center|安全中心/i
 
-
 const SENSITIVE_PROCESS_PATTERN = /keepass|1password|bitwarden|lastpass|authenticator|bank|payment|wallet|credential|regedit|mmc|secpol|gpedit|control/i
-
 
 const KEY_MAP: Record<string, number> = {
   ENTER: 0x0d,
@@ -3301,25 +3189,20 @@ const KEY_MAP: Record<string, number> = {
   RIGHT: 0x27
 }
 
-
 const MODIFIER_MAP: Record<string, number> = { CTRL: 0x11, SHIFT: 0x10, ALT: 0x12 }
-
 
 export function isWindowsPlatform(platform: string = process.platform): boolean {
   return platform === 'win32'
 }
 
-
 export function isSensitiveWindow(title: string, processName: string): boolean {
   return SENSITIVE_TITLE_PATTERN.test(title) || SENSITIVE_PROCESS_PATTERN.test(processName)
 }
-
 
 export interface ClickInput {
   x: number
   y: number
 }
-
 
 export function validateClickInput(input: Record<string, unknown>): ClickInput | string {
   let x: number
@@ -3334,9 +3217,7 @@ export function validateClickInput(input: Record<string, unknown>): ClickInput |
   return { x, y }
 }
 
-
 export type TypeValidation = { ok: true; text: string } | { ok: false; reason: string }
-
 
 export function validateTypeInput(input: Record<string, unknown>): TypeValidation {
   let text: string
@@ -3357,7 +3238,6 @@ export function validateTypeInput(input: Record<string, unknown>): TypeValidatio
   }
   return { ok: true, text }
 }
-
 
 /** 解析按键组合，返回 VK 序列（含按下顺序）；只允许白名单键与 CTRL+字母。 */
 export function parseKeySequence(keys: string): number[] | string {
@@ -3401,7 +3281,6 @@ export function parseKeySequence(keys: string): number[] | string {
   return sequence
 }
 
-
 /* ── PowerShell 执行 ─────────────────────────────────────────── */
 
 export interface PowerShellResult {
@@ -3411,13 +3290,10 @@ export interface PowerShellResult {
   exitCode: number
 }
 
-
 export type PowerShellRunner = (script: string, options: { signal: AbortSignal; timeoutMs: number }) => Promise<PowerShellResult>
-
 
 const POWERSHELL_UTF8_PREFIX =
   "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $OutputEncoding=[Console]::OutputEncoding; $ProgressPreference='SilentlyContinue'; "
-
 
 export function runPowerShellDefault(script: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<PowerShellResult> {
   return new Promise<PowerShellResult>((resolve) => {
@@ -3469,7 +3345,6 @@ export function runPowerShellDefault(script: string, options: { signal: AbortSig
   })
 }
 
-
 /* ── Windows 脚本（PowerShell/Add-Type） ──────────────────────── */
 
 const WIN32_INFO_TYPE = String.raw`
@@ -3497,11 +3372,9 @@ public class MorrowWin {
 '@
 `
 
-
 function psQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
-
 
 function foregroundInfoScript(): string {
   return `${WIN32_INFO_TYPE}
@@ -3516,7 +3389,6 @@ try { $proc = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
 `
 }
 
-
 function assertForegroundSnippet(expectedHwnd: number): string {
   return `
 $expectedHwnd = ${Math.trunc(expectedHwnd)}
@@ -3524,7 +3396,6 @@ $current = [MorrowWin]::GetForegroundWindow()
 if ($current.ToInt64() -ne $expectedHwnd) { throw '前台窗口在操作前发生了变化，已取消（请重试并保持目标窗口在前台）。' }
 `
 }
-
 
 function screenshotScript(path: string, expectedHwnd: number): string {
   return `${WIN32_INFO_TYPE}
@@ -3551,7 +3422,6 @@ try {
 `
 }
 
-
 function clickScript(x: number, y: number, expectedHwnd: number): string {
   return `${WIN32_INFO_TYPE}[void][MorrowWin]::EnableDpiAwareness()
 ${assertForegroundSnippet(expectedHwnd)}
@@ -3570,7 +3440,6 @@ Start-Sleep -Milliseconds 30
 [Console]::Out.Write('OK')
 `
 }
-
 
 function typeScript(text: string, expectedHwnd: number): string {
   const base64 = Buffer.from(text, 'utf8').toString('base64')
@@ -3599,7 +3468,6 @@ $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(${psQuote(ba
 `
 }
 
-
 function keyScript(sequence: number[], expectedHwnd: number): string {
   const keyCodes = sequence.join(',')
   return `${WIN32_INFO_TYPE}${assertForegroundSnippet(expectedHwnd)}
@@ -3619,7 +3487,6 @@ foreach ($code in $down) {
 `
 }
 
-
 /* ── 前台窗口与速率限制 ──────────────────────────────────────── */
 
 interface ForegroundInfo {
@@ -3627,7 +3494,6 @@ interface ForegroundInfo {
   title: string
   processName: string
 }
-
 
 export function parseForegroundInfo(stdout: string): ForegroundInfo | null {
   const line = stdout.trim().split('\n').filter(Boolean).pop() ?? ''
@@ -3637,7 +3503,6 @@ export function parseForegroundInfo(stdout: string): ForegroundInfo | null {
   if (!Number.isFinite(hwnd) || hwnd <= 0) return null
   return { hwnd, title: parts[1] ?? '', processName: parts[2] ?? '' }
 }
-
 
 /* ── 工具工厂 ─────────────────────────────────────────────────── */
 
@@ -3649,7 +3514,6 @@ export interface ComputerRuntime {
   maxActionsPerMinute?: number
 }
 
-
 function securityDeny(ctx: ToolContext): ToolResult | null {
   if (ctx.demo) {
     return errResult('演示模式不能操作电脑。', 'computer-use 只用于用户明确授权的工作会话；演示模式不会控制真实鼠标键盘。')
@@ -3659,7 +3523,6 @@ function securityDeny(ctx: ToolContext): ToolResult | null {
   }
   return null
 }
-
 
 export function createComputerTools(runtime: ComputerRuntime = {}): ToolImpl[] {
   const platform = runtime.platform ?? process.platform
@@ -3925,10 +3788,8 @@ export function createComputerTools(runtime: ComputerRuntime = {}): ToolImpl[] {
   return [screenshot, click, type, key]
 }
 
-
 /** 默认实例：Lead 在 registry 注册这些工具（不要改 registry 由 Lead 集成） */
 export const computerTools: ToolImpl[] = createComputerTools()
-
 
 /** 这些工具属于「每次动作必问」的外部动作，已在 permissions.ts 的 EXTERNAL_ACTION_TOOLS 中登记 */
 export const COMPUTER_TOOL_DEFINITIONS = computerTools.map((tool) => tool.definition)

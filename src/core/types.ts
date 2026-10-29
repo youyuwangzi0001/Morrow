@@ -121,7 +121,7 @@ export type ProviderStreamEvent =
   | { type: 'tool_call_delta'; index: number; argsDelta: string }
   | { type: 'tool_call_end'; index: number; id: string; name: string; input: Record<string, unknown>; parseError?: string }
   | { type: 'usage'; usage: Usage }
-  | { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string }
+  | { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string; code?: 'max_tokens' | 'content_filter' }
   /** demo 引擎专用：驱动 UI 演示进度条，真实 provider 不会产出 */
   | { type: 'demo_step'; index: number; total: number; caption: string }
 

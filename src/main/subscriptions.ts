@@ -16,10 +16,6 @@ import { createServer } from 'node:http'
 import { Readable } from 'node:stream'
 import { log } from './logger'
 
-
-
-
-
 /** 读取本机 JSON 文件；不存在或格式不对时返回 null，不抛错。 */
 export function readLocalJson(file: string): Record<string, unknown> | null {
   try {
@@ -30,22 +26,18 @@ export function readLocalJson(file: string): Record<string, unknown> | null {
   }
 }
 
-
 export function homePath(...segments: string[]): string {
   return join(homedir(), ...segments)
 }
-
 
 /** 用系统浏览器打开授权页。 */
 export function openExternal(url: string): void {
   void openLoginUrl(url).catch(() => undefined)
 }
 
-
 export function getProvider(id: string): ProviderConfig | undefined {
   return getSettingsStore().get().providers.find((item) => item.id === id)
 }
-
 
 /** 注册或更新回环 Provider，保留用户此前设置的启停状态。 */
 export function saveLoopbackProvider(input: {
@@ -71,7 +63,6 @@ export function saveLoopbackProvider(input: {
   return config
 }
 
-
 export function removeProvider(id: string): void {
   try {
     getSettingsStore().removeProvider(id)
@@ -79,7 +70,6 @@ export function removeProvider(id: string): void {
     // Provider 已经被手动删除
   }
 }
-
 
 export function setProviderEnabled(id: string, enabled: boolean): void {
   const provider = getProvider(id)
@@ -89,7 +79,6 @@ export function setProviderEnabled(id: string, enabled: boolean): void {
     getSettingsStore().getApiKey(id) ?? undefined
   )
 }
-
 
 export async function testSubscriptionProvider(id: string, modelId?: string): Promise<SubscriptionTestResult> {
   const started = Date.now()
@@ -102,7 +91,6 @@ export async function testSubscriptionProvider(id: string, modelId?: string): Pr
     return { ok: false, latencyMs: Date.now() - started, message: err instanceof Error ? err.message : String(err) }
   }
 }
-
 
 /** safeStorage 加密的本机 JSON 凭据文件。 */
 export class SecureJsonStore<T> {
@@ -147,23 +135,19 @@ export class SecureJsonStore<T> {
   }
 }
 
-
 export function randomLocalToken(seed?: string | null): string {
   return seed && seed.length >= 16 ? seed : randomBytes(32).toString('base64url')
 }
 
-
 export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
-
 
 const subscriptionRelayMAX_BODY = 64 * 1024 * 1024
 
 const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'anthropic-version', 'anthropic-beta', 'openai-beta'] as const
 
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'request-id', 'x-request-id', 'anthropic-version'] as const
-
 
 export interface SubscriptionRelayOptions {
   localToken: string
@@ -180,12 +164,10 @@ export interface SubscriptionRelayOptions {
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>
 }
 
-
 export interface SubscriptionRelayHandle {
   port: number
   close(): Promise<void>
 }
-
 
 async function subscriptionRelayReadBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = []
@@ -199,7 +181,6 @@ async function subscriptionRelayReadBody(req: IncomingMessage): Promise<string> 
   return Buffer.concat(chunks).toString('utf8')
 }
 
-
 function subscriptionRelaySendJson(res: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string> = {}): void {
   if (res.headersSent) {
     res.end()
@@ -208,7 +189,6 @@ function subscriptionRelaySendJson(res: ServerResponse, status: number, body: un
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...extraHeaders })
   res.end(JSON.stringify(body))
 }
-
 
 function requestHeaders(req: IncomingMessage, injected: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { ...injected }
@@ -219,7 +199,6 @@ function requestHeaders(req: IncomingMessage, injected: Record<string, string>):
   return headers
 }
 
-
 function responseHeaders(response: Response): Record<string, string> {
   const headers: Record<string, string> = {}
   for (const name of FORWARD_RESPONSE_HEADERS) {
@@ -228,7 +207,6 @@ function responseHeaders(response: Response): Record<string, string> {
   }
   return headers
 }
-
 
 export async function startSubscriptionRelay(options: SubscriptionRelayOptions): Promise<SubscriptionRelayHandle> {
   const fetchImpl = options.fetchImpl ?? fetch
@@ -322,7 +300,6 @@ export async function startSubscriptionRelay(options: SubscriptionRelayOptions):
   }
 }
 
-
 export const ANTIGRAVITY_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com'
 
 export const ANTIGRAVITY_CLIENT_SECRET = process.env.MORROW_ANTIGRAVITY_CLIENT_SECRET?.trim() ?? ''
@@ -346,7 +323,6 @@ export const ANTIGRAVITY_FALLBACK = 'https://cloudcode-pa.googleapis.com'
 
 export const ANTIGRAVITY_REDIRECT_PATH = '/oauth-callback'
 
-
 export const ANTIGRAVITY_MODELS: ModelInfo[] = [
   { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', contextWindow: 1_000_000, maxOutput: 65_536, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Antigravity' },
   { id: 'gemini-4-argon', label: 'Gemini 4 Argon', contextWindow: 1_000_000, maxOutput: 65_536, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Antigravity' },
@@ -358,7 +334,6 @@ export const ANTIGRAVITY_MODELS: ModelInfo[] = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', contextWindow: 200_000, maxOutput: 65_536, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Antigravity' },
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', contextWindow: 200_000, maxOutput: 65_536, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Antigravity' }
 ]
-
 
 const ROUTING: Record<string, { off: string; routing: Record<string, string>; default: string }> = {
   'gemini-4-argon': {
@@ -408,14 +383,12 @@ const ROUTING: Record<string, { off: string; routing: Record<string, string>; de
   }
 }
 
-
 let toolCallCounter = 0
 
 export function sanitizeToolCallId(id: string | undefined, name: string): string {
   const cleaned = String(id ?? '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64)
   return cleaned || `${name || 'tool'}_${Date.now()}_${++toolCallCounter}`
 }
-
 
 export function antigravityRuntime(model: string, effort?: string): string {
   const entry = ROUTING[model]
@@ -424,11 +397,9 @@ export function antigravityRuntime(model: string, effort?: string): string {
   return entry.routing[selected] ?? entry.default
 }
 
-
 export function isClaudeRuntime(runtime: string): boolean {
   return /^claude-/i.test(runtime)
 }
-
 
 export const ANTIGRAVITY_SYSTEM_INSTRUCTION =
   'You are Antigravity, a powerful agentic AI coding assistant designed by Google DeepMind. '
@@ -440,7 +411,6 @@ export const ANTIGRAVITY_NO_PREAMBLE_INSTRUCTION =
 export const ANTIGRAVITY_PROGRESS_INSTRUCTION =
   'Before EVERY tool call, emit 1-2 short sentences of ordinary visible assistant text stating what you are about to do and why. Never write those sentences only inside thinking. Keep them brief and factual.'
 
-
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
@@ -450,13 +420,11 @@ function textOf(content: unknown): string {
   }).join('')
 }
 
-
 function imagePart(url: string): Record<string, unknown> | null {
   const match = /^data:([^;,]+);base64,(.+)$/i.exec(url)
   if (!match) return null
   return { inlineData: { mimeType: match[1], data: match[2] } }
 }
-
 
 interface OpenAiMessage {
   role?: string
@@ -465,7 +433,6 @@ interface OpenAiMessage {
   tool_call_id?: string
   name?: string
 }
-
 
 function userParts(content: unknown): Array<Record<string, unknown>> {
   if (typeof content === 'string') return content ? [{ text: content }] : []
@@ -484,7 +451,6 @@ function userParts(content: unknown): Array<Record<string, unknown>> {
   }
   return parts
 }
-
 
 /** Gemini functionDeclarations 只接受 OpenAPI 子集；去掉会 400 的 JSON Schema 关键字。 */
 export function sanitizeGeminiSchema(value: unknown, depth = 0): unknown {
@@ -525,7 +491,6 @@ export function sanitizeGeminiSchema(value: unknown, depth = 0): unknown {
   }
   return out
 }
-
 
 /** OpenAI Chat Completions 请求 → Gemini contents + tools + generationConfig。 */
 export function buildAntigravityRequest(
@@ -668,7 +633,6 @@ export function buildAntigravityRequest(
   }
 }
 
-
 export type AntigravityEvent =
   | { type: 'text'; text: string }
   | { type: 'thought'; text: string }
@@ -676,7 +640,6 @@ export type AntigravityEvent =
   | { type: 'finish'; reason: string }
   | { type: 'usage'; input: number; output: number; cached: number }
   | { type: 'error'; message: string }
-
 
 /** 一帧 `data:` JSON → 统一事件。 */
 export function parseAntigravityFrame(payload: unknown): AntigravityEvent[] {
@@ -713,7 +676,6 @@ export function parseAntigravityFrame(payload: unknown): AntigravityEvent[] {
   return events
 }
 
-
 export function parseAntigravityQuota(payload: unknown, fetchedAt = Date.now()): AgentSubscriptionQuota {
   const root = asRecord(payload) ?? {}
   const groups = Array.isArray(root.groups) ? root.groups : []
@@ -742,13 +704,11 @@ export function parseAntigravityQuota(payload: unknown, fetchedAt = Date.now()):
   }
 }
 
-
 export const CLINE_BASE = 'https://api.cline.bot/api/v1'
 
 export const CLINE_WORKOS_CLIENT_ID = 'client_01K3A541FN8TA3EPPHTD2325AR'
 
 export const CLINE_MODEL_PREFIX = 'cline-pass/'
-
 
 const MODELS: Array<{ id: string; label: string; contextWindow: number }> = [
   { id: 'deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', contextWindow: 200_000 },
@@ -767,7 +727,6 @@ const MODELS: Array<{ id: string; label: string; contextWindow: number }> = [
   { id: 'mimo-v2.5', label: 'MiMo V2.5', contextWindow: 200_000 }
 ]
 
-
 export const CLINE_MODELS: ModelInfo[] = MODELS.map((model) => ({
   id: `${CLINE_MODEL_PREFIX}${model.id}`,
   label: model.label,
@@ -776,7 +735,6 @@ export const CLINE_MODELS: ModelInfo[] = MODELS.map((model) => ({
   supportsTools: true,
   note: 'Cline Pass'
 }))
-
 
 export function rewriteClineBody(raw: string): string {
   const body = asRecord(JSON.parse(raw))
@@ -789,7 +747,6 @@ export function rewriteClineBody(raw: string): string {
   return JSON.stringify(body)
 }
 
-
 /** 非流式响应可能被包成 `{data:{choices...}}`；流式 SSE 原样透传。 */
 export function unwrapClineJson(raw: string): string {
   try {
@@ -801,7 +758,6 @@ export function unwrapClineJson(raw: string): string {
     return raw
   }
 }
-
 
 export function parseClineQuota(payload: unknown, fetchedAt = Date.now()): AgentSubscriptionQuota {
   const root = asRecord(payload) ?? {}
@@ -830,7 +786,6 @@ export function parseClineQuota(payload: unknown, fetchedAt = Date.now()): Agent
   }
 }
 
-
 export interface CodexCredential {
   accessToken: string
   refreshToken: string
@@ -841,7 +796,6 @@ export interface CodexCredential {
   expiresAt: number
 }
 
-
 export interface CodexProxyOptions {
   localToken: string
   models: ModelInfo[]
@@ -851,12 +805,10 @@ export interface CodexProxyOptions {
   fetchImpl: (url: string, init: RequestInit) => Promise<Response>
 }
 
-
 export interface CodexProxyHandle {
   port: number
   close(): Promise<void>
 }
-
 
 const codexProxyMAX_BODY = 64 * 1024 * 1024
 
@@ -866,14 +818,12 @@ const MODELS_URL = 'https://chatgpt.com/backend-api/codex/models?client_version=
 
 const USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 
-
 interface OpenAIMessage {
   role?: string
   content?: string | Array<Record<string, unknown>>
   tool_calls?: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }>
   tool_call_id?: string
 }
-
 
 interface ChatBody {
   model?: string
@@ -885,7 +835,6 @@ interface ChatBody {
   reasoning_effort?: string
   user?: string
 }
-
 
 function codexHeaders(credential: CodexCredential, sessionId: string): Record<string, string> {
   return {
@@ -899,7 +848,6 @@ function codexHeaders(credential: CodexCredential, sessionId: string): Record<st
     accept: 'text/event-stream'
   }
 }
-
 
 function contentToInput(
   content: OpenAIMessage['content'],
@@ -928,7 +876,6 @@ function contentToInput(
   }
   return out
 }
-
 
 /** OpenAI Chat Completions 请求 → Responses 请求。 */
 export function toResponsesPayload(body: ChatBody): Record<string, unknown> {
@@ -990,12 +937,10 @@ export function toResponsesPayload(body: ChatBody): Record<string, unknown> {
   return payload
 }
 
-
 interface SseEvent {
   event: string
   data: Record<string, unknown> | null
 }
-
 
 async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
   const reader = body.getReader()
@@ -1031,7 +976,6 @@ async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEv
   }
 }
 
-
 function chunk(model: string, delta: Record<string, unknown>, finishReason: string | null = null, usage?: Record<string, unknown>): string {
   const payload = {
     id: `chatcmpl-${randomUUID()}`,
@@ -1043,7 +987,6 @@ function chunk(model: string, delta: Record<string, unknown>, finishReason: stri
   }
   return `data: ${JSON.stringify(payload)}\n\n`
 }
-
 
 async function readJson(req: import('node:http').IncomingMessage): Promise<unknown> {
   let total = 0
@@ -1058,7 +1001,6 @@ async function readJson(req: import('node:http').IncomingMessage): Promise<unkno
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
-
 function codexProxySendJson(res: import('node:http').ServerResponse, status: number, value: unknown): void {
   if (res.headersSent) {
     res.end()
@@ -1067,7 +1009,6 @@ function codexProxySendJson(res: import('node:http').ServerResponse, status: num
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(value))
 }
-
 
 async function upstreamFetchWithRetry(
   options: CodexProxyOptions,
@@ -1094,7 +1035,6 @@ async function upstreamFetchWithRetry(
   }
   return response
 }
-
 
 async function codexProxyHandleChat(
   req: import('node:http').IncomingMessage,
@@ -1273,7 +1213,6 @@ async function codexProxyHandleChat(
   }
 }
 
-
 export async function startCodexProxy(options: CodexProxyOptions): Promise<CodexProxyHandle> {
   const listener: RequestListener = async (req, res) => {
     try {
@@ -1329,9 +1268,7 @@ export async function startCodexProxy(options: CodexProxyOptions): Promise<Codex
   }
 }
 
-
 export { MODELS_URL, USAGE_URL }
-
 
 export const COMMAND_CODE_API = 'https://api.commandcode.ai'
 
@@ -1343,7 +1280,6 @@ export const COMMAND_CODE_CREDITS = '/alpha/billing/credits'
 
 export const COMMAND_CODE_STUDIO_AUTH = 'https://commandcode.ai/studio/auth/cli'
 
-
 export const COMMAND_CODE_CHAT_MODELS: ModelInfo[] = [
   { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', contextWindow: 384_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Command Code' },
   { id: 'moonshotai/Kimi-K3', label: 'Kimi K3', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Command Code' },
@@ -1353,12 +1289,10 @@ export const COMMAND_CODE_CHAT_MODELS: ModelInfo[] = [
   { id: 'xai/grok-4.6', label: 'Grok 4.6', contextWindow: 256_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Command Code' }
 ]
 
-
 export const COMMAND_CODE_CLAUDE_MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', contextWindow: 200_000, maxOutput: 64_000, supportsTools: true, supportsReasoning: true, reasoningStyle: 'thinking', note: 'Command Code' },
   { id: 'claude-opus-5', label: 'Claude Opus 5', contextWindow: 200_000, maxOutput: 128_000, supportsTools: true, supportsReasoning: true, reasoningStyle: 'thinking', note: 'Command Code' }
 ]
-
 
 export function commandCodeHeaders(apiKey: string, platform = process.platform): Record<string, string> {
   const env = platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux'
@@ -1375,7 +1309,6 @@ export function commandCodeHeaders(apiKey: string, platform = process.platform):
     'anthropic-version': '2023-06-01'
   }
 }
-
 
 /** GPT-5/6 与 o 系列只认 max_completion_tokens；其余模型用 max_tokens。 */
 export function rewriteCommandCodeChat(raw: string): string {
@@ -1394,7 +1327,6 @@ export function rewriteCommandCodeChat(raw: string): string {
   return JSON.stringify(body)
 }
 
-
 export function rewriteCommandCodeAnthropic(raw: string): string {
   const body = asRecord(JSON.parse(raw))
   if (!body) return raw
@@ -1403,7 +1335,6 @@ export function rewriteCommandCodeAnthropic(raw: string): string {
   if (typeof body.max_tokens !== 'number' || body.max_tokens <= 0) body.max_tokens = 32_768
   return JSON.stringify(body)
 }
-
 
 /** 模型列表：`{data:[...]}` 或数组；按 `supported_endpoints` 分到 chat / messages。 */
 export function parseCommandCodeCatalog(payload: unknown): {
@@ -1462,7 +1393,6 @@ export function parseCommandCodeCatalog(payload: unknown): {
   return { chat, claude }
 }
 
-
 export function parseCommandCodeAccount(payload: unknown): {
   email?: string
   name?: string
@@ -1485,7 +1415,6 @@ export function parseCommandCodeAccount(payload: unknown): {
     ...(plan ? { plan } : {})
   }
 }
-
 
 /** `/alpha/billing/credits` 的 `windowLimits`。 */
 export function parseCommandCodeQuota(payload: unknown, fetchedAt = Date.now()): AgentSubscriptionQuota {
@@ -1519,9 +1448,7 @@ export function parseCommandCodeQuota(payload: unknown, fetchedAt = Date.now()):
   }
 }
 
-
 export type GlmRegion = 'intl' | 'cn'
-
 
 export interface GlmRegionConfig {
   label: string
@@ -1529,7 +1456,6 @@ export interface GlmRegionConfig {
   api: string
   cliProvider: 'zai' | 'bigmodel'
 }
-
 
 export const GLM_REGIONS: Record<GlmRegion, GlmRegionConfig> = {
   intl: {
@@ -1546,7 +1472,6 @@ export const GLM_REGIONS: Record<GlmRegion, GlmRegionConfig> = {
   }
 }
 
-
 export const ZCODE_API_BASE = 'https://zcode.z.ai/api/v1'
 
 export const CLI_INIT_PATH = '/oauth/cli/init'
@@ -1558,7 +1483,6 @@ export const ANTHROPIC_PATH = '/api/anthropic'
 export const QUOTA_PATH = '/api/monitor/usage/quota/limit'
 
 export const GLM_KEY_NAME = 'morrow-glm-coding-plan'
-
 
 export const GLM_MODELS: ModelInfo[] = [
   {
@@ -1590,7 +1514,6 @@ export const GLM_MODELS: ModelInfo[] = [
     note: 'GLM Coding Plan · 快速推理'
   }
 ]
-
 
 /**
  * Coding Plan 的 Anthropic 面要求流式与思考开启；思考深度用顶层 reasoning_effort，
@@ -1624,13 +1547,11 @@ export function rewriteGlmBody(raw: string): string {
   return JSON.stringify(body)
 }
 
-
 const QUOTA_WINDOWS: Record<number, { id: string; label: string }> = {
   3: { id: 'five-hour', label: '5 小时' },
   5: { id: 'monthly', label: '每月' },
   6: { id: 'weekly', label: '每周' }
 }
-
 
 /** `data.limits[]`：TOKENS_LIMIT 用 percentage，CREDIT_LIMIT 用 currentValue/usage。 */
 export function parseGlmQuota(payload: unknown, fetchedAt = Date.now()): AgentSubscriptionQuota {
@@ -1667,7 +1588,6 @@ export function parseGlmQuota(payload: unknown, fetchedAt = Date.now()): AgentSu
   }
 }
 
-
 /** 兑换链第 2 步：从 getCustomerInfo 里取默认机构与默认项目。 */
 export function parseCustomerScope(payload: unknown): {
   organizationId: string
@@ -1699,7 +1619,6 @@ export function parseCustomerScope(payload: unknown): {
   }
 }
 
-
 /** 在 api_keys 列表里挑本线路自己创建的那把；没有就返回 null 让调用方新建。 */
 export function pickGlmApiKey(payload: unknown): { id: string; name?: string } | null {
   const root = asRecord(payload)
@@ -1717,7 +1636,6 @@ export function pickGlmApiKey(payload: unknown): { id: string; name?: string } |
   return null
 }
 
-
 const KIMI_MODELS_BASE: ModelInfo[] = [
   { id: 'k3', label: 'Kimi K3', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
   { id: 'k3-256k', label: 'Kimi K3 256K', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' },
@@ -1727,24 +1645,20 @@ const KIMI_MODELS_BASE: ModelInfo[] = [
   { id: 'k3.1-pro-highspeed', label: 'Kimi K3.1 Pro 高速', contextWindow: 1_048_576, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'Kimi Code' }
 ]
 
-
 /** Kimi K3/K3.1 Pro/K2.8 支持 low/high/max；代理按真实档位改写，不固定 high。 */
 export const KIMI_MODELS: ModelInfo[] = KIMI_MODELS_BASE.map((model) => ({
   ...model,
   ...(model.supportsReasoning ? { reasoningEfforts: ['low', 'high', 'max'] as ModelInfo['reasoningEfforts'] } : {})
 }))
 
-
 function kimiProtocolAsRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null
 }
-
 
 function kimiProtocolNumber(value: unknown): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
-
 
 function resetAt(value: unknown): number | undefined {
   if (typeof value === 'number') return value < 10_000_000_000 ? value * 1000 : value
@@ -1754,7 +1668,6 @@ function resetAt(value: unknown): number | undefined {
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
-
 
 /**
  * Kimi 的 Chat Completions 变体：
@@ -1786,7 +1699,6 @@ export function rewriteKimiBody(raw: string): string {
   }
   return JSON.stringify(body)
 }
-
 
 export function parseKimiQuota(payload: unknown, fetchedAt = Date.now()): AgentSubscriptionQuota {
   const root = kimiProtocolAsRecord(payload) ?? {}
@@ -1845,9 +1757,7 @@ export function parseKimiQuota(payload: unknown, fetchedAt = Date.now()): AgentS
   }
 }
 
-
 export type MinimaxRegion = 'cn' | 'global'
-
 
 export const MINIMAX_REGIONS: Record<MinimaxRegion, { label: string; account: string; agent: string; quota: string[] }> = {
   cn: {
@@ -1864,7 +1774,6 @@ export const MINIMAX_REGIONS: Record<MinimaxRegion, { label: string; account: st
   }
 }
 
-
 export const MINIMAX_CLIENT_ID = 'mcode-public'
 
 export const MINIMAX_SCOPE = 'agent.default'
@@ -1874,7 +1783,6 @@ export const MINIMAX_AUDIENCE = 'agent-backend'
 export const MINIMAX_MESSAGES_PREFIX = '/mavis/api/v1/llm/v1'
 
 export const MINIMAX_QUOTA_PATH = '/v1/api/openplatform/coding_plan/remains'
-
 
 export const MINIMAX_MODELS: ModelInfo[] = [
   {
@@ -1915,7 +1823,6 @@ export const MINIMAX_MODELS: ModelInfo[] = [
   }
 ]
 
-
 /** M2.7 不接受思考字段；M3 用 adaptive 选择思考通道，M3.1 只发 output_config。 */
 export function rewriteMinimaxBody(raw: string): string {
   const body = asRecord(JSON.parse(raw))
@@ -1944,7 +1851,6 @@ export function rewriteMinimaxBody(raw: string): string {
   if (typeof body.max_tokens !== 'number' || body.max_tokens <= 0) body.max_tokens = 32_768
   return JSON.stringify(body)
 }
-
 
 /**
  * `/v1/api/openplatform/coding_plan/remains`：`model_remains[]` 每个模型两窗口。
@@ -1990,7 +1896,6 @@ export function parseMinimaxQuota(payload: unknown, fetchedAt = Date.now()): Age
   }
 }
 
-
 /**
  * 本机 MiniMax Code 的 auth.json（`records` 形）与扁平形都兼容。
  * 返回第一个带 access/refresh 的记录；区域由调用方按文件路径决定。
@@ -2025,9 +1930,7 @@ export function parseMinimaxLocalAuth(payload: unknown): {
   return null
 }
 
-
 export const OPENCODE_ZEN_BASE = 'https://opencode.ai/zen/v1'
-
 
 export const OPENCODE_MODELS: ModelInfo[] = [
   { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', contextWindow: 400_000, maxOutput: 128_000, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'OpenCode Zen' },
@@ -2036,7 +1939,6 @@ export const OPENCODE_MODELS: ModelInfo[] = [
   { id: 'qwen3.8-max', label: 'Qwen3.8 Max', contextWindow: 262_144, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, reasoningStyle: 'effort', note: 'OpenCode Zen' },
   { id: 'big-pickle', label: 'Big Pickle', contextWindow: 128_000, maxOutput: 32_768, supportsTools: true, note: 'OpenCode Zen' }
 ]
-
 
 /**
  * 本机 `auth.json` 按 provider 分键。只取 `type:"api"` 的密钥；
@@ -2064,7 +1966,6 @@ export function parseOpencodeAuth(payload: unknown): {
   }
   return null
 }
-
 
 /** Zen `/models` → ModelInfo；目录不可用时由调用方回退到随包列表。 */
 export function parseOpencodeModels(payload: unknown): ModelInfo[] {
@@ -2095,7 +1996,6 @@ export function parseOpencodeModels(payload: unknown): ModelInfo[] {
   return models
 }
 
-
 export function rewriteOpencodeBody(raw: string): string {
   const body = asRecord(JSON.parse(raw))
   if (!body) return raw
@@ -2105,9 +2005,7 @@ export function rewriteOpencodeBody(raw: string): string {
   return JSON.stringify(body)
 }
 
-
 export type QoderRegion = 'global' | 'cn'
-
 
 export interface QoderModel {
   id: string
@@ -2124,14 +2022,12 @@ export interface QoderModel {
   defaultContextWindow?: number
 }
 
-
 // 模型目录只来自 Qoder 账号接口 `/api/v2/model/list`；不再内置猜测的模型名/上下文/档位。
 
 const HOSTS = {
   global: { inference: 'https://api3.qoder.sh', openapi: 'https://openapi.qoder.sh', center: 'https://center.qoder.sh', pat: 'https://qoder.com/account/integrations' },
   cn: { inference: 'https://gateway.qoder.com.cn', openapi: 'https://openapi.qoder.com.cn', center: 'https://gateway.qoder.com.cn', pat: 'https://qoder.com.cn/account/integrations' }
 } as const
-
 
 const CHAT_PATH = '/api/v2/service/pro/sse/agent_chat_generation'
 
@@ -2170,7 +2066,6 @@ XcW+ML9FoCI6AOvOzwIDAQAB
 
 const qoderProxyMAX_BODY = 64 * 1024 * 1024
 
-
 export interface QoderCredential {
   accessToken: string
   refreshToken?: string
@@ -2188,7 +2083,6 @@ export interface QoderCredential {
   machineId: string
 }
 
-
 export interface QoderProxyOptions {
   localToken: string
   models: QoderModel[]
@@ -2197,12 +2091,10 @@ export interface QoderProxyOptions {
   fetchImpl: (url: string, init: RequestInit) => Promise<Response>
 }
 
-
 export interface QoderProxyHandle {
   port: number
   close(): Promise<void>
 }
-
 
 function qoderMaskedBytes(entropy: Buffer): Buffer {
   const u = Buffer.from(entropy).reverse()
@@ -2211,12 +2103,10 @@ function qoderMaskedBytes(entropy: Buffer): Buffer {
   return u
 }
 
-
 function requestUuid(entropy: Buffer): string {
   const hex = qoderMaskedBytes(entropy).toString('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
 }
-
 
 function runtimeAuth(rawUserInfo: string): { encryptUserInfo: string; key: string } {
   const keyText = qoderMaskedBytes(randomBytes(16)).toString('hex').slice(0, 16)
@@ -2227,14 +2117,12 @@ function runtimeAuth(rawUserInfo: string): { encryptUserInfo: string; key: strin
   return { encryptUserInfo: encrypted, key }
 }
 
-
 const ENCODE_TABLE: readonly string[] = (() => {
   const table: string[] = new Array(128).fill('')
   for (let i = 0; i < QODER_STD_ALPHABET.length; i += 1) table[QODER_STD_ALPHABET.charCodeAt(i)] = QODER_BODY_ALPHABET[i]!
   table['='.charCodeAt(0)] = QODER_BODY_PADDING_CHAR
   return table
 })()
-
 
 export function encodeQoderBody(raw: string): string {
   const standard = Buffer.from(raw, 'utf8').toString('base64')
@@ -2245,14 +2133,12 @@ export function encodeQoderBody(raw: string): string {
   return out
 }
 
-
 const DECODE_TABLE: readonly string[] = (() => {
   const table: string[] = new Array(128).fill('')
   for (let i = 0; i < QODER_BODY_ALPHABET.length; i += 1) table[QODER_BODY_ALPHABET.charCodeAt(i)] = QODER_STD_ALPHABET[i]!
   table[QODER_BODY_PADDING_CHAR.charCodeAt(0)] = '='
   return table
 })()
-
 
 /** 编码的逆运算；仅用于诊断与测试，不参与线上请求。 */
 export function decodeQoderBody(encoded: string): string {
@@ -2264,7 +2150,6 @@ export function decodeQoderBody(encoded: string): string {
   return Buffer.from(standard, 'base64').toString('utf8')
 }
 
-
 export function decodeQoderAdoptPayload(content: string, machineId: string): string {
   const trimmed = content.trim()
   if (trimmed.startsWith('{')) return trimmed
@@ -2275,25 +2160,19 @@ export function decodeQoderAdoptPayload(content: string, machineId: string): str
   return Buffer.concat([decipher.update(Buffer.from(trimmed, 'base64')), decipher.final()]).toString('utf8')
 }
 
-
 function qoderProxyAsRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
-
 function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
-
-
-
 
 function asEffort(value: string): ReasoningEffort | undefined {
   const normalized = value.trim().toLowerCase()
   if (normalized === 'none' || normalized === 'disabled' || normalized === 'disable') return 'off'
   return isReasoningEffort(normalized) ? normalized : undefined
 }
-
 
 /** 读取 Qoder 账号模型目录的 context_config / 可选上下文；不自行生成档位。 */
 function qoderContextMeta(row: Record<string, unknown>): {
@@ -2334,7 +2213,6 @@ function qoderContextMeta(row: Record<string, unknown>): {
   }
 }
 
-
 /** 读取 thinking_config / available_reasoning_effort 的真实档位。 */
 function qoderReasoningEfforts(row: Record<string, unknown>): ReasoningEffort[] | undefined {
   const efforts = new Set<ReasoningEffort>()
@@ -2369,7 +2247,6 @@ function qoderReasoningEfforts(row: Record<string, unknown>): ReasoningEffort[] 
   if (supportsDisabled) efforts.add('off')
   return efforts.size > 0 ? [...efforts] : undefined
 }
-
 
 /**
  * 解析 Qoder `/api/v2/model/list?Encode=1` 的账号模型目录。
@@ -2410,7 +2287,6 @@ export function parseQoderModelCatalog(payload: unknown): QoderModel[] {
   return models
 }
 
-
 /** 从账号模型目录接口读取模型/上下文/思考档位；COSY 头与聊天请求共用。 */
 export async function fetchQoderModelCatalog(
   credential: QoderCredential,
@@ -2434,7 +2310,6 @@ export async function fetchQoderModelCatalog(
   return models
 }
 
-
 function cosySignedPath(url: string): string {
   try {
     const pathname = new URL(url).pathname
@@ -2443,7 +2318,6 @@ function cosySignedPath(url: string): string {
     return url
   }
 }
-
 
 function cosyHeaders(credential: QoderCredential, url: string, encodedBody: string, modelKey: string): Record<string, string> {
   // UserInfo 的键序是协议的一部分，且 security_oauth_token 必须是当前 access token。
@@ -2495,7 +2369,6 @@ function cosyHeaders(credential: QoderCredential, url: string, encodedBody: stri
   }
 }
 
-
 interface OpenAIRequestBody {
   model?: string
   messages?: Array<Record<string, unknown>>
@@ -2505,7 +2378,6 @@ interface OpenAIRequestBody {
   max_tokens?: number
   reasoning_effort?: string
 }
-
 
 function contentText(value: unknown): string {
   if (typeof value === 'string') return value
@@ -2518,13 +2390,11 @@ function contentText(value: unknown): string {
     .join('')
 }
 
-
 function qoderToolId(id: string): string {
   const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+|-+$/g, '')
   const safe = sanitized || 'call'
   return safe.length <= 64 ? safe : safe.slice(0, 64)
 }
-
 
 function qoderUserContent(value: unknown): string | Array<Record<string, unknown>> {
   if (typeof value === 'string') return value
@@ -2548,7 +2418,6 @@ function qoderUserContent(value: unknown): string | Array<Record<string, unknown
   if (!hasImage) return parts.map((part) => (typeof part.text === 'string' ? part.text : '')).join('')
   return parts
 }
-
 
 function buildQoderRequest(
   body: OpenAIRequestBody,
@@ -2659,11 +2528,9 @@ function buildQoderRequest(
   return { payload, upstreamKey: model.upstreamKey }
 }
 
-
 function openAIChunk(model: string, delta: Record<string, unknown>, finish: string | null = null, usage?: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ id: `chatcmpl-${randomUUID()}`, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`
 }
-
 
 async function qoderProxyReadBody(req: import('node:http').IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -2677,7 +2544,6 @@ async function qoderProxyReadBody(req: import('node:http').IncomingMessage): Pro
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
-
 function qoderProxySendJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
   if (res.headersSent) {
     res.end()
@@ -2686,7 +2552,6 @@ function qoderProxySendJson(res: import('node:http').ServerResponse, status: num
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
-
 
 async function upstream(options: QoderProxyOptions, payload: Record<string, unknown>, credential: QoderCredential, upstreamKey: string, signal: AbortSignal): Promise<Response> {
   const url = `${HOSTS[credential.region].inference}/algo${CHAT_PATH}?${CHAT_QUERY}`
@@ -2698,7 +2563,6 @@ async function upstream(options: QoderProxyOptions, payload: Record<string, unkn
     signal
   })
 }
-
 
 async function qoderProxyHandleChat(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, options: QoderProxyOptions): Promise<void> {
   const body = await qoderProxyReadBody(req) as OpenAIRequestBody
@@ -2814,7 +2678,6 @@ async function qoderProxyHandleChat(req: import('node:http').IncomingMessage, re
   }
 }
 
-
 export async function startQoderProxy(options: QoderProxyOptions): Promise<QoderProxyHandle> {
   const server: Server = createServer(async (req, res) => {
     try {
@@ -2839,12 +2702,9 @@ export async function startQoderProxy(options: QoderProxyOptions): Promise<Qoder
   return { port, close: async () => new Promise<void>((resolve) => server.close(() => resolve())) }
 }
 
-
 export { HOSTS, QUOTA_USAGE_PATH, JOB_TOKEN_EXCHANGE_PATH, USERINFO_PATH, REFRESH_TOKEN_PATH, COSY_OPENAPI_VERSION, COSY_CLIENT_TYPE }
 
-
 export type StepProfile = 'step_plan' | 'step_plan_oversea' | 'platform_cn' | 'platform_oversea'
-
 
 export interface StepProfileConfig {
   label: string
@@ -2854,7 +2714,6 @@ export interface StepProfileConfig {
   keyPage: string
   requiresLogin: boolean
 }
-
 
 export const STEP_PROFILES: Record<StepProfile, StepProfileConfig> = {
   step_plan: {
@@ -2887,7 +2746,6 @@ export const STEP_PROFILES: Record<StepProfile, StepProfileConfig> = {
   }
 }
 
-
 export const STEP_CLI_INIT_PATH = '/api/stdhttp/v1/cli-login/init'
 
 export const STEP_CLI_POLL_PATH = '/api/stdhttp/v1/cli-login/poll'
@@ -2896,11 +2754,9 @@ export const STEP_MODELS_PATH = '/v1/models'
 
 export const STEP_CHAT_PATH = '/v1/chat/completions'
 
-
 export function profileOf(value: string | undefined): StepProfile {
   return value && value in STEP_PROFILES ? value as StepProfile : 'step_plan'
 }
-
 
 /** `/v1/models` → ModelInfo；上游字段全部按「可能缺失」处理。 */
 export function parseStepModels(payload: unknown, profile: StepProfile = 'step_plan'): {
@@ -2947,7 +2803,6 @@ export function parseStepModels(payload: unknown, profile: StepProfile = 'step_p
   return { models, efforts }
 }
 
-
 /**
  * Step 只接受 `max_tokens`，且思考档位必须落在该模型的支持列表里。
  * 不在列表里的档位收敛到最接近的一档；模型完全不支持思考时不发字段。
@@ -2976,7 +2831,6 @@ export function rewriteStepBody(raw: string, effortLists: Record<string, string[
   }
   return JSON.stringify(body)
 }
-
 
 /** 本机 StepCode auth.json 的两种形状。 */
 export function parseStepLocalAuth(payload: unknown): {
@@ -3010,7 +2864,6 @@ export function parseStepLocalAuth(payload: unknown): {
   return null
 }
 
-
 const antigravitySubscriptionPROVIDER_ID = 'antigravity-subscription'
 
 const antigravitySubscriptionQUOTA_CACHE_MS = 2 * 60_000
@@ -3021,14 +2874,12 @@ const antigravitySubscriptionLOGIN_TIMEOUT_MS = 5 * 60_000
 
 const antigravitySubscriptionMAX_BODY = 64 * 1024 * 1024
 
-
 function requireClientSecret(): string {
   if (!ANTIGRAVITY_CLIENT_SECRET) {
     throw new Error('Antigravity 登录需要 Google OAuth client secret；请设置环境变量 MORROW_ANTIGRAVITY_CLIENT_SECRET 后重启 Morrow。')
   }
   return ANTIGRAVITY_CLIENT_SECRET
 }
-
 
 interface AntigravityCredential {
   access: string
@@ -3038,21 +2889,17 @@ interface AntigravityCredential {
   account?: AgentSubscriptionAccount
 }
 
-
 function platformName(): string {
   return process.platform === 'darwin' ? 'MACOS' : process.platform === 'win32' ? 'WINDOWS' : 'LINUX'
 }
-
 
 function osType(): string {
   return process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux'
 }
 
-
 function clientMetadata(): string {
   return JSON.stringify({ ideType: 'ANTIGRAVITY', platform: platformName(), pluginType: 'GEMINI' })
 }
-
 
 function headersFor(token: string, runtime?: string, accept: 'json' | 'sse' = 'sse'): Record<string, string> {
   return {
@@ -3065,7 +2912,6 @@ function headersFor(token: string, runtime?: string, accept: 'json' | 'sse' = 's
     ...(runtime && isClaudeRuntime(runtime) ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' } : {})
   }
 }
-
 
 function antigravitySubscriptionReadBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -3085,7 +2931,6 @@ function antigravitySubscriptionReadBody(req: IncomingMessage): Promise<string> 
   })
 }
 
-
 function antigravitySubscriptionSendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.headersSent) {
     res.end()
@@ -3094,7 +2939,6 @@ function antigravitySubscriptionSendJson(res: ServerResponse, status: number, bo
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
-
 
 export class AntigravitySubscriptionService {
   private store = new SecureJsonStore<AntigravityCredential>('antigravity-subscription.json')
@@ -3642,15 +3486,12 @@ export class AntigravitySubscriptionService {
   }
 }
 
-
 let antigravitySubscriptionInstance: AntigravitySubscriptionService | null = null
-
 
 export function getAntigravitySubscriptionService(): AntigravitySubscriptionService {
   if (!antigravitySubscriptionInstance) antigravitySubscriptionInstance = new AntigravitySubscriptionService()
   return antigravitySubscriptionInstance
 }
-
 
 const clineSubscriptionPROVIDER_ID = 'cline-subscription'
 
@@ -3659,7 +3500,6 @@ const clineSubscriptionQUOTA_CACHE_MS = 5 * 60_000
 const clineSubscriptionREFRESH_MARGIN_MS = 5 * 60_000
 
 const clineSubscriptionLOGIN_TIMEOUT_MS = 5 * 60_000
-
 
 interface ClineCredential {
   kind: 'oauth' | 'key'
@@ -3670,7 +3510,6 @@ interface ClineCredential {
   account?: AgentSubscriptionAccount
 }
 
-
 async function clineSubscriptionPostForm(url: string, fields: Record<string, string>): Promise<Response> {
   return net.fetch(url, {
     method: 'POST',
@@ -3679,7 +3518,6 @@ async function clineSubscriptionPostForm(url: string, fields: Record<string, str
     signal: AbortSignal.timeout(30_000)
   })
 }
-
 
 async function postJson(url: string, body: unknown): Promise<{ response: Response; payload: Record<string, unknown> | null }> {
   const response = await net.fetch(url, {
@@ -3690,7 +3528,6 @@ async function postJson(url: string, body: unknown): Promise<{ response: Respons
   })
   return { response, payload: asRecord(await response.json().catch(() => null)) }
 }
-
 
 function readAuthData(payload: Record<string, unknown> | null, what: string): {
   access: string
@@ -3729,7 +3566,6 @@ function readAuthData(payload: Record<string, unknown> | null, what: string): {
     }
   }
 }
-
 
 export class ClineSubscriptionService {
   private store = new SecureJsonStore<ClineCredential>('cline-subscription.json')
@@ -3988,15 +3824,12 @@ export class ClineSubscriptionService {
   }
 }
 
-
 let clineSubscriptionInstance: ClineSubscriptionService | null = null
-
 
 export function getClineSubscriptionService(): ClineSubscriptionService {
   if (!clineSubscriptionInstance) clineSubscriptionInstance = new ClineSubscriptionService()
   return clineSubscriptionInstance
 }
-
 
 const commandCodeSubscriptionPROVIDER_ID = 'command-code-subscription'
 
@@ -4006,7 +3839,6 @@ const commandCodeSubscriptionQUOTA_CACHE_MS = 2 * 60_000
 
 const CALLBACK_TIMEOUT_MS = 5 * 60_000
 
-
 interface CommandCodeCredential {
   apiKey: string
   account: AgentSubscriptionAccount
@@ -4014,7 +3846,6 @@ interface CommandCodeCredential {
   claudeModels: ModelInfo[]
   savedAt: number
 }
-
 
 async function apiGet(path: string, apiKey: string): Promise<unknown> {
   const response = await net.fetch(`${COMMAND_CODE_API}${path}`, {
@@ -4028,7 +3859,6 @@ async function apiGet(path: string, apiKey: string): Promise<unknown> {
   return response.json().catch(() => null)
 }
 
-
 function corsHeaders(origin: string | undefined): Record<string, string> {
   const allowed = origin && /^https:\/\/([a-z0-9-]+\.)*commandcode\.ai$/i.test(origin) || origin === 'http://localhost:3000'
     ? origin!
@@ -4041,7 +3871,6 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
     vary: 'origin'
   }
 }
-
 
 async function readCallbackBody(req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
@@ -4059,7 +3888,6 @@ async function readCallbackBody(req: import('node:http').IncomingMessage): Promi
     return Object.fromEntries(new URLSearchParams(raw)) as Record<string, unknown>
   }
 }
-
 
 export class CommandCodeSubscriptionService {
   private store = new SecureJsonStore<CommandCodeCredential>('command-code-subscription.json')
@@ -4124,8 +3952,7 @@ export class CommandCodeSubscriptionService {
     })
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -4349,15 +4176,12 @@ export class CommandCodeSubscriptionService {
   }
 }
 
-
 let commandCodeSubscriptionInstance: CommandCodeSubscriptionService | null = null
-
 
 export function getCommandCodeSubscriptionService(): CommandCodeSubscriptionService {
   if (!commandCodeSubscriptionInstance) commandCodeSubscriptionInstance = new CommandCodeSubscriptionService()
   return commandCodeSubscriptionInstance
 }
-
 
 const glmSubscriptionPROVIDER_ID = 'glm-subscription'
 
@@ -4366,7 +4190,6 @@ const glmSubscriptionQUOTA_CACHE_MS = 2 * 60_000
 const glmSubscriptionLOGIN_TIMEOUT_MS = 5 * 60_000
 
 const REQUEST_TIMEOUT_MS = 30_000
-
 
 interface GlmCredential {
   region: GlmRegion
@@ -4381,22 +4204,18 @@ interface GlmCredential {
   savedAt: number
 }
 
-
 function glmSubscriptionRegionOf(value: string | undefined): GlmRegion {
   return value === 'cn' ? 'cn' : 'intl'
 }
-
 
 async function request(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   return net.fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
 }
 
-
 function unwrap(payload: unknown): Record<string, unknown> {
   const root = asRecord(payload) ?? {}
   return asRecord(root.data) ?? root
 }
-
 
 function bizCode(payload: unknown): number | string | undefined {
   const root = asRecord(payload) ?? {}
@@ -4406,12 +4225,10 @@ function bizCode(payload: unknown): number | string | undefined {
   return undefined
 }
 
-
 function bizOk(payload: unknown): boolean {
   const code = bizCode(payload)
   return code === undefined || code === 0 || code === 200 || code === '0' || code === '200'
 }
-
 
 async function bizJson(url: string, authorization: string, body?: unknown): Promise<unknown> {
   const response = await request(url, {
@@ -4431,7 +4248,6 @@ async function bizJson(url: string, authorization: string, body?: unknown): Prom
   }
   return asRecord(payload)?.data ?? payload
 }
-
 
 export class GlmSubscriptionService {
   private store = new SecureJsonStore<GlmCredential>('glm-subscription.json')
@@ -4497,8 +4313,7 @@ export class GlmSubscriptionService {
     })
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -4722,20 +4537,16 @@ export class GlmSubscriptionService {
   }
 }
 
-
 let glmSubscriptionInstance: GlmSubscriptionService | null = null
-
 
 export function getGlmSubscriptionService(): GlmSubscriptionService {
   if (!glmSubscriptionInstance) glmSubscriptionInstance = new GlmSubscriptionService()
   return glmSubscriptionInstance
 }
 
-
 export function glmModels(): ModelInfo[] {
   return GLM_MODELS
 }
-
 
 const kimiSubscriptionPROVIDER_ID = 'kimi-subscription'
 
@@ -4753,9 +4564,7 @@ const kimiSubscriptionREFRESH_MARGIN_MS = 5 * 60_000
 
 const kimiSubscriptionQUOTA_CACHE_MS = 2 * 60_000
 
-
 export type KimiRegion = 'cn' | 'global'
-
 
 interface KimiCredential {
   accessToken: string
@@ -4772,35 +4581,29 @@ interface KimiCredential {
   plan?: string
 }
 
-
 interface StoredKimi {
   encrypted: string
   account: AgentSubscriptionAccount
   updatedAt: number
 }
 
-
 interface KimiFile {
   version: 1
   kimi?: StoredKimi
 }
 
-
 function kimiSubscriptionAsRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null
 }
-
 
 function kimiSubscriptionText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-
 function kimiSubscriptionNumber(value: unknown): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
-
 
 function jwtClaims(token?: string): Record<string, unknown> | undefined {
   if (!token) return undefined
@@ -4813,16 +4616,13 @@ function jwtClaims(token?: string): Record<string, unknown> | undefined {
   }
 }
 
-
 function identityValue(value: string): string {
   return value.replace(/[^\x20-\x7e]/g, '').trim()
 }
 
-
 function kimiSubscriptionSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
-
 
 export class KimiSubscriptionService {
   private file: KimiFile = { version: 1 }
@@ -5057,8 +4857,7 @@ export class KimiSubscriptionService {
     getSettingsStore().saveProvider(config, this.localToken)
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -5240,15 +5039,12 @@ export class KimiSubscriptionService {
   }
 }
 
-
 let kimiSubscriptionInstance: KimiSubscriptionService | null = null
-
 
 export function getKimiSubscriptionService(): KimiSubscriptionService {
   if (!kimiSubscriptionInstance) kimiSubscriptionInstance = new KimiSubscriptionService()
   return kimiSubscriptionInstance
 }
-
 
 const minimaxSubscriptionPROVIDER_ID = 'minimax-subscription'
 
@@ -5260,7 +5056,6 @@ const minimaxSubscriptionLOGIN_TIMEOUT_MS = 10 * 60_000
 
 const minimaxSubscriptionUA = 'morrow-desktop/0.1.0'
 
-
 interface MinimaxCredential {
   accessToken: string
   refreshToken: string
@@ -5270,18 +5065,15 @@ interface MinimaxCredential {
   recordKey?: string
 }
 
-
 function minimaxSubscriptionRegionOf(value: string | undefined): MinimaxRegion {
   return value === 'global' ? 'global' : 'cn'
 }
-
 
 function pkcePair(): { verifier: string; challenge: string } {
   const verifier = randomBytes(32).toString('base64url')
   const challenge = createHash('sha256').update(verifier).digest('base64url')
   return { verifier, challenge }
 }
-
 
 function authHeaders(): Record<string, string> {
   return {
@@ -5291,7 +5083,6 @@ function authHeaders(): Record<string, string> {
   }
 }
 
-
 async function minimaxSubscriptionPostForm(url: string, fields: Record<string, string>): Promise<Response> {
   return net.fetch(url, {
     method: 'POST',
@@ -5300,7 +5091,6 @@ async function minimaxSubscriptionPostForm(url: string, fields: Record<string, s
     signal: AbortSignal.timeout(30_000)
   })
 }
-
 
 function accountFromToken(accessToken: string, region: MinimaxRegion, expiresAt: number): AgentSubscriptionAccount {
   const claims = jwtClaims(accessToken) ?? {}
@@ -5316,7 +5106,6 @@ function accountFromToken(accessToken: string, region: MinimaxRegion, expiresAt:
     source: 'device'
   }
 }
-
 
 export class MinimaxSubscriptionService {
   private store = new SecureJsonStore<MinimaxCredential>('minimax-subscription.json')
@@ -5429,8 +5218,7 @@ export class MinimaxSubscriptionService {
     })
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -5626,20 +5414,16 @@ export class MinimaxSubscriptionService {
   }
 }
 
-
 let minimaxSubscriptionInstance: MinimaxSubscriptionService | null = null
-
 
 export function getMinimaxSubscriptionService(): MinimaxSubscriptionService {
   if (!minimaxSubscriptionInstance) minimaxSubscriptionInstance = new MinimaxSubscriptionService()
   return minimaxSubscriptionInstance
 }
 
-
 const opencodeSubscriptionPROVIDER_ID = 'opencode-subscription'
 
 const opencodeSubscriptionQUOTA_CACHE_MS = 2 * 60_000
-
 
 interface OpencodeCredential {
   apiKey: string
@@ -5651,7 +5435,6 @@ interface OpencodeCredential {
   savedAt: number
 }
 
-
 function authPaths(): string[] {
   const paths = [homePath('.local', 'share', 'opencode', 'auth.json')]
   const xdg = process.env.XDG_DATA_HOME
@@ -5659,11 +5442,9 @@ function authPaths(): string[] {
   return Array.from(new Set(paths))
 }
 
-
 function maskKey(key: string): string {
   return key.length <= 8 ? '••••' : `${key.slice(0, 4)}…${key.slice(-4)}`
 }
-
 
 export class OpencodeSubscriptionService {
   private store = new SecureJsonStore<OpencodeCredential>('opencode-subscription.json')
@@ -5702,8 +5483,7 @@ export class OpencodeSubscriptionService {
     })
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -5870,15 +5650,12 @@ export class OpencodeSubscriptionService {
   }
 }
 
-
 let opencodeSubscriptionInstance: OpencodeSubscriptionService | null = null
-
 
 export function getOpencodeSubscriptionService(): OpencodeSubscriptionService {
   if (!opencodeSubscriptionInstance) opencodeSubscriptionInstance = new OpencodeSubscriptionService()
   return opencodeSubscriptionInstance
 }
-
 
 const qoderSubscriptionPROVIDER_ID = 'qoder-subscription'
 
@@ -5894,9 +5671,7 @@ const QODER_CLI_AUTH_FILE = 'user'
 
 const QODER_CLI_MACHINE_FILE = 'machine_id'
 
-
 type QoderSource = 'pat' | 'device' | 'local'
-
 
 interface StoredQoder {
   encrypted: string
@@ -5904,28 +5679,23 @@ interface StoredQoder {
   updatedAt: number
 }
 
-
 interface QoderFile {
   version: 1
   qoder?: StoredQoder
 }
 
-
 function qoderSubscriptionAsRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null
 }
-
 
 function qoderSubscriptionText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-
 function qoderSubscriptionNumber(value: unknown): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
-
 
 function expiresAtFrom(payload: Record<string, unknown>): number {
   const absolute = qoderSubscriptionNumber(payload.expires_at)
@@ -5933,7 +5703,6 @@ function expiresAtFrom(payload: Record<string, unknown>): number {
   const seconds = qoderSubscriptionNumber(payload.expires_in)
   return Date.now() + (seconds && seconds > 0 ? seconds : 24 * 3600) * 1000
 }
-
 
 function toModelInfo(model: QoderModel): ModelInfo {
   return {
@@ -5950,7 +5719,6 @@ function toModelInfo(model: QoderModel): ModelInfo {
     note: 'Qoder 订阅'
   }
 }
-
 
 function qoderSubscriptionParseQuota(payload: unknown): QoderSubscriptionQuota {
   const root = qoderSubscriptionAsRecord(payload) ?? {}
@@ -5982,11 +5750,9 @@ function qoderSubscriptionParseQuota(payload: unknown): QoderSubscriptionQuota {
   }
 }
 
-
 function qoderSubscriptionSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
-
 
 export class QoderSubscriptionService {
   private file: QoderFile = { version: 1 }
@@ -6578,15 +6344,12 @@ export class QoderSubscriptionService {
   }
 }
 
-
 let qoderSubscriptionInstance: QoderSubscriptionService | null = null
-
 
 export function getQoderSubscriptionService(): QoderSubscriptionService {
   if (!qoderSubscriptionInstance) qoderSubscriptionInstance = new QoderSubscriptionService()
   return qoderSubscriptionInstance
 }
-
 
 const stepSubscriptionPROVIDER_ID = 'step-subscription'
 
@@ -6598,7 +6361,6 @@ const LOCAL_PATHS = [
   homePath('.stepcode', 'legacy-auth.json')
 ]
 
-
 interface StepCredential {
   apiKey: string
   profile: StepProfile
@@ -6609,7 +6371,6 @@ interface StepCredential {
   sourcePath?: string
   savedAt: number
 }
-
 
 export class StepSubscriptionService {
   private store = new SecureJsonStore<StepCredential>('step-subscription.json')
@@ -6665,8 +6426,7 @@ export class StepSubscriptionService {
     })
   }
 
-
-  private async resetProxy(): Promise<void> {
+private async resetProxy(): Promise<void> {
     if (this.proxy) {
       await this.proxy.close().catch(() => undefined)
       this.proxy = null
@@ -6869,15 +6629,12 @@ export class StepSubscriptionService {
   }
 }
 
-
 let stepSubscriptionInstance: StepSubscriptionService | null = null
-
 
 export function getStepSubscriptionService(): StepSubscriptionService {
   if (!stepSubscriptionInstance) stepSubscriptionInstance = new StepSubscriptionService()
   return stepSubscriptionInstance
 }
-
 
 export interface AgentSubscriptionService {
   restore(): Promise<void>
@@ -6892,7 +6649,6 @@ export interface AgentSubscriptionService {
   setEnabled(enabled: boolean): Promise<AgentSubscriptionState>
 }
 
-
 export const AGENT_ORDER: AgentSubscriptionId[] = [
   'kimi',
   'glm',
@@ -6903,7 +6659,6 @@ export const AGENT_ORDER: AgentSubscriptionId[] = [
   'antigravity',
   'opencode'
 ]
-
 
 function kimiAdapter(): AgentSubscriptionService {
   const service = getKimiSubscriptionService()
@@ -6918,7 +6673,6 @@ function kimiAdapter(): AgentSubscriptionService {
     setEnabled: (enabled) => service.setEnabled(enabled)
   }
 }
-
 
 export function getAgentService(id: AgentSubscriptionId): AgentSubscriptionService {
   switch (id) {
@@ -7027,11 +6781,9 @@ export function getAgentService(id: AgentSubscriptionId): AgentSubscriptionServi
   }
 }
 
-
 export function allAgentServices(): AgentSubscriptionService[] {
   return AGENT_ORDER.map((id) => getAgentService(id))
 }
-
 
 const CODEX_PROVIDER_ID = 'codex-subscription'
 
@@ -7060,9 +6812,7 @@ const CODEX_MODELS_BASE: ModelInfo[] = [
   { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', contextWindow: 272_000, maxOutput: 32_768, supportsTools: true, supportsReasoning: true, supportsVision: true, reasoningStyle: 'effort', note: 'ChatGPT 订阅' }
 ]
 
-
 const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-
 
 /** ChatGPT 订阅暴露的档位；GPT-6/5.6 官方支持到 max。 */
 export const CODEX_MODELS: ModelInfo[] = CODEX_MODELS_BASE.map((model) => ({
@@ -7070,10 +6820,8 @@ export const CODEX_MODELS: ModelInfo[] = CODEX_MODELS_BASE.map((model) => ({
   reasoningEfforts: [...CODEX_EFFORTS]
 }))
 
-
 const DISCLAIMER =
   '订阅接入只使用你自己的官方账号登录态或第三方 token，不代充、不共享账号、不绕过服务商限制。账号额度、模型可用性与使用条款由服务商决定；Morrow 只负责调用与展示。'
-
 
 interface StoredCodex {
   encrypted: string
@@ -7082,13 +6830,11 @@ interface StoredCodex {
   updatedAt: number
 }
 
-
 interface SubscriptionFile {
   version: 1
   codex?: StoredCodex
   custom: CustomSubscriptionRecord[]
 }
-
 
 interface JwtClaims {
   exp?: number
@@ -7096,9 +6842,7 @@ interface JwtClaims {
   [key: string]: unknown
 }
 
-
 let subscriptionsInstance: SubscriptionService | null = null
-
 
 function decodeJwt(token?: string): JwtClaims | undefined {
   if (!token) return undefined
@@ -7111,13 +6855,11 @@ function decodeJwt(token?: string): JwtClaims | undefined {
   }
 }
 
-
 function authClaims(token?: string): Record<string, unknown> | undefined {
   const claims = decodeJwt(token)
   const auth = claims?.['https://api.openai.com/auth']
   return auth && typeof auth === 'object' ? auth as Record<string, unknown> : undefined
 }
-
 
 function credentialFromTokens(accessToken: string, refreshToken: string, idToken?: string, accountId?: string): CodexCredential {
   const access = decodeJwt(accessToken)
@@ -7136,7 +6878,6 @@ function credentialFromTokens(accessToken: string, refreshToken: string, idToken
     expiresAt
   }
 }
-
 
 function readCodexAuth(path: string): CodexCredential | null {
   try {
@@ -7159,12 +6900,10 @@ function readCodexAuth(path: string): CodexCredential | null {
   }
 }
 
-
 function defaultCodexAuthPath(): string {
   const home = process.env.CODEX_HOME?.trim() || join(homedir(), '.codex')
   return join(home, 'auth.json')
 }
-
 
 function safeAccount(credential: CodexCredential): CodexSubscriptionAccount {
   return {
@@ -7176,14 +6915,12 @@ function safeAccount(credential: CodexCredential): CodexSubscriptionAccount {
   }
 }
 
-
 function windowLabel(seconds: number): string {
   if (seconds >= 7 * 24 * 3600 - 3600) return '每周'
   if (seconds >= 5 * 3600 - 300 && seconds <= 5 * 3600 + 300) return '5 小时'
   if (seconds >= 24 * 3600 - 300) return `${Math.round(seconds / 86400)} 天`
   return `${Math.max(1, Math.round(seconds / 3600))} 小时`
 }
-
 
 function subscriptionsParseQuota(payload: unknown, fallbackEmail?: string): CodexSubscriptionQuota {
   const root = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
@@ -7221,7 +6958,6 @@ function subscriptionsParseQuota(payload: unknown, fallbackEmail?: string): Code
     fetchedAt: Date.now()
   }
 }
-
 
 export class SubscriptionService {
   private file: SubscriptionFile = { version: 1, custom: [] }
@@ -7733,12 +7469,10 @@ export class SubscriptionService {
   }
 }
 
-
 export function getSubscriptionService(): SubscriptionService {
   if (!subscriptionsInstance) subscriptionsInstance = new SubscriptionService()
   return subscriptionsInstance
 }
-
 
 export async function runSubscriptionAction(action: SubscriptionAction): Promise<SubscriptionStatus | SubscriptionTestResult> {
   const service = getSubscriptionService()

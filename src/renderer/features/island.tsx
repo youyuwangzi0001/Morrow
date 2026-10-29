@@ -6,8 +6,6 @@ import { ArrowUpRight, Check, ChevronDown, ChevronUp, GripHorizontal, LoaderCirc
 import type { IslandSnapshot, IslandStatus, SessionMeta, Settings } from '@shared/types'
 import { applyThemePreferences } from '../store'
 
-
-
 const STATUS_LABEL: Record<IslandStatus, string> = {
   idle: '待命',
   running: '进行中',
@@ -15,7 +13,6 @@ const STATUS_LABEL: Record<IslandStatus, string> = {
   done: '已完成',
   error: '需要看看'
 }
-
 
 function PetOrb({ status, large = false }: { status: IslandStatus; large?: boolean }): ReactElement {
   return (
@@ -56,7 +53,6 @@ function PetOrb({ status, large = false }: { status: IslandStatus; large?: boole
   )
 }
 
-
 function Waveform(): ReactElement {
   return (
     <span className="island-wave" aria-hidden>
@@ -68,7 +64,6 @@ function Waveform(): ReactElement {
   )
 }
 
-
 function relativeTime(at: number): string {
   const diff = Date.now() - at
   if (diff < 60_000) return '刚刚'
@@ -78,7 +73,6 @@ function relativeTime(at: number): string {
   return `${date.getMonth() + 1}月${date.getDate()}日`
 }
 
-
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000))
   if (total < 60) return `${total} 秒`
@@ -86,7 +80,6 @@ function formatElapsed(ms: number): string {
   const seconds = total % 60
   return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`
 }
-
 
 export function IslandApp(): ReactElement {
   const [snapshot, setSnapshot] = useState<IslandSnapshot | null>(null)

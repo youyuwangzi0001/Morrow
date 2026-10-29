@@ -805,7 +805,6 @@ textarea {
   transition-duration: 1ms !important;
 }
 
-
 /* 代码字体可选项：默认 JetBrains Mono；另可选 IBM Plex Mono / 系统等宽 */
 :root[data-code-font='ibm-plex'] {
   --font-code: 'IBM Plex Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, monospace;
@@ -979,8 +978,6 @@ textarea {
 }
 
 /* 说明：M0 时期的占位样式已全部移除，各 feature 自带独立 CSS。 */
-
-
 
 .app-sidebar-shell {
   flex: 0 0 auto;

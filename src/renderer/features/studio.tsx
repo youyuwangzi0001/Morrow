@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { AudioLines, BookOpen, Check, CheckCircle2, Clapperboard, Film, Image as ImageIcon, Loader2, Mic2, Music2, Package, PenLine, Sparkles, Volume2, ArrowUp, Settings2, WandSparkles, X, ArrowRight, ChevronDown, Pencil, PencilLine, SquarePen, RefreshCw, SlidersHorizontal, Users, ArrowDownToLine, ArrowUpToLine, Boxes, Copy, Download, ExternalLink, GitBranch, ImagePlus, LayoutGrid, Maximize2, Plus, Redo2, Search, Trash2, Type, Undo2, Ungroup, Video, ZoomIn, ZoomOut, AlertTriangle, FileArchive, FileCode2, FileSearch, FileText, FileType, FolderOpen, Play, ShieldCheck, Subtitles, ArrowUpRight, BookMarked, Library, CircleAlert, Clock3, Info, Wrench, ArrowDown, Captions, ChevronRight, GalleryHorizontalEnd, Images, Lock, LockOpen, Mic, Upload, Wand2, Eye, Flag, FileClock, Globe2, FolderPlus, Layers, Network, PackagePlus, PlusCircle, Minimize2, FileDown, Hash, ScrollText, AudioWaveform, Disc3, Pause, Save, Scissors, Shuffle, SkipBack, SkipForward, Square, VolumeX, RotateCcw, ArchiveRestore, FolderCog, FilePlus2, Minus, PanelRight, Sun, Moon } from 'lucide-react'
 import type { StudioAsset, StudioJob, StudioKind, StudioProject, StudioStageId, StudioStatus, StudioChatMessage, StudioEditPlan, StudioMessageSource, StudioCharacter, StudioCanvasConnection, StudioCanvasGroup, StudioCanvasNode, StudioCanvasNodeKind, StudioCanvasViewport, StudioShot, StudioDelivery, StudioExportPreflight, StudioProjectSummary, StudioChapter, StudioCandidate, StudioChapterVersion, StudioFact, StudioFaction, StudioProp, StudioRule, StudioVolume, StudioClip, StudioTimeline, StudioTrack, StudioTrashItem, StudioDataDirInfo, StudioEngineStatus } from '@shared/studio'
-import { formatDuration, studioKindLabel, studioStages, studioStatusLabel, formatWordCount, isStudioVideoDelivery, studioKindScale, studioJobStatusLabel, formatTimecode, countWords, STUDIO_AUDIO_DRAFT_LICENSE, STUDIO_AUDIO_LIBRARY, STUDIO_AUDIO_LICENSE, emptyTimeline, timelineDuration } from '@shared/studio'
+import { formatDuration, studioKindLabel, studioStages, studioStatusLabel, formatWordCount, isStudioVideoDelivery, studioKindScale, studioJobStatusLabel, formatTimecode, countWords, STUDIO_AUDIO_DRAFT_LICENSE, STUDIO_AUDIO_LIBRARY, STUDIO_AUDIO_LICENSE, emptyTimeline, timelineDuration, resolveMusicAsset } from '@shared/studio'
 import { useStudioStore, STUDIO_LEFT_MAX, STUDIO_LEFT_MIN, STUDIO_RIGHT_MAX, STUDIO_RIGHT_MIN } from './studio-core'
 import { useAppStore } from '../store'
 import dark32 from '../../../build/studio-icon-dark-32.png'
@@ -235,22 +235,31 @@ export function StageRail(): React.JSX.Element {
   const focusedStage = useStudioStore((state) => state.focusedStage)
   const stageDefs = useMemo(() => (active ? studioStages(active.kind) : []), [active])
   if (!active) return <div className="studio-stage-rail" />
+  const soundStatus = (() => {
+    const voice = active.stages.voice
+    const music = active.stages.music
+    const priority: StudioStatus[] = ['failed', 'running', 'review', 'stale', 'done', 'ready', 'waiting', 'skipped']
+    const status = priority.find((item) => voice.status === item || music.status === item) ?? 'waiting'
+    const progress = status === 'done' ? 100 : Math.round(((voice.progress ?? 0) + (music.progress ?? 0)) / 2)
+    return { status, progress }
+  })()
   return (
     <nav className="studio-stage-rail" aria-label="创作阶段">
-      {stageDefs.map((stage, index) => {
-        const state = active.stages[stage.id]
-        const current = focusedStage === stage.id
+      {stageDefs.filter((stage) => stage.id !== 'music').map((stage, index) => {
+        const isSound = stage.id === 'voice'
+        const state = isSound ? soundStatus : active.stages[stage.id]
+        const current = isSound ? focusedStage === 'voice' || focusedStage === 'music' : focusedStage === stage.id
         return (
           <button
             key={stage.id}
             type="button"
             className={['studio-stage-item', current ? 'is-current' : '', `is-${state.status}`].join(' ')}
-            onClick={() => navigateStage(stage.id)}
-            title={stage.label}
+            onClick={() => navigateStage(isSound ? (focusedStage === 'music' ? 'music' : 'voice') : stage.id)}
+            title={isSound ? '声音：配音与音乐' : stage.label}
           >
             <span className="studio-stage-index mono">{String(index + 1).padStart(2, '0')}</span>
-            <span className="studio-stage-icon"><StageIcon stage={stage.id} size={14} /></span>
-            <span className="studio-stage-label">{stage.short}</span>
+            <span className="studio-stage-icon">{isSound ? <AudioLines size={14} strokeWidth={1.5} aria-hidden /> : <StageIcon stage={stage.id} size={14} />}</span>
+            <span className="studio-stage-label">{isSound ? '声音' : stage.short}</span>
             <span className="studio-stage-state">
               {state.status === 'done' ? <Check size={11} strokeWidth={2} /> : state.status === 'running' ? <Loader2 size={11} className="studio-spin" /> : state.status === 'failed' ? '!' : null}
             </span>
@@ -261,6 +270,18 @@ export function StageRail(): React.JSX.Element {
         )
       })}
     </nav>
+  )
+}
+
+function SoundTabs(): React.JSX.Element | null {
+  const focusedStage = useStudioStore((state) => state.focusedStage)
+  const navigateStage = useStudioStore((state) => state.navigateStage)
+  if (focusedStage !== 'voice' && focusedStage !== 'music') return null
+  return (
+    <div className="studio-tab-switch studio-sound-tabs" role="tablist" aria-label="声音阶段">
+      <button type="button" role="tab" aria-selected={focusedStage === 'voice'} className={focusedStage === 'voice' ? 'is-active' : ''} onClick={() => navigateStage('voice')}><Mic2 size={12} /> 配音</button>
+      <button type="button" role="tab" aria-selected={focusedStage === 'music'} className={focusedStage === 'music' ? 'is-active' : ''} onClick={() => navigateStage('music')}><Music2 size={12} /> 音乐</button>
+    </div>
   )
 }
 
@@ -771,8 +792,11 @@ export function CharacterDialog({ character, onClose }: { character: StudioChara
   const [saving, setSaving] = useState(false)
   if (!active || !character || !draft) return null
   const voiceOptions = [
-    { value: '', label: '跟随系统默认' },
-    ...(engine?.voices ?? []).map((voice) => ({ value: voice.name, label: `${voice.name}${voice.culture ? ` · ${voice.culture}` : ''}` }))
+    { value: '', label: '跟随默认声线' },
+    ...(engine?.voices ?? []).map((voice) => ({
+      value: voice.id ?? voice.name,
+      label: voice.label ?? `${voice.name}${voice.culture ? ` · ${voice.culture}` : ''}`
+    }))
   ]
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -945,7 +969,9 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
           </div>
         </div>
         <div className="studio-blueprint-generating">
-          <div className="studio-generating-mark"><FeatherPulse /></div>
+          <div className={`studio-generating-mark ${job ? 'is-generating' : ''}`} role="status" aria-live="polite">
+            <StudioMark size={48} />
+          </div>
           <h2>{job ? job.message : '还没有故事蓝图'}</h2>
           <p>{job ? '正在根据你的灵感整理故事主线、人物和结构，再请你确认。' : engine?.text.configured ? '会用当前已配置的模型，从你的灵感生成故事主线、人物、结构、风格和预算；确认前不会开始写正文或做画面。' : '还没有可用的文本模型。请先在右上角设置 → 模型里连接模型；蓝图只由真实模型生成。'}</p>
           {job ? <StudioProgress value={job.progress} /> : null}
@@ -1072,16 +1098,9 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
             return (
               <button key={character.id} type="button" className="studio-character-card" onClick={() => setEditingCharacter(current)}>
                 <span className="studio-character-index mono">{String(index + 1).padStart(2, '0')}</span>
-                <span className="studio-character-avatar">
-                  {current.refAssetIds[0] && active.assets.find((asset) => asset.id === current.refAssetIds[0]) ? (
-                    <img src={active.assets.find((asset) => asset.id === current.refAssetIds[0])?.thumbUrl ?? active.assets.find((asset) => asset.id === current.refAssetIds[0])?.url} alt="" />
-                  ) : (
-                    <Users size={20} strokeWidth={1.3} />
-                  )}
-                </span>
                 <span className="studio-character-copy">
                   <b>{current.name}<em>{current.role}</em></b>
-                  <span>{current.age ?? ''}{current.look ? ` · ${current.look.length > 42 ? `${current.look.slice(0, 42)}…` : current.look}` : ''}</span>
+                  <span>{current.age ?? ''}{current.look ? ` · ${current.look}` : ''}</span>
                   {current.desire ? <i>想要：{current.desire}</i> : null}
                   {current.fear ? <i>害怕：{current.fear}</i> : null}
                 </span>
@@ -1155,15 +1174,6 @@ export function BlueprintView({ onOpenBudget }: { onOpenBudget: () => void }): R
       {editBlueprint ? <BlueprintDialog onClose={() => setEditBlueprint(false)} /> : null}
       {editingCharacter ? <CharacterDialog character={editingCharacter} onClose={() => setEditingCharacter(null)} /> : null}
     </div>
-  )
-}
-
-function FeatherPulse(): React.JSX.Element {
-  return (
-    <span className="studio-feather-pulse">
-      <span /><span /><span />
-      <StageIcon stage="blueprint" size={26} />
-    </span>
   )
 }
 
@@ -3415,7 +3425,7 @@ export function ReviewView(): React.JSX.Element {
   const words = active.chapters.reduce((sum, chapter) => sum + chapter.content.replace(/\s+/g, '').length, 0)
   const missingImages = active.shots.filter((shot) => !shot.imageAssetId && !shot.videoAssetId).length
   const missingVoices = active.shots.filter((shot) => shot.dialogue.trim() && !shot.voiceAssetId).length
-  const hasMusic = active.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft'))
+  const hasMusic = Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo)
   const emptyChapters = active.chapters.filter((chapter) => !chapter.content.trim()).length
   const autoSteps = active.kind === 'drama'
     ? [
@@ -3457,7 +3467,7 @@ export function ReviewView(): React.JSX.Element {
           { label: `${visuals}/${active.shots.length} 镜有画面`, ok: visuals === active.shots.length && active.shots.length > 0 },
           { label: `${voices}/${voicesNeeded.length} 段台词有配音`, ok: voices === voicesNeeded.length },
           { label: `${subtitles} 条字幕`, ok: subtitles > 0 },
-          { label: '配乐已就位', ok: active.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft')) },
+          { label: '配乐已就位', ok: Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo) },
           { label: '时间线已排好', ok: active.timeline.clips.length > 0 },
           { label: '已合成成片', ok: active.deliveries.some((delivery) => isStudioVideoDelivery(delivery.kind)) },
           { label: reviewRan ? '检查已运行' : '尚未运行检查', ok: reviewRan }
@@ -3473,8 +3483,8 @@ export function ReviewView(): React.JSX.Element {
   }, [active, visuals, voices, voicesNeeded.length, subtitles, candidates, reviewRan])
   const readyCount = readiness.filter((row) => row.ok).length
   const rerun = async (): Promise<void> => {
-    await run('review')
-    notify('info', '检查完成，结果已写进作品。')
+    const result = await run('review')
+    notify('info', result.job ? '基础检查完成；画面检查已排队，稍候查看真实视觉结论。' : '检查完成，结果已写进作品。')
   }
   const fixMissing = async (): Promise<void> => {
     const missing = active.shots.filter((shot) => !shot.imageAssetId && !shot.videoAssetId)
@@ -3593,9 +3603,9 @@ export function ReviewView(): React.JSX.Element {
               逐镜检查画面
             </Button>
           ) : null}
-          {active.kind !== 'drama' && active.chapters.some((chapter) => chapter.content.trim()) ? (
+          {(active.kind === 'drama' ? Boolean(active.blueprint && visuals > 0) : active.chapters.some((chapter) => chapter.content.trim())) ? (
             <Button variant="secondary" icon={modelBusy ? <Loader2 size={13} className="studio-spin" /> : <Sparkles size={13} />} onClick={() => void modelReview()} disabled={modelBusy}>
-              模型审稿
+              {active.kind === 'drama' ? '剧情审稿' : '模型审稿'}
             </Button>
           ) : null}
           {checks.length ? <Button variant="gold" icon={<RefreshCw size={13} />} onClick={() => void rerun()}>重新检查</Button> : null}
@@ -3665,6 +3675,11 @@ export function ReviewView(): React.JSX.Element {
               <div><b>文本模型</b><span title={engine?.text.message ?? undefined}>{engine?.text.configured ? `${engine.text.providerLabel} · ${engine.text.modelLabel}` : '还没有可用的文字模型，去设置连接一个。'}</span></div>
               <i />
             </div>
+            <div className={`studio-engine-row ${engine?.vision?.ready ? 'is-on' : ''}`}>
+              <Eye size={13} />
+              <div><b>视觉模型</b><span>{engine?.vision?.ready ? `${engine.vision.modelLabel}${engine.vision.local ? ' · 本机' : ' · 云端'}` : '未连接支持图片的模型，画面检查不会伪造结论。'}</span></div>
+              <i />
+            </div>
             <div className={`studio-engine-row ${engine?.media.imageReady ? 'is-on' : ''}`}>
               <ImageIcon size={13} />
               <div><b>画面引擎</b><span title={engine?.media.message ?? undefined}>{engine?.media.imageReady ? '已就绪' : engine?.media.message ?? '未检查'}</span></div>
@@ -3682,7 +3697,7 @@ export function ReviewView(): React.JSX.Element {
             </div>
             <div className={`studio-engine-row ${engine?.voices.length ? 'is-on' : ''}`}>
               <Mic2 size={13} />
-              <div><b>系统声线</b><span>{engine?.voices.length ? `${engine.voices.length} 个可用` : engine?.voiceError ?? '未检测到'}</span></div>
+              <div><b>{engine?.tts?.localReady ? '本地 AI 声线' : '系统声线'}</b><span>{engine?.tts?.localReady ? engine.tts.message : engine?.voices.length ? `${engine.voices.length} 个可用` : engine?.voiceError ?? '未检测到'}</span></div>
               <i />
             </div>
           </section>
@@ -4132,7 +4147,7 @@ function ShotInspector({ shot, onClose }: { shot: StudioShot; onClose: () => voi
             <label className="studio-field"><span>声线</span>
               <select value={shot.voiceId} onChange={(event) => void run('save-shot', { shotId: shot.id, voiceId: event.target.value })}>
                 <option value="">{cloudTts ? '跟随设置里的云端声线' : '跟随人物 / 默认'}</option>
-                {cloudTts ? null : (engine?.voices ?? []).map((item) => <option key={item.name} value={item.name}>{item.name} · {item.culture}</option>)}
+                {cloudTts ? null : (engine?.voices ?? []).map((item) => <option key={item.id ?? item.name} value={item.id ?? item.name}>{item.label ?? `${item.name} · ${item.culture}`}</option>)}
               </select>
             </label>
             <label className="studio-field is-wide"><span>台词</span><textarea rows={3} value={draft.dialogue} onChange={(event) => update('dialogue', event.target.value)} placeholder="这一镜说什么？" /></label>
@@ -4142,7 +4157,7 @@ function ShotInspector({ shot, onClose }: { shot: StudioShot; onClose: () => voi
               {voice ? '重新配音' : '生成配音'}
             </Button>
             <Button variant="ghost" size="sm" icon={<Upload size={12} />} onClick={() => void useStudioStore.getState().importAssets('audio', shot.id)}>导入配音</Button>
-            <span className="mono">{cloudTts ? '云端配音 · 声线在设置里' : engine?.voices.length ? `${engine.voices.length} 个系统声线` : engine?.voiceError ?? '读取声线中…'}</span>
+            <span className="mono">{cloudTts ? '云端配音 · 声线在设置里' : engine?.tts?.localReady ? '本地 AI 声线 · Qwen3-TTS' : engine?.voices.length ? `${engine.voices.length} 个系统声线` : engine?.voiceError ?? '读取声线中…'}</span>
           </div>
         </section>
 
@@ -4331,8 +4346,9 @@ export function StoryboardView(): React.JSX.Element {
   const missing = shots.filter((item) => !item.imageAssetId && !item.videoAssetId)
   const voicesNeeded = shots.filter((item) => item.dialogue.trim())
   const voicesDone = voicesNeeded.filter((item) => item.voiceAssetId).length
-  const music = active.assets.filter((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft'))
-  const musicDraft = active.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && asset.tags.includes('draft'))
+  const score = resolveMusicAsset(active)
+  const music = score && (score.formal || score.demo) ? [score.asset] : []
+  const musicDraft = Boolean(score && !score.formal && !score.demo)
   const sfx = active.assets.filter((asset) => asset.kind === 'audio' && asset.tags.includes('sfx'))
   const total = shots.reduce((sum, item) => sum + item.durationSec, 0)
   const job = [...active.jobs].reverse().find((item) => (item.stage === 'visuals' || item.stage === 'voice') && (item.status === 'running' || item.status === 'queued'))
@@ -4439,10 +4455,11 @@ export function StoryboardView(): React.JSX.Element {
             <i />
             <span>{voicesDone}/{voicesNeeded.length} 配音</span>
             <i />
-            <span>{music.length ? '配乐就绪' : musicDraft ? '配乐草稿' : '还没有配乐'}</span>
+            <span>{music.length ? (score?.demo ? '样例配乐' : '配乐就绪') : musicDraft ? '配乐草稿' : '还没有配乐'}</span>
           </div>
         </div>
         <div className="studio-storyboard-actions">
+          <SoundTabs />
           <div className="studio-tab-switch">
             <button type="button" className={storyboardTab === 'script' ? 'is-active' : ''} onClick={() => setStoryboardTab('script')}><Film size={12} /> 剧本</button>
             <button type="button" className={storyboardTab === 'board' ? 'is-active' : ''} onClick={() => setStoryboardTab('board')}><Images size={12} /> 分镜板</button>
@@ -6996,6 +7013,7 @@ export function TimelineView(): React.JSX.Element {
           </div>
         </div>
         <div className="studio-timeline-actions">
+          <SoundTabs />
           <button type="button" className="studio-top-icon" title="撤销 (Ctrl+Z)" onClick={undo} disabled={!snake.current.undo.length}><Undo2 size={14} /></button>
           <button type="button" className="studio-top-icon" title="重做 (Ctrl+Shift+Z)" onClick={redo} disabled={!snake.current.redo.length}><Redo2 size={14} /></button>
           <Button variant="ghost" size="sm" icon={saving ? <Loader2 size={12} className="studio-spin" /> : <Save size={12} />} onClick={() => void saveTimeline()} disabled={saving} title="保存时间线" aria-label="保存">保存</Button>
@@ -7452,7 +7470,7 @@ const TABS: Array<{ id: StudioSettingsTab; label: string; icon: LucideIcon }> = 
 
 const PAGE_META: Record<StudioSettingsTab, { title: string; description: string }> = {
   models: { title: '模型与预算', description: '选择先用本机还是云端模型，并为当前作品设定预算上限；密钥仍在 Agent 设置里。' },
-  'voice-engines': { title: '配音与引擎', description: '决定草稿配音方式，并查看本机 ComfyUI、FFmpeg 与系统声线是否就绪。' },
+  'voice-engines': { title: '配音与引擎', description: '决定草稿配音方式，并查看本机 ComfyUI、FFmpeg 与本机 AI / 系统声线是否就绪。' },
   versions: { title: '历史版本', description: '作品自动留档的关键节点都在这里；恢复前会先备份当前版本。' },
   trash: { title: '回收站', description: '删除的作品先放在这里；可以恢复到作品库，也可以彻底删除。' },
   data: { title: '数据与安全', description: '作品、素材和任务记录都只存在本机；密钥由 Agent 设置保管。' }
@@ -7618,7 +7636,7 @@ export function StudioSettingsDialog({
       </div>
       <div className={`studio-engine-card ${engine?.voices.length ? 'is-on' : ''}`}>
         <span className="studio-engine-icon"><Mic2 size={16} /></span>
-        <div><b>系统声线</b><span>{engine?.voices.length ? `${engine.voices.length} 个可用 · 可以做草稿配音` : engine?.voiceError ?? '未检测到'}</span></div>
+        <div><b>{engine?.tts?.localReady ? '本地 AI 声线' : '系统声线'}</b><span>{engine?.tts?.localReady ? engine.tts.message : engine?.voices.length ? `${engine.voices.length} 个可用 · 可以做草稿配音` : engine?.voiceError ?? '未检测到'}</span></div>
         <i />
       </div>
     </div>
@@ -7751,14 +7769,14 @@ export function StudioSettingsDialog({
                   {routes.map((route) => (
                     <div key={`${route.providerId}:${route.modelId}`} className={`studio-route-row ${route.configured ? 'is-ready' : ''}`}>
                       <span className="studio-route-kind">{route.local ? '本机' : '云端'}</span>
-                      <div><b>{route.providerLabel}</b><em>{route.modelLabel}{route.contextWindow ? ` · ${StudioSettingsDialogContextLabel(route.contextWindow)}` : ''}{route.supportsVision ? ' · 会看图' : ''}{route.supportsTools ? ' · 会用工具' : ''}</em></div>
+                      <div><b>{route.providerLabel}</b><em>{route.modelLabel}{route.contextWindow ? ` · ${StudioSettingsDialogContextLabel(route.contextWindow)}` : ''}{route.maxOutput ? ` · 单次最多 ${route.maxOutput.toLocaleString('zh-CN')} tokens` : ''}{route.supportsVision ? ' · 会看图' : ''}{route.supportsTools ? ' · 会用工具' : ''}</em></div>
                       <span className="mono" title="每百万 token 的输入 / 输出参考价">{route.inputPerMTok !== undefined && route.outputPerMTok !== undefined ? `参考价 $${route.inputPerMTok} / $${route.outputPerMTok}` : '价格未知'}</span>
                       <i>{route.configured ? '已连接' : '未连接'}</i>
                     </div>
                   ))}
                   {!routes.length ? <p className="studio-hint">当前没有可用的文本模型。到 Agent 设置里连接，或换成另一边再试。</p> : null}
                 </div>
-                <p className="studio-settings-hint">越靠前越先用；写作和预算估算用的是同一个模型。价格只作参考，以服务商账单为准。</p>
+                <p className="studio-settings-hint">越靠前越先用；写作和预算估算用的是同一个模型。生成时按模型官方最大输出上限请求，不会在创作台额外压低回复长度；价格只作参考，以服务商账单为准。</p>
               </section>
 
             </div>
@@ -7767,11 +7785,11 @@ export function StudioSettingsDialog({
           {tab === 'voice-engines' ? (
             <div className="studio-settings">
               <section className="studio-settings-section">
-                <header><span className="studio-settings-title">配音方式</span><span className="studio-settings-note">{ttsMode === 'cloud' ? '用当前云端服务商' : 'Windows 自带'}</span></header>
+                <header><span className="studio-settings-title">配音方式</span><span className="studio-settings-note">{ttsMode === 'cloud' ? '用当前云端服务商' : engine?.tts?.localReady ? '本机 Qwen3-TTS' : 'Windows 自带'}</span></header>
                 <Segmented
                   value={ttsMode}
                   options={[
-                    { value: 'system', label: '系统声线' },
+                    { value: 'system', label: '本机声线' },
                     { value: 'cloud', label: '云端配音' }
                   ]}
                   onChange={(value) => setTtsMode(value === 'cloud' ? 'cloud' : 'system')}
@@ -7786,11 +7804,11 @@ export function StudioSettingsDialog({
                 <p className="studio-settings-hint">
                   {ttsMode === 'cloud'
                     ? '用当前云端服务商生成配音；不支持时会直接说明，不会偷偷换回系统声线。费用按账单记录，不知道就写未知。'
-                    : '用 Windows 自带声线在本机生成，不额外收费；失败时可以去分镜页导入录音。'}
+                    : engine?.tts?.localReady ? '用本机 Qwen3-TTS 1.7B 生成，按角色和台词附加情绪指令；不额外收费。' : '用 Windows 自带声线在本机生成，不额外收费；运行 scripts/install-local-tts.ps1 可升级为本地 AI 声线。'}
                 </p>
                 <div className={`studio-engine-card ${engine?.voices.length ? 'is-on' : ''}`}>
                   <span className="studio-engine-icon"><Mic2 size={16} /></span>
-                  <div><b>系统声线</b><span>{engine?.voices.length ? `${engine.voices.length} 个可用` : engine?.voiceError ?? '未检测到系统声线'}</span></div>
+                  <div><b>{engine?.tts?.localReady ? '本地 AI 声线' : '系统声线'}</b><span>{engine?.tts?.localReady ? engine.tts.message : engine?.voices.length ? `${engine.voices.length} 个可用` : engine?.voiceError ?? '未检测到系统声线'}</span></div>
                   <i />
                 </div>
               </section>
@@ -8608,7 +8626,7 @@ function BlueprintAct({ reel }: { reel: Reel }): React.JSX.Element {
           </div>
           <div className="sd-budget-row">
             <span>配音 · {reel.voices.length} 段</span>
-            <b>系统声线</b>
+            <b>本地样例声线</b>
           </div>
           <div className="sd-budget-row">
             <span>配乐 · {reel.musicLabel}</span>

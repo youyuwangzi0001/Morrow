@@ -5,23 +5,18 @@ import type { Stats } from 'node:fs'
 import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-
-
 export interface ToolImpl {
   definition: ToolDefinition
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>
 }
 
-
 export function okResult(output: string, meta?: Record<string, unknown>, durationMs?: number): ToolResult {
   return { ok: true, output, ...(meta ? { meta } : {}), ...(typeof durationMs === 'number' ? { durationMs } : {}) }
 }
 
-
 export function errResult(error: string, hint?: string, meta?: Record<string, unknown>): ToolResult {
   return { ok: false, output: '', error, ...(hint ? { hint } : {}), ...(meta ? { meta } : {}) }
 }
-
 
 /** 标题/摘要里安全地展示用户输入（压成一行、限长） */
 export function oneLineInput(input: Record<string, unknown>, key: string, max = 80): string {
@@ -29,7 +24,6 @@ export function oneLineInput(input: Record<string, unknown>, key: string, max = 
   const text = typeof raw === 'string' ? raw : raw === undefined ? '' : JSON.stringify(raw)
   return text.replace(/\s+/g, ' ').trim().slice(0, max)
 }
-
 
 /**
  * 工具层错误类型：区分「用户可自修复的参数错误」与「越界访问」（需要审批）。
@@ -46,7 +40,6 @@ export class ToolInputError extends Error {
   }
 }
 
-
 /** 目标路径 realpath 后不在工作区内：交给权限层审批，不直接当普通错误吞掉 */
 export class WorkspaceEscapeError extends Error {
   readonly attemptedPath: string
@@ -60,7 +53,6 @@ export class WorkspaceEscapeError extends Error {
   }
 }
 
-
 /** 工具内部可预期的失败（例如文件不存在），信息直接回灌给模型 */
 export class ToolExecutionError extends Error {
   readonly hint?: string
@@ -71,7 +63,6 @@ export class ToolExecutionError extends Error {
     this.hint = hint
   }
 }
-
 
 export function getString(
   input: Record<string, unknown>,
@@ -98,7 +89,6 @@ export function getString(
   return value
 }
 
-
 export function getNumber(
   input: Record<string, unknown>,
   key: string,
@@ -121,7 +111,6 @@ export function getNumber(
   return value
 }
 
-
 export function getBoolean(input: Record<string, unknown>, key: string, defaultValue = false): boolean {
   const raw = input[key]
   if (raw === undefined || raw === null) return defaultValue
@@ -134,7 +123,6 @@ export function getBoolean(input: Record<string, unknown>, key: string, defaultV
   if (typeof raw === 'number') return raw !== 0
   return defaultValue
 }
-
 
 /** 字符串数组（用于 options/todos 等）；也接受 [{label}] / [{text}] 这类对象数组 */
 export function getStringArray(
@@ -162,7 +150,6 @@ export function getStringArray(
   })
 }
 
-
 /** 对象数组，过滤掉非对象项 */
 export function getObjectArray(input: Record<string, unknown>, key: string): Array<Record<string, unknown>> {
   const raw = input[key]
@@ -172,7 +159,6 @@ export function getObjectArray(input: Record<string, unknown>, key: string): Arr
   }
   return raw.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
 }
-
 
 export interface ResolvedPath {
   /** 用户/模型给出的路径解析出的绝对路径（未 realpath） */
@@ -187,7 +173,6 @@ export interface ResolvedPath {
   linkUnresolvable?: boolean
 }
 
-
 export function normalizeWorkspace(workspace: string): string {
   const absolute = resolve(workspace)
   try {
@@ -197,7 +182,6 @@ export function normalizeWorkspace(workspace: string): string {
   }
 }
 
-
 export function isPathInsideWorkspace(target: string, workspaceReal: string): boolean {
   const ws = workspaceReal.replace(/[\\/]+$/, '')
   const lower = process.platform === 'win32' ? (value: string): string => value.toLowerCase() : (value: string): string => value
@@ -206,7 +190,6 @@ export function isPathInsideWorkspace(target: string, workspaceReal: string): bo
   return t === w || t.startsWith(`${w}${sep}`)
 }
 
-
 function realpathOrNull(path: string): string | null {
   try {
     return realpathSync(path)
@@ -214,7 +197,6 @@ function realpathOrNull(path: string): string | null {
     return null
   }
 }
-
 
 /**
  * 解析并检查路径，不抛越界错误（权限层用它判断是否需要审批）。
@@ -265,7 +247,6 @@ export function inspectWorkspacePath(inputPath: string, workspace: string | null
   }
 }
 
-
 function lstatSafe(path: string): Stats | null {
   try {
     return lstatSync(path)
@@ -274,7 +255,6 @@ function lstatSafe(path: string): Stats | null {
   }
 }
 
-
 function statSafe(path: string): Stats | null {
   try {
     return statSync(path)
@@ -282,7 +262,6 @@ function statSafe(path: string): Stats | null {
     return null
   }
 }
-
 
 /** 附件路径比较：绝对路径与 realpath 任一匹配即视为同一文件（Windows 忽略大小写）。 */
 export function isExplicitlyAttachedPath(
@@ -302,7 +281,6 @@ export function isExplicitlyAttachedPath(
   const candidates = new Set([fold(canonical(resolved.absolute)), fold(canonical(resolved.real))])
   return allowedFiles.some((file) => candidates.has(fold(canonical(file))))
 }
-
 
 /** 无工作区时解析消息里显式附加的文件：只允许完整路径，且必须命中附件白名单。 */
 function inspectAttachedFilePath(inputPath: string, allowedFiles: readonly string[] | undefined): ResolvedPath {
@@ -327,7 +305,6 @@ function inspectAttachedFilePath(inputPath: string, allowedFiles: readonly strin
   }
   return resolved
 }
-
 
 /** 工具内部使用：越界且未获审批 → 抛 WorkspaceEscapeError（由 registry/agent 转成错误结果） */
 export function resolveWorkspacePath(
@@ -366,7 +343,6 @@ export function resolveWorkspacePath(
   return resolved
 }
 
-
 /** 展示给用户/模型的相对路径（工作区外则返回绝对路径） */
 export function displayPath(absolute: string, workspace: string | null): string {
   if (!workspace) return absolute
@@ -374,7 +350,6 @@ export function displayPath(absolute: string, workspace: string | null): string 
   if (!rel || rel.startsWith('..')) return absolute
   return rel.split(sep).join('/')
 }
-
 
 export function getWorkspaceOrThrow(workspace: string | null): string {
   if (!workspace) {
@@ -394,11 +369,9 @@ export interface DiffResult {
   truncated: boolean
 }
 
-
 const MAX_LINES_FOR_LCS = 1200
 
 const MAX_PATCH_LINES = 1000
-
 
 function splitLines(text: string): string[] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -406,7 +379,6 @@ function splitLines(text: string): string[] {
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
   return lines
 }
-
 
 function summarize(before: string[], after: string[]): DiffResult {
   const count = (lines: string[]): Map<string, number> => {
@@ -431,7 +403,6 @@ function summarize(before: string[], after: string[]): DiffResult {
     truncated: true
   }
 }
-
 
 /** 最长公共子序列 → 编辑操作序列 */
 function diffOps(a: string[], b: string[]): Array<{ type: 'eq' | 'add' | 'del'; line: string; aIndex: number; bIndex: number }> {
@@ -472,7 +443,6 @@ function diffOps(a: string[], b: string[]): Array<{ type: 'eq' | 'add' | 'del'; 
   }
   return ops
 }
-
 
 function renderPatch(ops: Array<{ type: 'eq' | 'add' | 'del'; line: string; aIndex: number; bIndex: number }>, filePath: string): DiffResult {
   const added = ops.filter((op) => op.type === 'add').length
@@ -529,7 +499,6 @@ function renderPatch(ops: Array<{ type: 'eq' | 'add' | 'del'; line: string; aInd
   }
   return { patch: hunks.join('\n'), added, removed, truncated }
 }
-
 
 /**
  * 生成 unified diff 风格文本。
@@ -595,7 +564,6 @@ export function createUnifiedDiff(before: string, after: string, filePath = 'fil
   }))
   return renderPatch(ops, filePath)
 }
-
 
 /** 给审批卡/工具结果用的一句话统计 */
 export function diffSummary(result: DiffResult): string {

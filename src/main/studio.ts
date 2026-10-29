@@ -2,8 +2,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, cpSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, relative, resolve, dirname } from 'node:path'
-import type { StudioAsset, StudioChapter, StudioDelivery, StudioJob, StudioKind, StudioProject, StudioProjectSummary, StudioStageId, StudioTimeline, StudioTrack, StudioTrashItem, StudioBlueprint, StudioBlueprintSceneSeed, StudioEngineStatus, StudioClip, StudioCheck, StudioVoice, StudioCharacter, StudioVoiceAudit, StudioVoiceProfile, StudioBlueprintUnit, StudioEpisode, StudioFact, StudioScene, StudioShot, StudioStyleBible, StudioVolume, StudioChatMessage, StudioEditAction, StudioEditPlan, StudioMessageSource, StudioActionResult, StudioListResult, StudioCreateInput, StudioExportInput, StudioExportPreflight, StudioJobKind, StudioJobStatus, StudioRenderInput } from '../shared/studio'
-import { STUDIO_SCHEMA_VERSION, computeProjectProgress, countWords, defaultStageStatuses, emptyStageStates, emptyCanvas, emptyTimeline, projectWordCount, timelineDuration, formatDuration, isStudioVideoDelivery, studioKindLabel, canTransitionStudioStatus } from '../shared/studio'
+import type { StudioAsset, StudioChapter, StudioDelivery, StudioJob, StudioKind, StudioProject, StudioProjectSummary, StudioStageId, StudioTimeline, StudioTrack, StudioTrashItem, StudioBlueprint, StudioBlueprintSceneSeed, StudioEngineStatus, StudioClip, StudioCheck, StudioVoice, StudioCharacter, StudioVoiceAudit, StudioVoiceProfile, StudioBlueprintUnit, StudioEpisode, StudioFact, StudioScene, StudioShot, StudioShotSeed, StudioStyleBible, StudioVolume, StudioChatMessage, StudioEditAction, StudioEditPlan, StudioMessageSource, StudioActionResult, StudioListResult, StudioCreateInput, StudioExportInput, StudioExportPreflight, StudioJobKind, StudioJobStatus, StudioRenderInput, StudioBlueprintPatch, StudioOutlinePatch, StudioChapterPatch, StudioShotPatch, StudioCharacterPatch, StudioPlacePatch, StudioRenameRequest } from '../shared/studio'
+import { STUDIO_SCHEMA_VERSION, computeProjectProgress, countWords, defaultStageStatuses, emptyStageStates, emptyCanvas, emptyTimeline, projectWordCount, timelineDuration, formatDuration, isStudioVideoDelivery, studioKindLabel, canTransitionStudioStatus, resolveMusicAsset, isFormalMusicAsset } from '../shared/studio'
 import { resolveDataDir, resolveStudioDataRoot, createPreviewUrl, studioDataDirInfo } from './workspace'
 import fixtures from './studio-demo-fixtures.json'
 import type { ChatMessage, ModelInfo, ProviderConfig, Settings, Usage } from '../shared/types'
@@ -18,63 +18,43 @@ import JSZip from 'jszip'
 import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { getMediaService } from './media'
+import { creativeMasterPrompt, type CreativeTask } from './creative-masters'
+import { localTtsStatus, localTtsVoices, isLocalTtsVoice, QWEN_DEFAULT_VOICE, synthesizeLocalSpeech } from './tts-local'
 import { sendFeatureEvent } from './feature-ipc'
-
-
-
-
 
 const PROJECT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{3,63}$/
 
-
 const MAX_PROJECT_BYTES = 64 * 1024 * 1024
-
 
 const MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024
 
-
 const MAX_VERSIONS = 60
-
 
 const MAX_JOBS = 120
 
-
 const CHUNK_THRESHOLD = 18_000
-
 
 const CHUNK_SIZE = 12_000
 
-
-
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'])
-
 
 const VIDEO_EXT = new Set(['mp4', 'webm', 'mov', 'mkv'])
 
-
 const AUDIO_EXT = new Set(['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac'])
-
-
 
 export function studioId(prefix: string): string {
   return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 18)}`
 }
 
-
-
 export function nowMs(): number {
   return Date.now()
 }
-
-
 
 export function safeProjectId(id: unknown): string {
   const value = typeof id === 'string' ? id.trim() : ''
   if (!PROJECT_ID_RE.test(value)) throw new Error('作品 id 不合法。')
   return value
 }
-
-
 
 export function mimeForExt(ext: string): string {
   switch (ext.toLowerCase()) {
@@ -134,8 +114,6 @@ export function mimeForExt(ext: string): string {
   }
 }
 
-
-
 export function assetKindForExt(ext: string): StudioAsset['kind'] {
   const value = ext.toLowerCase()
   if (IMAGE_EXT.has(value)) return 'image'
@@ -143,8 +121,6 @@ export function assetKindForExt(ext: string): StudioAsset['kind'] {
   if (AUDIO_EXT.has(value)) return 'audio'
   return 'other'
 }
-
-
 
 /** 从 PNG/JPEG/WebP 文件头读尺寸；失败返回 null，不阻断素材入库。 */
 export function imageSize(buffer: Buffer): { width: number; height: number } | null {
@@ -186,19 +162,13 @@ export function imageSize(buffer: Buffer): { width: number; height: number } | n
   return null
 }
 
-
-
 export function sha256Buffer(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex')
 }
 
-
-
 export function sha256File(path: string): string {
   return sha256Buffer(readFileSync(path))
 }
-
-
 
 function atomicWrite(path: string, content: string | Buffer): void {
   const temp = `${path}.tmp-${randomUUID()}`
@@ -206,15 +176,11 @@ function atomicWrite(path: string, content: string | Buffer): void {
   renameSync(temp, path)
 }
 
-
-
 function safeRelative(root: string, target: string): string {
   const rel = relative(resolve(root), resolve(target))
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error('路径越过了作品目录。')
   return rel.replace(/\\/g, '/')
 }
-
-
 
 export class StudioStore {
   readonly dataDir: string
@@ -346,6 +312,7 @@ export class StudioStore {
         updatedAt: now
       },
       coverAssetId: null,
+      musicAssetId: null,
       demo: input.demo === true
     }
     this.ensureProjectDirs(project.id)
@@ -412,6 +379,7 @@ export class StudioStore {
         updatedAt: now
       },
       styleBible: raw.styleBible ?? { look: '', palette: [], camera: '', sound: '', negative: [] },
+      musicAssetId: raw.musicAssetId ?? null,
       demo: raw.demo === true
     }
     for (const chapter of project.chapters) {
@@ -1031,25 +999,17 @@ export class StudioStore {
   }
 }
 
-
-
 /** 延迟单例：必须在 app ready 后使用（resolveDataDir 依赖 Electron app）。 */
 let store: StudioStore | null = null
-
-
 
 export function getStudioStore(): StudioStore {
   if (!store) store = new StudioStore()
   return store
 }
 
-
-
 export function resetStudioStoreForTest(dir?: string): void {
   store = dir ? new StudioStore(dir) : null
 }
-
-
 
 /** 给渲染层返回的纯数据摘要（不包含真实路径）。 */
 export function sanitizeProjectForRenderer(project: StudioProject): StudioProject {
@@ -1059,8 +1019,6 @@ export function sanitizeProjectForRenderer(project: StudioProject): StudioProjec
   clone.timeline.snapshots = clone.timeline.snapshots.slice(-20)
   return clone
 }
-
-
 
 interface DemoFixtures {
   dramaBlueprint: StudioBlueprint
@@ -1072,11 +1030,7 @@ interface DemoFixtures {
   shortChapters: string[]
 }
 
-
-
 const data = fixtures as unknown as DemoFixtures
-
-
 
 function sampleCopy(blueprint: StudioBlueprint): StudioBlueprint {
   const copy = structuredClone(blueprint)
@@ -1092,49 +1046,33 @@ function sampleCopy(blueprint: StudioBlueprint): StudioBlueprint {
   return copy
 }
 
-
-
 export function demoDramaBlueprint(): StudioBlueprint {
   const blueprint = sampleCopy(data.dramaBlueprint)
   blueprint.scenes = structuredClone(data.dramaScenes)
   return blueprint
 }
 
-
-
 export function demoNovelBlueprint(): StudioBlueprint {
   return sampleCopy(data.novelBlueprint)
 }
-
-
 
 export function demoShortBlueprint(): StudioBlueprint {
   return sampleCopy(data.shortBlueprint)
 }
 
-
-
 export function demoNovelChapters(): string[] {
   return [...data.novelChapters]
 }
-
-
 
 export function demoNovelCandidate(): string {
   return data.novelCandidate
 }
 
-
-
 export function demoShortChapters(): string[] {
   return [...data.shortChapters]
 }
 
-
-
 export type StudioTextStrategy = StudioProject['runtime']['strategy']
-
-
 
 export interface StudioTextRouteInfo {
   providerId: string
@@ -1147,8 +1085,6 @@ export interface StudioTextRouteInfo {
   outputPerMTok?: number
 }
 
-
-
 export interface TextCandidate {
   config: ProviderConfig
   model: ModelInfo
@@ -1157,8 +1093,6 @@ export interface TextCandidate {
   default: boolean
 }
 
-
-
 const STRATEGY_LABEL: Record<StudioTextStrategy, string> = {
   'local-first': '本地优先',
   'cloud-first': '云端优先',
@@ -1166,19 +1100,13 @@ const STRATEGY_LABEL: Record<StudioTextStrategy, string> = {
   'cloud-only': '只云端'
 }
 
-
-
 function isDemoConfig(config: ProviderConfig): boolean {
   return config.kind === 'demo' || config.id === 'demo'
 }
 
-
-
 function candidateKey(config: ProviderConfig, model: ModelInfo): string {
   return `${config.id}:${model.id}`
 }
-
-
 
 export function rankTextCandidates(
   settings: Pick<Settings, 'providers' | 'defaultModel'>,
@@ -1208,13 +1136,9 @@ export function rankTextCandidates(
   return candidates.sort((left, right) => score(right) - score(left))
 }
 
-
-
 function rankCandidates(settings: Settings, strategy: StudioTextStrategy): TextCandidate[] {
   return rankTextCandidates(settings, (providerId) => getSettingsStore().getApiKey(providerId), strategy)
 }
-
-
 
 export function studioTextRoutes(strategy: StudioTextStrategy = 'local-first'): StudioTextRouteInfo[] {
   const settings = getSettingsStore().get()
@@ -1234,15 +1158,12 @@ export function studioTextRoutes(strategy: StudioTextStrategy = 'local-first'): 
   }))
 }
 
-
-
-export function studioVisionProvider(strategy: StudioTextStrategy = 'local-first'): { provider: ReturnType<typeof createProvider>; model: ModelInfo } | null {
-  const runtime = studioTextRuntime(strategy)
-  if (!runtime.configured || !runtime.config || !runtime.model || !runtime.model.supportsVision || !runtime.apiKey) return null
-  return { provider: createProvider(runtime.config, runtime.apiKey, runtime.model.id), model: runtime.model }
+export function studioVisionProvider(strategy: StudioTextStrategy = 'local-first'): { provider: ReturnType<typeof createProvider>; model: ModelInfo; local: boolean } | null {
+  const ranked = rankCandidates(getSettingsStore().get(), strategy)
+  const chosen = ranked.find((candidate) => candidate.apiKey && candidate.model.supportsVision === true)
+  if (!chosen) return null
+  return { provider: createProvider(chosen.config, chosen.apiKey!, chosen.model.id), model: chosen.model, local: chosen.local }
 }
-
-
 
 export interface StudioTextRuntime {
   configured: boolean
@@ -1252,8 +1173,6 @@ export interface StudioTextRuntime {
   apiKey: string | null
   message: string
 }
-
-
 
 export function studioTextRuntime(strategy: StudioTextStrategy = 'local-first'): StudioTextRuntime {
   const settings = getSettingsStore().get()
@@ -1299,19 +1218,21 @@ export function studioTextRuntime(strategy: StudioTextStrategy = 'local-first'):
   return { configured: false, demo: false, config, model, apiKey: null, message: reason }
 }
 
-
-
 export interface CompletionResult {
   text: string
   model: string
   usage?: Usage
   costCny: number | null
   costNote?: string
+  /** 模型触达本次请求的官方输出上限；结构化任务应拒绝写入。 */
+  truncated?: boolean
 }
 
-
-
-/** 不带工具的纯文本补全；创作台的结构化动作都走这一条窄通道。 */
+/**
+ * 不带工具的纯文本补全；创作台的结构化动作都走这一条窄通道。
+ * 输出预算始终以模型官方 maxOutput 为上限，不再使用创作台私设的小额度；
+ * 结构化任务触达上限时默认报错，避免把半截 JSON 当成完整结果。
+ */
 export async function completeCreativeText(options: {
   system: string
   prompt: string
@@ -1319,38 +1240,76 @@ export async function completeCreativeText(options: {
   temperature?: number
   signal?: AbortSignal
   strategy?: StudioTextStrategy
+  /** 结构化输出（JSON）；触达输出上限时直接报错，不返回半截内容。 */
+  structured?: boolean
+  /** 普通文本被截断时自动续写，最多两次。 */
+  continueOnTruncate?: boolean
   /** 推理模型写长 JSON 可能超过 3 分钟；这里给足时间，任务本身仍可取消。 */
   timeoutMs?: number
 }): Promise<CompletionResult> {
   const runtime = studioTextRuntime(options.strategy ?? 'local-first')
   if (!runtime.configured || !runtime.config || !runtime.model) throw new Error(runtime.message)
   const provider = createProvider(runtime.config, runtime.apiKey, runtime.model.id)
-  const message: ChatMessage = {
-    id: `studio-${Date.now().toString(36)}`,
-    role: 'user',
-    content: [{ type: 'text', text: options.prompt }],
-    createdAt: Date.now()
-  }
+  const official = typeof runtime.model.maxOutput === 'number' && runtime.model.maxOutput > 0 ? runtime.model.maxOutput : undefined
+  const requested = options.maxTokens && options.maxTokens > 0 ? options.maxTokens : official ?? 8192
+  const budget = Math.max(256, official ? Math.min(requested, official) : requested)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 300_000)
   const onAbort = (): void => controller.abort()
   options.signal?.addEventListener('abort', onAbort, { once: true })
   let text = ''
-  let usage: Usage | undefined
+  let truncated = false
   let thinkingChars = 0
+  const totalUsage: Usage = { inputTokens: 0, outputTokens: 0 }
+  let hasUsage = false
+  const messages: ChatMessage[] = [{
+    id: `studio-${Date.now().toString(36)}`,
+    role: 'user',
+    content: [{ type: 'text', text: options.prompt }],
+    createdAt: Date.now()
+  }]
   try {
-    const stream = provider.stream({
-      system: options.system,
-      messages: [message],
-      tools: [],
-      signal: controller.signal,
-      maxTokens: options.maxTokens ?? Math.min(8000, runtime.model.maxOutput ?? 8000),
-      temperature: options.temperature ?? 0.85
-    })
-    for await (const event of stream) {
-      if (event.type === 'text_delta') text += event.text
-      else if (event.type === 'thinking_delta') thinkingChars += event.text.length
-      else if (event.type === 'usage') usage = event.usage
+    for (let round = 0; round <= 2; round += 1) {
+      let roundText = ''
+      let roundTruncated = false
+      let roundUsage: Usage | undefined
+      const stream = provider.stream({
+        system: options.system,
+        messages: [...messages],
+        tools: [],
+        signal: controller.signal,
+        maxTokens: budget,
+        temperature: options.temperature ?? 0.85
+      })
+      for await (const event of stream) {
+        if (event.type === 'text_delta') roundText += event.text
+        else if (event.type === 'thinking_delta') thinkingChars += event.text.length
+        else if (event.type === 'usage') roundUsage = event.usage
+        else if (event.type === 'notice' && event.code === 'max_tokens') roundTruncated = true
+      }
+      text += roundText
+      truncated = roundTruncated
+      const usage = roundUsage
+      if (usage) {
+        hasUsage = true
+        totalUsage.inputTokens += usage.inputTokens
+        totalUsage.outputTokens += usage.outputTokens
+        if (typeof usage.cacheReadTokens === 'number') {
+          totalUsage.cacheReadTokens = (totalUsage.cacheReadTokens ?? 0) + usage.cacheReadTokens
+        }
+      }
+      if (!roundTruncated || !options.continueOnTruncate || round >= 2 || !roundText.trim()) break
+      messages.push({
+        id: `studio-${Date.now().toString(36)}-${round}`,
+        role: 'assistant',
+        content: [{ type: 'text', text: roundText }],
+        createdAt: Date.now()
+      }, {
+        id: `studio-${Date.now().toString(36)}-${round}-continue`,
+        role: 'user',
+        content: [{ type: 'text', text: '从刚才中断的地方继续，直接接着写；不要重复已有内容，不要解释。' }],
+        createdAt: Date.now()
+      })
     }
   } finally {
     clearTimeout(timer)
@@ -1358,23 +1317,25 @@ export async function completeCreativeText(options: {
   }
   const trimmed = text.trim()
   if (!trimmed) {
-    log.warn('studio creative text empty', { model: runtime.model.label, maxTokens: options.maxTokens, thinkingChars, usage })
+    log.warn('studio creative text empty', { model: runtime.model.label, maxTokens: budget, thinkingChars, usage: hasUsage ? totalUsage : undefined })
     throw new Error('模型没有返回可用的文本。请换一个模型或重试。')
+  }
+  if (truncated && options.structured && !options.continueOnTruncate) {
+    log.warn('studio structured text truncated', { model: runtime.model.label, maxTokens: budget, thinkingChars, usage: totalUsage })
+    throw new Error(`模型输出触达官方上限（${budget.toLocaleString('zh-CN')} tokens）后被截断；已拒绝写入残缺结果。请在设置里换用更大输出上限的模型，或把任务拆小后重试。`)
   }
   let costCny: number | null = null
   let costNote: string | undefined
   const pricing = runtime.model.pricing
-  if (pricing && usage) {
-    const usd = (usage.inputTokens / 1_000_000) * pricing.inputPerMTok + (usage.outputTokens / 1_000_000) * pricing.outputPerMTok
+  if (pricing && hasUsage) {
+    const usd = (totalUsage.inputTokens / 1_000_000) * pricing.inputPerMTok + (totalUsage.outputTokens / 1_000_000) * pricing.outputPerMTok
     costCny = Math.round(usd * 7.2 * 1000) / 1000
     costNote = '按模型参考单价折算，实际以服务商账单为准'
   } else {
     costNote = '该模型没有可靠单价，费用显示为未知'
   }
-  return { text: trimmed, model: runtime.model.label, ...(usage ? { usage } : {}), costCny, ...(costNote ? { costNote } : {}) }
+  return { text: trimmed, model: runtime.model.label, ...(hasUsage ? { usage: totalUsage } : {}), costCny, ...(costNote ? { costNote } : {}), ...(truncated ? { truncated: true } : {}) }
 }
-
-
 
 export function textStatusForEngine(strategy: StudioTextStrategy = 'local-first'): StudioEngineStatus['text'] {
   const runtime = studioTextRuntime(strategy)
@@ -1398,8 +1359,6 @@ export function textStatusForEngine(strategy: StudioTextStrategy = 'local-first'
   }
 }
 
-
-
 /** 按字符数粗估文本费用；没有单价时返回 null（界面必须显示未知）。 */
 export function estimateTextCostCny(inputChars: number, outputChars: number, strategy: StudioTextStrategy = 'local-first'): number | null {
   const runtime = studioTextRuntime(strategy)
@@ -1412,8 +1371,6 @@ export function estimateTextCostCny(inputChars: number, outputChars: number, str
   return Math.round(usd * 7.2 * 1000) / 1000
 }
 
-
-
 /** 修模型常见的 JSON 手误：漏引号/多逗号/裸换行；只改语法，不改中文内容。 */
 function repairJsonSyntax(text: string): string {
   return text
@@ -1423,8 +1380,6 @@ function repairJsonSyntax(text: string): string {
     .replace(/([{,]\s*)([A-Za-z_][\w-]*)\s*:/g, '$1"$2":')
     .replace(/,\s*([}\]])/g, '$1')
 }
-
-
 
 /** 从模型输出里提取第一个可解析 JSON 对象；容忍 ```json 围栏和前后说明。 */
 export function extractJson<T>(text: string): T | null {
@@ -1450,8 +1405,6 @@ export function extractJson<T>(text: string): T | null {
   }
   return null
 }
-
-
 
 /** 提取第一个平衡的 JSON 对象，避免模型在 JSON 前后附带解释文字或第二个对象。 */
 function jsonObjectSlices(text: string): string[] {
@@ -1482,8 +1435,6 @@ function jsonObjectSlices(text: string): string[] {
   }
   return slices
 }
-
-
 
 export function buildTimelineFromProject(project: StudioProject): StudioTimeline {
   const timeline = emptyTimeline(project.brief.aspect, nowMs())
@@ -1568,7 +1519,7 @@ export function buildTimelineFromProject(project: StudioProject): StudioTimeline
     cursor += duration
   }
   timeline.clips.push(...visualClips, ...dialogueClips)
-  const music = project.assets.find((asset) => asset.kind === 'audio' && asset.tags.includes('music'))
+  const music = resolveMusicAsset(project)?.asset
   if (music && cursor > 0) {
     timeline.clips.push({
       id: studioId('clip'),
@@ -1621,8 +1572,6 @@ export function buildTimelineFromProject(project: StudioProject): StudioTimeline
   return timeline
 }
 
-
-
 export function sanitizeTimeline(project: StudioProject, raw: { tracks?: unknown; clips?: unknown; aspect?: unknown; fps?: unknown }): StudioTimeline {
   const base = project.timeline?.tracks?.length ? project.timeline : emptyTimeline(project.brief.aspect)
   const allowedTracks = new Map<string, StudioTrack>(base.tracks.map((track) => [track.id, track]))
@@ -1669,8 +1618,6 @@ export function sanitizeTimeline(project: StudioProject, raw: { tracks?: unknown
   return timeline
 }
 
-
-
 function sanitizeClip(raw: Record<string, unknown>, trackIds: Set<string>): StudioClip | null {
   const id = typeof raw.id === 'string' && raw.id ? raw.id : studioId('clip')
   const trackId = typeof raw.trackId === 'string' ? raw.trackId : ''
@@ -1714,23 +1661,17 @@ function sanitizeClip(raw: Record<string, unknown>, trackIds: Set<string>): Stud
   }
 }
 
-
-
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const number = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.max(min, Math.min(max, number))
 }
 
-
-
 export function subtitleClips(timeline: StudioTimeline): StudioClip[] {
   return timeline.clips
     .filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim())
     .sort((a, b) => a.start - b.start)
 }
-
-
 
 function srtTime(seconds: number): string {
   const ms = Math.max(0, Math.round(seconds * 1000))
@@ -1741,8 +1682,6 @@ function srtTime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(rest).padStart(3, '0')}`
 }
 
-
-
 function assTime(seconds: number): string {
   const cs = Math.max(0, Math.round(seconds * 100))
   const h = Math.floor(cs / 360_000)
@@ -1752,19 +1691,13 @@ function assTime(seconds: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(rest).padStart(2, '0')}`
 }
 
-
-
 export function toSrt(timeline: StudioTimeline): string {
   return subtitleClips(timeline)
     .map((clip, index) => `${index + 1}\n${srtTime(clip.start)} --> ${srtTime(clip.start + clip.duration)}\n${clip.text ?? ''}\n`)
     .join('\n')
 }
 
-
-
 const DEFAULT_SUBTITLE_COLOR = '#ede7da'
-
-
 
 /** ASS 颜色是 &HAABBGGRR；把界面里的 #RRGGBB 转成正确的 BGR 顺序。 */
 function assColor(value: unknown): string {
@@ -1772,8 +1705,6 @@ function assColor(value: unknown): string {
   if (!/^[0-9a-fA-F]{6}$/.test(hex)) return '&H00DAE7ED'
   return `&H00${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase()
 }
-
-
 
 export function toAss(timeline: StudioTimeline): string {
   const baseColor = assColor(DEFAULT_SUBTITLE_COLOR)
@@ -1807,138 +1738,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return `${header}${events}\n`
 }
 
+export type StudioPromptTask = CreativeTask
 
-
-export type StudioPromptTask =
-  | 'blueprint'
-  | 'outline'
-  | 'chapter'
-  | 'rewrite'
-  | 'screenplay'
-  | 'dialogue'
-  | 'storyboard'
-  | 'image'
-  | 'video'
-  | 'voice'
-  | 'music'
-  | 'review'
-  | 'adaptation'
-  | 'comic'
-  | 'assistant'
-
-
-
-export type QualityDimensionId = 'structure' | 'character' | 'pacing' | 'prose' | 'continuity' | 'visual' | 'delivery'
-
-
-
-export interface StudioQualityDimension {
-  id: QualityDimensionId
-  label: string
-  question: string
-  weights: Record<StudioKind, number>
+/**
+ * 底层创作方法只取自桌面三套大师文件（写作/编剧/导演）。
+ * 这里只负责根据模型上下文给出加载预算，不再拼接任何创作台内嵌手法或门禁。
+ */
+export function masterPromptContext(
+  kind: StudioKind,
+  task: StudioPromptTask,
+  query = '',
+  view?: string,
+  strategy: StudioTextStrategy = 'local-first'
+): string {
+  const contextWindow = studioTextRuntime(strategy).model?.contextWindow ?? 32_768
+  const budgetChars = contextWindow >= 200_000 ? 34_000 : contextWindow >= 100_000 ? 27_000 : contextWindow >= 64_000 ? 20_000 : contextWindow >= 32_000 ? 13_000 : 7_000
+  return `\n\n${creativeMasterPrompt({ kind, task, query, ...(view ? { view } : {}), budgetChars })}`
 }
-
-
-
-/** 七维共用同一套判定问题；权重按形态调整，避免小说用镜头分、漫剧用文风分。 */
-export const STUDIO_QUALITY_DIMENSIONS: StudioQualityDimension[] = [
-  {
-    id: 'structure',
-    label: '结构与完成度',
-    question: '开篇承诺、升级、反转、高潮代价、结局兑现是否齐全？',
-    weights: { short: 25, novel: 22, drama: 20 }
-  },
-  {
-    id: 'character',
-    label: '人物与动机',
-    question: '主要人物是否有想要、害怕、秘密、旧伤和可见弧光？选择是否由动机推动？',
-    weights: { short: 20, novel: 22, drama: 18 }
-  },
-  {
-    id: 'pacing',
-    label: '节奏与钩子',
-    question: '每个单元是否有目标、阻力、转折、余波？章末/镜末是否留下可见的下一步？',
-    weights: { short: 20, novel: 20, drama: 20 }
-  },
-  {
-    id: 'prose',
-    label: '语言与去 AI 化',
-    question: '是否具体、主动、可感，虚词与空泛判断是否超标？',
-    weights: { short: 20, novel: 20, drama: 10 }
-  },
-  {
-    id: 'continuity',
-    label: '连续性与事实',
-    question: '人物、时间、地点、道具、知识边界、伏笔是否前后一致且闭合？',
-    weights: { short: 10, novel: 18, drama: 14 }
-  },
-  {
-    id: 'visual',
-    label: '画面与声音',
-    question: '镜头是否有叙事目的、景别递进、轴线与声画时长成立？',
-    weights: { short: 0, novel: 0, drama: 28 }
-  },
-  {
-    id: 'delivery',
-    label: '交付完整度',
-    question: '字数/镜头数是否达标，正文与素材是否齐全，导出是否可读可播？',
-    weights: { short: 10, novel: 10, drama: 10 }
-  }
-]
-
-
-
-const KIND_GATES: Record<StudioKind, string> = {
-  short:
-    '中短篇：开篇 300 字内出现反常、压力或选择；全文至少三次局势升级；结尾兑现开篇承诺并留下余味；每章最后一句必须是可见事件或选择，不用总结收尾。',
-  novel:
-    '长篇：每卷有独立目标、代价与卷末转折；每章至少一个新信息点；伏笔登记并在明线 3–5 章、暗线 10–15 章内回收；20–30 章完成一次主线级反转或身份揭露。',
-  drama:
-    '漫剧：6–40 镜；每镜只承担一个叙事功能；相邻镜头角度差 ≥30°，对话戏不越 180° 轴线；景别递进，不连续三镜同景别；台词单句 ≤30 字，配音时长不得超过镜头。'
-}
-
-
-
-const TASK_GATES: Partial<Record<StudioPromptTask, string>> = {
-  blueprint:
-    '蓝图必须回答：谁想要什么、谁或什么在阻止、失败要付什么代价、结尾如何兑现。人物至少三位有欲望/恐惧/秘密/弧光；禁止用“成长、救赎、人性”等空词代替事件。',
-  outline:
-    '每个单元写清目标、阻力、转折、钩子；beats 写 3–5 条具体事件。长篇卷章比例按 15/20/25/25/15 分配，单章 2500–3500 字；漫剧每镜 3–20 秒。',
-  chapter:
-    '开篇承接上一章并立即给压力；中段至少一次局势反转；结尾留可见钩子。对白至少承担推进、性格、冲突、伏笔中的两种功能；不要解释主题。',
-  rewrite:
-    '先保住情节、人名、事实与段落顺序，再改语言。优先删虚词、拆长句、把情绪换成动作与物件；不要用排比和总结句制造气势。',
-  screenplay:
-    '使用场景标题（内/外·地点·时间）、现在时动作、角色名、对白、括号提示、音效、转场；只写摄影机和演员能拍到的内容。',
-  storyboard:
-    '每镜写 action、camera、shotSize、seconds、dialogue、continuity、prompt。标准镜 70–85%，出彩镜 15–30%，连续出彩不超过两镜；台词说话人必须是已有人物或旁白。',
-  review:
-    '按七维逐项给证据（章节号/镜号/原文短句），不凭感觉打分；低于门槛必须给具体改法，不擅自改稿。',
-  assistant:
-    '先判断用户是在要方案、要检查还是要执行；给方案时说明影响哪些下游，不声称已经修改；引用作品内容必须写明章节/镜号。'
-}
-
-
-
-const UNIVERSAL_GATES = [
-  '【质量门禁 · 写前就用，不是写完再补】',
-  '1. 具体：抽象判断后必须有动作、物件或数字；删掉“感到、觉得、仿佛、似乎、突然、意识到、不知不觉”。',
-  '2. 变化：每个场景/章节/镜头都要有目标→阻力→转折→余波；没有改变局势的内容直接删。',
-  '3. 连续：人名、外观、年龄、时间、地点、道具、知识边界必须与前文一致；不确定就不写。',
-  '4. 交付：按目标字数或镜头数交足，不省略、不写“待补充”、不用概述代替正文。',
-  '5. 语言：平均句长 15–25 字，单句不超过 30 字；比喻每千字最多一个；单段 2–4 行。',
-  '6. 自检：输出前逐条核对；任一硬门禁不满足，先改再交。'
-]
-
-
-
-export function qualityPromptContext(kind: StudioKind, task: StudioPromptTask): string {
-  const taskGate = TASK_GATES[task]
-  return `\n\n${[...UNIVERSAL_GATES, KIND_GATES[kind], ...(taskGate ? [taskGate] : [])].join('\n')}`
-}
-
-
 
 export interface ProseQualityMetrics {
   chars: number
@@ -1958,23 +1774,15 @@ export interface ProseQualityMetrics {
   endingHook: boolean
 }
 
-
-
 const FILLER_PATTERN = /感到|觉得|仿佛|似乎|忽然|突然|意识到|不知不觉|不由自主|下意识|如同|好像/g
-
 
 const ABSTRACT_PATTERN = /[\u4e00-\u9fa5]{1,3}(?:性|度|化|感)/g
 
-
 const METAPHOR_PATTERN = /像|仿佛|如同|好似|宛如/g
-
 
 const OPENING_HOOK_PATTERN = /但|却|然而|没想到|直到|必须|不能|死|血|逃|追|拒绝|秘密|谎|债|消失|不见|反着|倒着|陌生人|不对|突然|停了|站着|没有人/
 
-
 const ENDING_HOOK_PATTERN = /[？?！!…]|[“”「」]/
-
-
 
 export function measureProseQuality(text: string): ProseQualityMetrics {
   const compact = text.replace(/\s+/g, '')
@@ -2005,8 +1813,6 @@ export function measureProseQuality(text: string): ProseQualityMetrics {
   }
 }
 
-
-
 function qualityCheck(level: StudioCheck['level'], title: string, detail: string, targetId?: string): StudioCheck {
   return {
     id: studioId('check'),
@@ -2018,8 +1824,6 @@ function qualityCheck(level: StudioCheck['level'], title: string, detail: string
     createdAt: Date.now()
   }
 }
-
-
 
 export function proseQualityChecks(project: StudioProject): StudioCheck[] {
   const checks: StudioCheck[] = []
@@ -2065,8 +1869,6 @@ export function proseQualityChecks(project: StudioProject): StudioCheck[] {
   return checks
 }
 
-
-
 export function dramaQualityChecks(project: StudioProject): StudioCheck[] {
   const checks: StudioCheck[] = []
   const shots = [...project.shots].sort((left, right) => left.number - right.number)
@@ -2095,8 +1897,6 @@ export function dramaQualityChecks(project: StudioProject): StudioCheck[] {
   return checks
 }
 
-
-
 function runsOf(values: string[]): Array<{ value: string; count: number }> {
   const runs: Array<{ value: string; count: number }> = []
   let current = ''
@@ -2113,18 +1913,12 @@ function runsOf(values: string[]): Array<{ value: string; count: number }> {
   return runs
 }
 
-
-
 const DEMO_LOG_LINE = '一个雨夜，修伞的女孩捡到一把会让时间倒流的伞。她每修好一把伞，就会失去一段记忆。'
-
-
 
 function demoAssetDir(): string | null {
   const candidates = [join(process.resourcesPath, 'studio-demo'), join(app.getAppPath(), 'resources', 'studio-demo')]
   return candidates.find((dir) => existsSync(dir)) ?? null
 }
-
-
 
 function thumbFor(file: string, projectId: string, store: StudioStore): Buffer | null {
   const paths = resolveFfmpegPaths()
@@ -2150,8 +1944,6 @@ function thumbFor(file: string, projectId: string, store: StudioStore): Buffer |
   return null
 }
 
-
-
 function probeDuration(file: string): number | undefined {
   const ffprobe = resolveFfmpegPaths()?.ffprobe
   if (!ffprobe) return undefined
@@ -2163,8 +1955,6 @@ function probeDuration(file: string): number | undefined {
   const value = Number((result.stdout ?? '').trim())
   return Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : undefined
 }
-
-
 
 function addDemoAsset(
   store: StudioStore,
@@ -2196,8 +1986,6 @@ function addDemoAsset(
   }
 }
 
-
-
 function attachDeliveryFromFile(store: StudioStore, project: StudioProject, dir: string, file: string, label: string, kind: StudioDelivery['kind']): void {
   const source = join(dir, file)
   if (!existsSync(source)) return
@@ -2220,8 +2008,6 @@ function attachDeliveryFromFile(store: StudioStore, project: StudioProject, dir:
   project.deliveries.unshift(delivery)
 }
 
-
-
 function demoCharacters(project: StudioProject, dir: string | null, store: StudioStore) {
   const blueprint = demoDramaBlueprint()
   if (dir) {
@@ -2240,13 +2026,9 @@ function demoCharacters(project: StudioProject, dir: string | null, store: Studi
   return blueprint
 }
 
-
-
 function markStage(project: StudioProject, id: StudioProject['stage'], status: StudioProject['stages'][StudioProject['stage']]['status'], message: string, progress: number): void {
   project.stages[id] = { status, updatedAt: nowMs(), message, progress }
 }
-
-
 
 function seedDrama(store: StudioStore, dir: string | null): StudioProject {
   const project = store.newProject({
@@ -2391,8 +2173,6 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
   return project
 }
 
-
-
 function seedNovel(store: StudioStore, dir: string | null): StudioProject {
   const project = store.newProject({
     kind: 'novel',
@@ -2497,8 +2277,6 @@ function seedNovel(store: StudioStore, dir: string | null): StudioProject {
   return project
 }
 
-
-
 function seedShort(store: StudioStore, dir: string | null): StudioProject {
   const project = store.newProject({
     kind: 'short',
@@ -2564,8 +2342,6 @@ function seedShort(store: StudioStore, dir: string | null): StudioProject {
   return project
 }
 
-
-
 /** 同步播种：素材只从随包目录复制，不访问网络。 */
 export function ensureDemoProjects(store: StudioStore): void {
   const marker = join(store.root, '.demo-seeded-v1')
@@ -2581,9 +2357,6 @@ export function ensureDemoProjects(store: StudioStore): void {
   }
 }
 
-
-
-
 export interface RenderOptions {
   quality: 'draft' | 'final'
   subtitleMode: 'soft' | 'burn'
@@ -2594,8 +2367,6 @@ export interface RenderOptions {
   onProgress?: (stage: string, percent?: number) => void
   signal?: AbortSignal
 }
-
-
 
 export interface RenderResult {
   path: string
@@ -2611,14 +2382,10 @@ export interface RenderResult {
   message: string
 }
 
-
-
 interface FfmpegPaths {
   ffmpeg: string
   ffprobe: string
 }
-
-
 
 export function resolveFfmpegPaths(): FfmpegPaths | null {
   const settings = getSettingsStore().get().mediaEngine
@@ -2645,8 +2412,6 @@ export function resolveFfmpegPaths(): FfmpegPaths | null {
   return { ffmpeg: found, ffprobe: existsSync(probe) ? probe : process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe' }
 }
 
-
-
 function targetSize(
   aspect: '16:9' | '9:16' | '1:1',
   quality: 'draft' | 'final',
@@ -2662,8 +2427,6 @@ function targetSize(
   if (aspect === '1:1') return uhd ? { width: 2160, height: 2160 } : { width: 1080, height: 1080 }
   return uhd ? { width: 3840, height: 2160 } : { width: 1920, height: 1080 }
 }
-
-
 
 async function runFfmpeg(binary: string, args: string[], options: { cwd?: string; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
@@ -2725,8 +2488,6 @@ async function runFfmpeg(binary: string, args: string[], options: { cwd?: string
   })
 }
 
-
-
 function fadeFilter(clip: StudioClip, duration: number): string {
   const fade = Math.min(0.32, duration / 5)
   if (clip.transition === 'fade-both') return `,fade=t=in:st=0:d=${fade.toFixed(3)},fade=t=out:st=${Math.max(0, duration - fade).toFixed(3)}:d=${fade.toFixed(3)}`
@@ -2735,13 +2496,9 @@ function fadeFilter(clip: StudioClip, duration: number): string {
   return ''
 }
 
-
-
 function videoEncodeArgs(): string[] {
   return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an']
 }
-
-
 
 async function renderVisualSegment(input: {
   ffmpeg: string
@@ -2869,16 +2626,12 @@ async function renderVisualSegment(input: {
   return { file, placeholder: false }
 }
 
-
-
 function atempoChain(speed: number): string[] {
   const rate = Math.max(0.25, Math.min(4, speed))
   if (rate >= 0.5 && rate <= 2) return [`atempo=${rate}`]
   if (rate > 2) return ['atempo=2', `atempo=${rate / 2}`]
   return ['atempo=0.5', `atempo=${rate / 0.5}`]
 }
-
-
 
 async function renderAudioClip(input: {
   ffmpeg: string
@@ -2914,8 +2667,6 @@ async function renderAudioClip(input: {
   await runFfmpeg(ffmpeg, args, { signal: input.signal })
   return file
 }
-
-
 
 export async function renderProject(project: StudioProject, options: RenderOptions): Promise<RenderResult> {
   const ffmpegPaths = resolveFfmpegPaths()
@@ -3170,8 +2921,6 @@ export async function renderProject(project: StudioProject, options: RenderOptio
   }
 }
 
-
-
 /** 从成片抽一帧，作为交付预览图（可选，不阻断合成）。 */
 export async function extractPoster(videoPath: string, atSec: number, outputPath: string): Promise<boolean> {
   const paths = resolveFfmpegPaths()
@@ -3184,15 +2933,11 @@ export async function extractPoster(videoPath: string, atSec: number, outputPath
   }
 }
 
-
-
 export interface FfmpegCapabilities {
   available: boolean
   codecs: string[]
   profile: 'default' | 'enhanced' | 'missing'
 }
-
-
 
 /** 读取本机 FFmpeg 的编码器能力，区分可交付的默认包与增强包。 */
 export function ffmpegCapabilities(): FfmpegCapabilities {
@@ -3209,11 +2954,7 @@ export function ffmpegCapabilities(): FfmpegCapabilities {
   }
 }
 
-
-
 let exportFontCss: string | null | undefined
-
-
 
 /** 找到带 Noto Serif SC @font-face 的随包样式；离线导出不依赖系统字体。 */
 export function bundledExportFontStylesheet(): string | null {
@@ -3236,8 +2977,6 @@ export function bundledExportFontStylesheet(): string | null {
   return exportFontCss
 }
 
-
-
 const escapeXml = (value: string): string =>
   value
     .replace(/&/g, '&amp;')
@@ -3246,14 +2985,10 @@ const escapeXml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;')
 
-
-
 export function cleanFileName(value: string, fallback = '未命名'): string {
   const cleaned = value.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim()
   return (cleaned || fallback).slice(0, 80)
 }
-
-
 
 function chapterParagraphs(content: string): string[] {
   return content
@@ -3262,11 +2997,7 @@ function chapterParagraphs(content: string): string[] {
     .filter(Boolean)
 }
 
-
-
 type BookBlock = { kind: 'paragraph'; text: string } | { kind: 'illustration'; asset: StudioAsset; caption: string }
-
-
 
 function chapterBlocks(project: StudioProject, chapter: StudioChapter): BookBlock[] {
   const paragraphs = chapterParagraphs(chapter.content)
@@ -3285,16 +3016,12 @@ function chapterBlocks(project: StudioProject, chapter: StudioChapter): BookBloc
   return blocks
 }
 
-
-
 function imageContentType(ext: string): string {
   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
   if (ext === 'webp') return 'image/webp'
   if (ext === 'gif') return 'image/gif'
   return 'image/png'
 }
-
-
 
 function illustrationBytes(project: StudioProject, asset: StudioAsset): Buffer | null {
   try {
@@ -3306,8 +3033,6 @@ function illustrationBytes(project: StudioProject, asset: StudioAsset): Buffer |
   }
 }
 
-
-
 function bookMeta(project: StudioProject): { title: string; author: string; words: number; intro: string } {
   return {
     title: project.title || '未命名作品',
@@ -3316,8 +3041,6 @@ function bookMeta(project: StudioProject): { title: string; author: string; word
     intro: project.logline
   }
 }
-
-
 
 function saveDelivery(project: StudioProject, input: Omit<StudioDelivery, 'id' | 'createdAt' | 'bytes' | 'sha256' | 'path'> & { path: string; bytes: number; sha256: string }): StudioDelivery {
   const delivery: StudioDelivery = {
@@ -3332,8 +3055,6 @@ function saveDelivery(project: StudioProject, input: Omit<StudioDelivery, 'id' |
   project.deliveries.unshift(delivery)
   return delivery
 }
-
-
 
 export function writeDeliveryFile(projectId: string, fileName: string, content: string | Buffer, label: string, kind: StudioDelivery['kind'], meta?: StudioDelivery['meta']): StudioDelivery {
   const store = getStudioStore()
@@ -3351,8 +3072,6 @@ export function writeDeliveryFile(projectId: string, fileName: string, content: 
   return delivery
 }
 
-
-
 function chaptersMarkdown(project: StudioProject): string {
   const meta = bookMeta(project)
   const lines = [`# ${meta.title}`, '', meta.intro, '', '---', '']
@@ -3364,8 +3083,6 @@ function chaptersMarkdown(project: StudioProject): string {
   return `${lines.join('\n')}\n`
 }
 
-
-
 function chaptersText(project: StudioProject): string {
   const meta = bookMeta(project)
   const lines = [meta.title, '', meta.intro, '', '='.repeat(32), '']
@@ -3376,21 +3093,15 @@ function chaptersText(project: StudioProject): string {
   return lines.join('\n')
 }
 
-
-
 export function exportTxt(project: StudioProject): StudioDelivery {
   const name = `${cleanFileName(project.title)}.txt`
   return writeDeliveryFile(project.id, name, chaptersText(project), '纯文本稿', 'txt', { words: bookMeta(project).words })
 }
 
-
-
 export function exportMarkdown(project: StudioProject): StudioDelivery {
   const name = `${cleanFileName(project.title)}.md`
   return writeDeliveryFile(project.id, name, chaptersMarkdown(project), 'Markdown 稿', 'md', { words: bookMeta(project).words })
 }
-
-
 
 export async function exportEpub(project: StudioProject): Promise<StudioDelivery> {
   const meta = bookMeta(project)
@@ -3523,15 +3234,11 @@ ${chapterFiles.map((file) => `<li><a href="${file.href}">${escapeXml(file.title)
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.epub`, buffer, 'EPUB 电子书', 'epub', { words: meta.words, format: 'EPUB 3' })
 }
 
-
-
 function xmlParagraphs(content: string): string {
   return chapterParagraphs(content)
     .map((paragraph) => `<w:p><w:pPr><w:ind w:firstLineChars="200" w:firstLine="640"/><w:spacing w:line="380" w:lineRule="auto" w:after="120"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXml(paragraph)}</w:t></w:r></w:p>`)
     .join('')
 }
-
-
 
 export async function exportDocx(project: StudioProject): Promise<StudioDelivery> {
   const meta = bookMeta(project)
@@ -3623,8 +3330,6 @@ ${[...imageEntries.values()].map((entry) => `<Relationship Id="${entry.relId}" T
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.docx`, buffer, 'Word 排版稿', 'docx', { words: meta.words })
 }
 
-
-
 function bookHtml(project: StudioProject, coverDataUrl: string | null): string {
   const meta = bookMeta(project)
   const toc = project.chapters.map((chapter) => `<li>${escapeXml(chapter.title)}</li>`).join('')
@@ -3672,8 +3377,6 @@ ${chapters}
 </body></html>`
 }
 
-
-
 function coverDataUrl(project: StudioProject): string | null {
   if (!project.coverAssetId) return null
   const asset = project.assets.find((item) => item.id === project.coverAssetId)
@@ -3688,8 +3391,6 @@ function coverDataUrl(project: StudioProject): string | null {
     return null
   }
 }
-
-
 
 async function printHtmlToPdf(html: string): Promise<Buffer> {
   const temp = join(app.getPath('temp'), `morrow-studio-book-${randomUUID()}.html`)
@@ -3718,14 +3419,10 @@ async function printHtmlToPdf(html: string): Promise<Buffer> {
   }
 }
 
-
-
 export async function exportPdf(project: StudioProject): Promise<StudioDelivery> {
   const pdf = await printHtmlToPdf(bookHtml(project, coverDataUrl(project)))
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.pdf`, pdf, 'PDF 排版稿', 'pdf', { words: bookMeta(project).words, pages: 'A4' })
 }
-
-
 
 export async function exportCover(project: StudioProject): Promise<StudioDelivery> {
   const store = getStudioStore()
@@ -3781,8 +3478,6 @@ h1 { position:absolute; left:120px; right:120px; top:510px; margin:0; font-size:
   }
 }
 
-
-
 export async function exportPackage(project: StudioProject): Promise<StudioDelivery> {
   const store = getStudioStore()
   const zip = new JSZip()
@@ -3821,8 +3516,6 @@ export async function exportPackage(project: StudioProject): Promise<StudioDeliv
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.morrowcraft`, buffer, '创作工程包', 'package', { files: manifest.files.length, schema: project.schemaVersion })
 }
 
-
-
 export function exportSrt(project: StudioProject): StudioDelivery {
   const cues = project.timeline.clips.filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim())
   if (!cues.length) throw new Error('还没有字幕；先在分镜里生成逐句字幕，再导出 SRT。')
@@ -3830,15 +3523,11 @@ export function exportSrt(project: StudioProject): StudioDelivery {
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.srt`, content, '字幕文件 · SRT', 'srt', { clips: cues.length })
 }
 
-
-
 export function exportAss(project: StudioProject): StudioDelivery {
   const cues = project.timeline.clips.filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim())
   if (!cues.length) throw new Error('还没有字幕；先在分镜里生成逐句字幕，再导出 ASS。')
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.ass`, toAss(project.timeline), '字幕文件 · ASS', 'ass', { clips: cues.length })
 }
-
-
 
 /** 发布套组：成书 + 封面 + 字幕 + 工程包一起放进一个目录。 */
 export async function exportFolder(project: StudioProject): Promise<StudioDelivery> {
@@ -3899,8 +3588,6 @@ export async function exportFolder(project: StudioProject): Promise<StudioDelive
   })
 }
 
-
-
 export interface VoiceSynthesisInput {
   text: string
   voice: string
@@ -3910,15 +3597,9 @@ export interface VoiceSynthesisInput {
   workDir: string
 }
 
-
-
 const SAMPLE_RATE = 44_100
 
-
-
 let voiceCache: { at: number; voices: StudioVoice[]; error?: string } | null = null
-
-
 
 function runPowerShell(script: string, args: string[], timeoutMs = 60_000): { code: number; stdout: string; stderr: string } {
   const file = join(tmpdir(), `morrow-studio-${randomUUID()}.ps1`)
@@ -3938,8 +3619,6 @@ function runPowerShell(script: string, args: string[], timeoutMs = 60_000): { co
     }
   }
 }
-
-
 
 function runPowerShellAsync(script: string, args: string[], timeoutMs = 60_000): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
@@ -3993,8 +3672,6 @@ function runPowerShellAsync(script: string, args: string[], timeoutMs = 60_000):
   })
 }
 
-
-
 /** Windows 10/11 的现代语音 API：支持多角色中文声线，且不依赖 System.Speech 的桌面安全上下文。 */
 const WINRT_VOICE_SCRIPT = String.raw`
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -4007,11 +3684,9 @@ foreach ($voice in [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices)
 $rows | ConvertTo-Json -Compress
 `
 
-
-
 const WINRT_SPEAK_SCRIPT = String.raw`
 param(
-  [Parameter(Mandatory=$true)][string]$VoiceName,
+  [string]$VoiceName = '',
   [Parameter(Mandatory=$true)][string]$OutputFile,
   [Parameter(Mandatory=$true)][string]$TextFile,
   [int]$Rate = 0
@@ -4066,8 +3741,6 @@ $synth.Dispose()
 Write-Output ("OK " + $chosen.DisplayName)
 `
 
-
-
 const SAPI_VOICE_SCRIPT = String.raw`
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [Console]::OutputEncoding
@@ -4083,11 +3756,9 @@ $rows | ConvertTo-Json -Compress
 $s.Dispose()
 `
 
-
-
 const SAPI_SPEAK_SCRIPT = String.raw`
 param(
-  [Parameter(Mandatory=$true)][string]$VoiceName,
+  [string]$VoiceName = '',
   [Parameter(Mandatory=$true)][string]$OutputFile,
   [Parameter(Mandatory=$true)][string]$TextFile,
   [int]$Rate = 0,
@@ -4117,8 +3788,6 @@ $s.Dispose()
 Write-Output 'OK'
 `
 
-
-
 function parseVoices(stdout: string): StudioVoice[] {
   const text = stdout.trim() || '[]'
   const parsed = JSON.parse(text) as Array<{ name?: string; culture?: string; gender?: string }> | { name?: string; culture?: string; gender?: string }
@@ -4132,20 +3801,26 @@ function parseVoices(stdout: string): StudioVoice[] {
     }))
 }
 
-
-
 export function listSystemVoices(force = false): { voices: StudioVoice[]; error?: string } {
+  const local = localTtsVoices()
   if (process.platform !== 'win32') {
-    return { voices: [], error: '系统配音目前仅支持 Windows。可以改为导入录音，或稍后接入云端声线。' }
+    return { voices: local, ...(local.length ? {} : { error: '系统配音目前仅支持 Windows。可以改为导入录音，或接入本地/云端声线。' }) }
   }
-  if (!force && voiceCache && Date.now() - voiceCache.at < 5 * 60_000) return voiceCache
+  if (!force && voiceCache && Date.now() - voiceCache.at < 5 * 60_000) {
+    return { voices: [...local, ...voiceCache.voices], ...(voiceCache.error && !local.length ? { error: voiceCache.error } : {}) }
+  }
+  const withLocal = (voices: StudioVoice[], error?: string): { voices: StudioVoice[]; error?: string } => {
+    if (local.length) return { voices: local }
+    const system = voices.map((voice) => ({ ...voice, label: `${voice.name}${voice.culture ? ` · ${voice.culture}` : ''}`, kind: 'system' as const }))
+    return { voices: system, ...(error ? { error } : {}) }
+  }
   const winrt = runPowerShell(WINRT_VOICE_SCRIPT, [], 20_000)
   if (winrt.code === 0) {
     try {
       const voices = parseVoices(winrt.stdout)
       if (voices.length) {
         voiceCache = { at: Date.now(), voices }
-        return voiceCache
+        return withLocal(voices)
       }
     } catch {
       // 回退到 SAPI
@@ -4155,20 +3830,28 @@ export function listSystemVoices(force = false): { voices: StudioVoice[]; error?
   if (result.code !== 0) {
     const error = (result.stderr || result.stdout || '无法读取系统声线').trim().slice(0, 300)
     voiceCache = { at: Date.now(), voices: [], error }
-    return voiceCache
+    return withLocal([], error)
   }
   try {
     const voices = parseVoices(result.stdout)
     voiceCache = { at: Date.now(), voices }
-    return voiceCache
+    return withLocal(voices)
   } catch (err) {
     const error = `系统声线列表不是合法 JSON：${err instanceof Error ? err.message : String(err)}`
     voiceCache = { at: Date.now(), voices: [], error }
-    return voiceCache
+    return withLocal([], error)
   }
 }
 
-
+function localVoiceInstruction(shot: StudioShot): string {
+  const hints = ['用自然的中文口语说出来，像真人对话，不要播音腔', '句间保留呼吸和自然停顿']
+  if (/[？?]/.test(shot.dialogue)) hints.push('带一点疑问和不确定，不要夸张上扬')
+  if (/[！!]/.test(shot.dialogue)) hints.push('情绪更强烈，但不要喊叫')
+  if (/[……]|\.\.\./.test(shot.dialogue)) hints.push('尾音放轻，留一点迟疑')
+  if (/外婆|母亲|父亲|爷爷|奶奶/.test(shot.speaker)) hints.push('年长角色，语速稍慢，声音温和')
+  if (/少年|少女|孩子|小[^一-龥]?/.test(shot.speaker)) hints.push('年轻角色，声音轻一点')
+  return hints.join('；')
+}
 
 export async function synthesizeSpeech(input: VoiceSynthesisInput): Promise<void> {  if (process.platform !== 'win32') throw new Error('系统配音目前仅支持 Windows。')
   if (!input.text.trim()) throw new Error('没有可配音的台词。')
@@ -4218,8 +3901,6 @@ export async function synthesizeSpeech(input: VoiceSynthesisInput): Promise<void
   }
 }
 
-
-
 export interface CloudSpeechInput {
   text: string
   baseUrl: string
@@ -4231,8 +3912,6 @@ export interface CloudSpeechInput {
   speed?: number
   signal?: AbortSignal
 }
-
-
 
 /** OpenAI 兼容的 /audio/speech；使用当前云端模型服务商，不另存密钥。 */
 export async function synthesizeCloudSpeech(input: CloudSpeechInput): Promise<void> {
@@ -4283,19 +3962,13 @@ export async function synthesizeCloudSpeech(input: CloudSpeechInput): Promise<vo
   }
 }
 
-
-
 function midi(note: number): number {
   return 440 * 2 ** ((note - 69) / 12)
 }
 
-
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
-
-
 
 function hashText(text: string): number {
   let value = 2166136261
@@ -4305,8 +3978,6 @@ function hashText(text: string): number {
   }
   return value >>> 0
 }
-
-
 
 function writeWavStereo(left: Float32Array, right: Float32Array): Buffer {
   const frames = Math.min(left.length, right.length)
@@ -4334,8 +4005,6 @@ function writeWavStereo(left: Float32Array, right: Float32Array): Buffer {
   return buffer
 }
 
-
-
 interface MusicMood {
   id: string
   label: string
@@ -4346,8 +4015,6 @@ interface MusicMood {
   rain: number
   brightness: number
 }
-
-
 
 const MOODS: Record<string, MusicMood> = {
   rain: {
@@ -4427,8 +4094,6 @@ const MOODS: Record<string, MusicMood> = {
   }
 }
 
-
-
 export function musicMood(mood: string | undefined): MusicMood {
   if (mood && MOODS[mood]) return MOODS[mood] as MusicMood
   if (mood && /雨|rain/i.test(mood)) return MOODS.rain as MusicMood
@@ -4437,8 +4102,6 @@ export function musicMood(mood: string | undefined): MusicMood {
   if (mood && /暖|靠近|希望|warm/i.test(mood)) return MOODS.warm as MusicMood
   return MOODS.rain as MusicMood
 }
-
-
 
 /** 生成一段可循环的本地器乐草稿，返回 WAV 文件路径。 */
 export function synthesizeMusic(input: { mood?: string; seconds?: number; seed?: number; outputPath: string; title?: string }): { path: string; mood: MusicMood; duration: number } {
@@ -4560,8 +4223,6 @@ export function synthesizeMusic(input: { mood?: string; seconds?: number; seed?:
   return { path: input.outputPath, mood, duration: seconds }
 }
 
-
-
 /** 生成真实音效素材（雨声 / 伞骨 / 心跳 / 街声）。 */
 export function synthesizeSfx(kind: 'rain' | 'umbrella' | 'heartbeat' | 'street', outputPath: string, seconds = 5): string {
   const frames = Math.ceil(seconds * SAMPLE_RATE)
@@ -4640,8 +4301,6 @@ export function synthesizeSfx(kind: 'rain' | 'umbrella' | 'heartbeat' | 'street'
   return outputPath
 }
 
-
-
 /** 真实音频峰值：FFmpeg 解码为单声道 PCM，再按桶取绝对值峰值。 */
 export function audioWaveform(file: string, buckets = 96): number[] {
   const ffmpeg = resolveFfmpegPaths()?.ffmpeg
@@ -4669,8 +4328,6 @@ export function audioWaveform(file: string, buckets = 96): number[] {
   return peaks.map((value) => Math.round((value / max) * 1000) / 1000)
 }
 
-
-
 export function readWaveformCache(cacheFile: string, sourceFile: string): number[] | null {
   try {
     if (!existsSync(cacheFile) || !existsSync(sourceFile)) return null
@@ -4683,14 +4340,10 @@ export function readWaveformCache(cacheFile: string, sourceFile: string): number
   }
 }
 
-
-
 export function writeWaveformCache(cacheFile: string, peaks: number[]): void {
   mkdirSync(dirname(cacheFile), { recursive: true })
   writeFileSync(cacheFile, `${JSON.stringify({ peaks, updatedAt: Date.now() })}\n`, 'utf8')
 }
-
-
 
 /** 生成 540p 低清代理；已存在且比源文件新时直接复用。 */
 export function ensureVideoProxy(source: string, target: string): boolean {
@@ -4714,10 +4367,7 @@ export function ensureVideoProxy(source: string, target: string): boolean {
   return result.status === 0 && existsSync(target)
 }
 
-
-
 const SPEECH_VERBS = '说|问道|问|答道|答|道|喊道|喊|低声说|低声|笑道|笑|冷笑|开口|咕哝|嘟囔|吼道|吼|叹道|叹'
-
 
 const STOP_WORDS = new Set([
   '一个', '什么', '我们', '你们', '他们', '她们', '这个', '那个', '自己', '没有', '就是', '不是',
@@ -4725,10 +4375,7 @@ const STOP_WORDS = new Set([
   '知道', '觉得', '时候', '起来', '出来', '过来', '一下', '一点', '真的', '不会', '不要', '不能'
 ])
 
-
 const ADDRESS_TERMS = ['您', '你', '先生', '小姐', '老师', '师父', '大人', '陛下', '殿下', '老板', '哥', '姐', '叔', '姨']
-
-
 
 interface DialogueLine {
   speaker: string
@@ -4736,8 +4383,6 @@ interface DialogueLine {
   chapterId?: string
   shotId?: string
 }
-
-
 
 function cleanLine(raw: string): string {
   return raw
@@ -4749,8 +4394,6 @@ function cleanLine(raw: string): string {
     .slice(0, 500)
 }
 
-
-
 function pushLine(list: DialogueLine[], speaker: string, text: string, extra: Partial<DialogueLine> = {}): void {
   let name = speaker.trim()
   if (name.length > 1) name = name.replace(/(说道|问道|答道|笑道|喊道|吼道|叹道|低声说|说|道|问|答|笑|喊|吼|叹)$/u, '')
@@ -4758,8 +4401,6 @@ function pushLine(list: DialogueLine[], speaker: string, text: string, extra: Pa
   if (!name || !line || line.length < 2) return
   list.push({ speaker: name, text: line, ...extra })
 }
-
-
 
 /** 从正文中提取“谁说 + 说了什么”，只收有明确归属的句子。 */
 export function extractChapterDialogue(content: string, chapterId: string): DialogueLine[] {
@@ -4779,8 +4420,6 @@ export function extractChapterDialogue(content: string, chapterId: string): Dial
     return true
   })
 }
-
-
 
 function extractShotDialogue(project: StudioProject): DialogueLine[] {
   const lines: DialogueLine[] = []
@@ -4806,8 +4445,6 @@ function extractShotDialogue(project: StudioProject): DialogueLine[] {
   return lines
 }
 
-
-
 function charBigrams(text: string): Map<string, number> {
   const clean = text.replace(/[^\u4e00-\u9fa5]/g, '')
   const map = new Map<string, number>()
@@ -4817,8 +4454,6 @@ function charBigrams(text: string): Map<string, number> {
   }
   return map
 }
-
-
 
 function cosine(left: Map<string, number>, right: Map<string, number>): number {
   let dot = 0
@@ -4832,8 +4467,6 @@ function cosine(left: Map<string, number>, right: Map<string, number>): number {
   }
   return leftNorm && rightNorm ? dot / Math.sqrt(leftNorm * rightNorm) : 0
 }
-
-
 
 function topPhrases(lines: string[]): string[] {
   const counts = new Map<string, number>()
@@ -4854,8 +4487,6 @@ function topPhrases(lines: string[]): string[] {
     .map(([phrase, count]) => `${phrase}×${count}`)
 }
 
-
-
 function addressTerms(lines: string[]): string[] {
   const counts = new Map<string, number>()
   for (const line of lines) {
@@ -4866,8 +4497,6 @@ function addressTerms(lines: string[]): string[] {
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([term, count]) => `${term}×${count}`)
 }
-
-
 
 function profileFor(character: StudioCharacter, lines: DialogueLine[]): StudioVoiceProfile {
   const texts = lines.map((line) => line.text)
@@ -4892,14 +4521,10 @@ function profileFor(character: StudioCharacter, lines: DialogueLine[]): StudioVo
   }
 }
 
-
-
 export interface VoiceAuditResult {
   audit: StudioVoiceAudit
   checks: StudioCheck[]
 }
-
-
 
 export function auditCharacterVoices(project: StudioProject): VoiceAuditResult {
   const chapterLines = project.chapters.flatMap((chapter) => extractChapterDialogue(chapter.content, chapter.id))
@@ -4990,8 +4615,6 @@ export function auditCharacterVoices(project: StudioProject): VoiceAuditResult {
   return { audit, checks }
 }
 
-
-
 export function applyBlueprintToProject(project: StudioProject, blueprint: StudioBlueprint): StudioProject {
   project.blueprint = blueprint
   project.styleBible = blueprint.styleBible
@@ -5060,8 +4683,6 @@ export function applyBlueprintToProject(project: StudioProject, blueprint: Studi
   return project
 }
 
-
-
 export function applyNovelOutline(project: StudioProject, blueprint: StudioBlueprint): void {
   const units = blueprint.units
   const volumeCount = project.kind === 'novel' ? 3 : 1
@@ -5126,8 +4747,6 @@ export function applyNovelOutline(project: StudioProject, blueprint: StudioBluep
   project.timeline = emptyTimeline(project.brief.aspect)
   // 蓝图事实默认是全书全局事实，不绑定到第一章；否则第三章以后会丢失设定。
 }
-
-
 
 export function applyDramaOutline(project: StudioProject, blueprint: StudioBlueprint): void {
   const units = blueprint.units
@@ -5223,8 +4842,6 @@ export function applyDramaOutline(project: StudioProject, blueprint: StudioBluep
   project.stage = 'storyboard'
 }
 
-
-
 function imagePromptFor(
   project: StudioProject,
   unit: StudioBlueprintUnit,
@@ -5251,13 +4868,9 @@ function imagePromptFor(
   ].filter(Boolean).join('；')
 }
 
-
-
 interface IntentContext {
   selection?: { kind: 'chapter' | 'shot' | 'clip'; id: string }
 }
-
-
 
 interface DraftPlan {
   title: string
@@ -5269,21 +4882,15 @@ interface DraftPlan {
   note?: string
 }
 
-
-
 function shotNumberFromText(text: string): number | null {
   const match = /(?:第\s*)?(?:镜|镜头|shot)\s*0?(\d{1,3})/i.exec(text)
   return match ? Number(match[1]) : null
 }
 
-
-
 function percentFrom(text: string): number | null {
   const match = /(\d{1,3})\s*%/.exec(text)
   return match ? Number(match[1]) : null
 }
-
-
 
 function targetShot(project: StudioProject, text: string, ctx: IntentContext): StudioShot | null {
   if (ctx.selection?.kind === 'shot') {
@@ -5302,14 +4909,27 @@ function targetShot(project: StudioProject, text: string, ctx: IntentContext): S
   return null
 }
 
-
-
 function clipsForShot(project: StudioProject, shotId: string): StudioClip[] {
   return project.timeline.clips.filter((clip) => clip.shotId === shotId)
 }
 
+function chineseNumber(value: string): number | null {
+  if (/^\d+$/.test(value)) return Number(value)
+  const digits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+  if (value === '十') return 10
+  if (value.includes('十')) {
+    const [head, tail] = value.split('十')
+    const tens = head ? digits[head] : 1
+    const ones = tail ? digits[tail] : 0
+    if (tens === undefined || ones === undefined) return null
+    return tens * 10 + ones
+  }
+  return digits[value] ?? null
+}
 
-
+function detectStoryboardExtension(text: string): boolean {
+  return /补全|补齐|补充|新增|添加|扩展/.test(text) && /分镜|镜头/.test(text)
+}
 
 export function draftEditPlan(project: StudioProject, text: string, ctx: IntentContext = {}): DraftPlan {
   const actions: StudioEditAction[] = []
@@ -5318,6 +4938,99 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
   let cost: number | null = 0
   const noteLines: string[] = []
   const shot = targetShot(project, text, ctx)
+  const orderOnly = !/并|同时|然后|顺便|再把|另外|还要|改|重做|换画面|配音|音效|音乐|音量|速度/.test(text)
+  if (orderOnly) {
+    const chapterSwap = /第\s*([0-9一二三四五六七八九十]+)\s*章\s*(?:和|与|跟)\s*第\s*([0-9一二三四五六七八九十]+)\s*章\s*(?:换|调换|交换)/.exec(text)
+    if (chapterSwap && project.kind !== 'drama') {
+      const first = chineseNumber(chapterSwap[1])
+      const second = chineseNumber(chapterSwap[2])
+      const left = first ? project.chapters.find((chapter) => chapter.number === first) : undefined
+      const right = second ? project.chapters.find((chapter) => chapter.number === second) : undefined
+      if (left && right && first && second) {
+        return {
+          title: '章节顺序调整',
+          summary: `交换第 ${first} 章与第 ${second} 章`,
+          actions: [
+            { type: 'move-chapter', chapterId: left.id, chapterNumber: first, to: second },
+            { type: 'move-chapter', chapterId: right.id, chapterNumber: second, to: first }
+          ],
+          effects: [`交换第 ${first} 章与第 ${second} 章`],
+          seconds: 0,
+          cost: 0
+        }
+      }
+    }
+    const chapterMove = /第\s*([0-9一二三四五六七八九十]+)\s*章\s*(?:移到|移动到|挪到|放到|调到|排到)\s*(最前面|最后面|开头|结尾|第\s*([0-9一二三四五六七八九十]+)\s*(?:章|位)?\s*(前面|后面|之前|之后)?)/.exec(text)
+    if (chapterMove && project.kind !== 'drama') {
+      const from = chineseNumber(chapterMove[1])
+      if (from) {
+        const tail = chapterMove[2]
+        let to = 0
+        if (/最前面|开头/.test(tail)) to = 1
+        else if (/最后面|结尾/.test(tail)) to = Math.max(1, project.chapters.length || project.blueprint?.units.length || 1)
+        else {
+          const target = chineseNumber(chapterMove[3] ?? '')
+          if (target) to = target + (/后面|之后/.test(chapterMove[4] ?? '') ? 1 : 0)
+        }
+        if (to) {
+          const chapter = project.chapters.find((item) => item.number === from)
+          return {
+            title: '章节顺序调整',
+            summary: `把第 ${from} 章移到第 ${to} 位`,
+            actions: [{ type: 'move-chapter', ...(chapter ? { chapterId: chapter.id } : {}), chapterNumber: from, to }],
+            effects: [`把第 ${from} 章移到第 ${to} 位`],
+            seconds: 0,
+            cost: 0
+          }
+        }
+      }
+    }
+    const shotSwap = /第\s*([0-9一二三四五六七八九十]+)\s*镜\s*(?:和|与|跟)\s*第\s*([0-9一二三四五六七八九十]+)\s*镜\s*(?:换|调换|交换)/.exec(text)
+    if (shotSwap && project.kind === 'drama') {
+      const first = chineseNumber(shotSwap[1])
+      const second = chineseNumber(shotSwap[2])
+      const left = first ? project.shots.find((item) => item.number === first) : undefined
+      const right = second ? project.shots.find((item) => item.number === second) : undefined
+      if (left && right && first && second) {
+        return {
+          title: '镜头顺序调整',
+          summary: `交换第 ${first} 镜与第 ${second} 镜`,
+          actions: [
+            { type: 'move-shot', shotId: left.id, shotNumber: first, to: second },
+            { type: 'move-shot', shotId: right.id, shotNumber: second, to: first }
+          ],
+          effects: [`交换第 ${first} 镜与第 ${second} 镜`],
+          seconds: 0,
+          cost: 0
+        }
+      }
+    }
+    const shotMove = /第\s*([0-9一二三四五六七八九十]+)\s*镜\s*(?:移到|移动到|挪到|放到|调到|排到)\s*(最前面|最后面|开头|结尾|第\s*([0-9一二三四五六七八九十]+)\s*(?:镜|位)?\s*(前面|后面|之前|之后)?)/.exec(text)
+    if (shotMove && project.kind === 'drama') {
+      const from = chineseNumber(shotMove[1])
+      if (from) {
+        const tail = shotMove[2]
+        let to = 0
+        if (/最前面|开头/.test(tail)) to = 1
+        else if (/最后面|结尾/.test(tail)) to = Math.max(1, project.shots.length)
+        else {
+          const target = chineseNumber(shotMove[3] ?? '')
+          if (target) to = target + (/后面|之后/.test(shotMove[4] ?? '') ? 1 : 0)
+        }
+        if (to) {
+          const target = project.shots.find((item) => item.number === from)
+          return {
+            title: '镜头顺序调整',
+            summary: `把第 ${from} 镜移到第 ${to} 位`,
+            actions: [{ type: 'move-shot', ...(target ? { shotId: target.id } : {}), shotNumber: from, to }],
+            effects: [`把第 ${from} 镜移到第 ${to} 位`],
+            seconds: 0,
+            cost: 0
+          }
+        }
+      }
+    }
+  }
   // 正文改写不再生成“本地改写”候选：正文必须由真实模型写作，写作台提供润色/改写入口。
   // 重新生成类：只排队，确认后执行。
   if (shot) {
@@ -5333,7 +5046,7 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
       seconds += 120
       cost = null
     }
-    if (/重新配音|重配|换.*声音|换.*声线/.test(text)) {
+    if (/重新配音|重配|再配/.test(text)) {
       actions.push({ type: 'regenerate-voice', shotId: shot.id, instruction: text })
       effects.push(`重新生成第 ${shot.number} 镜的配音`)
       seconds += 10
@@ -5370,7 +5083,7 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
         seconds += 8
       }
     }
-    const volumeIntent = /压低|降低|小一点|轻一点|调大|大一点|响一点|音量|声音/.test(text)
+    const volumeIntent = /压低|降低|小一点|轻一点|调大|大一点|响一点|音量/.test(text)
     if (volumeIntent) {
       const down = /压低|降低|小一点|轻一点|降/.test(text)
       const up = /调大|大一点|响一点|提高|升/.test(text)
@@ -5429,6 +5142,35 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
     }
   }
 
+  // 声音页的“加一段雨声/换配乐”不依赖时间线已有片段，直接排队生成。
+  if (actions.length === 0) {
+    const concreteSfx = /雨声|伞骨|心跳|街声/.test(text)
+    const wantsSfx = !/去掉|删掉|不要|关掉|移除/.test(text) && ((concreteSfx && /加|来|生成|铺|要|补|换|做|再/.test(text)) || (/音效/.test(text) && /生成|加一段|来一段|补一段|做一段/.test(text)))
+    if (wantsSfx) {
+      const kind = /心跳/.test(text) ? 'heartbeat' : /伞/.test(text) ? 'umbrella' : /街|车|环境/.test(text) ? 'street' : 'rain'
+      actions.push({ type: 'generate-sfx', sfx: { kind, seconds: 8 }, instruction: text })
+      effects.push(`生成音效：${kind === 'heartbeat' ? '心跳' : kind === 'umbrella' ? '伞骨' : kind === 'street' ? '街声' : '雨声'}`)
+      seconds += 6
+    }
+    const wantsMusic = /配乐|音乐|BGM/.test(text) && /生成|来|换|重做|要|补|做|配|再/.test(text) && !/去掉|删掉|不要|关掉|移除/.test(text)
+    if (wantsMusic) {
+      actions.push({ type: 'generate-music', music: { mood: text.replace(/[，。！？,.!?]/g, ' ').trim().slice(0, 40) }, instruction: text })
+      effects.push('生成新配乐')
+      seconds += 20
+    }
+    if (/去掉|删掉|不要|关掉|移除/.test(text) && /雨声|伞骨|心跳|街声|音效/.test(text)) {
+      const kind = /心跳/.test(text) ? 'heartbeat' : /伞/.test(text) ? 'umbrella' : /街|车|环境/.test(text) ? 'street' : 'rain'
+      actions.push({ type: 'remove-sfx', sfx: { kind }, instruction: text })
+      effects.push(`移除音效：${kind === 'heartbeat' ? '心跳' : kind === 'umbrella' ? '伞骨' : kind === 'street' ? '街声' : '雨声'}`)
+      seconds += 3
+    }
+    if (/去掉|删掉|不要|关掉|移除/.test(text) && /配乐|音乐|BGM/.test(text)) {
+      actions.push({ type: 'remove-music', instruction: text })
+      effects.push('移除配乐')
+      seconds += 3
+    }
+  }
+
   const lockFace = /不要改脸|不改脸|脸不变|保持.*脸/.test(text)
   const lockRain = /雨.*方向.*不|保持.*雨向/.test(text)
   if (lockFace || lockRain) {
@@ -5459,9 +5201,11 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
   const uniqueEffects = [...new Set([...effects, ...noteLines])]
   const title = uniqueActions.some((action) => action.type === 'rewrite-chapter')
     ? '正文改写计划'
-    : uniqueActions.some((action) => action.type === 'regenerate-shot-image' || action.type === 'regenerate-shot-video')
-      ? '镜头重做计划'
-      : '时间线修改计划'
+    : uniqueActions.some((action) => action.type === 'generate-sfx' || action.type === 'generate-music' || action.type === 'remove-sfx' || action.type === 'remove-music')
+      ? '声音修改计划'
+      : uniqueActions.some((action) => action.type === 'regenerate-shot-image' || action.type === 'regenerate-shot-video')
+        ? '镜头重做计划'
+        : '时间线修改计划'
   return {
     title,
     summary: uniqueEffects.join('；'),
@@ -5473,21 +5217,715 @@ export function draftEditPlan(project: StudioProject, text: string, ctx: IntentC
   }
 }
 
-
-
 export interface ApplyPlanResult {
   project: StudioProject
-  regenerate: Array<{ kind: 'image' | 'video' | 'voice'; shotId: string; instruction: string }>
+  regenerate: ApplyPlanRegenerate[]
   timelineChanged: boolean
+  storyboardChanged: boolean
   chapterCandidates: number
+  stage?: StudioStageId
 }
 
+function appendShotFromSeed(project: StudioProject, seed: StudioShotSeed): StudioShot {
+  if (!project.blueprint) throw new Error('蓝图尚未建立，无法补全分镜。')
+  let scene = project.scenes.find((item) => item.number === seed.sceneIndex)
+  if (!scene) {
+    const blueprintSeed = project.blueprint.scenes?.[seed.sceneIndex - 1]
+    if (!blueprintSeed) throw new Error(`找不到第 ${seed.sceneIndex} 场，无法写入第 ${seed.number} 镜。`)
+    scene = {
+      id: studioId('scene'),
+      episodeId: project.episodes[0]?.id ?? '',
+      number: seed.sceneIndex,
+      title: blueprintSeed.title,
+      synopsis: blueprintSeed.synopsis,
+      location: blueprintSeed.location,
+      timeOfDay: blueprintSeed.timeOfDay,
+      characters: [...blueprintSeed.characters],
+      beat: 'Confrontation',
+      updatedAt: nowMs()
+    }
+    project.scenes.push(scene)
+  }
+  if (project.shots.some((shot) => shot.number === seed.number)) {
+    throw new Error(`第 ${seed.number} 镜已经存在，拒绝重复写入。`)
+  }
+  const speakerCharacter = project.characters.find((character) => character.name === seed.speaker)
+  const sceneCharacters = scene.characters
+    .map((name) => project.characters.find((character) => character.name === name))
+    .filter((character): character is StudioCharacter => Boolean(character))
+  const referenceCharacters = [...new Map([
+    ...(speakerCharacter ? [speakerCharacter] : []),
+    ...sceneCharacters
+  ].map((character) => [character.id, character])).values()]
+  const place = project.places.find((item) => item.name === scene.location)
+  const shot: StudioShot = {
+    id: studioId('shot'),
+    sceneId: scene.id,
+    number: seed.number,
+    title: seed.title,
+    action: seed.action,
+    camera: seed.camera || '固定镜头',
+    shotSize: seed.shotSize || '中景',
+    durationSec: Math.max(3, Math.min(20, seed.durationSec || 8)),
+    dialogue: seed.dialogue,
+    speaker: seed.speaker,
+    voiceId: speakerCharacter?.voiceId ?? '',
+    prompt: seed.prompt || `${seed.title}。${seed.action}。${scene.location}。第 ${seed.number} 镜。`,
+    negative: seed.negative,
+    referenceCharacterIds: referenceCharacters.map((character) => character.id),
+    referencePlaceIds: place ? [place.id] : [],
+    referencePropIds: [],
+    imageAssetId: null,
+    videoAssetId: null,
+    voiceAssetId: null,
+    imageCandidates: [],
+    videoCandidates: [],
+    continuity: seed.continuity,
+    lockedReference: false,
+    status: 'ready',
+    updatedAt: nowMs()
+  }
+  project.shots.push(shot)
+  return shot
+}
 
+function syncBlueprintAfterShotAppend(project: StudioProject): void {
+  if (!project.blueprint) return
+  const blueprint = project.blueprint
+  const shots = [...project.shots].sort((left, right) => left.number - right.number)
+  const units = [...blueprint.units]
+  for (const shot of shots) {
+    if (units.some((unit) => unit.index === shot.number)) continue
+    units.push({
+      index: shot.number,
+      title: shot.title,
+      summary: shot.action,
+      seconds: shot.durationSec,
+      camera: shot.camera,
+      shotSize: shot.shotSize,
+      dialogue: shot.dialogue,
+      speaker: shot.speaker
+    })
+  }
+  units.sort((left, right) => left.index - right.index)
+  const scenes = [...project.scenes].sort((left, right) => left.number - right.number)
+  blueprint.units = units
+  blueprint.scenes = scenes.map((scene, index) => {
+    const numbers = shots.filter((shot) => shot.sceneId === scene.id).map((shot) => shot.number)
+    const previous = blueprint.scenes?.[index]
+    return {
+      title: scene.title,
+      synopsis: scene.synopsis,
+      location: scene.location,
+      timeOfDay: scene.timeOfDay,
+      characters: [...scene.characters],
+      unitStart: numbers.length ? Math.min(...numbers) : previous?.unitStart ?? index + 1,
+      unitEnd: numbers.length ? Math.max(...numbers) : previous?.unitEnd ?? index + 1
+    }
+  })
+  const episode = project.episodes[0]
+  if (episode) {
+    episode.sceneIds = scenes.map((scene) => scene.id)
+    episode.durationSec = shots.reduce((sum, shot) => sum + shot.durationSec, 0)
+    episode.updatedAt = nowMs()
+    project.episodes = [episode]
+  }
+}
+
+function patchCharacter(character: StudioCharacter, index: number): StudioCharacter {
+  const name = character.name?.trim() || `人物 ${index + 1}`
+  return {
+    id: character.id || studioId('char'),
+    name,
+    role: character.role?.trim() || '配角',
+    ...(character.age ? { age: character.age.trim() } : {}),
+    look: character.look?.trim() || '外观待定',
+    ...(character.desire ? { desire: character.desire.trim() } : {}),
+    ...(character.fear ? { fear: character.fear.trim() } : {}),
+    ...(character.secret ? { secret: character.secret.trim() } : {}),
+    ...(character.arc ? { arc: character.arc.trim() } : {}),
+    relationships: Array.isArray(character.relationships)
+      ? character.relationships.filter((item) => item?.target?.trim()).map((item) => ({ target: item.target.trim(), label: item.label?.trim() || '关系' }))
+      : [],
+    refAssetIds: Array.isArray(character.refAssetIds) ? [...character.refAssetIds] : []
+  }
+}
+
+function applyBlueprintPatch(project: StudioProject, patch: StudioBlueprintPatch): void {
+  const blueprint = project.blueprint
+  if (!blueprint) throw new Error('还没有蓝图，无法更新蓝图。先在蓝图页生成并确认蓝图。')
+  if (patch.title !== undefined) {
+    blueprint.title = patch.title.trim().slice(0, 120)
+    project.title = blueprint.title
+    project.titleSource = 'user'
+  }
+  if (patch.logline !== undefined && patch.logline.trim()) project.logline = patch.logline.trim().slice(0, 1200)
+  if (patch.genre !== undefined) {
+    blueprint.genre = patch.genre.trim().slice(0, 120)
+    project.brief.genre = blueprint.genre
+  }
+  if (patch.tone !== undefined) {
+    blueprint.tone = patch.tone.trim().slice(0, 120)
+    project.brief.tone = blueprint.tone
+  }
+  if (patch.audience !== undefined) {
+    blueprint.audience = patch.audience.trim().slice(0, 120)
+    project.brief.audience = blueprint.audience
+  }
+  if (patch.storyCore !== undefined) blueprint.storyCore = patch.storyCore.trim().slice(0, 1200)
+  if (patch.emotion !== undefined) blueprint.emotion = patch.emotion.trim().slice(0, 400)
+  if (patch.pitch !== undefined) blueprint.pitch = patch.pitch.trim().slice(0, 2000)
+  if (patch.structure !== undefined) blueprint.structure = patch.structure.trim().slice(0, 1200)
+  if (patch.styleBible) {
+    blueprint.styleBible = { ...blueprint.styleBible, ...patch.styleBible }
+    project.styleBible = { ...blueprint.styleBible }
+  }
+  if (patch.characters?.length) {
+    blueprint.characters = patch.characters.map(patchCharacter)
+    project.characters = blueprint.characters.map((character) => ({ ...character }))
+    const allowed = new Set(project.characters.map((character) => character.name))
+    for (const scene of project.scenes) {
+      scene.characters = scene.characters.filter((name) => allowed.has(name))
+      scene.updatedAt = nowMs()
+    }
+    for (const shot of project.shots) {
+      if (shot.speaker && !allowed.has(shot.speaker)) {
+        shot.speaker = ''
+        shot.voiceAssetId = null
+      }
+      shot.referenceCharacterIds = shot.referenceCharacterIds.filter((id) => project.characters.some((character) => character.id === id))
+      shot.updatedAt = nowMs()
+    }
+  }
+  if (patch.places?.length) {
+    blueprint.places = patch.places.map((place, index) => ({
+      id: place.id || studioId('place'),
+      name: place.name?.trim() || `地点 ${index + 1}`,
+      description: place.description?.trim() || '地点说明待定',
+      refAssetIds: Array.isArray(place.refAssetIds) ? [...place.refAssetIds] : []
+    }))
+    project.places = blueprint.places.map((place) => ({ ...place }))
+  }
+  syncCharacterFacts(project)
+  project.stages.blueprint = {
+    status: blueprint.approved ? 'done' : 'review',
+    updatedAt: nowMs(),
+    message: '协作者已按你的要求更新蓝图',
+    progress: blueprint.approved ? 100 : 70
+  }
+  for (const stageId of ['outline', 'writing', 'storyboard', 'visuals', 'voice', 'timeline', 'review', 'delivery'] as const) {
+    const stage = project.stages[stageId]
+    if (stage && (stage.status === 'done' || stage.status === 'review')) {
+      project.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message: '蓝图已更新，这一步需要重新核对' }
+    }
+  }
+  project.stage = 'blueprint'
+}
+
+function replaceNameDeep(value: string, from: string, to: string): string {
+  if (!value || !from) return value
+  return value.split(from).join(to)
+}
+
+function renameEntity(project: StudioProject, rename: StudioRenameRequest): void {
+  const from = rename.from.trim()
+  const to = rename.to.trim()
+  if (!from || !to || from === to) throw new Error('改名需要明确原来的名字和新的名字。')
+  if (rename.target === 'character') {
+    const character = project.characters.find((item) => item.name === from)
+    if (!character) throw new Error(`人物列表里没有「${from}」。`)
+    character.name = to
+    for (const item of project.characters) {
+      for (const relationship of item.relationships) {
+        if (relationship.target === from) relationship.target = to
+      }
+    }
+    for (const scene of project.scenes) scene.characters = scene.characters.map((name) => name === from ? to : name)
+    for (const shot of project.shots) {
+      if (shot.speaker === from) shot.speaker = to
+      shot.title = replaceNameDeep(shot.title, from, to)
+      shot.action = replaceNameDeep(shot.action, from, to)
+      shot.dialogue = replaceNameDeep(shot.dialogue, from, to)
+      shot.continuity = replaceNameDeep(shot.continuity, from, to)
+      shot.prompt = replaceNameDeep(shot.prompt, from, to)
+      shot.negative = replaceNameDeep(shot.negative, from, to)
+      shot.updatedAt = nowMs()
+    }
+    if (project.blueprint) {
+      project.blueprint.characters = project.characters.map((item) => ({ ...item }))
+      project.blueprint.scenes = project.blueprint.scenes?.map((scene) => ({
+        ...scene,
+        characters: scene.characters.map((name) => name === from ? to : name)
+      }))
+    }
+  } else {
+    const place = project.places.find((item) => item.name === from)
+    if (!place) throw new Error(`地点列表里没有「${from}」。`)
+    place.name = to
+    for (const scene of project.scenes) if (scene.location === from) scene.location = to
+    if (project.blueprint) {
+      project.blueprint.places = project.places.map((item) => ({ ...item }))
+      project.blueprint.scenes = project.blueprint.scenes?.map((scene) => scene.location === from ? { ...scene, location: to } : scene)
+    }
+  }
+  project.logline = replaceNameDeep(project.logline, from, to)
+  if (project.blueprint) {
+    project.blueprint.storyCore = replaceNameDeep(project.blueprint.storyCore, from, to)
+    project.blueprint.pitch = replaceNameDeep(project.blueprint.pitch, from, to)
+    project.blueprint.structure = replaceNameDeep(project.blueprint.structure, from, to)
+    project.blueprint.emotion = replaceNameDeep(project.blueprint.emotion, from, to)
+    project.blueprint.units = project.blueprint.units.map((unit) => ({
+      ...unit,
+      title: replaceNameDeep(unit.title, from, to),
+      summary: replaceNameDeep(unit.summary, from, to),
+      dialogue: unit.dialogue ? replaceNameDeep(unit.dialogue, from, to) : unit.dialogue,
+      speaker: unit.speaker === from ? to : unit.speaker,
+      beats: unit.beats?.map((beat) => replaceNameDeep(beat, from, to))
+    }))
+    if (project.blueprint.facts) {
+      project.blueprint.facts = project.blueprint.facts.map((fact) => ({
+        ...fact,
+        subject: replaceNameDeep(fact.subject, from, to),
+        object: replaceNameDeep(fact.object, from, to)
+      }))
+    }
+  }
+  for (const chapter of project.chapters) {
+    chapter.title = replaceNameDeep(chapter.title, from, to)
+    chapter.synopsis = replaceNameDeep(chapter.synopsis, from, to)
+    chapter.summary = chapter.summary ? replaceNameDeep(chapter.summary, from, to) : chapter.summary
+    chapter.beats = chapter.beats.map((beat) => replaceNameDeep(beat, from, to))
+    chapter.content = replaceNameDeep(chapter.content, from, to)
+    chapter.updatedAt = nowMs()
+  }
+  for (const fact of project.facts) {
+    fact.subject = replaceNameDeep(fact.subject, from, to)
+    fact.object = replaceNameDeep(fact.object, from, to)
+  }
+  for (const clip of project.timeline.clips) {
+    clip.label = replaceNameDeep(clip.label, from, to)
+    if (clip.text) clip.text = replaceNameDeep(clip.text, from, to)
+  }
+  const changedStages: StudioStageId[] = ['visuals', 'voice', 'timeline', 'review', 'delivery']
+  for (const stageId of changedStages) {
+    const stage = project.stages[stageId]
+    if (stage && (stage.status === 'done' || stage.status === 'review')) {
+      project.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message: '人物或地点已改名，旧素材需要重新核对' }
+    }
+  }
+}
+
+function patchOutlineUnit(unit: Partial<StudioBlueprintUnit> & { index?: number }, fallback?: StudioBlueprintUnit): StudioBlueprintUnit {
+  const index = Math.max(1, Math.round(unit.index || fallback?.index || 1))
+  return {
+    ...(fallback ?? { index, title: `第 ${index} 章`, summary: '' }),
+    index,
+    title: unit.title?.trim().slice(0, 160) || fallback?.title || `第 ${index} 章`,
+    summary: unit.summary?.trim().slice(0, 1200) || fallback?.summary || '',
+    ...(unit.wordTarget ? { wordTarget: Math.max(500, Math.min(20_000, Math.round(unit.wordTarget))) } : {}),
+    ...(unit.seconds ? { seconds: Math.max(1, Math.min(120, unit.seconds)) } : {}),
+    ...(unit.camera ? { camera: unit.camera.trim().slice(0, 200) } : {}),
+    ...(unit.shotSize ? { shotSize: unit.shotSize.trim().slice(0, 80) } : {}),
+    ...(unit.dialogue !== undefined ? { dialogue: unit.dialogue.trim().slice(0, 500) } : {}),
+    ...(unit.speaker !== undefined ? { speaker: unit.speaker.trim().slice(0, 80) } : {}),
+    ...(unit.beats?.length ? { beats: unit.beats.map((beat) => beat.trim()).filter(Boolean).slice(0, 8) } : {})
+  }
+}
+
+function applyOutlinePatch(project: StudioProject, patch: StudioOutlinePatch): void {
+  const blueprint = project.blueprint
+  if (!blueprint) throw new Error('还没有蓝图，无法更新大纲。')
+  if (!patch.units?.length) throw new Error('大纲修改没有给出任何单元。')
+  const byIndex = new Map(blueprint.units.map((unit) => [unit.index, unit]))
+  for (const raw of patch.units) {
+    const existing = byIndex.get(Math.max(1, Math.round(raw.index || 0)))
+    const next = patchOutlineUnit(raw, existing)
+    byIndex.set(next.index, next)
+  }
+  blueprint.units = [...byIndex.values()].sort((left, right) => left.index - right.index)
+  if (patch.scenes?.length) {
+    const scenes = [...(blueprint.scenes ?? [])]
+    for (const seed of patch.scenes) {
+      const index = Math.max(1, Math.round(seed.unitStart || 0))
+      const existingIndex = scenes.findIndex((scene, position) => position + 1 === index)
+      const next = {
+        title: seed.title?.trim() || `第 ${index} 场`,
+        synopsis: seed.synopsis?.trim() || '',
+        location: seed.location?.trim() || '',
+        timeOfDay: seed.timeOfDay?.trim() || '',
+        characters: Array.isArray(seed.characters) ? seed.characters.filter(Boolean).slice(0, 20) : [],
+        unitStart: Math.max(1, Math.round(seed.unitStart || index)),
+        unitEnd: Math.max(1, Math.round(seed.unitEnd || index)),
+        ...(seed.sourceChapter ? { sourceChapter: seed.sourceChapter } : {})
+      }
+      if (existingIndex >= 0) scenes[existingIndex] = next
+      else scenes.push(next)
+    }
+    blueprint.scenes = scenes
+  }
+  blueprint.outlineModel = project.runtime.textModelNote ?? blueprint.outlineModel
+  if (project.kind === 'drama') {
+    if (project.shots.length) syncDramaOutline(project, blueprint)
+    else applyDramaOutline(project, blueprint)
+    project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '协作者已更新镜头计划', progress: 100 }
+    if (project.stages.storyboard.status === 'done' || project.stages.storyboard.status === 'review') {
+      project.stages.storyboard = { ...project.stages.storyboard, status: 'stale', updatedAt: nowMs(), message: '大纲已更新，分镜需要核对' }
+    }
+    for (const stageId of ['visuals', 'voice', 'timeline', 'review', 'delivery'] as const) {
+      const stage = project.stages[stageId]
+      if (stage && (stage.status === 'done' || stage.status === 'review')) {
+        project.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message: '大纲已更新，旧素材需要重新核对' }
+      }
+    }
+    project.stage = 'outline'
+  } else {
+    if (project.chapters.some((chapter) => chapter.content.trim())) {
+      updateNovelOutline(project, blueprint)
+      const extras = project.chapters.filter((chapter) => chapter.number > blueprint.units.length && !chapter.content.trim() && !chapter.candidates.length)
+      if (extras.length) {
+        project.chapters = project.chapters.filter((chapter) => !extras.includes(chapter))
+        for (const volume of project.volumes) volume.chapterIds = volume.chapterIds.filter((id) => project.chapters.some((chapter) => chapter.id === id))
+      }
+      project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '协作者已更新章纲，正文保持不变', progress: 100 }
+      project.stages.writing = { status: 'stale', updatedAt: nowMs(), message: '章纲已更新，已有正文需要核对', progress: 60 }
+    } else {
+      applyNovelOutline(project, blueprint)
+      project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '协作者已更新章纲', progress: 100 }
+      project.stages.writing = { status: 'ready', updatedAt: nowMs(), message: '可以按新章纲开始写', progress: 0 }
+    }
+    thisMarkStale(project, ['review', 'delivery'], '章纲已更新，旧检查与交付需要重新核对')
+    project.stage = 'outline'
+  }
+  project.updatedAt = nowMs()
+}
+
+function thisMarkStale(project: StudioProject, stageIds: StudioStageId[], message: string): void {
+  for (const stageId of stageIds) {
+    const stage = project.stages[stageId]
+    if (stage && (stage.status === 'done' || stage.status === 'review')) {
+      project.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message }
+    }
+  }
+}
+
+function applyChapterPatch(project: StudioProject, action: StudioEditAction): void {
+  const patch = action.chapter
+  if (!patch) throw new Error('章节修改没有给出内容。')
+  const chapter = action.chapterId
+    ? project.chapters.find((item) => item.id === action.chapterId)
+    : project.chapters.find((item) => item.number === (action.chapterNumber ?? patch.number))
+  if (!chapter) throw new Error(`找不到第 ${action.chapterNumber ?? patch.number ?? '?'} 章。`)
+  if (patch.title !== undefined) chapter.title = patch.title.trim().slice(0, 160) || chapter.title
+  if (patch.synopsis !== undefined) chapter.synopsis = patch.synopsis.trim().slice(0, 2000)
+  if (patch.beats?.length) chapter.beats = patch.beats.map((beat) => beat.trim()).filter(Boolean).slice(0, 12)
+  if (patch.content !== undefined) {
+    const content = stripProseDecorations(patch.content)
+    if (!content.trim()) throw new Error('新正文是空的，已拒绝覆盖。')
+    if (chapter.content.trim()) {
+      chapter.versions.unshift({ id: studioId('cv'), content: chapter.content, createdAt: nowMs(), reason: '协作者替换前自动留档', wordCount: countWords(chapter.content) })
+      chapter.versions = chapter.versions.slice(0, 30)
+    }
+    chapter.content = content
+    chapter.summary = summarizeChapterText(content)
+    chapter.revision += 1
+    chapter.status = 'done'
+    chapter.updatedAt = nowMs()
+    project.stages.writing = { status: 'done', updatedAt: nowMs(), message: `第 ${chapter.number} 章已由协作者替换（${countWords(content)} 字）`, progress: 100 }
+    thisMarkStale(project, ['review', 'delivery'], '正文已更新，旧检查与交付需要重新生成')
+    project.stage = 'writing'
+  } else {
+    chapter.updatedAt = nowMs()
+    project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '章节信息已更新', progress: 100 }
+    project.stage = 'outline'
+  }
+  project.updatedAt = nowMs()
+}
+
+function applyShotPatch(project: StudioProject, action: StudioEditAction): { shot: StudioShot; voiceChanged: boolean } {
+  const patch = action.shot
+  if (!patch) throw new Error('镜头修改没有给出内容。')
+  const shot = action.shotId
+    ? project.shots.find((item) => item.id === action.shotId)
+    : project.shots.find((item) => item.number === (action.shotNumber ?? patch.number))
+  if (!shot) throw new Error(`找不到第 ${action.shotNumber ?? patch.number ?? '?'} 镜。`)
+  const previousDialogue = shot.dialogue
+  const previousAction = shot.action
+  const previousSpeaker = shot.speaker
+  const previousVoiceId = shot.voiceId
+  if (patch.sceneIndex) {
+    const scene = project.scenes.find((item) => item.number === patch.sceneIndex)
+    if (scene) shot.sceneId = scene.id
+  }
+  if (patch.title !== undefined) shot.title = patch.title.trim().slice(0, 160) || shot.title
+  if (patch.action !== undefined) shot.action = patch.action.trim().slice(0, 2000) || shot.action
+  if (patch.camera !== undefined) shot.camera = patch.camera.trim().slice(0, 200) || shot.camera
+  if (patch.shotSize !== undefined) shot.shotSize = patch.shotSize.trim().slice(0, 80) || shot.shotSize
+  if (patch.durationSec !== undefined) shot.durationSec = Math.max(3, Math.min(20, Math.round(patch.durationSec * 10) / 10))
+  if (patch.dialogue !== undefined) shot.dialogue = patch.dialogue.trim().slice(0, 500)
+  if (patch.speaker !== undefined) shot.speaker = patch.speaker.trim().slice(0, 80)
+  if (shot.speaker !== previousSpeaker) {
+    shot.voiceId = project.characters.find((character) => character.name === shot.speaker)?.voiceId ?? shot.voiceId
+    shot.voiceAssetId = null
+  }
+  if (patch.voiceId !== undefined) shot.voiceId = patch.voiceId.trim().slice(0, 200)
+  if (patch.continuity !== undefined) shot.continuity = patch.continuity.trim().slice(0, 500)
+  if (patch.prompt !== undefined) shot.prompt = patch.prompt.trim().slice(0, 4000) || shot.prompt
+  if (patch.negative !== undefined) shot.negative = patch.negative.trim().slice(0, 1000)
+  const voiceChanged = shot.dialogue !== previousDialogue || shot.speaker !== previousSpeaker || shot.voiceId !== previousVoiceId
+  if (voiceChanged) shot.voiceAssetId = null
+  if (shot.action !== previousAction && (shot.imageAssetId || shot.videoAssetId)) shot.status = 'stale'
+  shot.updatedAt = nowMs()
+  const unit = project.blueprint?.units.find((item) => item.index === shot.number)
+  if (unit) {
+    unit.title = shot.title
+    unit.summary = shot.action
+    unit.seconds = shot.durationSec
+    unit.camera = shot.camera
+    unit.shotSize = shot.shotSize
+    unit.dialogue = shot.dialogue
+    unit.speaker = shot.speaker
+  }
+  project.stages.storyboard = { status: 'done', updatedAt: nowMs(), message: `第 ${shot.number} 镜已由协作者更新`, progress: 100 }
+  thisMarkStale(project, ['visuals', 'voice', 'timeline', 'review', 'delivery'], '镜头文字已更新，旧画面、配音与交付需要重新核对')
+  project.stage = 'storyboard'
+  project.updatedAt = nowMs()
+  return { shot, voiceChanged }
+}
+
+function syncCharacterFacts(project: StudioProject): void {
+  const manualFacts = project.facts.filter((fact) => fact.source === 'manual')
+  const generated: StudioFact[] = []
+  for (const character of project.characters) {
+    if (character.desire) {
+      generated.push({ id: studioId('fact'), subject: character.name, predicate: '想要', object: character.desire, confidence: 0.85, source: 'ai', createdAt: nowMs() })
+    }
+    for (const relationship of character.relationships) {
+      generated.push({ id: studioId('fact'), subject: character.name, predicate: `与${relationship.target}的关系`, object: relationship.label, confidence: 0.8, source: 'ai', createdAt: nowMs() })
+    }
+  }
+  project.facts = [...manualFacts, ...generated]
+}
+
+function applyCharacterPatch(project: StudioProject, patch: StudioCharacterPatch): { shotIds: string[]; voiceChanged: boolean; visualChanged: boolean } {
+  let character = project.characters.find((item) => item.name === patch.name)
+  if (!character) throw new Error(`人物列表里没有「${patch.name}」。`)
+  const previousName = character.name
+  if (patch.newName && patch.newName.trim() && patch.newName.trim() !== previousName) {
+    renameEntity(project, { target: 'character', from: previousName, to: patch.newName.trim() })
+    character = project.characters.find((item) => item.name === patch.newName!.trim()) ?? character
+  }
+  const previousVoiceId = character.voiceId ?? ''
+  const previousLook = character.look
+  if (patch.role !== undefined) character.role = patch.role.trim().slice(0, 80) || character.role
+  if (patch.age !== undefined) character.age = patch.age.trim().slice(0, 40) || undefined
+  if (patch.look !== undefined) character.look = patch.look.trim().slice(0, 1000) || character.look
+  if (patch.voiceId !== undefined) character.voiceId = patch.voiceId.trim().slice(0, 200) || undefined
+  if (patch.desire !== undefined) character.desire = patch.desire.trim().slice(0, 400) || undefined
+  if (patch.fear !== undefined) character.fear = patch.fear.trim().slice(0, 400) || undefined
+  if (patch.secret !== undefined) character.secret = patch.secret.trim().slice(0, 400) || undefined
+  if (patch.arc !== undefined) character.arc = patch.arc.trim().slice(0, 800) || undefined
+  if (patch.relationships !== undefined) {
+    character.relationships = patch.relationships
+      .filter((item) => item?.target?.trim())
+      .map((item) => ({ target: item.target.trim(), label: item.label?.trim() || '关系' }))
+  }
+  if (patch.refAssetIds !== undefined) character.refAssetIds = [...patch.refAssetIds]
+  if (patch.locked !== undefined) character.locked = patch.locked
+  const shotIds: string[] = []
+  const voiceChanged = (character.voiceId ?? '') !== previousVoiceId
+  if (voiceChanged) {
+    for (const shot of project.shots) {
+      if (shot.speaker !== character.name) continue
+      shot.voiceId = character.voiceId ?? ''
+      shot.voiceAssetId = null
+      shot.updatedAt = nowMs()
+      shotIds.push(shot.id)
+    }
+  }
+  if (project.blueprint) {
+    project.blueprint.characters = project.characters.map((item) => ({ ...item }))
+    const allowed = new Set(project.characters.map((item) => item.name))
+    for (const scene of project.scenes) {
+      scene.characters = scene.characters.filter((name) => allowed.has(name))
+      scene.updatedAt = nowMs()
+    }
+  }
+  syncCharacterFacts(project)
+  project.stages.blueprint = {
+    status: project.blueprint?.approved ? 'done' : 'review',
+    updatedAt: nowMs(),
+    message: `协作者已更新人物「${character.name}」`,
+    progress: project.blueprint?.approved ? 100 : 70
+  }
+  const visualChanged = character.look !== previousLook || patch.refAssetIds !== undefined
+  if (visualChanged) thisMarkStale(project, ['visuals', 'storyboard'], '人物外观已更新，旧画面需要重新核对')
+  if (voiceChanged) thisMarkStale(project, ['voice'], '人物声线已更新，旧配音需要重新生成')
+  if (!voiceChanged && !visualChanged) thisMarkStale(project, ['outline'], '人物设定已更新，大纲需要核对')
+  project.updatedAt = nowMs()
+  return { shotIds, voiceChanged, visualChanged }
+}
+
+function applyPlacePatch(project: StudioProject, patch: StudioPlacePatch): { visualChanged: boolean } {
+  let place = project.places.find((item) => item.name === patch.name)
+  if (!place) throw new Error(`地点列表里没有「${patch.name}」。`)
+  const previousName = place.name
+  const previousDescription = place.description
+  if (patch.newName && patch.newName.trim() && patch.newName.trim() !== previousName) {
+    renameEntity(project, { target: 'place', from: previousName, to: patch.newName.trim() })
+    place = project.places.find((item) => item.name === patch.newName!.trim()) ?? place
+  }
+  if (patch.description !== undefined) place.description = patch.description.trim().slice(0, 1200) || place.description
+  if (patch.refAssetIds !== undefined) place.refAssetIds = [...patch.refAssetIds]
+  if (project.blueprint) project.blueprint.places = project.places.map((item) => ({ ...item }))
+  const visualChanged = place.description !== previousDescription || patch.refAssetIds !== undefined
+  if (visualChanged) thisMarkStale(project, ['visuals', 'storyboard'], '地点设定已更新，旧画面需要重新核对')
+  project.stages.blueprint = {
+    status: project.blueprint?.approved ? 'done' : 'review',
+    updatedAt: nowMs(),
+    message: `协作者已更新地点「${place.name}」`,
+    progress: project.blueprint?.approved ? 100 : 70
+  }
+  project.updatedAt = nowMs()
+  return { visualChanged }
+}
+
+function moveChapter(project: StudioProject, action: StudioEditAction): void {
+  if (project.kind === 'drama') throw new Error('漫剧没有正文章节，请用 move-shot 调整镜头顺序。')
+  const to = Math.max(1, Math.round(action.to ?? 0))
+  if (!to) throw new Error('没有给出章节要移动到的位置。')
+  const chapters = [...project.chapters].sort((left, right) => left.number - right.number)
+  if (!chapters.length) {
+    if (!project.blueprint) throw new Error('还没有大纲，无法调整顺序。')
+    const units = [...project.blueprint.units].sort((left, right) => left.index - right.index)
+    const index = action.chapterId
+      ? units.findIndex((unit) => String(unit.index) === action.chapterId)
+      : units.findIndex((unit) => unit.index === action.chapterNumber)
+    if (index < 0) throw new Error(`找不到第 ${action.chapterNumber ?? '?'} 个大纲单元。`)
+    const [unit] = units.splice(index, 1)
+    units.splice(Math.min(units.length, to - 1), 0, unit)
+    project.blueprint.units = units.map((item, position) => ({ ...item, index: position + 1 }))
+    project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '大纲顺序已调整', progress: 100 }
+    project.stage = 'outline'
+    project.updatedAt = nowMs()
+    return
+  }
+  const index = action.chapterId
+    ? chapters.findIndex((chapter) => chapter.id === action.chapterId)
+    : chapters.findIndex((chapter) => chapter.number === action.chapterNumber)
+  if (index < 0) throw new Error(`找不到第 ${action.chapterNumber ?? '?'} 章。`)
+  const oldNumbers = new Map(chapters.map((chapter) => [chapter.id, chapter.number]))
+  const oldUnits = new Map((project.blueprint?.units ?? []).map((unit) => [unit.index, unit]))
+  const [chapter] = chapters.splice(index, 1)
+  chapters.splice(Math.min(chapters.length, to - 1), 0, chapter)
+  const nextUnits: StudioBlueprintUnit[] = []
+  chapters.forEach((item, position) => {
+    const oldNumber = oldNumbers.get(item.id) ?? item.number
+    const unit = oldUnits.get(oldNumber)
+    nextUnits.push(unit
+      ? { ...unit, index: position + 1 }
+      : { index: position + 1, title: item.title, summary: item.synopsis, wordTarget: item.wordTarget, beats: [...item.beats] })
+    item.number = position + 1
+    item.updatedAt = nowMs()
+  })
+  for (const unit of oldUnits.values()) {
+    if (unit.index > chapters.length) nextUnits.push({ ...unit, index: nextUnits.length + 1 })
+  }
+  project.chapters = chapters
+  if (project.blueprint) project.blueprint.units = nextUnits
+  for (const volume of project.volumes) {
+    volume.chapterIds = chapters.filter((item) => item.volumeId === volume.id).map((item) => item.id)
+  }
+  project.stages.writing = { ...project.stages.writing, updatedAt: nowMs(), message: '章节顺序已调整', ...(project.stages.writing.status === 'waiting' ? { status: 'ready' as const } : {}) }
+  thisMarkStale(project, ['review', 'delivery'], '章节顺序已调整，旧检查与交付需要重新核对')
+  project.stage = 'writing'
+  project.updatedAt = nowMs()
+}
+
+function moveShot(project: StudioProject, action: StudioEditAction): void {
+  const to = Math.max(1, Math.round(action.to ?? 0))
+  if (!to) throw new Error('没有给出镜头要移动到的位置。')
+  const shots = [...project.shots].sort((left, right) => left.number - right.number)
+  const index = action.shotId
+    ? shots.findIndex((shot) => shot.id === action.shotId)
+    : shots.findIndex((shot) => shot.number === action.shotNumber)
+  if (index < 0) throw new Error(`找不到第 ${action.shotNumber ?? '?'} 镜。`)
+  const oldNumbers = new Map(shots.map((shot) => [shot.id, shot.number]))
+  const [shot] = shots.splice(index, 1)
+  const insertAt = Math.min(shots.length, to - 1)
+  const targetSceneId = shots[Math.min(shots.length - 1, insertAt)]?.sceneId
+  shots.splice(insertAt, 0, shot)
+  if (targetSceneId) shot.sceneId = targetSceneId
+  const oldUnits = new Map((project.blueprint?.units ?? []).map((unit) => [unit.index, unit]))
+  shots.forEach((item, position) => {
+    item.number = position + 1
+    item.updatedAt = nowMs()
+  })
+  project.shots = shots
+  if (project.blueprint) {
+    project.blueprint.units = shots.map((item) => {
+      const oldNumber = oldNumbers.get(item.id) ?? item.number
+      const unit = oldUnits.get(oldNumber)
+      return {
+        ...(unit ?? { index: item.number, title: item.title, summary: item.action }),
+        index: item.number,
+        title: item.title,
+        summary: item.action,
+        seconds: item.durationSec,
+        camera: item.camera,
+        shotSize: item.shotSize,
+        dialogue: item.dialogue,
+        speaker: item.speaker
+      }
+    })
+    project.blueprint.scenes = project.scenes
+      .slice()
+      .sort((left, right) => left.number - right.number)
+      .map((scene) => {
+        const numbers = shots.filter((item) => item.sceneId === scene.id).map((item) => item.number)
+        return {
+          title: scene.title,
+          synopsis: scene.synopsis,
+          location: scene.location,
+          timeOfDay: scene.timeOfDay,
+          characters: [...scene.characters],
+          unitStart: numbers.length ? Math.min(...numbers) : scene.number,
+          unitEnd: numbers.length ? Math.max(...numbers) : scene.number
+        }
+      })
+  }
+  const episode = project.episodes[0]
+  if (episode) {
+    episode.sceneIds = project.scenes.slice().sort((left, right) => left.number - right.number).map((scene) => scene.id)
+    episode.updatedAt = nowMs()
+  }
+  project.stages.storyboard = { status: 'done', updatedAt: nowMs(), message: `${project.shots.length} 镜顺序已调整`, progress: 100 }
+  thisMarkStale(project, ['visuals', 'voice', 'timeline', 'review', 'delivery'], '镜头顺序已调整，旧画面、配音与交付需要重新核对')
+  project.stage = 'storyboard'
+  project.updatedAt = nowMs()
+}
+
+export interface ApplyPlanRegenerate {
+  kind: 'image' | 'video' | 'voice' | 'sfx' | 'music' | 'chapter'
+  shotId?: string
+  shotIds?: string[]
+  chapterId?: string
+  instruction?: string
+  voiceId?: string
+  sfxKind?: 'rain' | 'umbrella' | 'heartbeat' | 'street'
+  seconds?: number
+  mood?: string
+  engine?: 'model' | 'local'
+}
 
 export function applyEditPlan(project: StudioProject, plan: StudioEditPlan): ApplyPlanResult {
+  if (!plan.actions.length) throw new Error('这个计划没有可执行的修改，已阻止应用。')
   let timelineChanged = false
+  let storyboardChanged = false
   let chapterCandidates = 0
+  let requestedStage: StudioStageId | undefined
   const regenerate: ApplyPlanResult['regenerate'] = []
+  const shotIdFor = (action: StudioEditAction): string | undefined =>
+    action.shotId ?? project.shots.find((shot) => shot.number === action.shotNumber)?.id
   const snapshot = {
     id: studioId('tl'),
     createdAt: nowMs(),
@@ -5555,20 +5993,52 @@ export function applyEditPlan(project: StudioProject, plan: StudioEditPlan): App
           }
         }
         break
-      case 'rewrite-chapter':
-        throw new Error('助手不再生成本地改写稿；请在写作台用「润色」或「重写本章」调用当前文本模型。')
+      case 'rewrite-chapter': {
+        const chapter = action.chapterId
+          ? project.chapters.find((item) => item.id === action.chapterId)
+          : project.chapters.find((item) => item.number === (action.chapterNumber ?? action.chapter?.number))
+        if (!chapter) throw new Error('找不到要重写的章节。')
+        regenerate.push({ kind: 'chapter', chapterId: chapter.id, instruction: action.instruction ?? action.text ?? '按协作者计划重写本章' })
+        requestedStage = 'writing'
+        break
+      }
 
-      case 'regenerate-shot-image':
-        if (action.shotId) regenerate.push({ kind: 'image', shotId: action.shotId, instruction: withLockNotes(action.shotId, action.instruction) })
+      case 'regenerate-shot-image': {
+        const shotId = shotIdFor(action)
+        if (shotId) regenerate.push({ kind: 'image', shotId, instruction: withLockNotes(shotId, action.instruction) })
+        requestedStage = 'visuals'
         break
-      case 'regenerate-shot-video':
-        if (action.shotId) regenerate.push({ kind: 'video', shotId: action.shotId, instruction: withLockNotes(action.shotId, action.instruction) })
+      }
+      case 'regenerate-shot-video': {
+        const shotId = shotIdFor(action)
+        if (shotId) regenerate.push({ kind: 'video', shotId, instruction: withLockNotes(shotId, action.instruction) })
+        requestedStage = 'visuals'
         break
-      case 'regenerate-voice':
-        if (action.shotId) regenerate.push({ kind: 'voice', shotId: action.shotId, instruction: withLockNotes(action.shotId, action.instruction) })
+      }
+      case 'regenerate-voice': {
+        const shotId = shotIdFor(action)
+        if (action.scope === 'all' || (!shotId && !action.shotNumber)) {
+          const shotIds = project.shots.filter((shot) => shot.dialogue.trim()).map((shot) => shot.id)
+          if (!shotIds.length) throw new Error('还没有可配音的台词。')
+          regenerate.push({ kind: 'voice', shotIds, instruction: action.instruction, voiceId: action.voiceId })
+        } else if (shotId) {
+          regenerate.push({ kind: 'voice', shotId, instruction: withLockNotes(shotId, action.instruction), voiceId: action.voiceId })
+        } else {
+          throw new Error(`找不到第 ${action.shotNumber ?? '?'} 镜，无法重配。`)
+        }
+        requestedStage = 'voice'
+        break
+      }
+      case 'append-shots':
+        if (action.shots?.length) {
+          for (const seed of action.shots) appendShotFromSeed(project, seed)
+          storyboardChanged = true
+        }
+        requestedStage = 'storyboard'
         break
       case 'lock-reference': {
-        const shot = action.shotId ? project.shots.find((item) => item.id === action.shotId) : undefined
+        const shotId = shotIdFor(action)
+        const shot = shotId ? project.shots.find((item) => item.id === shotId) : undefined
         if (shot) {
           shot.lockedReference = true
           const note = action.note?.trim()
@@ -5577,6 +6047,96 @@ export function applyEditPlan(project: StudioProject, plan: StudioEditPlan): App
           }
           shot.updatedAt = nowMs()
         }
+        break
+      }
+      case 'update-blueprint':
+        if (!action.blueprint) throw new Error('蓝图修改没有给出内容。')
+        applyBlueprintPatch(project, action.blueprint)
+        requestedStage = 'blueprint'
+        break
+      case 'replace-outline':
+        if (!action.outline) throw new Error('大纲修改没有给出内容。')
+        applyOutlinePatch(project, action.outline)
+        requestedStage = 'outline'
+        break
+      case 'update-chapter':
+        applyChapterPatch(project, action)
+        requestedStage = project.stage
+        break
+      case 'update-shot': {
+        const result = applyShotPatch(project, action)
+        if (result.voiceChanged) {
+          regenerate.push({ kind: 'voice', shotId: result.shot.id, instruction: action.instruction, voiceId: action.shot?.voiceId })
+        }
+        // 只改台词时仍停在分镜；明确改声线/说话人才跳到声音页。
+        requestedStage = action.shot?.voiceId !== undefined || action.shot?.speaker !== undefined ? 'voice' : 'storyboard'
+        break
+      }
+      case 'move-chapter':
+        moveChapter(project, action)
+        requestedStage = project.chapters.length ? 'writing' : 'outline'
+        break
+      case 'move-shot':
+        moveShot(project, action)
+        storyboardChanged = true
+        requestedStage = 'storyboard'
+        break
+      case 'update-character': {
+        if (!action.character) throw new Error('人物修改没有给出内容。')
+        const result = applyCharacterPatch(project, action.character)
+        if (result.voiceChanged && result.shotIds.length) {
+          regenerate.push({ kind: 'voice', shotIds: result.shotIds, instruction: action.instruction ?? '人物声线已更新，按新声线重配', voiceId: action.character.voiceId })
+        }
+        requestedStage = result.voiceChanged && project.kind === 'drama' ? 'voice' : result.visualChanged && project.kind === 'drama' ? 'visuals' : 'blueprint'
+        break
+      }
+      case 'update-place': {
+        if (!action.place) throw new Error('地点修改没有给出内容。')
+        const result = applyPlacePatch(project, action.place)
+        requestedStage = result.visualChanged && project.kind === 'drama' ? 'visuals' : 'blueprint'
+        break
+      }
+      case 'rename-entity':
+        if (!action.rename) throw new Error('改名动作没有给出原名字和新名字。')
+        renameEntity(project, action.rename)
+        requestedStage = project.kind === 'drama' ? 'storyboard' : 'writing'
+        break
+      case 'generate-sfx': {
+        if (!action.sfx?.kind) throw new Error('音效动作没有指定类型。')
+        regenerate.push({ kind: 'sfx', sfxKind: action.sfx.kind, ...(action.sfx.seconds ? { seconds: action.sfx.seconds } : {}), instruction: action.instruction })
+        project.stages.music = { status: 'ready', updatedAt: nowMs(), message: '音效任务已排队', progress: 30 }
+        requestedStage = 'music'
+        break
+      }
+      case 'generate-music': {
+        regenerate.push({ kind: 'music', ...(action.music?.mood ? { mood: action.music.mood } : {}), ...(action.music?.seconds ? { seconds: action.music.seconds } : {}), ...(action.music?.engine ? { engine: action.music.engine } : {}), instruction: action.instruction })
+        project.stages.music = { status: 'ready', updatedAt: nowMs(), message: '配乐任务已排队', progress: 30 }
+        requestedStage = 'music'
+        break
+      }
+      case 'remove-sfx': {
+        const kind = action.sfx?.kind
+        if (!kind) throw new Error('移除音效时没有指定类型。')
+        const before = project.timeline.clips.length
+        project.timeline.clips = project.timeline.clips.filter((clip) => {
+          if (clip.kind !== 'sfx') return true
+          const asset = project.assets.find((item) => item.id === clip.assetId)
+          return !asset?.tags.includes(kind)
+        })
+        if (project.timeline.clips.length !== before) {
+          timelineChanged = true
+          project.stages.timeline = { status: 'ready', updatedAt: nowMs(), message: '音效已移除，等待重合成', progress: 100 }
+        }
+        requestedStage = 'music'
+        break
+      }
+      case 'remove-music': {
+        const before = project.timeline.clips.length
+        project.timeline.clips = project.timeline.clips.filter((clip) => clip.kind !== 'music')
+        project.musicAssetId = null
+        if (project.timeline.clips.length !== before) timelineChanged = true
+        project.stages.music = { status: 'ready', updatedAt: nowMs(), message: '配乐已移除，可以重新生成', progress: 40 }
+        requestedStage = 'music'
         break
       }
       case 'noop':
@@ -5590,12 +6150,22 @@ export function applyEditPlan(project: StudioProject, plan: StudioEditPlan): App
     project.timeline.durationSec = project.timeline.clips.reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0)
     project.stages.timeline = { status: 'ready', updatedAt: nowMs(), message: '修改待预览/重合成', progress: 100 }
   }
+  if (storyboardChanged) {
+    syncBlueprintAfterShotAppend(project)
+    project.stages.outline = { status: 'done', updatedAt: nowMs(), message: '镜头计划已同步', progress: 100 }
+    project.stages.storyboard = { status: 'done', updatedAt: nowMs(), message: `${project.scenes.length} 场 · ${project.shots.length} 镜`, progress: 100 }
+    for (const stageId of ['visuals', 'voice', 'timeline', 'review', 'delivery'] as const) {
+      const stage = project.stages[stageId]
+      if (stage && (stage.status === 'done' || stage.status === 'review') && canTransitionStudioStatus(stage.status, 'stale')) {
+        project.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message: '新增分镜，下游需要重新核对' }
+      }
+    }
+    project.stage = 'storyboard'
+  }
   plan.status = 'applied'
   plan.appliedAt = nowMs()
-  return { project, regenerate, timelineChanged, chapterCandidates }
+  return { project, regenerate, timelineChanged, storyboardChanged, chapterCandidates, ...(requestedStage ? { stage: requestedStage } : {}) }
 }
-
-
 
 export function createPlanFromDraft(projectId: string, draft: DraftPlan): StudioEditPlan {
   void projectId
@@ -5610,8 +6180,6 @@ export function createPlanFromDraft(projectId: string, draft: DraftPlan): Studio
     createdAt: nowMs()
   }
 }
-
-
 
 export function localAssistantReply(project: StudioProject, userText: string, plan: StudioEditPlan): { text: string; plan: StudioEditPlan } {
   if (!plan.actions.length) {
@@ -5629,9 +6197,7 @@ export function localAssistantReply(project: StudioProject, userText: string, pl
   return { text: lines.join('\n'), plan }
 }
 
-
-
-export function contextForAssistant(project: StudioProject, selection?: IntentContext['selection']): string {
+export function contextForAssistant(project: StudioProject, selection?: IntentContext['selection'], view?: string): string {
   const words = project.chapters.reduce((sum, chapter) => sum + countWords(chapter.content), 0)
   const selectedChapter = selection?.kind === 'chapter' ? project.chapters.find((chapter) => chapter.id === selection.id) : undefined
   const selectedShot = selection?.kind === 'shot' ? project.shots.find((shot) => shot.id === selection.id) : undefined
@@ -5639,8 +6205,11 @@ export function contextForAssistant(project: StudioProject, selection?: IntentCo
   return [
     `作品：${project.title}（${project.kind}）`,
     `一句话：${project.logline}`,
-    `阶段：${project.stage}；预算：¥${project.runtime.budget.spent} / ¥${project.runtime.budget.limit}`,
+    `当前页面：${view || project.stage}；阶段：${project.stage}；预算：¥${project.runtime.budget.spent} / ¥${project.runtime.budget.limit}`,
     project.kind === 'drama' ? `镜头：${project.shots.length}；已有画面：${project.shots.filter((shot) => shot.imageAssetId || shot.videoAssetId).length}` : `章节：${project.chapters.length}；总字数：${words}`,
+    project.kind === 'drama'
+      ? `场景与镜头：${project.scenes.map((scene) => `第${scene.number}场《${scene.title}》`).join('；')}；${[...project.shots].sort((a, b) => a.number - b.number).slice(0, 30).map((shot) => `第${shot.number}镜《${shot.title}》${shot.action.slice(0, 60)}${shot.dialogue ? `｜台词：${shot.dialogue.slice(0, 60)}` : ''}`).join('\n')}`
+      : `章目：${[...project.chapters].sort((a, b) => a.number - b.number).slice(0, 50).map((chapter) => `第${chapter.number}章《${chapter.title}》${chapter.content.trim() ? `（${countWords(chapter.content)}字）` : '（未写）'}`).join('；')}`,
     selectedChapter ? `当前选中章节：第 ${selectedChapter.number} 章 ${selectedChapter.title}\n${selectedChapter.content.slice(-1200)}` : '',
     selectedShot ? `当前选中镜头：第 ${selectedShot.number} 镜 ${selectedShot.title}\n动作：${selectedShot.action}\n台词：${selectedShot.dialogue}` : '',
     selectedClip ? `当前选中片段：${selectedClip.label}（${selectedClip.start.toFixed(2)}s → ${(selectedClip.start + selectedClip.duration).toFixed(2)}s）` : '',
@@ -5649,8 +6218,6 @@ export function contextForAssistant(project: StudioProject, selection?: IntentCo
     .filter(Boolean)
     .join('\n')
 }
-
-
 
 export function assistantSystemPrompt(kind: StudioProject['kind']): string {
   return [
@@ -5662,8 +6229,6 @@ export function assistantSystemPrompt(kind: StudioProject['kind']): string {
     '不要使用 Markdown 表格。'
   ].join('\n')
 }
-
-
 
 /** 本次回答实际带上的作品上下文，用于界面展示与来源失效校验。 */
 export function assistantSources(
@@ -5689,8 +6254,6 @@ export function assistantSources(
   return sources
 }
 
-
-
 export function assistantMessage(
   role: StudioChatMessage['role'],
   text: string,
@@ -5707,441 +6270,27 @@ export function assistantMessage(
   }
 }
 
-
-
-export type CreativePromptTask = StudioPromptTask
-
-
-
-export interface CreativePromptModule {
-  id: string
-  title: string
-  category: 'story' | 'character' | 'world' | 'prose' | 'screen' | 'visual' | 'audio' | 'review'
-  tasks: CreativePromptTask[]
-  kinds: StudioKind[]
-  tags: string[]
-  triggers: string[]
-  priority: number
-  prompt: string
-}
-
-
-
-export interface PromptSelectInput {
-  kind: StudioKind
-  task: CreativePromptTask
-  query?: string
-  limit?: number
-}
-
-
-
-export interface SelectedPromptModule extends CreativePromptModule {
-  score: number
-}
-
-
-
-const ALL_KINDS: StudioKind[] = ['short', 'novel', 'drama']
-
-
-
-export const CREATIVE_PROMPT_MODULES: CreativePromptModule[] = [
-  {
-    id: 'story-core',
-    title: '故事核：欲望 × 阻力 × 代价',
-    category: 'story',
-    tasks: ['blueprint', 'outline', 'chapter', 'adaptation', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['故事核', '一句话', '主题', '冲突'],
-    triggers: ['故事', '脑洞', '一句话', '立意', '主线'],
-    priority: 12,
-    prompt: '先把用户的一句话扩成六要素：题材、风格、字数/时长、主角、核心冲突、结局方向；缺项写明假设，不反复追问。故事核=具体主角×可执行欲望×明确阻力×不行动的代价。不要用“成长”“救赎”“人性”等抽象词代替具体事件。'
-  },
-  {
-    id: 'character-matrix',
-    title: '人物档案与弧光',
-    category: 'character',
-    tasks: ['blueprint', 'outline', 'chapter', 'rewrite', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['人物', '角色', '弧光', '关系'],
-    triggers: ['人物', '角色', '性格', '成长', '关系', '弧光', '人物小传'],
-    priority: 9,
-    prompt: '每个人物写清身份、外观、想要、害怕、秘密、旧伤、执念、关系与弧光起点→转折→终点。秘密必须能改变一次选择；配角也要有自己的目标，不能只为主角服务。至少给主角写一条“自己相信却会害了自己”的谎言，并在高潮逼他付出代价。'
-  },
-  {
-    id: 'world-rules',
-    title: '能影响行动的世界规则',
-    category: 'world',
-    tasks: ['blueprint', 'outline', 'chapter', 'storyboard', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['世界观', '规则', '势力', '道具'],
-    triggers: ['世界观', '设定', '规则', '力量体系', '势力', '道具', '时代'],
-    priority: 7,
-    prompt: '世界设定只保留能影响行动的规则：时间、空间、力量、社会、文化。每条规则都要有代价、例外和被剧情利用的漏洞；不要写百科式背景。'
-  },
-  {
-    id: 'outline-arc',
-    title: '章节/镜头功能与情绪曲线',
-    category: 'story',
-    tasks: ['outline', 'chapter', 'storyboard', 'adaptation'],
-    kinds: ALL_KINDS,
-    tags: ['大纲', '结构', '节奏', '情绪曲线', '伏笔'],
-    triggers: ['大纲', '细纲', '章纲', '结构', '节奏', '伏笔', '情绪'],
-    priority: 9,
-    prompt: '每个单元必须有目标、阻力、转折、余波和钩子。开篇给承诺，中段升级并付出代价，后段回收伏笔；每 3–4 个单元给小胜/小败，每 8–12 个单元给一次大转折。中短篇可先卡 15 章骨架：第 1 章钩子、第 2 章反转、第 4/7 章情绪暴击、第 13 章假性失去、第 15 章兑现；长篇按 15/20/25/25/15 分配卷章。'
-  },
-  {
-    id: 'hook-opening',
-    title: '开头钩子与第一选择',
-    category: 'story',
-    tasks: ['blueprint', 'chapter', 'rewrite', 'screenplay', 'adaptation', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['开头', '钩子', '第一段', '开场'],
-    triggers: ['开头', '开场', '钩子', '第一章', '第一镜', '吸引'],
-    priority: 7,
-    prompt: '开头 100 字/前 3 秒给具体异常画面与压力，不用天气、梦境或百科说明凑气氛；让主角尽早做一个有代价的选择，读者才知道该担心什么。'
-  },
-  {
-    id: 'scene-engine',
-    title: '场景发动机：目标—阻力—转折',
-    category: 'story',
-    tasks: ['blueprint', 'outline', 'chapter', 'rewrite', 'screenplay', 'storyboard'],
-    kinds: ALL_KINDS,
-    tags: ['场景', '目标', '冲突', '转折'],
-    triggers: ['场景', '桥段', '对峙', '冲突', '转折'],
-    priority: 8,
-    prompt: '场景=目标+阻力+转折+余波。人物带着未说出口的欲望进场，离开时局势或关系必须变化；晚进早出，删掉没有变化的寒暄。'
-  },
-  {
-    id: 'prose-concrete',
-    title: '去 AI 腔的具象写作',
-    category: 'prose',
-    tasks: ['chapter', 'rewrite', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['文风', '润色', 'AI味', '描写', '对白'],
-    triggers: ['润色', '文风', 'AI味', '改写', '描写', '更自然', '更克制'],
-    priority: 8,
-    prompt: '删“感到/觉得/开始/正在/仿佛/似乎/突然/意识到”；把情绪换成身体反应、动作、物件与空间；平均句长 15–25 字，比喻每千字最多一个；单段 2–4 行；不要每段总结主题，不要用对称排比制造廉价气势。'
-  },
-  {
-    id: 'dialogue-subtext',
-    title: '对白：想要、隐瞒与潜台词',
-    category: 'prose',
-    tasks: ['chapter', 'rewrite', 'dialogue', 'screenplay', 'storyboard'],
-    kinds: ALL_KINDS,
-    tags: ['对白', '台词', '潜台词', '语气'],
-    triggers: ['对白', '台词', '对话', '潜台词', '语气', '说话'],
-    priority: 9,
-    prompt: '每句台词都有想要、隐瞒或试探；允许答非所问、抢话、沉默和停顿；潜台词用动作与场景承载。不同人物的句长、词汇、口头禅必须不同，不用台词解释设定。'
-  },
-  {
-    id: 'pacing-tension',
-    title: '信息释放与紧张度',
-    category: 'prose',
-    tasks: ['outline', 'chapter', 'rewrite', 'screenplay', 'storyboard', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['节奏', '紧张', '悬念', '信息'],
-    triggers: ['节奏', '紧张', '悬念', '钩子', '拖沓', '加快', '慢一点'],
-    priority: 7,
-    prompt: '每场只回答一个问题、抛出更大的问题。每 300–800 字给一个新信息点；紧张段落句子变短、动作变密；舒缓段落留一个具体感官细节；章末钩子必须是可见事件或选择，不要只写“他不知道未来会怎样”。'
-  },
-  {
-    id: 'plot-twist',
-    title: '公平反转',
-    category: 'story',
-    tasks: ['outline', 'chapter', 'rewrite', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['反转', '真相', '伏笔'],
-    triggers: ['反转', '真相', '揭秘', '意外', '结局'],
-    priority: 6,
-    prompt: '反转必须来自已埋下的信息与人物选择，不要靠新设定救场。埋设要显眼但可被误读；揭晓时同时改变人物关系和代价，而不是只公布一个身份。反转优先落在 5%/50%/85% 三个位置，前两层伏笔必须在前半程埋下，最后一层引爆全部伏笔。'
-  },
-  {
-    id: 'screenplay-format',
-    title: '可拍摄的剧本格式',
-    category: 'screen',
-    tasks: ['adaptation', 'screenplay', 'assistant'],
-    kinds: ['drama'],
-    tags: ['剧本', '场景标题', '动作', '台词'],
-    triggers: ['剧本', '分场', '场景标题', '改编', '可拍'],
-    priority: 8,
-    prompt: '使用场景标题（内/外·地点·时间）、现在时动作、角色名、对白、括号提示、音效、转场八项格式；只写摄影机和演员能拍到的内容，不写心理活动。每场标清目标、转折与结尾钩子；台词单句不超过 30 字。'
-  },
-  {
-    id: 'scene-transition',
-    title: '有理由的转场',
-    category: 'screen',
-    tasks: ['storyboard', 'screenplay', 'adaptation'],
-    kinds: ['drama'],
-    tags: ['转场', '切换', '时间跳跃'],
-    triggers: ['转场', '切换', '时间跳跃', '蒙太奇'],
-    priority: 5,
-    prompt: '转场用画面、声音或动作匹配连接；切、叠化、匹配剪辑都要有情绪理由。时间跳跃用具体变化交代，不用字幕解释。'
-  },
-  {
-    id: 'storyboard-cinema',
-    title: '电影级分镜与连续性',
-    category: 'visual',
-    tasks: ['storyboard', 'image', 'video', 'assistant'],
-    kinds: ['drama'],
-    tags: ['分镜', '景别', '运镜', '构图', '连续性'],
-    triggers: ['分镜', '镜头', '景别', '运镜', '构图', '连续性', '机位'],
-    priority: 10,
-    prompt: '遵循 180°/30° 规则；景别递进；权力用低角度+缓慢推近，弱势用高角度+留白；每镜只承担一个叙事功能，相邻镜头有视觉对比；标准镜占 70–85%，出彩镜 15–30%，连续出彩不超过两镜；写清服装、道具、天气、方向与空间关系。'
-  },
-  {
-    id: 'image-prompt',
-    title: '画面提示词公式',
-    category: 'visual',
-    tasks: ['image', 'storyboard'],
-    kinds: ['drama'],
-    tags: ['画面', '提示词', '绘图', '构图'],
-    triggers: ['画面', '绘图', '生成图', '参考图', '镜头图'],
-    priority: 9,
-    prompt: '提示词顺序：主体动作+外观服装+环境天气+景别角度+构图+光位+风格+技术规格+连续性+避免项。角色参考优先于文字描述；画面不出现文字、水印、分镜边框或漫画格。'
-  },
-  {
-    id: 'video-motion',
-    title: '连续镜头的运动提示',
-    category: 'visual',
-    tasks: ['video', 'storyboard'],
-    kinds: ['drama'],
-    tags: ['视频', '运镜', '运动', '首帧'],
-    triggers: ['视频', '运镜', '运动', '图生视频', '首帧'],
-    priority: 9,
-    prompt: '视频提示写清首帧一致性、主体运动、镜头运动、环境运动、光线变化与结尾状态；保持单一连续镜头，不切镜；避免文字、水印、换脸、服装变化和多余人物。'
-  },
-  {
-    id: 'voice-performance',
-    title: '配音意图与节奏',
-    category: 'audio',
-    tasks: ['voice', 'dialogue', 'storyboard'],
-    kinds: ['drama'],
-    tags: ['配音', '声线', '台词', '语气'],
-    triggers: ['配音', '声音', '声线', '朗读', '语气'],
-    priority: 6,
-    prompt: '先定台词的意图（请求/威胁/试探/掩饰），再定节奏（停顿、抢话、呼吸、尾音）。短句更口语；不要让配音念旁白式说明。'
-  },
-  {
-    id: 'sound-music',
-    title: '配乐与音效让位',
-    category: 'audio',
-    tasks: ['music', 'review', 'storyboard'],
-    kinds: ['drama'],
-    tags: ['音乐', '音效', '混音', '情绪'],
-    triggers: ['音乐', '配乐', '音效', '混音', '声音设计'],
-    priority: 5,
-    prompt: '配乐只服务情绪转折：用动机重复与变化、留白和呼吸；音效写清空间距离与方向；对白优先，音乐让位。'
-  },
-  {
-    id: 'continuity-review',
-    title: '连续性与事实核对',
-    category: 'review',
-    tasks: ['review', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['检查', '连续性', '事实', '一致性'],
-    triggers: ['检查', '连续性', '一致性', '穿帮', '核对'],
-    priority: 6,
-    prompt: '逐项核对人物外观、服装、道具位置、天气/方向、时间、空间关系与说话对象。用“进场状态=出场状态”核对每个单元：人物知道什么、拥有什么、站在哪里、关系如何，必须能接上下一单元。发现冲突先指出证据与影响，不擅自改正文；没有证据的判断标为不确定。'
-  },
-  {
-    id: 'adaptation-source',
-    title: '小说改编：保留代价，删解释',
-    category: 'story',
-    tasks: ['adaptation', 'screenplay', 'outline'],
-    kinds: ['drama'],
-    tags: ['改编', '来源', '小说转剧本', '节拍'],
-    triggers: ['改编', '小说转', '转剧本', '漫剧化', '原文'],
-    priority: 9,
-    prompt: '先提取可拍事件、人物欲望与代价，不逐句搬运；每场标注来源章节/原文依据；保留核心关系与选择，删解释性心理描写，把信息变成动作、对白或视觉。'
-  },
-  {
-    id: 'comic-panel',
-    title: '漫画分格与阅读方向',
-    category: 'visual',
-    tasks: ['comic', 'storyboard'],
-    kinds: ['drama'],
-    tags: ['漫画', '四格', '分格', '阅读方向'],
-    triggers: ['漫画', '四格', '分格', '格子', '漫画排版'],
-    priority: 6,
-    prompt: '每格一个动作节拍；阅读方向清晰；用景别变化控制节奏；对白短，拟声词克制；格子边界与留白服务情绪，不要把所有信息塞进同一格。'
-  },
-  {
-    id: 'audience-promise',
-    title: '受众承诺与兑现',
-    category: 'story',
-    tasks: ['blueprint', 'outline', 'chapter', 'assistant'],
-    kinds: ALL_KINDS,
-    tags: ['受众', '类型', '爽点', '期待'],
-    triggers: ['受众', '读者', '观众', '爽点', '期待', '类型'],
-    priority: 5,
-    prompt: '先明确读者/观众在什么场景消费、期待什么情绪或快感；每 2–3 个单元兑现一次承诺，不靠标题党；类型约定可以打破，但必须先满足再反转。'
-  },
-  {
-    id: 'chapter-illustration',
-    title: '叙事插图的画面选择',
-    category: 'visual',
-    tasks: ['image', 'comic'],
-    kinds: ['short', 'novel'],
-    tags: ['插图', '配图', '章节图'],
-    triggers: ['插图', '配图', '章节图', '插画'],
-    priority: 6,
-    prompt: '插图只画一个决定性瞬间：主体明确、环境可读、情绪来自动作和光，不追求把整章信息塞满；不出现文字、水印、分镜边框，保持与人物设定一致。'
-  },
-  {
-    id: 'wish-expansion',
-    title: '一句话许愿：六要素与假设',
-    category: 'story',
-    tasks: ['blueprint', 'outline', 'assistant', 'adaptation'],
-    kinds: ALL_KINDS,
-    tags: ['许愿', '灵感', '一句话', '想法', '帮我写'],
-    triggers: ['许愿', '灵感', '一句话', '想法', '帮我写', '想要一个', '来个'],
-    priority: 12,
-    prompt: '用户只给一句话时，先补齐六要素：题材、风格、目标字数/时长、主角、核心冲突、结局方向；缺项按用户话语里最强的信号补全，并在蓝图里写明“我的假设”。不要用追问拖住用户，也不要一次给多个互斥方案。'
-  },
-  {
-    id: 'chapter-hook',
-    title: '章末钩子：把读者推到下一章',
-    category: 'story',
-    tasks: ['outline', 'chapter', 'rewrite', 'screenplay'],
-    kinds: ALL_KINDS,
-    tags: ['章末', '钩子', '结尾', '追更', '翻页'],
-    triggers: ['章末', '钩子', '结尾', '追更', '翻页', '悬念'],
-    priority: 8,
-    prompt: '每章最后一句必须是可见事件、动作或选择，不能用“一切才刚刚开始”“他不知道未来会怎样”式总结。钩子可以是新问题、新代价、关系变化或倒计时；上一章钩子要在下一章开头被接住。'
-  },
-  {
-    id: 'information-drip',
-    title: '信息滴漏：真相分层释放',
-    category: 'story',
-    tasks: ['outline', 'chapter', 'rewrite', 'adaptation'],
-    kinds: ALL_KINDS,
-    tags: ['信息', '真相', '伏笔', '揭秘', '悬念'],
-    triggers: ['信息', '真相', '伏笔', '揭秘', '悬念', '反转'],
-    priority: 8,
-    prompt: '每 300–800 字给一个新信息点；真相分 4–6 层释放，每层绑定一个实物、文件、伤痕或场景，让读者能回看验证。不要一次讲完设定；也不要只靠人物口述解释。'
-  },
-  {
-    id: 'dialogue-economy',
-    title: '台词经济：一句顶两句',
-    category: 'prose',
-    tasks: ['chapter', 'rewrite', 'dialogue', 'screenplay', 'storyboard'],
-    kinds: ALL_KINDS,
-    tags: ['台词', '对白', '对话', '口语', '潜台词'],
-    triggers: ['台词', '对白', '对话', '口语', '潜台词'],
-    priority: 8,
-    prompt: '台词单句不超过 30 字，一次发言不超过 3 句；每句至少承担推进、示性格、造冲突、埋伏笔中的两种功能。允许答非所问、抢话、停顿和沉默；不要用台词复述读者已知信息或解释设定。'
-  },
-  {
-    id: 'emotion-chain',
-    title: '情绪链：三番四震',
-    category: 'story',
-    tasks: ['outline', 'chapter', 'rewrite', 'screenplay'],
-    kinds: ALL_KINDS,
-    tags: ['情绪', '爽点', '虐点', '节奏', '爆发'],
-    triggers: ['情绪', '爽点', '虐点', '爆发', '高潮', '压抑'],
-    priority: 7,
-    prompt: '一个情绪单元按“轻碰→重击→暴击”三番推进，再给愤怒、心疼、爽、悬念四类反应各留一个具体落点（动作、物件或选择），不要连续两章同一强度。高潮前先让主角失去最重要的东西，兑现时才有力。'
-  },
-  {
-    id: 'drama-rhythm',
-    title: '漫剧节奏：单集时长与镜头密度',
-    category: 'visual',
-    tasks: ['outline', 'storyboard', 'video', 'assistant'],
-    kinds: ['drama'],
-    tags: ['漫剧', '短剧', '单集', '时长', '镜头密度'],
-    triggers: ['漫剧', '短剧', '单集', '时长', '镜头', '节奏'],
-    priority: 9,
-    prompt: '单集先定时长（常见 90–120 秒，误差 ±3 秒），再按每镜 3–20 秒分配；空镜最多两条，连续三句以上对话要拆镜或给反应镜头。每集结尾必须有钩子；不要用旁白代替画面。'
-  },
-  {
-    id: 'long-continuity',
-    title: '长篇连续性账本',
-    category: 'review',
-    tasks: ['outline', 'chapter', 'rewrite', 'review', 'assistant'],
-    kinds: ['novel'],
-    tags: ['长篇', '连续性', '设定', '时间线', '伏笔'],
-    triggers: ['长篇', '连续性', '设定', '时间线', '伏笔', '前后矛盾'],
-    priority: 9,
-    prompt: '每章写前先读人物状态、持有物、已知信息、关系、时间地点五类账本；写后更新账本。伏笔分“已埋/已回收/待回收”，明线 3–5 章、暗线 10–15 章内回收。人物知道的事不能超过他经历过的信息。'
-  }
-]
-
-
-
-function normalize(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, ' ')
-}
-
-
-
-export function selectCreativePrompts(input: PromptSelectInput): SelectedPromptModule[] {
-  const query = normalize(input.query ?? '')
-  const limit = Math.max(1, Math.min(10, input.limit ?? 5))
-  return CREATIVE_PROMPT_MODULES
-    .map((module) => {
-      let score = module.priority
-      if (module.tasks.includes(input.task)) score += 12
-      if (module.kinds.includes(input.kind)) score += 4
-      for (const tag of module.tags) if (query.includes(normalize(tag))) score += 3
-      for (const trigger of module.triggers) if (query.includes(normalize(trigger))) score += 6
-      return { ...module, score }
-    })
-    .filter((module) => module.score >= 12)
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
-    .slice(0, limit)
-}
-
-
-
-export function creativePromptContext(input: PromptSelectInput): string {
-  const selected = selectCreativePrompts(input)
-  const library = selected.length
-    ? `\n\n【创作手法库·按需调取】\n${selected.map((module, index) => `${index + 1}. ${module.title}：${module.prompt}`).join('\n')}`
-    : ''
-  return `${library}${qualityPromptContext(input.kind, input.task)}`
-}
-
-
-
-export function promptModuleIds(input: PromptSelectInput): string[] {
-  return selectCreativePrompts(input).map((module) => module.id)
-}
-
-
-
 export interface StudioAgentFacade {
   execute(request: { type: string; projectId?: string; [key: string]: unknown }): Promise<unknown>
 }
-
-
 
 export interface StudioAgentResult {
   summary: string
   data?: unknown
 }
 
-
-
 function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
-
-
 
 function wordCount(project: StudioProject): number {
   return project.chapters.reduce((sum, chapter) => sum + countWords(chapter.content), 0)
 }
 
-
-
 function jobLine(job: StudioJob | undefined): string {
   if (!job) return '动作已提交。'
   return `任务已排队：${job.label}（${job.id}），进度可在创作台查看。`
 }
-
-
 
 export async function runStudioAgentTool(facade: StudioAgentFacade, input: { action: string; projectId?: string; [key: string]: unknown }): Promise<StudioAgentResult> {
   const action = input.action
@@ -6407,11 +6556,9 @@ export async function runStudioAgentTool(facade: StudioAgentFacade, input: { act
   throw new Error(`不支持的创作台工具动作：${action}`)
 }
 
-
 const MEDIA_EVENT = 'feature:studio:event'
 
 const DEMO_DISABLED = process.env.MORROW_STUDIO_NO_DEMO === '1'
-
 
 interface JobRunContext {
   signal: AbortSignal
@@ -6419,7 +6566,6 @@ interface JobRunContext {
   progress: (message: string, percent?: number) => void
   attachRemote?: (remoteId: string, target?: { kind: 'image' | 'video'; shotId?: string; chapterId?: string }) => void
 }
-
 
 interface JobOutcome {
   message?: string
@@ -6429,7 +6575,6 @@ interface JobOutcome {
   apply?: (project: StudioProject) => void
   plannedStatus?: StudioJob['status']
 }
-
 
 interface LaunchJobOptions {
   kind: StudioJobKind
@@ -6443,27 +6588,22 @@ interface LaunchJobOptions {
   run: (project: StudioProject, ctx: JobRunContext) => Promise<JobOutcome>
 }
 
-
 function num(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-
 function bool(value: unknown, fallback = false): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
-
 
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
-
 function chapterParagraphCount(content: string): number {
   return content.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean).length
 }
-
 
 function friendlyMediaError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err)
@@ -6476,11 +6616,9 @@ function friendlyMediaError(err: unknown): string {
   return message
 }
 
-
 export interface StudioServiceOptions {
   store?: StudioStore
 }
-
 
 export class StudioService {
   private readonly store: StudioStore
@@ -6593,8 +6731,21 @@ export class StudioService {
         ...(mediaStatus.engine.vramTotalMb ? { vramTotalMb: mediaStatus.engine.vramTotalMb } : {})
       },
       text: textStatusForEngine(),
+      vision: (() => {
+        const candidate = studioVisionProvider()
+        if (!candidate) return { ready: false }
+        return {
+          ready: true,
+          modelLabel: candidate.model.label || candidate.model.id,
+          ...(candidate.local ? { local: true } : {})
+        }
+      })(),
       voices: voices.voices,
       ...(voices.error ? { voiceError: voices.error } : {}),
+      tts: (() => {
+        const status = localTtsStatus()
+        return { localReady: status.modelReady, running: status.running, message: status.message }
+      })(),
       version: app.getVersion()
     }
     this.statusCache = { at: Date.now(), value }
@@ -7894,14 +8045,9 @@ export class StudioService {
     const costs: Array<number | null> = []
     ctx.progress('调用模型写长篇骨架', 10)
     const top = await completeCreativeText({
-      system: `${LONG_BLUEPRINT_TOP_SYSTEM}${creativePromptContext({
-        kind: 'novel',
-        task: 'blueprint',
-        query: `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观 分卷`,
-        limit: 6
-      })}`,
+      system: `${LONG_BLUEPRINT_TOP_SYSTEM}${masterPromptContext('novel', 'blueprint', `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观 分卷`, 'blueprint', snapshot.runtime.strategy)}`,
       prompt: longBlueprintTopPrompt(snapshot, plannedUnits),
-      maxTokens: 32000,
+      structured: true,
       temperature: 0.72,
       signal: ctx.signal,
       strategy: snapshot.runtime.strategy
@@ -7925,14 +8071,9 @@ export class StudioService {
 
     ctx.progress('调用模型写人物与地点', 32)
     const cast = await completeCreativeText({
-      system: `${LONG_BLUEPRINT_CAST_SYSTEM}${creativePromptContext({
-        kind: 'novel',
-        task: 'blueprint',
-        query: `${blueprint.storyCore} ${blueprint.volumes?.map((volume) => volume.title).join(' ')} 人物 角色 关系 世界观`,
-        limit: 5
-      })}`,
+      system: `${LONG_BLUEPRINT_CAST_SYSTEM}${masterPromptContext('novel', 'blueprint', `${blueprint.storyCore} ${blueprint.volumes?.map((volume) => volume.title).join(' ')} 人物 角色 关系 世界观`, 'blueprint', snapshot.runtime.strategy)}`,
       prompt: longBlueprintCastPrompt(snapshot, blueprint),
-      maxTokens: 32000,
+      structured: true,
       temperature: 0.72,
       signal: ctx.signal,
       strategy: snapshot.runtime.strategy
@@ -7963,14 +8104,9 @@ export class StudioService {
         const count = Math.min(batchSize, planned - batch * batchSize)
         ctx.progress(`调用模型写第 ${volumeIndex + 1} 卷章节（${batch + 1}/${batches}）`, 42 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 35))
         const unitsResult = await completeCreativeText({
-          system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${creativePromptContext({
-            kind: 'novel',
-            task: 'outline',
-            query: `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`,
-            limit: 5
-          })}`,
+          system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}`,
           prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count),
-          maxTokens: 32000,
+          structured: true,
           temperature: 0.75,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
@@ -7981,14 +8117,9 @@ export class StudioService {
           log.warn('long blueprint units parse failed; retrying once', { volume: volumeIndex + 1, batch: batch + 1, length: unitsResult.text.length, preview: unitsResult.text.slice(0, 1200) })
           ctx.progress(`第 ${volumeIndex + 1} 卷本批 JSON 不完整，正在重试`, 45 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 32))
           const retry = await completeCreativeText({
-            system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${creativePromptContext({
-              kind: 'novel',
-              task: 'outline',
-              query: `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`,
-              limit: 3
-            })}\n\n上一次输出 JSON 语法不完整。这次只写 ${count} 章，确保每个键名都有双引号，先保证 JSON 完整。`,
+            system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}\n\n上一次输出 JSON 语法不完整。这次只写 ${count} 章，确保每个键名都有双引号，先保证 JSON 完整。`,
             prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count),
-            maxTokens: 32000,
+            structured: true,
             temperature: 0.4,
             signal: ctx.signal,
             strategy: snapshot.runtime.strategy
@@ -8066,14 +8197,9 @@ export class StudioService {
         } else {
           ctx.progress('调用模型写故事蓝图', 12)
           let result = await completeCreativeText({
-            system: `${BLUEPRINT_SYSTEM}${creativePromptContext({
-              kind: snapshot.kind,
-              task: 'blueprint',
-              query: `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观`,
-              limit: 6
-            })}`,
+            system: `${BLUEPRINT_SYSTEM}${masterPromptContext(snapshot.kind, 'blueprint', `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观`, 'blueprint', snapshot.runtime.strategy)}`,
             prompt: blueprintPrompt(snapshot),
-            maxTokens: Math.min(32000, runtime.model?.maxOutput ?? 32000),
+            structured: true,
             temperature: 0.72,
             signal: ctx.signal,
             strategy: snapshot.runtime.strategy
@@ -8083,14 +8209,9 @@ export class StudioService {
             log.warn('blueprint model response parse failed; retrying once', { length: result.text.length, preview: result.text.slice(0, 1200), tail: result.text.slice(-300) })
             ctx.progress('模型输出不完整，正在重试', 48)
             const retry = await completeCreativeText({
-              system: `${BLUEPRINT_SYSTEM}${creativePromptContext({
-                kind: snapshot.kind,
-                task: 'blueprint',
-                query: `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观`,
-                limit: 4
-              })}\n\n上一次输出在 JSON 中途被截断。这次务必控制篇幅，先保证输出完整、可解析，再写细节。`,
+              system: `${BLUEPRINT_SYSTEM}${masterPromptContext(snapshot.kind, 'blueprint', `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观`, 'blueprint', snapshot.runtime.strategy)}\n\n上一次输出在 JSON 中途被截断。这次务必控制篇幅，先保证输出完整、可解析，再写细节。`,
               prompt: blueprintPrompt(snapshot),
-              maxTokens: Math.min(32000, runtime.model?.maxOutput ?? 32000),
+              structured: true,
               temperature: 0.55,
               signal: ctx.signal,
               strategy: snapshot.runtime.strategy
@@ -8179,14 +8300,9 @@ export class StudioService {
       const end = start + batch.length
       ctx.progress(`正在细化第 ${start + 1}–${end} 章`, 20 + Math.round((start / Math.max(1, blueprint.units.length)) * 60))
       const result = await completeCreativeText({
-        system: `${OUTLINE_SYSTEM}${creativePromptContext({
-          kind: snapshot.kind,
-          task: 'outline',
-          query: `${blueprint.storyCore} ${blueprint.structure} ${batch.map((unit) => unit.title).join(' ')} 结构 节奏 伏笔 情绪`,
-          limit: 4
-        })}`,
+        system: `${OUTLINE_SYSTEM}${masterPromptContext(snapshot.kind, 'outline', `${blueprint.storyCore} ${blueprint.structure} ${batch.map((unit) => unit.title).join(' ')} 结构 节奏 伏笔 情绪`, 'outline', snapshot.runtime.strategy)}`,
         prompt: outlineBatchPrompt(snapshot, blueprint, batch, start, blueprint.units.length),
-        maxTokens: 32000,
+        structured: true,
         signal: ctx.signal,
         strategy: snapshot.runtime.strategy
       })
@@ -8242,14 +8358,9 @@ export class StudioService {
         } else {
           ctx.progress('正在拆大纲', 20)
           const result = await completeCreativeText({
-            system: `${OUTLINE_SYSTEM}${creativePromptContext({
-              kind: snapshot.kind,
-              task: snapshot.kind === 'drama' ? 'storyboard' : 'outline',
-              query: `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 结构 节奏 伏笔 情绪`,
-              limit: 6
-            })}`,
+            system: `${OUTLINE_SYSTEM}${masterPromptContext(snapshot.kind, 'outline', `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 结构 节奏 伏笔 情绪`, 'outline', snapshot.runtime.strategy)}`,
             prompt: outlinePrompt(snapshot, current),
-            maxTokens: Math.min(32000, runtime.model?.maxOutput ?? 32000),
+            structured: true,
             signal: ctx.signal,
             strategy: snapshot.runtime.strategy
           })
@@ -8275,14 +8386,17 @@ export class StudioService {
           apply: (fresh) => {
             fresh.blueprint = { ...finalBlueprint }
             if (fresh.kind === 'drama') {
-              const hasAssets = fresh.shots.some((shot) => shot.imageAssetId || shot.videoAssetId || shot.voiceAssetId)
-              if (!fresh.shots.length || !hasAssets) {
+              if (!fresh.shots.length) {
                 applyDramaOutline(fresh, finalBlueprint)
                 fresh.stage = 'storyboard'
                 fresh.stages.outline = { status: 'done', updatedAt: nowMs(), message: '镜头计划已更新', progress: 100 }
               } else {
-                updateDramaShots(fresh, finalBlueprint)
-                fresh.stages.outline = { status: 'done', updatedAt: nowMs(), message: '已更新未生成镜头的字段', progress: 100 }
+                syncDramaOutline(fresh, finalBlueprint)
+                fresh.stages.outline = { status: 'done', updatedAt: nowMs(), message: '镜头文字已更新，画面与配音待核对', progress: 100 }
+                if (fresh.stages.storyboard.status === 'done' || fresh.stages.storyboard.status === 'review') {
+                  fresh.stages.storyboard = { ...fresh.stages.storyboard, status: 'stale', updatedAt: nowMs(), message: '大纲已更新，分镜需要核对' }
+                }
+                this.staleStages(fresh, ['visuals', 'voice', 'timeline', 'review', 'delivery'], '大纲已更新，旧画面、配音与交付需要重新核对')
               }
             } else if (fresh.chapters.some((chapter) => chapter.content.trim())) {
               updateNovelOutline(fresh, finalBlueprint)
@@ -8330,16 +8444,11 @@ export class StudioService {
             : `写正文需要可用的文本模型。${runtime.message}`)
         }
         ctx.progress('正在写正文', 15)
-        const systemPrompt = `${PROSE_SYSTEM}${creativePromptContext({
-          kind: snapshot.kind,
-          task: 'chapter',
-          query: `${current.title} ${current.synopsis} ${current.beats.join(' ')} ${instruction}`,
-          limit: 6
-        })}`
+        const systemPrompt = `${PROSE_SYSTEM}${masterPromptContext(snapshot.kind, 'chapter', `${current.title} ${current.synopsis} ${current.beats.join(' ')} ${instruction}`, 'writing', snapshot.runtime.strategy)}`
         const result = await completeCreativeText({
           system: systemPrompt,
           prompt: chapterPrompt(snapshot, current, instruction),
-          maxTokens: 32000,
+          continueOnTruncate: true,
           temperature: 0.9,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
@@ -8360,7 +8469,7 @@ export class StudioService {
               '',
               content
             ].join('\n'),
-            maxTokens: 32000,
+            continueOnTruncate: true,
             temperature: 0.85,
             signal: ctx.signal,
             strategy: snapshot.runtime.strategy
@@ -8430,49 +8539,74 @@ export class StudioService {
     const runtime = studioTextRuntime(project.runtime.strategy)
     if (!runtime.configured) throw new Error('润色需要可用的文本模型；请先在创作台设置 → 模型里连接模型。')
     const instruction = str(request.instruction).slice(0, 1200)
+    const replaceContent = request.replaceContent === true
     const estimated = estimateTextCostCny(chapter.content.length + instruction.length, chapter.content.length, project.runtime.strategy) ?? 0
     const job = await this.launchJob(project, {
       kind: 'text',
-      label: `润色第 ${chapter.number} 章 · ${chapter.title}`,
+      label: replaceContent ? `协作者重写第 ${chapter.number} 章 · ${chapter.title}` : `润色第 ${chapter.number} 章 · ${chapter.title}`,
       stage: 'writing',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`polish:${project.id}:${chapter.id}:${chapter.revision}:${instruction}`)),
+      inputHash: sha256Buffer(Buffer.from(`polish:${project.id}:${chapter.id}:${chapter.revision}:${instruction}:${replaceContent}`)),
       estimatedCostCny: estimated,
       costNote: '按当前文本模型参考价估算',
-      retry: { action: 'polish-chapter', payload: { chapterId, instruction } },
+      retry: { action: 'polish-chapter', payload: { chapterId, instruction, replaceContent } },
       run: async (snapshot, ctx) => {
         const current = snapshot.chapters.find((item) => item.id === chapterId)
         if (!current) throw new Error('这一章已被删除。')
-        ctx.progress('正在润色', 20)
+        ctx.progress(replaceContent ? '正在按计划重写' : '正在润色', 20)
         const result = await completeCreativeText({
-          system: `${PROSE_SYSTEM}${creativePromptContext({
-            kind: snapshot.kind,
-            task: 'rewrite',
-            query: `${current.title} ${instruction} 润色 去 AI 腔 对白 克制`,
-            limit: 6
-          })}`,
-          prompt: [
-            `请润色以下章节正文。只改语言、节奏、动作与对白，不改情节、人名、事实、段落顺序和章节结尾。`,
-            `用户额外要求：${instruction || '更具体、更克制、去 AI 腔。'}`,
-            '输出完整正文，不要标题、不要解释、不要 Markdown。',
-            '',
-            current.content
-          ].join('\n'),
-          maxTokens: 32000,
-          temperature: 0.7,
+          system: `${PROSE_SYSTEM}${masterPromptContext(snapshot.kind, 'rewrite', `${current.title} ${instruction} ${replaceContent ? '按用户要求改写剧情' : '润色 去 AI 腔 对白 克制'}`, 'writing', snapshot.runtime.strategy)}`,
+          prompt: replaceContent
+            ? [
+                `请按用户要求重写这一章，并输出完整正文。`,
+                `用户要求：${instruction || '把这一章改得更好。'}`,
+                '保持人物、事实与前文连续；用户明确要求改动的部分可以改，没有要求的部分不要顺手改。',
+                '不要输出标题、解释或 Markdown。',
+                '',
+                current.content
+              ].join('\n')
+            : [
+                `请润色以下章节正文。只改语言、节奏、动作与对白，不改情节、人名、事实、段落顺序和章节结尾。`,
+                `用户额外要求：${instruction || '更具体、更克制、去 AI 腔。'}`,
+                '输出完整正文，不要标题、不要解释、不要 Markdown。',
+                '',
+                current.content
+              ].join('\n'),
+          continueOnTruncate: true,
+          temperature: replaceContent ? 0.8 : 0.7,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
         })
         const content = stripProseDecorations(result.text)
         if (!content.trim()) throw new Error('模型没有返回可用正文。')
         return {
-          message: `润色稿已生成，${countWords(content)} 字；采用前不会覆盖正文。`,
+          message: replaceContent ? `第 ${current.number} 章已按计划重写，${countWords(content)} 字。` : `润色稿已生成，${countWords(content)} 字；采用前不会覆盖正文。`,
           costCny: result.costCny,
           costNote: result.costNote ?? '按实际 token 记录',
-          outputs: [{ label: `第 ${current.number} 章润色候选`, path: undefined }],
+          outputs: [{ label: `第 ${current.number} 章${replaceContent ? '重写稿' : '润色候选'}`, path: undefined }],
           apply: (fresh) => {
             const target = fresh.chapters.find((item) => item.id === chapterId)
             if (!target) return
+            if (replaceContent) {
+              if (target.content.trim()) {
+                target.versions.unshift({ id: studioId('cv'), content: target.content, createdAt: nowMs(), reason: '协作者重写前自动留档', wordCount: countWords(target.content) })
+                target.versions = target.versions.slice(0, 30)
+              }
+              target.content = content
+              target.summary = summarizeChapterText(content)
+              target.revision += 1
+              target.status = 'done'
+              target.updatedAt = nowMs()
+              fresh.stages.writing = { status: 'done', updatedAt: nowMs(), message: `第 ${target.number} 章已按计划重写`, progress: 100 }
+              for (const stageId of ['review', 'delivery'] as const) {
+                const stage = fresh.stages[stageId]
+                if (stage && (stage.status === 'done' || stage.status === 'review')) {
+                  fresh.stages[stageId] = { ...stage, status: 'stale', updatedAt: nowMs(), message: '正文已重写，旧检查与交付需要重新生成' }
+                }
+              }
+              fresh.stage = 'writing'
+              return
+            }
             target.candidates.unshift({
               id: studioId('cand'),
               content,
@@ -8558,7 +8692,6 @@ export class StudioService {
       `正文片段：${chapter.content.slice(0, 1600)}`,
       project.styleBible.look ? `整体风格：${project.styleBible.look}。` : '',
       '画面要有明确的主体、环境与情绪，不要出现文字、水印、分镜边框或漫画格子。',
-      ...selectCreativePrompts({ kind: project.kind, task: 'image', query: `${chapter.title} ${instruction} 插图`, limit: 1 }).map((module) => module.prompt),
       instruction
     ].filter(Boolean).join('\n')
     const job = await this.launchJob(project, {
@@ -8874,14 +9007,9 @@ export class StudioService {
         const current = snapshot.blueprint as StudioBlueprint
         ctx.progress('正在拆分场景与镜头', 15)
         const result = await completeCreativeText({
-          system: `${STORYBOARD_SYSTEM}${creativePromptContext({
-            kind: 'drama',
-            task: 'storyboard',
-            query: `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 分镜 运镜 台词 连续性`,
-            limit: 6
-          })}`,
+          system: `${STORYBOARD_SYSTEM}${masterPromptContext('drama', 'storyboard', `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 分镜 运镜 台词 连续性`, 'storyboard', snapshot.runtime.strategy)}`,
           prompt: storyboardPrompt(snapshot, current, locked, instruction),
-          maxTokens: 32000,
+          structured: true,
           temperature: 0.8,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
@@ -9226,7 +9354,6 @@ export class StudioService {
       project.styleBible.look ? `风格与光线：${project.styleBible.look}；光位明确，层次清楚。` : '',
       shot.continuity ? `连续性：${shot.continuity}。` : '',
       instruction ? `这次修改要求：${instruction}。` : '',
-      ...selectCreativePrompts({ kind: project.kind, task: 'image', query: `${shot.action} ${shot.continuity} ${shot.shotSize} ${instruction}`, limit: 2 }).map((module) => module.prompt),
       shot.negative ? `避免：${shot.negative}。` : '避免：文字、水印、分镜边框、多余人物、换脸、服装变化。'
     ]
       .filter(Boolean)
@@ -9296,7 +9423,6 @@ export class StudioService {
           `环境运动：${currentShot.continuity || '保持人物外观、光线与道具位置一致'}。`,
           instruction ? `这次修改要求：${instruction}。` : '',
           snapshot.styleBible.look ? `风格与光线：${snapshot.styleBible.look}。` : '',
-          ...selectCreativePrompts({ kind: snapshot.kind, task: 'video', query: `${currentShot.action} ${currentShot.camera} ${currentShot.continuity} ${instruction}`, limit: 2 }).map((module) => module.prompt),
           '保持人物面部与服装一致，不要文字、水印、换脸或多余人物。'
         ].filter(Boolean).join(' ')
         ctx.progress('上传首帧', 6)
@@ -9447,10 +9573,13 @@ export class StudioService {
     }
     const voiceList = cloudMode ? { voices: [], error: undefined } : listSystemVoices()
     if (!cloudMode && voiceList.error && !voiceList.voices.length) throw new Error(voiceList.error)
+    const localReady = !cloudMode && localTtsStatus().modelReady
+    const instruction = str(request.instruction).trim().slice(0, 800)
     const preferred =
       str(request.voiceId) ||
       tts.voice ||
       project.characters.find((character) => character.voiceId)?.voiceId ||
+      (localReady ? QWEN_DEFAULT_VOICE : '') ||
       voiceList.voices.find((voice) => voice.culture.startsWith('zh'))?.name ||
       voiceList.voices[0]?.name ||
       ''
@@ -9465,10 +9594,10 @@ export class StudioService {
       label: targets.length > 1 ? `生成 ${targets.length} 段配音` : `第 ${targets[0].number} 镜配音`,
       stage: 'voice',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`voice:${tts.mode}:${tts.model}:${targets.map((shot) => `${shot.id}:${shot.dialogue}:${preferred}`).join('|')}`)),
+      inputHash: sha256Buffer(Buffer.from(`voice:${tts.mode}:${tts.model}:${preferred}:${instruction}:${targets.map((shot) => `${shot.id}:${shot.dialogue}`).join('|')}`)),
       ...(cloudMode ? {} : { estimatedCostCny: 0 }),
       costNote: voiceNote,
-      retry: { action: 'generate-voice', payload: { shotIds: targets.map((shot) => shot.id), voiceId: preferred } },
+      retry: { action: 'generate-voice', payload: { shotIds: targets.map((shot) => shot.id), voiceId: preferred, ...(instruction ? { instruction } : {}) } },
       run: async (snapshot, ctx) => {
         const generated: Array<{ shotId: string; asset: StudioAsset }> = []
         const errors: string[] = []
@@ -9477,9 +9606,21 @@ export class StudioService {
           ctx.progress(`第 ${index + 1}/${targets.length} 段 · 配音`, 4 + Math.round((index / targets.length) * 86))
           const workDir = join(this.store.tempDir(snapshot.id), `tts-${shot.id}`)
           const character = snapshot.characters.find((item) => item.name === shot.speaker)
-          const voice = character?.voiceId || shot.voiceId || preferred
+          const storedVoice = character?.voiceId || shot.voiceId || ''
+          const requestedLocal = isLocalTtsVoice(str(request.voiceId)) ? str(request.voiceId) : isLocalTtsVoice(tts.voice) ? tts.voice : ''
+          const voice = cloudMode
+            ? (storedVoice || preferred)
+            : requestedLocal
+              ? requestedLocal
+              : isLocalTtsVoice(storedVoice)
+                ? storedVoice
+                : localReady
+                  ? QWEN_DEFAULT_VOICE
+                  : (storedVoice || preferred)
+          const useLocalVoice = !cloudMode && isLocalTtsVoice(voice)
           const extension = cloudMode ? 'mp3' : 'wav'
           const output = join(workDir, `voice-${Date.now().toString(36)}.${extension}`)
+          if (useLocalVoice) ctx.progress(`第 ${index + 1}/${targets.length} 段 · 本地 AI 声线合成`, 4 + Math.round((index / targets.length) * 86))
           try {
             if (cloudMode && cloudRoute?.config) {
               await synthesizeCloudSpeech({
@@ -9492,6 +9633,24 @@ export class StudioService {
                 workDir,
                 signal: ctx.signal
               })
+            } else if (useLocalVoice) {
+              try {
+                await synthesizeLocalSpeech({
+                  text: shot.dialogue,
+                  voice,
+                  instruct: [instruction, localVoiceInstruction(shot)].filter(Boolean).join('；'),
+                  outputPath: output
+                })
+              } catch (localError) {
+                errors.push(`第 ${shot.number} 镜本地声线失败，已回退系统声线：${localError instanceof Error ? localError.message : String(localError)}`)
+                await synthesizeSpeech({
+                  text: shot.dialogue,
+                  voice: '',
+                  rate: shot.speaker.includes('外婆') ? -2 : 0,
+                  outputPath: output,
+                  workDir
+                })
+              }
             } else {
               await synthesizeSpeech({
                 text: shot.dialogue,
@@ -9511,7 +9670,9 @@ export class StudioService {
               tags: ['voice', `shot:${shot.id}`],
               origin: cloudMode
                 ? { model: `Cloud TTS · ${tts.model || 'tts-1'}`, source: 'cloud-tts' }
-                : { model: `Windows SAPI · ${voice}`, source: 'sapi' },
+                : useLocalVoice
+                  ? { model: `Qwen3-TTS · ${voice.replace(/^qwen:/, '')}`, source: 'local-tts' }
+                  : { model: `Windows SAPI · ${voice}`, source: 'sapi' },
               ...(duration ? { metadata: { durationSec: duration } } : {})
             })
             generated.push({ shotId: shot.id, asset })
@@ -9648,8 +9809,9 @@ export class StudioService {
           outputs: [{ label: asset.title, assetId: asset.id }],
           apply: (fresh) => {
             if (!fresh.assets.some((item) => item.id === asset.id)) fresh.assets.push(asset)
-            const formal = fresh.assets.some((item) => item.kind === 'audio' && item.tags.includes('music') && !item.tags.includes('draft'))
+            const formal = fresh.assets.some((item) => isFormalMusicAsset(item))
             if (isFormal) {
+              fresh.musicAssetId = asset.id
               fresh.stages.music = { status: 'done', updatedAt: nowMs(), message: '配乐已就位', progress: 100 }
             } else if (isSfx) {
               fresh.stages.music = fresh.stages.music.status === 'done'
@@ -9876,7 +10038,7 @@ export class StudioService {
           try {
             const result = await media.describeMedia({
               workspace: this.store.projectDir(snapshot.id),
-              path: asset.path,
+              path: isAbsolute(asset.path) ? asset.path : join(this.store.projectDir(snapshot.id), asset.path),
               question: '这是漫剧的一个分镜镜头。只检查画面本身的明显问题：手、脸、眼睛、服装、道具、人物数量与动作方向是否异常或前后不一致。请先给一句结论（通过/有问题），再列出最多三条具体问题；不要评价剧情，不要编造看不清的细节。',
               frames: 1,
               signal: ctx.signal,
@@ -9977,7 +10139,7 @@ export class StudioService {
           skipped.push(`配音：${err instanceof Error ? err.message : String(err)}`)
         }
       }
-      if (!project.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music'))) {
+      if (!resolveMusicAsset(project)?.formal) {
         try {
           const result = await this.generateMusic({ projectId, kind: 'music' })
           if (result.job) queued.push('配乐')
@@ -10009,9 +10171,10 @@ export class StudioService {
     })
   }
 
-  private review(request: { [key: string]: unknown }): StudioActionResult {
+  private async review(request: { [key: string]: unknown }): Promise<StudioActionResult> {
     const projectId = safeProjectId(str(request.projectId))
-    return this.resultSync(projectId, (project) => {
+    const before = this.store.readProject(projectId)
+    const base = this.resultSync(projectId, (project) => {
       const voice = auditCharacterVoices(project)
       project.voiceAudit = voice.audit
       const checks = [...runChecks(project), ...voice.checks]
@@ -10028,13 +10191,124 @@ export class StudioService {
       this.store.save(project, '运行检查', { snapshot: false })
       return project
     })
+    const vision = studioVisionProvider(before.runtime.strategy)
+    const hasVisualResult = before.checks.some((check) => check.kind === 'visual' && check.level !== 'info')
+    const hasVisualTargets = before.shots.some((shot) => shot.imageAssetId || shot.videoAssetId)
+    if (before.kind !== 'drama' || !vision || !hasVisualTargets || hasVisualResult) return base
+    try {
+      const visual = await this.visualCheck({ projectId })
+      return this.result(visual.project, {
+        job: visual.job,
+        message: `基础检查完成；正在用 ${vision.model.label || vision.model.id} 逐镜检查画面。`
+      })
+    } catch {
+      return base
+    }
   }
 
-  /** 模型审稿：按七维给证据，不再用本地正则冒充语义检查。 */
+  /** 模型审稿：按大师方法的检查清单给证据，不再用本地正则冒充语义检查。 */
+  /** 漫剧剧情审稿：真实文本模型检查动机、因果、时间线与分镜覆盖，不冒充画面检查。 */
+  private async dramaModelReview(project: StudioProject, request: { [key: string]: unknown }): Promise<StudioActionResult> {
+    const runtime = studioTextRuntime(project.runtime.strategy)
+    if (!runtime.configured) throw new Error(`剧情审稿需要可用的文本模型。${runtime.message}`)
+    if (!project.blueprint?.approved || !project.shots.length) throw new Error('还没有可审的镜头计划；先生成并确认蓝图与分镜。')
+    const shots = [...project.shots].sort((left, right) => left.number - right.number)
+    const shotText = shots.slice(0, 40).map((shot) => ({
+      number: shot.number,
+      scene: project.scenes.find((scene) => scene.id === shot.sceneId)?.title ?? '',
+      title: shot.title,
+      action: shot.action,
+      dialogue: shot.dialogue,
+      speaker: shot.speaker
+    }))
+    const scenesText = project.scenes.map((scene) => ({ number: scene.number, title: scene.title, synopsis: scene.synopsis, location: scene.location }))
+    const estimated = estimateTextCostCny(shotText.length * 120 + 1500, 4000, project.runtime.strategy) ?? 0
+    const job = await this.launchJob(project, {
+      kind: 'text',
+      label: `剧情审稿 · ${shots.length} 镜`,
+      stage: 'review',
+      requestId: str(request.requestId) || undefined,
+      inputHash: sha256Buffer(Buffer.from(`drama-review:${project.id}:${shots.map((shot) => `${shot.id}:${shot.action}:${shot.dialogue}`).join('|')}:${runtime.model?.id ?? ''}`)),
+      estimatedCostCny: estimated,
+      costNote: '按当前文本模型参考价估算',
+      retry: { action: 'model-review', payload: {} },
+      run: async (snapshot, ctx) => {
+        ctx.progress('整理剧情与分镜', 15)
+        const result = await completeCreativeText({
+          system: [
+            '你是漫剧剧情审稿编辑，只检查剧情逻辑，不改稿。',
+            '检查人物动机、因果链、时间线、场景转换、伏笔兑现、镜头是否覆盖关键动作、台词是否推进剧情。',
+            '每个问题必须引用镜号或场号；不要编造画面里看不到的细节，不要评价画面美感。',
+            '严格输出 JSON，不要 Markdown：{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"shotNumber":number,"sceneNumber":number}]}',
+            '没有证据的判断不要写；最多 12 条。',
+            masterPromptContext('drama', 'review', '剧情逻辑 人物动机 因果 时间线 伏笔 分镜覆盖', 'review', snapshot.runtime.strategy)
+          ].join('\n'),
+          prompt: [
+            `作品：${snapshot.title}`,
+            `一句话：${snapshot.logline}`,
+            `故事核：${snapshot.blueprint?.storyCore ?? ''}`,
+            `人物：${snapshot.characters.map((character) => `${character.name}（${character.role}）`).join('；')}`,
+            `场景：${JSON.stringify(scenesText)}`,
+            `分镜：${JSON.stringify(shotText)}`,
+            '请按导演大师的检查方法核对剧情逻辑与分镜覆盖，引用具体镜号。只输出 JSON。'
+          ].join('\n\n'),
+          structured: true,
+          temperature: 0.3,
+          signal: ctx.signal,
+          strategy: snapshot.runtime.strategy
+        })
+        const parsed = extractJson<Record<string, unknown>>(result.text)
+        if (!parsed || !Array.isArray(parsed.issues)) throw new Error('模型没有返回可解析的剧情审稿结果。')
+        const allowedLevels = new Set(['error', 'warn', 'info'])
+        const checks: StudioProject['checks'] = (parsed.issues as Array<Record<string, unknown>>)
+          .filter((item) => item && typeof item === 'object')
+          .slice(0, 12)
+          .map((item) => {
+            const level = allowedLevels.has(str(item.level)) ? str(item.level) as 'error' | 'warn' | 'info' : 'info'
+            const shotNumber = Math.round(num(item.shotNumber, 0))
+            const target = snapshot.shots.find((shot) => shot.number === shotNumber)
+            const sceneNumber = Math.round(num(item.sceneNumber, 0))
+            const scene = snapshot.scenes.find((itemScene) => itemScene.number === sceneNumber)
+            return {
+              id: studioId('check'),
+              kind: 'continuity' as const,
+              level,
+              title: `剧情 · ${str(item.title).slice(0, 100) || '需要核对'}`,
+              detail: str(item.detail).slice(0, 1200),
+              ...(target?.id ? { targetId: target.id } : scene?.id ? { targetId: scene.id } : {}),
+              createdAt: nowMs()
+            }
+          })
+        const summary = str(parsed.summary).slice(0, 300)
+        const errors = checks.filter((check) => check.level === 'error').length
+        const warns = checks.filter((check) => check.level === 'warn').length
+        return {
+          message: `剧情审稿完成：${errors} 个问题、${warns} 条提醒${summary ? `。${summary}` : ''}`,
+          costCny: result.costCny,
+          costNote: result.costNote ?? '按实际 token 记录',
+          outputs: [{ label: `${shots.length} 镜剧情审稿`, path: undefined }],
+          apply: (fresh) => {
+            fresh.checks = [...fresh.checks.filter((check) => !check.title.startsWith('剧情 · ')), ...checks]
+            fresh.stages.review = {
+              status: errors || warns ? 'review' : 'done',
+              updatedAt: nowMs(),
+              message: errors ? `${errors} 个剧情问题` : warns ? `${warns} 条剧情提醒` : '剧情审稿通过',
+              progress: errors || warns ? 60 : 100
+            }
+            fresh.stage = 'review'
+            fresh.messages.push(assistantMessage('assistant', [`剧情审稿：${summary || '已完成。'}`, ...checks.slice(0, 5).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
+            fresh.messages = fresh.messages.slice(-80)
+          }
+        }
+      }
+    })
+    return this.result(project, { job })
+  }
+
   private async modelReview(request: { [key: string]: unknown }): Promise<StudioActionResult> {
     const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
-    if (project.kind === 'drama') throw new Error('模型审稿目前用于小说；漫剧请用分镜检查与逐镜画面检查。')
+    if (project.kind === 'drama') return this.dramaModelReview(project, request)
     const runtime = studioTextRuntime(project.runtime.strategy)
     if (!runtime.configured) throw new Error(`模型审稿需要可用的文本模型。${runtime.message}`)
     const written = project.chapters.filter((chapter) => chapter.content.trim()).sort((left, right) => left.number - right.number)
@@ -10044,9 +10318,6 @@ export class StudioService {
       .map((chapter) => `【第 ${chapter.number} 章 · ${chapter.title}】\n${chapter.content.slice(0, 12_000)}`)
       .join('\n\n')
       .slice(0, 60_000)
-    const dimensions = STUDIO_QUALITY_DIMENSIONS.filter((dimension) => dimension.weights[project.kind] > 0)
-      .map((dimension) => `${dimension.id}（${dimension.label}）：${dimension.question}`)
-      .join('\n')
     const job = await this.launchJob(project, {
       kind: 'text',
       label: `模型审稿 · ${picked.length} 章`,
@@ -10061,12 +10332,13 @@ export class StudioService {
         const current = snapshot.chapters.filter((chapter) => picked.some((item) => item.id === chapter.id))
         const result = await completeCreativeText({
           system: [
-            '你是 Morrow 创作台的质检编辑，只做审稿，不改稿。',
-            '按下面七个维度逐项检查；每个问题必须引用章节号、原文短句或具体缺失项，不许凭感觉。',
+            '你是 Morrow 创作台的审稿编辑，只做审稿，不改稿。',
+            '按写作大师的检查方法核对结构与人物、场景与对话、语言与 AI 腔、连续性与交付完整度。',
+            '每个问题必须引用章节号、原文短句或具体缺失项，不许凭感觉。',
             '严格输出 JSON，不要 Markdown：',
-            '{"summary":string,"scores":[{"id":string,"score":number,"evidence":string}],"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"chapterNumber":number}]}',
-            '评分 0–100；低于 60 必须给可执行的改法；没有证据的判断不要写。',
-            dimensions
+            '{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"chapterNumber":number}]}',
+            '低于交付标准必须给可执行的改法；没有证据的判断不要写。',
+            masterPromptContext(snapshot.kind, 'review', '结构 人物 场景 对话 语言 AI 腔 连续性 交付', 'review', snapshot.runtime.strategy)
           ].join('\n'),
           prompt: [
             `作品：${snapshot.title}`,
@@ -10076,7 +10348,7 @@ export class StudioService {
             '',
             chaptersText
           ].join('\n'),
-          maxTokens: 8000,
+          structured: true,
           temperature: 0.3,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
@@ -10101,9 +10373,6 @@ export class StudioService {
               createdAt: nowMs()
             }
           })
-        const scores = Array.isArray(parsed.scores)
-          ? (parsed.scores as Array<Record<string, unknown>>).map((item) => `${str(item.id)} ${Math.round(num(item.score, 0))}`).join(' · ')
-          : ''
         const summary = str(parsed.summary).slice(0, 300)
         const errors = checks.filter((check) => check.level === 'error').length
         const warns = checks.filter((check) => check.level === 'warn').length
@@ -10133,7 +10402,7 @@ export class StudioService {
               progress: errors || warns || localErrors || sampled ? 60 : 100
             }
             fresh.stage = 'review'
-            fresh.messages.push(assistantMessage('assistant', [`模型审稿：${summary || '已完成。'}`, scores ? `七维评分：${scores}` : '', ...checks.slice(0, 4).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
+            fresh.messages.push(assistantMessage('assistant', [`模型审稿：${summary || '已完成。'}`, ...checks.slice(0, 4).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
             fresh.messages = fresh.messages.slice(-80)
           }
         }
@@ -10631,6 +10900,513 @@ export class StudioService {
     })
   }
 
+  private async planStoryboardExtension(project: StudioProject, text: string): Promise<{
+    plan: StudioEditPlan
+    reply: string
+    cost: number | null
+    costNote: string
+    model: string
+  }> {
+    if (project.kind !== 'drama') throw new Error('补全分镜只适用于漫剧作品。')
+    const blueprint = project.blueprint
+    if (!blueprint?.approved) throw new Error('请先确认故事蓝图，再补全分镜。')
+    const runtime = studioTextRuntime(project.runtime.strategy)
+    if (!runtime.configured) throw new Error(`还没有可用的文本模型。${runtime.message}`)
+    const sceneViews: Array<Pick<StudioScene, 'number' | 'title' | 'synopsis' | 'location' | 'timeOfDay' | 'characters'>> = []
+    const sceneCount = Math.max(project.scenes.length, blueprint.scenes?.length ?? 0)
+    for (let index = 0; index < sceneCount; index += 1) {
+      const existing = project.scenes.find((scene) => scene.number === index + 1)
+      const seed = blueprint.scenes?.[index]
+      if (existing) sceneViews.push(existing)
+      else if (seed) {
+        sceneViews.push({
+          number: index + 1,
+          title: seed.title,
+          synopsis: seed.synopsis,
+          location: seed.location,
+          timeOfDay: seed.timeOfDay,
+          characters: seed.characters
+        })
+      }
+    }
+    if (!sceneViews.length) throw new Error('当前作品没有场景，请先生成蓝图和大纲。')
+    const sceneMatch = /第\s*([一二三四五六七八九十\d]{1,3})\s*场/.exec(text) ?? /场景\s*([一二三四五六七八九十\d]{1,3})/.exec(text)
+    const parsedScene = sceneMatch ? chineseNumber(sceneMatch[1]) : null
+    const requestedScene = parsedScene ? sceneViews.find((scene) => scene.number === parsedScene) : undefined
+    const emptyScene = [...sceneViews].reverse().find((scene) => {
+      const existing = project.scenes.find((item) => item.number === scene.number)
+      return !existing || !project.shots.some((shot) => shot.sceneId === existing.id)
+    })
+    const targetScene = requestedScene ?? emptyScene ?? sceneViews[sceneViews.length - 1]
+    const maxNumber = project.shots.reduce((max, shot) => Math.max(max, shot.number), 0)
+    const rangeMatch = /(\d{1,3})\s*[-–—到至~]\s*(\d{1,3})/.exec(text)
+    const singleMatch = /(?:第|补全|补齐|新增|添加)\s*(\d{1,3})\s*(?:镜|个镜头)/.exec(text)
+    const seed = blueprint.scenes?.[targetScene.number - 1]
+    const sceneHasShots = project.shots.some((shot) => {
+      const existing = project.scenes.find((scene) => scene.number === targetScene.number)
+      return existing ? shot.sceneId === existing.id : false
+    })
+    let start = rangeMatch ? Number(rangeMatch[1]) : singleMatch ? Number(singleMatch[1]) : Math.max(maxNumber + 1, seed?.unitStart ?? maxNumber + 1)
+    let end = rangeMatch ? Number(rangeMatch[2]) : start + (seed && !sceneHasShots ? Math.max(0, (seed.unitEnd - seed.unitStart)) : 5)
+    let adjusted = false
+    if (start <= maxNumber) {
+      const count = Math.max(1, end - start + 1)
+      start = maxNumber + 1
+      end = start + count - 1
+      adjusted = true
+    }
+    if (end < start) end = start
+    if (end - start + 1 > 12) {
+      end = start + 11
+      adjusted = true
+    }
+    const count = end - start + 1
+    const existing = [...project.shots].sort((left, right) => left.number - right.number).slice(-30).map((shot) => ({
+      number: shot.number,
+      title: shot.title,
+      action: shot.action,
+      dialogue: shot.dialogue,
+      speaker: shot.speaker
+    }))
+    const characters = project.characters.slice(0, 10).map((character) => `${character.name}（${character.role}）`)
+    const places = project.places.slice(0, 8).map((place) => `${place.name}：${place.description.slice(0, 120)}`)
+    const estimate = estimateTextCostCny(text.length + existing.length * 80 + 1800, 5000, project.runtime.strategy) ?? 0
+    const limit = project.runtime.budget.limit
+    if (limit > 0 && project.runtime.budget.spent + estimate > limit) {
+      throw new Error(`预算不足：预计需要 ¥${estimate.toFixed(2)}，当前上限 ¥${limit}`)
+    }
+    const result = await completeCreativeText({
+      system: `你是漫剧分镜师。只补全用户指定的新镜头，不重写已有镜头；保持人物、场景、道具和前后衔接一致。只输出 JSON，不要 Markdown。${masterPromptContext('drama', 'storyboard', `${targetScene.title} ${targetScene.synopsis} 补全分镜 运镜 连续性`, 'storyboard', project.runtime.strategy)}`,
+      prompt: [        `作品：${project.title}`,
+        `故事核：${blueprint.storyCore}`,
+        `人物：${characters.join('；')}`,
+        `地点：${places.join('；')}`,
+        `目标场次：第 ${targetScene.number} 场《${targetScene.title}》 · ${targetScene.synopsis} · ${targetScene.location} · ${targetScene.timeOfDay}`,
+        `场景人物：${targetScene.characters.join('、') || '未指定'}`,
+        `已有镜头（不要重复）：${JSON.stringify(existing)}`,
+        `请补全第 ${start}–${end} 镜，共 ${count} 镜，全部属于第 ${targetScene.number} 场。`,
+        '输出 {"shots":[{"number":数字,"title":"短标题","action":"具体动作与画面","camera":"运镜","shotSize":"景别","seconds":3-20,"dialogue":"台词，可为空","speaker":"说话人，必须在人物列表或为旁白","continuity":"与上一镜的衔接","prompt":"画面生成提示","negative":"避免项"}]}。',
+        '必须返回完整 count 个镜头；台词只使用已有人物或旁白；不要输出解释。'
+      ].join('\n\n'),
+      structured: true,
+      temperature: 0.8,
+      strategy: project.runtime.strategy
+    })
+    this.charge(project, result.costCny)
+    const parsed = extractJson<Record<string, unknown>>(result.text)
+    const rawShots = parsed && Array.isArray(parsed.shots)
+      ? parsed.shots.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      : []
+    if (rawShots.length !== count) {
+      throw new Error(`模型只返回 ${rawShots.length} 镜，正在补全 ${count} 镜；已拒绝写入残缺分镜，请重试`)
+    }
+    const allowedNames = new Set(project.characters.map((character) => character.name))
+    const seeds: StudioShotSeed[] = rawShots.map((item, index) => {
+      const title = str(item.title).slice(0, 160).trim()
+      const action = str(item.action).slice(0, 2000).trim() || str(item.summary).slice(0, 2000).trim()
+      if (!title || !action) throw new Error(`第 ${start + index} 镜缺少标题或动作，已拒绝写入。`)
+      const rawSpeaker = str(item.speaker).slice(0, 80).trim()
+      const speaker = rawSpeaker === '旁白' || allowedNames.has(rawSpeaker) ? rawSpeaker : ''
+      const durationSec = Math.max(3, Math.min(20, num(item.seconds ?? item.durationSec, 8)))
+      const camera = str(item.camera).slice(0, 200).trim() || '固定镜头'
+      const shotSize = str(item.shotSize).slice(0, 80).trim() || '中景'
+      return {
+        number: start + index,
+        sceneIndex: targetScene.number,
+        title,
+        action,
+        camera,
+        shotSize,
+        durationSec,
+        dialogue: str(item.dialogue).slice(0, 500).trim(),
+        speaker,
+        continuity: str(item.continuity).slice(0, 500).trim() || `承接第 ${start + index - 1} 镜`,
+        prompt: str(item.prompt).slice(0, 4000).trim() || `${title}。${action}。${blueprint.styleBible.look}。第 ${start + index} 镜。`,
+        negative: str(item.negative).slice(0, 1000).trim() || blueprint.styleBible.negative.join('，')
+      }
+    })
+    const effects = seeds.map((shot) => `第 ${shot.number} 镜 · ${shot.title}：${shot.action.slice(0, 120)}`)
+    const actions: StudioEditAction[] = seeds.map((shot) => ({ type: 'append-shots', shots: [shot] }))
+    const plan = createPlanFromDraft(project.id, {
+      title: '补全分镜计划',
+      summary: `补全第 ${start}–${end} 镜（第 ${targetScene.number} 场《${targetScene.title}》）`,
+      actions,
+      effects,
+      seconds: seeds.reduce((sum, shot) => sum + shot.durationSec, 0),
+      cost: result.costCny,
+      note: adjusted ? '镜号已顺延到现有镜头之后，避免覆盖已有素材。' : result.costNote ?? '按实际 token 记录'
+    })
+    const reply = [
+      adjusted ? `为了避免覆盖现有镜头，我把补全范围顺延为第 ${start}–${end} 镜（第 ${targetScene.number} 场《${targetScene.title}》）：` : `我会补全第 ${start}–${end} 镜（第 ${targetScene.number} 场《${targetScene.title}》）：`,
+      ...seeds.map((shot) => `${shot.number} · ${shot.title}\n   动作：${shot.action}${shot.dialogue ? `\n   台词：${shot.speaker || '旁白'}「${shot.dialogue}」` : ''}`),
+      `确认后会把 ${seeds.length} 镜同步写入大纲、分镜和蓝图；已有镜头与素材不会被覆盖。`
+    ].join('\n')
+    return { plan, reply, cost: 0, costNote: result.costNote ?? '按实际 token 记录', model: result.model }
+  }
+
+  /** 给协作者看的作品快照：足够理解要改哪一步，又不会把整本书塞进上下文。 */
+  private revisionSnapshot(project: StudioProject, view: string, selection?: IntentContext['selection']): string {
+    const blueprint = project.blueprint
+    const lines: string[] = [
+      `作品：${project.title}（${studioKindLabel(project.kind)}）`,
+      `当前页面：${view || project.stage}；项目阶段：${project.stage}`,
+      `一句话：${project.logline}`,
+      project.brief.genre ? `类型：${project.brief.genre}；语气：${project.brief.tone || '未定'}；受众：${project.brief.audience || '未定'}` : ''
+    ]
+    if (blueprint) {
+      lines.push(
+        `故事核：${blueprint.storyCore}`,
+        blueprint.pitch ? `故事提要：${blueprint.pitch.slice(0, 500)}` : '',
+        blueprint.structure ? `结构：${blueprint.structure.slice(0, 500)}` : '',
+        `人物：${project.characters.map((character) => `${character.name}（${character.role}${character.desire ? `，想要${character.desire}` : ''}${character.fear ? `，怕${character.fear}` : ''}）`).join('；') || '未建立'}`,
+        `地点：${project.places.map((place) => `${place.name}：${place.description.slice(0, 80)}`).join('；') || '未建立'}`,
+        `风格：${blueprint.styleBible.look}；${blueprint.styleBible.camera}`
+      )
+      if (project.kind === 'drama') {
+        lines.push(`场景：${project.scenes.map((scene) => `第${scene.number}场《${scene.title}》${scene.synopsis.slice(0, 80)} @${scene.location}/${scene.timeOfDay}；人物：${scene.characters.join('、')}`).join('\n') || '未建立'}`)
+      }
+    }
+    if (project.kind !== 'drama') {
+      const units = blueprint?.units ?? []
+      lines.push(`大纲（${units.length} 章）：${units.slice(0, 80).map((unit) => `第${unit.index}章《${unit.title}》：${unit.summary.slice(0, 120)}${unit.beats?.length ? `｜节拍：${unit.beats.slice(0, 3).join(' / ').slice(0, 160)}` : ''}`).join('\n')}`)
+      const chapters = [...project.chapters].sort((left, right) => left.number - right.number).slice(0, 80)
+      lines.push(`章节：${chapters.map((chapter) => {
+        const selected = selection?.kind === 'chapter' && selection.id === chapter.id
+        const body = chapter.content.trim()
+        const tail = body ? `｜结尾：${body.slice(-160)}` : ''
+        const head = selected && body ? `｜开头：${body.slice(0, 500)}` : ''
+        return `第${chapter.number}章《${chapter.title}》${body ? `${countWords(body)}字` : '未写'}${tail}${head}`
+      }).join('\n')}`)
+    } else {
+      const shots = [...project.shots].sort((left, right) => left.number - right.number).slice(0, 60)
+      lines.push(`分镜（${project.shots.length} 镜）：${shots.map((shot) => {
+        const scene = project.scenes.find((item) => item.id === shot.sceneId)
+        return `第${shot.number}镜[${scene?.title ?? '?'}]《${shot.title}》${shot.action.slice(0, 120)}${shot.dialogue ? `｜台词 ${shot.speaker || '旁白'}：「${shot.dialogue}」` : ''}｜${shot.camera}/${shot.shotSize}/${shot.durationSec}s｜声线 ${shot.voiceId || '默认'}${shot.imageAssetId || shot.videoAssetId ? '｜已有画面' : ''}${shot.voiceAssetId ? '｜已有配音' : ''}`
+      }).join('\n')}`)
+    }
+    const localVoices = localTtsVoices()
+    if (localVoices.length) lines.push(`本地声线可选：${localVoices.map((voice) => `${voice.id}（${voice.label}）`).join('；')}`)
+    const music = resolveMusicAsset(project)
+    const sfx = project.assets.filter((asset) => asset.kind === 'audio' && asset.tags.includes('sfx'))
+    lines.push(`声音素材：${music ? `配乐「${music.asset.title}」${music.formal ? '正式' : '草稿/样例'}` : '还没有配乐'}；音效 ${sfx.map((asset) => asset.title).join('、') || '无'}；时间线片段 ${project.timeline.clips.length} 个`)
+    if (selection?.kind === 'chapter') {
+      const chapter = project.chapters.find((item) => item.id === selection.id)
+      if (chapter) lines.push(`用户当前选中：第${chapter.number}章《${chapter.title}》`)
+    } else if (selection?.kind === 'shot') {
+      const shot = project.shots.find((item) => item.id === selection.id)
+      if (shot) lines.push(`用户当前选中：第${shot.number}镜《${shot.title}》`)
+    } else if (selection?.kind === 'clip') {
+      const clip = project.timeline.clips.find((item) => item.id === selection.id)
+      if (clip) {
+        const shot = clip.shotId ? project.shots.find((item) => item.id === clip.shotId) : undefined
+        lines.push(`用户当前选中：时间线片段「${clip.label}」（${clip.kind}${shot ? `，第${shot.number}镜` : ''}）`)
+      }
+    }
+    return lines.filter(Boolean).join('\n')
+  }
+
+  private normalizeRevisionActions(project: StudioProject, raw: unknown[]): StudioEditAction[] {
+    const actions: StudioEditAction[] = []
+    for (const item of raw.slice(0, 12)) {
+      if (!item || typeof item !== 'object') continue
+      const input = item as Record<string, unknown>
+      const type = str(input.type) as StudioEditAction['type']
+      const shotNumber = Math.round(num(input.shotNumber, 0)) || undefined
+      const chapterNumber = Math.round(num(input.chapterNumber ?? (input.chapter as Record<string, unknown> | undefined)?.number, 0)) || undefined
+      if (type === 'update-blueprint' && input.blueprint && typeof input.blueprint === 'object') {
+        const patch = input.blueprint as StudioBlueprintPatch
+        const next: StudioBlueprintPatch = {}
+        for (const key of ['title', 'logline', 'genre', 'tone', 'audience', 'storyCore', 'emotion', 'pitch', 'structure'] as const) {
+          if (typeof patch[key] === 'string' && patch[key]!.trim()) (next as Record<string, unknown>)[key] = patch[key]!.trim()
+        }
+        if (patch.styleBible && typeof patch.styleBible === 'object') next.styleBible = patch.styleBible
+        if (Array.isArray(patch.characters)) next.characters = patch.characters.filter((character) => character?.name?.trim())
+        if (Array.isArray(patch.places)) next.places = patch.places.filter((place) => place?.name?.trim())
+        if (Object.keys(next).length) actions.push({ type, blueprint: next })
+        continue
+      }
+      if (type === 'replace-outline' && input.outline && typeof input.outline === 'object') {
+        const outline = input.outline as StudioOutlinePatch
+        const units = Array.isArray(outline.units)
+          ? outline.units.filter((unit) => unit && typeof unit === 'object' && Math.round(num(unit.index, 0)) > 0)
+          : []
+        if (units.length) actions.push({ type, outline: { units, ...(Array.isArray(outline.scenes) && outline.scenes.length ? { scenes: outline.scenes } : {}) } })
+        continue
+      }
+      if (type === 'update-chapter' && input.chapter && typeof input.chapter === 'object') {
+        const chapter = { ...(input.chapter as StudioChapterPatch) }
+        if (!chapterNumber && !str(input.chapterId)) continue
+        if (chapter.content !== undefined) chapter.content = str(chapter.content)
+        actions.push({ type, chapter, ...(chapterNumber ? { chapterNumber } : {}), ...(str(input.chapterId) ? { chapterId: str(input.chapterId) } : {}) })
+        continue
+      }
+      if (type === 'rewrite-chapter') {
+        const chapterId = str(input.chapterId) || project.chapters.find((chapter) => chapter.number === chapterNumber)?.id
+        if (!chapterId) continue
+        actions.push({ type, chapterId, instruction: str(input.instruction).slice(0, 1200) || str(input.reason).slice(0, 1200), ...(chapterNumber ? { chapterNumber } : {}) })
+        continue
+      }
+      if (type === 'update-shot' && input.shot && typeof input.shot === 'object') {
+        const shot = { ...(input.shot as StudioShotPatch) }
+        const number = Math.round(num(shot.number, 0)) || shotNumber
+        if (!number) continue
+        if (shot.voiceId !== undefined) shot.voiceId = str(shot.voiceId).slice(0, 200)
+        actions.push({ type, shot: { ...shot, number }, shotNumber: number, ...(shot.voiceId ? { voiceId: shot.voiceId } : {}) })
+        continue
+      }
+      if (type === 'move-chapter') {
+        const to = Math.round(num(input.to ?? input.position ?? input.toIndex, 0)) || undefined
+        if ((!chapterNumber && !str(input.chapterId)) || !to) continue
+        actions.push({ type, ...(chapterNumber ? { chapterNumber } : {}), ...(str(input.chapterId) ? { chapterId: str(input.chapterId) } : {}), to })
+        continue
+      }
+      if (type === 'move-shot') {
+        const to = Math.round(num(input.to ?? input.position ?? input.toIndex, 0)) || undefined
+        if ((!shotNumber && !str(input.shotId)) || !to) continue
+        actions.push({ type, ...(shotNumber ? { shotNumber } : {}), ...(str(input.shotId) ? { shotId: str(input.shotId) } : {}), to })
+        continue
+      }
+      if (type === 'update-character' && input.character && typeof input.character === 'object') {
+        const raw = input.character as Record<string, unknown>
+        const name = str(raw.name).trim()
+        if (!name) continue
+        const patch: StudioCharacterPatch = { name }
+        for (const key of ['newName', 'role', 'age', 'look', 'voiceId', 'desire', 'fear', 'secret', 'arc'] as const) {
+          if (typeof raw[key] === 'string') patch[key] = str(raw[key]).trim()
+        }
+        if (Array.isArray(raw.relationships)) {
+          patch.relationships = raw.relationships
+            .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+            .filter((item) => str(item.target).trim())
+            .map((item) => ({ target: str(item.target).trim(), label: str(item.label).trim() || '关系' }))
+        }
+        if (Array.isArray(raw.refAssetIds)) patch.refAssetIds = raw.refAssetIds.map((item) => str(item)).filter(Boolean)
+        if (typeof raw.locked === 'boolean') patch.locked = raw.locked
+        actions.push({ type, character: patch })
+        continue
+      }
+      if (type === 'update-place' && input.place && typeof input.place === 'object') {
+        const raw = input.place as Record<string, unknown>
+        const name = str(raw.name).trim()
+        if (!name) continue
+        const patch: StudioPlacePatch = { name }
+        if (typeof raw.newName === 'string') patch.newName = str(raw.newName).trim()
+        if (typeof raw.description === 'string') patch.description = str(raw.description)
+        if (Array.isArray(raw.refAssetIds)) patch.refAssetIds = raw.refAssetIds.map((item) => str(item)).filter(Boolean)
+        actions.push({ type, place: patch })
+        continue
+      }
+      if (type === 'rename-entity' && input.rename && typeof input.rename === 'object') {
+        const rename = input.rename as StudioRenameRequest
+        if (rename.target === 'character' || rename.target === 'place') {
+          if (str(rename.from).trim() && str(rename.to).trim()) actions.push({ type, rename })
+        }
+        continue
+      }
+      if (type === 'remove-sfx') {
+        const rawKind = str((input.sfx as Record<string, unknown> | undefined)?.kind)
+        const kind = /雨|rain/i.test(rawKind) ? 'rain' : /心跳|heart/i.test(rawKind) ? 'heartbeat' : /伞|umbrella/i.test(rawKind) ? 'umbrella' : /街|车|环境|street/i.test(rawKind) ? 'street' : ''
+        if (kind) actions.push({ type, sfx: { kind: kind as 'rain' | 'umbrella' | 'heartbeat' | 'street' } })
+        continue
+      }
+      if (type === 'remove-music') {
+        actions.push({ type })
+        continue
+      }
+      if (type === 'generate-sfx' && input.sfx && typeof input.sfx === 'object') {
+        const sfx = input.sfx as { kind?: string; seconds?: number }
+        const rawKind = str(sfx.kind)
+        const kind = /雨|rain/i.test(rawKind) ? 'rain' : /心跳|heart/i.test(rawKind) ? 'heartbeat' : /伞|umbrella/i.test(rawKind) ? 'umbrella' : /街|车|环境|street/i.test(rawKind) ? 'street' : ''
+        if (kind) actions.push({ type, sfx: { kind: kind as 'rain' | 'umbrella' | 'heartbeat' | 'street', ...(num(sfx.seconds, 0) ? { seconds: Math.max(3, Math.min(30, Math.round(num(sfx.seconds, 8)))) } : {}) } })
+        continue
+      }
+      if (type === 'generate-music') {
+        const music = (input.music && typeof input.music === 'object' ? input.music : {}) as Record<string, unknown>
+        actions.push({ type, music: { ...(str(music.mood) ? { mood: str(music.mood) } : {}), ...(num(music.seconds, 0) ? { seconds: Math.max(10, Math.min(300, Math.round(num(music.seconds, 60)))) } : {}), ...(music.engine === 'local' ? { engine: 'local' as const } : {}) } })
+        continue
+      }
+      if (type === 'regenerate-shot-image' || type === 'regenerate-shot-video' || type === 'regenerate-voice') {
+        const scope = type === 'regenerate-voice' && str(input.scope) === 'all' ? 'all' as const : undefined
+        if (!scope && !shotNumber && !str(input.shotId)) continue
+        actions.push({ type, ...(shotNumber ? { shotNumber } : {}), ...(str(input.shotId) ? { shotId: str(input.shotId) } : {}), ...(scope ? { scope } : {}), ...(str(input.voiceId) ? { voiceId: str(input.voiceId).slice(0, 200) } : {}), instruction: str(input.instruction).slice(0, 600) })
+        continue
+      }
+      if (type === 'append-shots' && Array.isArray(input.shots)) {
+        const shots = input.shots.filter((shot) => shot && typeof shot === 'object' && str((shot as Record<string, unknown>).title).trim())
+        if (shots.length) actions.push({ type, shots: shots as StudioShotSeed[] })
+      }
+    }
+    const unique = actions.filter((action, index, list) => {
+      const key = `${action.type}:${action.shotNumber ?? action.chapterNumber ?? action.chapterId ?? action.shotId ?? action.rename?.from ?? action.character?.name ?? action.place?.name ?? ''}:${action.to ?? action.voiceId ?? ''}`
+      return list.findIndex((item) => `${item.type}:${item.shotNumber ?? item.chapterNumber ?? item.chapterId ?? item.shotId ?? item.rename?.from ?? item.character?.name ?? item.place?.name ?? ''}:${item.to ?? item.voiceId ?? ''}` === key) === index
+    })
+    return unique
+  }
+
+  private revisionEffects(project: StudioProject, actions: StudioEditAction[]): string[] {
+    const labelSfx: Record<string, string> = { rain: '雨声', umbrella: '伞骨', heartbeat: '心跳', street: '街声' }
+    const short = (value: string, limit = 48): string => value.replace(/\s+/g, ' ').trim().slice(0, limit)
+    const fieldLabel: Record<string, string> = {
+      title: '标题',
+      logline: '一句话',
+      genre: '类型',
+      tone: '语气',
+      audience: '受众',
+      storyCore: '故事核',
+      emotion: '情绪',
+      pitch: '故事提要',
+      structure: '结构',
+      styleBible: '风格',
+      characters: '人物',
+      places: '地点'
+    }
+    return actions.map((action) => {
+      if (action.type === 'update-blueprint') {
+        const patch = action.blueprint ?? {}
+        const bits = Object.entries(patch).slice(0, 4).map(([key, value]) => {
+          const label = fieldLabel[key] ?? key
+          if (typeof value === 'string') return `${label}「${short(value)}」`
+          if (Array.isArray(value)) return `${label} ${value.length} 项`
+          return label
+        })
+        return `更新蓝图：${bits.join('；') || '故事内容'}`
+      }
+      if (action.type === 'replace-outline') {
+        const units = action.outline?.units ?? []
+        return `更新 ${units.length} 个大纲单元：${units.slice(0, 3).map((unit) => `第${unit.index}章《${short(unit.title ?? '', 24) || '未命名'}》：${short(unit.summary ?? '', 36) || '保持原样'}`).join('；')}${units.length > 3 ? '…' : ''}`
+      }
+      if (action.type === 'update-chapter') {
+        const chapter = project.chapters.find((item) => item.id === action.chapterId || item.number === (action.chapterNumber ?? action.chapter?.number))
+        const patch = action.chapter ?? {}
+        const bits = [
+          patch.title ? `标题「${short(patch.title, 30)}」` : '',
+          patch.synopsis ? `梗概「${short(patch.synopsis, 40)}」` : '',
+          patch.content ? `正文 ${countWords(patch.content)} 字` : '',
+          patch.beats?.length ? `${patch.beats.length} 个节拍` : ''
+        ].filter(Boolean)
+        return `更新第 ${chapter?.number ?? action.chapterNumber ?? '?'} 章：${bits.join('；') || '章节信息'}`
+      }
+      if (action.type === 'rewrite-chapter') {
+        const chapter = project.chapters.find((item) => item.id === action.chapterId)
+        return `按计划重写第 ${chapter?.number ?? action.chapterNumber ?? '?'} 章正文：${short(action.instruction ?? '', 50)}`
+      }
+      if (action.type === 'update-shot') {
+        const patch = action.shot ?? {}
+        const bits = [
+          patch.dialogue !== undefined ? `台词「${short(patch.dialogue, 36)}」` : '',
+          patch.action ? `动作「${short(patch.action, 40)}」` : '',
+          patch.camera ? `运镜「${short(patch.camera, 24)}」` : '',
+          patch.title ? `标题「${short(patch.title, 24)}」` : '',
+          patch.voiceId ? `声线「${short(patch.voiceId, 30)}」` : ''
+        ].filter(Boolean)
+        const voiceNote = patch.dialogue !== undefined || patch.speaker !== undefined || patch.voiceId ? '；并重配这一镜的配音' : ''
+        return `更新第 ${action.shotNumber ?? patch.number ?? '?'} 镜：${bits.join('；') || '镜头文字'}${voiceNote}`
+      }
+      if (action.type === 'move-chapter') return `第 ${action.chapterNumber ?? '?'} 章移到第 ${action.to ?? '?'} 位`
+      if (action.type === 'move-shot') return `第 ${action.shotNumber ?? '?'} 镜移到第 ${action.to ?? '?'} 位`
+      if (action.type === 'update-character') {
+        const character = action.character
+        const bits = [
+          character?.newName ? `改名「${character.newName}」` : '',
+          character?.role ? `身份「${short(character.role, 20)}」` : '',
+          character?.look ? '外观' : '',
+          character?.voiceId ? `声线「${short(character.voiceId, 30)}」` : '',
+          character?.desire ? '欲望' : '',
+          character?.fear ? '恐惧' : ''
+        ].filter(Boolean)
+        return `更新人物「${character?.name ?? '?'}」：${bits.join('；') || '人物设定'}${character?.voiceId ? '；并重配该人物的所有台词' : ''}`
+      }
+      if (action.type === 'update-place') {
+        const place = action.place
+        return `更新地点「${place?.name ?? '?'}」${place?.newName ? `，并改名为「${place.newName}」` : ''}${place?.description ? `：${short(place.description, 40)}` : ''}`
+      }
+      if (action.type === 'rename-entity') return `${action.rename?.target === 'place' ? '地点' : '人物'}「${action.rename?.from}」改名为「${action.rename?.to}」`
+      if (action.type === 'generate-sfx') return `生成音效：${labelSfx[action.sfx?.kind ?? 'rain'] ?? action.sfx?.kind}`
+      if (action.type === 'generate-music') return '生成配乐'
+      if (action.type === 'remove-sfx') return `移除音效：${labelSfx[action.sfx?.kind ?? 'rain'] ?? action.sfx?.kind}`
+      if (action.type === 'remove-music') return '移除配乐'
+      if (action.type === 'regenerate-shot-image') return `重做第 ${action.shotNumber ?? '?'} 镜画面`
+      if (action.type === 'regenerate-shot-video') return `升级第 ${action.shotNumber ?? '?'} 镜为视频`
+      if (action.type === 'regenerate-voice') return action.scope === 'all' ? `全片重配配音：${short(action.instruction ?? '', 40) || '按新要求'}` : `重做第 ${action.shotNumber ?? '?'} 镜配音${action.voiceId ? `（${short(action.voiceId, 24)}）` : ''}`
+      if (action.type === 'append-shots') return `补全 ${action.shots?.length ?? 0} 镜`
+      return '更新作品'
+    })
+  }
+
+  private async planRevision(
+    project: StudioProject,
+    text: string,
+    view: string,
+    selection?: IntentContext['selection']
+  ): Promise<{ plan: StudioEditPlan | null; reply: string; cost: number | null; costNote: string; model: string } | null> {
+    const runtime = studioTextRuntime(project.runtime.strategy)
+    if (!runtime.configured) return null
+    const system = [
+      '你是 Morrow 创作台的协作者。先理解用户在哪一步、想改什么，再把改动拆成可审阅、可撤销的计划。',
+      '只输出一个合法 JSON，不要 Markdown、不要解释：{"reply":string,"actions":[...]}。',
+      '动作规则：',
+      '- 用户只是提问、讨论或要建议：actions 为空数组，reply 直接回答。',
+      '- 改蓝图：{"type":"update-blueprint","blueprint":{只放要改的字段}}；不要重写未提到的字段。',
+      '- 改大纲：{"type":"replace-outline","outline":{"units":[{index,title?,summary?,beats?,...}]}}；只放要改或新增的单元，index 必填；title/summary 可以只给一个，未提到的字段保持原样。',
+      '- 改章节信息：{"type":"update-chapter","chapter":{number,title/synopsis/beats}}；不要用它改整章正文。',
+      '- 改整章正文：{"type":"rewrite-chapter","chapter":{number},"instruction":"具体怎么改"}；不要输出整章正文。',
+      '- 调整章节或正文顺序：{"type":"move-chapter","chapterNumber":原章号,"to":目标位置}；交换两章用两次动作，第二次带 chapterId 或新的 chapterNumber。',
+      '- 调整镜头顺序：{"type":"move-shot","shotNumber":原镜号,"to":目标位置}；交换两镜用两次动作。',
+      '- 改镜头文字：{"type":"update-shot","shot":{number,title/action/dialogue/camera/shotSize/seconds/speaker/continuity/prompt}}。',
+      '- 改声线：{"type":"update-shot","shot":{"number":3,"voiceId":"qwen:serena"}}；会清空旧配音并排队重配。',
+      '- 重配同一镜：{"type":"regenerate-voice","shotNumber":3,"instruction":"读得更冷/更慢"}；全片重配：{"type":"regenerate-voice","scope":"all","instruction":"..."}。',
+      '- 改人物局部：{"type":"update-character","character":{"name":"现名","newName?":...,"voiceId?":...,"look?":...,"desire?":...}}；不要用 update-blueprint 重写整个人物表。',
+      '- 改地点局部：{"type":"update-place","place":{"name":"现名","newName?":...,"description?":...}}。',
+      '- 人物或地点改名：{"type":"rename-entity","rename":{"target":"character"|"place","from":"旧名","to":"新名"}}。',
+      '- 加音效：{"type":"generate-sfx","sfx":{"kind":"rain"|"umbrella"|"heartbeat"|"street","seconds":数字}}；换配乐：{"type":"generate-music","music":{"mood":"情绪","seconds":数字}}。',
+      '- 去掉音效：{"type":"remove-sfx","sfx":{"kind":"rain"|"umbrella"|"heartbeat"|"street"}}；去掉配乐：{"type":"remove-music"}。',
+      '- 重做画面/视频：{"type":"regenerate-shot-image"|"regenerate-shot-video","shotNumber":数字,"instruction":"要求"}。',
+      '- 补全新镜头：{"type":"append-shots","shots":[...]}；如果用户明确要补全分镜，优先建议在分镜页补全，避免与已有镜头重叠。',
+      '- 不要生成 set-clip-* 等时间线动作；这些交给本地时间线指令。',
+      '- 用户说“这一条/这个/它”时，优先使用快照里的当前选中项；没有选中项时用当前页面上下文推断，并在 reply 里说明对象。',
+      '- 最多 12 个动作；只改用户要求的部分，保留未提到的人物、事实、素材和正文。',
+      '- reply 用中文说清楚会改哪些地方、影响哪些下游；不要声称已经修改。',
+      masterPromptContext(project.kind, 'assistant', text, view, project.runtime.strategy)
+    ].join('\n')
+    const prompt = [
+      this.revisionSnapshot(project, view, selection),
+      `用户说：${text}`,
+      '请判断用户要改哪一步，并按上面的 JSON 契约给出计划。'
+    ].join('\n\n')
+    const result = await completeCreativeText({
+      system,
+      prompt,
+      structured: true,
+      temperature: 0.35,
+      strategy: project.runtime.strategy
+    })
+    const parsed = extractJson<Record<string, unknown>>(result.text)
+    if (!parsed) throw new Error('模型没有返回可解析的协作者计划。')
+    const rawActions = Array.isArray(parsed.actions) ? parsed.actions : []
+    const actions = this.normalizeRevisionActions(project, rawActions)
+    const reply = str(parsed.reply).trim().slice(0, 4000)
+    if (!actions.length) {
+      return reply ? { plan: null, reply, cost: result.costCny, costNote: result.costNote ?? '按模型参考价折算', model: result.model } : null
+    }
+    const effects = this.revisionEffects(project, actions)
+    const plan = createPlanFromDraft(project.id, {
+      title: '协作者修改计划',
+      summary: effects.join('；'),
+      actions,
+      effects,
+      seconds: 0,
+      cost: 0,
+      note: result.costNote ?? '策划费用已记入本轮回复；确认后执行，生成任务会另行排队'
+    })
+    return {
+      plan,
+      reply: reply || `我整理了一个修改计划，先给你看；确认前不会改任何东西。\n${effects.map((effect) => `· ${effect}`).join('\n')}`,
+      cost: result.costCny,
+      costNote: result.costNote ?? '按模型参考价折算',
+      model: result.model
+    }
+  }
+
   private async assistant(request: { [key: string]: unknown }): Promise<StudioActionResult> {
     const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
@@ -10641,8 +11417,29 @@ export class StudioService {
       selectionRaw && typeof selectionRaw.kind === 'string' && typeof selectionRaw.id === 'string' && ['chapter', 'shot', 'clip'].includes(selectionRaw.kind)
         ? { kind: selectionRaw.kind as 'chapter' | 'shot' | 'clip', id: selectionRaw.id }
         : undefined
-    const wantsCheck = /检查|审稿|连续性|缺失素材/.test(text) && !/慢|快|压低|调大|改|重做|生成|写|导出|合成/.test(text)
     const sources = assistantSources(project, selection)
+    if (!selection && detectStoryboardExtension(text)) {
+      project.messages.push(assistantMessage('user', text))
+      try {
+        const extension = await this.planStoryboardExtension(project, text)
+        project.messages.push(assistantMessage('assistant', extension.reply, extension.plan, sources))
+        project.messages = project.messages.slice(-80)
+        this.charge(project, extension.cost)
+        project.runtime.textModelNote = extension.model
+        project.stage = 'storyboard'
+        this.store.save(project, '协作者补全分镜计划', { snapshot: false })
+        this.emitProject(project)
+        return this.result(project, { plan: extension.plan, message: extension.costNote })
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        project.messages.push(assistantMessage('assistant', `补全分镜还没有写入：${reason}。现有分镜、大纲和蓝图都没有改动。`, undefined, sources))
+        project.messages = project.messages.slice(-80)
+        this.store.save(project, '协作者补全分镜未完成', { snapshot: false })
+        this.emitProject(project)
+        return this.result(project, { message: reason })
+      }
+    }
+    const wantsCheck = /检查|审稿|连续性|缺失素材/.test(text) && !/慢|快|压低|调大|改|重做|生成|写|导出|合成/.test(text)
     if (wantsCheck) {
       const checks = runChecks(project)
       project.checks = checks
@@ -10671,27 +11468,47 @@ export class StudioService {
     }
     const draft = draftEditPlan(project, text, selection ? { selection } : {})
     const plan = createPlanFromDraft(project.id, draft)
+    const view = str(request.view) || project.stage
     project.messages.push(assistantMessage('user', text))
     let reply = localAssistantReply(project, text, plan)
+    let messagePlan: StudioEditPlan | undefined = plan.actions.length ? plan : undefined
     let cost: number | null = 0
     let costNote = '本地策划，不调用模型'
     const runtime = studioTextRuntime(project.runtime.strategy)
-    if (plan.actions.length === 0 && runtime.configured) {
+    let modelUsed = false
+    const limit = project.runtime.budget.limit
+    const planEstimate = estimateTextCostCny(text.length + 9000, 4000, project.runtime.strategy) ?? 0
+    const budgetBlocked = limit > 0 && project.runtime.budget.spent + planEstimate > limit
+    if (plan.actions.length === 0 && runtime.configured && !budgetBlocked) {
+      try {
+        const revision = await this.planRevision(project, text, view, selection)
+        if (revision) {
+          reply = { text: revision.reply, plan }
+          messagePlan = revision.plan ?? undefined
+          cost = revision.cost
+          costNote = revision.costNote
+          modelUsed = true
+        }
+      } catch (err) {
+        log.warn('studio collaborator plan failed', { message: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    if (!modelUsed && plan.actions.length === 0 && runtime.configured && !budgetBlocked) {
       const estimate = estimateTextCostCny(text.length + 1200, 1200, project.runtime.strategy) ?? 0
-      const limit = project.runtime.budget.limit
       if (limit > 0 && project.runtime.budget.spent + estimate > limit) {
         cost = 0
         costNote = `预算不足，本轮只给本地建议（预计需 ¥${estimate.toFixed(2)}，预算上限 ¥${limit}）`
       } else {
         try {
           const result = await completeCreativeText({
-            system: `${assistantSystemPrompt(project.kind)}${creativePromptContext({ kind: project.kind, task: 'assistant', query: text, limit: 4 })}`,
-            prompt: `${contextForAssistant(project, selection)}\n\n用户说：${text}\n\n请直接回答，并给出下一步可执行建议。不要声称已经修改了作品。`,
-            maxTokens: 1200,
+            system: `${assistantSystemPrompt(project.kind)}${masterPromptContext(project.kind, 'assistant', text, view, project.runtime.strategy)}`,
+            prompt: `${contextForAssistant(project, selection, view)}\n\n用户说：${text}\n\n请直接回答，并给出下一步可执行建议。不要声称已经修改了作品。`,
+            continueOnTruncate: true,
             temperature: 0.7,
             strategy: project.runtime.strategy
           })
           reply = { text: result.text, plan }
+          messagePlan = undefined
           cost = result.costCny
           costNote = result.costNote ?? '按模型参考价折算'
         } catch {
@@ -10699,13 +11516,13 @@ export class StudioService {
         }
       }
     }
-    project.messages.push(assistantMessage('assistant', reply.text, reply.plan, sources))
+    project.messages.push(assistantMessage('assistant', reply.text, messagePlan, sources))
     project.messages = project.messages.slice(-80)
     this.charge(project, cost)
     project.runtime.textModelNote = runtime.configured ? runtime.model?.label : '未连接模型'
     this.store.save(project, '协作者回复', { snapshot: false })
     this.emitProject(project)
-    return this.result(project, { plan: reply.plan, message: costNote })
+    return this.result(project, { ...(messagePlan ? { plan: messagePlan } : {}), message: costNote })
   }
 
   private async applyPlan(request: { [key: string]: unknown }): Promise<StudioActionResult> {
@@ -10718,11 +11535,12 @@ export class StudioService {
     }
     if (!plan) throw new Error('找不到这个修改计划。')
     if (plan.status !== 'pending') throw new Error('这个计划已经处理过了。')
+    if (!plan.actions.length) throw new Error('这个计划没有可执行的修改，已阻止应用。请让协作者给出具体镜头或动作。')
     this.assertBudget(project, plan.estimate.cost)
     const undoFile = this.store.writeVersion(project, `应用修改计划前：${plan.title}`)
     plan.undoVersion = basename(undoFile)
     const applied = applyEditPlan(project, plan)
-    project.stage = applied.timelineChanged ? 'timeline' : project.stage
+    project.stage = applied.stage ?? (applied.storyboardChanged ? 'storyboard' : applied.timelineChanged ? 'timeline' : project.stage)
     this.store.save(project, `应用修改计划：${plan.title}`, { snapshot: false })
     plan.appliedRevision = project.revision
     this.store.savePassive(project)
@@ -10730,20 +11548,53 @@ export class StudioService {
     let firstJob: StudioJob | undefined
     const queueErrors: string[] = []
     for (const action of applied.regenerate) {
-      const shot = project.shots.find((item) => item.id === action.shotId)
-      if (!shot) continue
       try {
         let result: StudioActionResult
-        if (action.kind === 'image') {
-          result = await this.generateShotImage({ projectId, shotId: shot.id, instruction: action.instruction })
-        } else if (action.kind === 'video') {
-          result = await this.generateShotVideo({ projectId, shotId: shot.id, instruction: action.instruction })
+        if (action.kind === 'chapter') {
+          if (!action.chapterId) continue
+          result = await this.polishChapter({ projectId, chapterId: action.chapterId, instruction: action.instruction, replaceContent: true })
+        } else if (action.kind === 'sfx') {
+          if (!action.sfxKind) continue
+          result = await this.generateMusic({ projectId, kind: action.sfxKind, ...(action.seconds ? { seconds: action.seconds } : {}), requestId: `plan-sfx-${Date.now()}` })
+        } else if (action.kind === 'music') {
+          result = await this.generateMusic({
+            projectId,
+            kind: 'music',
+            ...(action.mood ? { mood: action.mood } : {}),
+            ...(action.seconds ? { seconds: action.seconds } : {}),
+            ...(action.engine ? { engine: action.engine } : {}),
+            requestId: `plan-music-${Date.now()}`
+          })
+        } else if (action.kind === 'voice') {
+          if (action.shotIds?.length) {
+            result = await this.generateVoice({
+              projectId,
+              shotIds: action.shotIds,
+              ...(action.voiceId ? { voiceId: action.voiceId } : {}),
+              ...(action.instruction ? { instruction: action.instruction } : {})
+            })
+          } else {
+            const shot = project.shots.find((item) => item.id === action.shotId)
+            if (!shot) continue
+            result = await this.generateVoice({
+              projectId,
+              shotId: shot.id,
+              ...(action.voiceId ? { voiceId: action.voiceId } : {}),
+              ...(action.instruction ? { instruction: action.instruction } : {})
+            })
+          }
         } else {
-          result = await this.generateVoice({ projectId, shotId: shot.id })
+          const shot = project.shots.find((item) => item.id === action.shotId)
+          if (!shot) continue
+          if (action.kind === 'image') {
+            result = await this.generateShotImage({ projectId, shotId: shot.id, instruction: action.instruction })
+          } else {
+            result = await this.generateShotVideo({ projectId, shotId: shot.id, instruction: action.instruction })
+          }
         }
         firstJob = firstJob ?? result.job
       } catch (err) {
-        queueErrors.push(`第 ${shot.number} 镜：${err instanceof Error ? err.message : String(err)}`)
+        queueErrors.push(err instanceof Error ? err.message : String(err))
       }
     }
     const latest = this.store.readProject(projectId)
@@ -10851,7 +11702,6 @@ export class StudioService {
 
 }
 
-
 const BLUEPRINT_SYSTEM = `你是资深中文故事策划。根据用户给出的故事灵感，生成可直接执行的创作蓝图。
 只输出一个合法 JSON 对象，不要 Markdown、不要解释。字段：
 {"title":string,"genre":string,"tone":string,"audience":string,
@@ -10866,7 +11716,6 @@ const BLUEPRINT_SYSTEM = `你是资深中文故事策划。根据用户给出的
 中短篇/长篇用 wordTarget 和 beats，卷数 1 或 3；漫剧用 seconds/camera/shotSize/dialogue/speaker，并给出覆盖全部镜头的 scenes。只写简体中文。
 控制篇幅，保证 JSON 完整：storyCore 不超过 240 字，pitch 不超过 320 字，structure 不超过 240 字；每个 unit 的 summary 不超过 180 字；每个角色的 look 不超过 160 字。`
 
-
 const LONG_BLUEPRINT_TOP_SYSTEM = `你是资深中文长篇小说策划。根据用户灵感写长篇骨架。
 只输出一个合法 JSON 对象，不要 Markdown、不要解释。字段：
 {"title":string,"genre":string,"tone":string,"audience":string,
@@ -10876,24 +11725,20 @@ const LONG_BLUEPRINT_TOP_SYSTEM = `你是资深中文长篇小说策划。根据
 "styleBible":{"look":string,"palette":string[],"camera":string,"sound":string,"negative":string[]}}
 不要输出 characters、places、units；人物与章节会另行生成。计划 3 卷，volumes 覆盖全书章节范围。只写简体中文。`
 
-
 const LONG_BLUEPRINT_CAST_SYSTEM = `你是中文长篇小说人物编辑。只输出一个合法 JSON 对象：
 {"characters":[{"name":string,"role":string,"age":string,"look":string,"desire":string,"fear":string,"secret":string,"arc":string,"relationships":[{"target":string,"label":string}]}],
 "places":[{"name":string,"description":string}]}
 3–6 个具体人物，3–6 个有空间质感的地点。只写简体中文，不要输出其他字段。`
-
 
 const LONG_BLUEPRINT_UNITS_SYSTEM = `你是中文长篇小说结构编辑。只输出一个合法 JSON 对象：
 {"units":[{"index":number,"title":string,"summary":string,"wordTarget":number,"beats":string[]}]}
 每章 3–5 个具体节拍；只写本卷章节，不要输出其他字段。只写简体中文。
 控制篇幅，保证 JSON 完整：summary 不超过 160 字，每条 beat 不超过 80 字；先保证本批章节全部输出，再补细节。`
 
-
 const OUTLINE_SYSTEM = `你是中文故事结构编辑。只输出一个合法 JSON：{"units":[...]}。
 中短篇/长篇每项 {"index":number,"title":string,"summary":string,"wordTarget":number,"beats":string[]}（beats 写 3–5 个具体节拍）；
 漫剧每项 {"index":number,"title":string,"summary":string,"seconds":number,"camera":string,"shotSize":string,"dialogue":string,"speaker":string}。
 保持原有人物与设定，不要引入未经要求的新主角。只写中文。`
-
 
 const STORYBOARD_SYSTEM = `你是中文漫剧分镜导演。根据已确认的蓝图和镜头计划，输出可直接拍摄的分镜表。
 只输出一个合法 JSON 对象，不要 Markdown、不要解释。字段：
@@ -10901,11 +11746,8 @@ const STORYBOARD_SYSTEM = `你是中文漫剧分镜导演。根据已确认的�
 "shots":[{"number":number,"sceneIndex":number,"title":string,"action":string,"camera":string,"shotSize":string,"seconds":number,"dialogue":string,"speaker":string,"continuity":string,"prompt":string,"negative":string}]}
 要求：保留已确认的人物、地点、故事核与风格，不增加新主角；每镜 action 写清楚可见的动作与事件，camera 写运镜，shotSize 写景别，seconds 3–20；dialogue 只写角色真正说出口的话，speaker 必须是已有人物或“旁白”；continuity 写与上一镜的衔接；prompt 写画面提示词（人物外观、环境、光线、构图），不要文字水印；scenes 覆盖全部镜头，unitStart/unitEnd 使用镜头号；如果输入里有原著章节，每场用 sourceChapter 标注来源章节号。只写简体中文。`
 
-
-const PROSE_SYSTEM = `你是中文小说作者。只输出正文，不要标题、不要 Markdown、不要解释、不要写“本章完”。
-文风克制、具体，用动作和物件承载情绪；避免网络流行语和空洞抒情。
-严格延续已有人物设定与前文，不改名、不换视角；每段自然推进，结尾留下下一步的牵引。`
-
+const PROSE_SYSTEM = `你是中文小说作者，按本次加载的大师方法写作。只输出正文，不要标题、不要 Markdown、不要解释、不要写“本章完”。
+严格延续已有人物设定与前文，不改名、不换视角。`
 
 function briefLines(project: StudioProject): string[] {
   const parsed = previewBrief(project.logline, project.kind)
@@ -10923,7 +11765,6 @@ function briefLines(project: StudioProject): string[] {
   ].filter(Boolean)
 }
 
-
 function blueprintPrompt(project: StudioProject): string {
   const target = project.kind === 'drama'
     ? `${project.brief.targetSeconds ?? 96} 秒`
@@ -10940,7 +11781,6 @@ function blueprintPrompt(project: StudioProject): string {
   ].filter(Boolean).join('\n')
 }
 
-
 function longBlueprintTopPrompt(project: StudioProject, plannedUnits: number): string {
   const targetWords = project.brief.targetWords ?? 300_000
   return [
@@ -10952,7 +11792,6 @@ function longBlueprintTopPrompt(project: StudioProject, plannedUnits: number): s
   ].filter(Boolean).join('\n')
 }
 
-
 function longBlueprintCastPrompt(project: StudioProject, blueprint: StudioBlueprint): string {
   return [
     `用户灵感：${project.logline}`,
@@ -10963,7 +11802,6 @@ function longBlueprintCastPrompt(project: StudioProject, blueprint: StudioBluepr
   ].join('\n')
 }
 
-
 function longVolumeUnitsPrompt(project: StudioProject, blueprint: StudioBlueprint, volume: NonNullable<StudioBlueprint['volumes']>[number], count: number): string {
   return [
     `用户灵感：${project.logline}`,
@@ -10973,7 +11811,6 @@ function longVolumeUnitsPrompt(project: StudioProject, blueprint: StudioBlueprin
     `请写本卷约 ${count} 章，标题具体，梗概推进主线，每章给出 3–5 个节拍，单章目标 2000–5000 字。`
   ].join('\n')
 }
-
 
 function outlinePrompt(project: StudioProject, blueprint: StudioBlueprint): string {
   return [
@@ -10986,7 +11823,6 @@ function outlinePrompt(project: StudioProject, blueprint: StudioBlueprint): stri
   ].join('\n')
 }
 
-
 function outlineBatchPrompt(project: StudioProject, blueprint: StudioBlueprint, batch: StudioBlueprint['units'], start: number, total: number): string {
   return [
     `作品：${project.title}（${studioKindLabel(project.kind)}）`,
@@ -10998,7 +11834,6 @@ function outlineBatchPrompt(project: StudioProject, blueprint: StudioBlueprint, 
     '请只输出本批 units 的 JSON 数组；index 使用全局章号；保留原人物与核心道具，不增加新主角；每章 3–5 个具体节拍；summary 不超过 180 字。只输出 JSON。'
   ].join('\n\n')
 }
-
 
 function storyboardPrompt(project: StudioProject, blueprint: StudioBlueprint, locked: boolean, instruction: string): string {
   const existing = [...project.shots].sort((left, right) => left.number - right.number)
@@ -11038,7 +11873,6 @@ function storyboardPrompt(project: StudioProject, blueprint: StudioBlueprint, lo
   ].filter(Boolean).join('\n\n')
 }
 
-
 function summarizeChapterText(content: string): string {
   const sentences = content
     .replace(/\s+/g, ' ')
@@ -11050,7 +11884,6 @@ function summarizeChapterText(content: string): string {
   const tail = sentences.length > 2 ? sentences[sentences.length - 1] : ''
   return `${head}。${tail && tail !== sentences[1] ? `${tail}。` : ''}`.slice(0, 220)
 }
-
 
 function chapterPrompt(project: StudioProject, chapter: StudioChapter, instruction: string): string {
   const sorted = [...project.chapters].sort((a, b) => a.number - b.number)
@@ -11085,7 +11918,6 @@ function chapterPrompt(project: StudioProject, chapter: StudioChapter, instructi
     .join('\n\n')
 }
 
-
 function stripProseDecorations(text: string): string {
   let value = text.trim()
   value = value.replace(/^```(?:markdown|text)?\s*/i, '').replace(/```$/i, '').trim()
@@ -11094,7 +11926,6 @@ function stripProseDecorations(text: string): string {
   value = value.replace(/^本章完\s*$/gm, '')
   return value.trim()
 }
-
 
 interface RawCharacter {
   name?: unknown
@@ -11107,7 +11938,6 @@ interface RawCharacter {
   arc?: unknown
   relationships?: unknown
 }
-
 
 function blueprintEstimate(project: StudioProject, units: StudioBlueprint['units']): StudioBlueprint['estimate'] {
   const words = units.reduce((sum, unit) => sum + (unit.wordTarget ?? 0), 0)
@@ -11147,7 +11977,6 @@ function blueprintEstimate(project: StudioProject, units: StudioBlueprint['units
   }
 }
 
-
 function neutralBlueprint(project: StudioProject): StudioBlueprint {
   return {
     approved: false,
@@ -11184,7 +12013,6 @@ function neutralBlueprint(project: StudioProject): StudioBlueprint {
     createdAt: nowMs()
   }
 }
-
 
 function normalizeModelBlueprint(project: StudioProject, raw: Record<string, unknown>, model: string, fallback: StudioBlueprint): StudioBlueprint {
   const charactersRaw = Array.isArray(raw.characters) ? (raw.characters as RawCharacter[]) : []
@@ -11271,7 +12099,6 @@ function normalizeModelBlueprint(project: StudioProject, raw: Record<string, unk
   }
 }
 
-
 function normalizeModelFacts(raw: unknown): NonNullable<StudioBlueprint['facts']> {
   if (!Array.isArray(raw)) return []
   return raw
@@ -11284,7 +12111,6 @@ function normalizeModelFacts(raw: unknown): NonNullable<StudioBlueprint['facts']
     .filter((item) => item.subject && item.predicate && item.object)
     .slice(0, 20)
 }
-
 
 function alignVolumeSeeds(seeds: NonNullable<StudioBlueprint['volumes']>, plannedUnits: number): NonNullable<StudioBlueprint['volumes']> {
   if (!seeds.length) return seeds
@@ -11301,7 +12127,6 @@ function alignVolumeSeeds(seeds: NonNullable<StudioBlueprint['volumes']>, planne
     return { ...seed, unitStart: start, unitEnd: start + count - 1 }
   })
 }
-
 
 function normalizeModelVolumes(raw: unknown, units: StudioBlueprint['units'], kind: StudioKind): NonNullable<StudioBlueprint['volumes']> {
   if (!units.length) return []
@@ -11334,7 +12159,6 @@ function normalizeModelVolumes(raw: unknown, units: StudioBlueprint['units'], ki
   }).filter((volume) => volume.unitEnd >= volume.unitStart)
 }
 
-
 function normalizeModelScenes(
   raw: unknown,
   units: StudioBlueprint['units'],
@@ -11364,7 +12188,6 @@ function normalizeModelScenes(
   void places
   return provided
 }
-
 
 function assertModelBlueprint(blueprint: StudioBlueprint, kind: StudioKind, targetWords?: number): void {
   if (blueprint.characters.length < 2) {
@@ -11402,7 +12225,6 @@ function assertModelBlueprint(blueprint: StudioBlueprint, kind: StudioKind, targ
   }
 }
 
-
 function normalizeUnits(kind: StudioKind, raw: unknown, fallback: StudioBlueprint['units'], style: StudioBlueprint['styleBible']): StudioBlueprint['units'] {
   if (!Array.isArray(raw) || raw.length === 0) return fallback
   const units = raw
@@ -11430,7 +12252,6 @@ function normalizeUnits(kind: StudioKind, raw: unknown, fallback: StudioBlueprin
   void style
   return units
 }
-
 
 function updateNovelOutline(project: StudioProject, blueprint: StudioBlueprint): void {
   const existing = [...project.chapters].sort((a, b) => a.number - b.number)
@@ -11473,6 +12294,159 @@ function updateNovelOutline(project: StudioProject, blueprint: StudioBlueprint):
   })
 }
 
+function shotFromOutlineUnit(
+  project: StudioProject,
+  blueprint: StudioBlueprint,
+  unit: StudioBlueprintUnit,
+  index: number,
+  scene: StudioScene
+): StudioShot {
+  const speaker = unit.speaker ?? ''
+  const character = project.characters.find((item) => item.name === speaker)
+  const sceneCharacters = scene.characters
+    .map((name) => project.characters.find((item) => item.name === name))
+    .filter((item): item is StudioCharacter => Boolean(item))
+  const referenceCharacters = [...new Map([...(character ? [character] : []), ...sceneCharacters].map((item) => [item.id, item])).values()]
+  const place = project.places.find((item) => item.name === scene.location) ?? project.places[0]
+  return {
+    id: studioId('shot'),
+    sceneId: scene.id,
+    number: index + 1,
+    title: unit.title,
+    action: unit.summary,
+    camera: unit.camera?.trim() || '固定镜头，缓慢推近',
+    shotSize: unit.shotSize?.trim() || '中景',
+    durationSec: Math.max(3, Math.min(30, unit.seconds ?? 8)),
+    dialogue: unit.dialogue ?? '',
+    speaker,
+    voiceId: character?.voiceId ?? '',
+    prompt: imagePromptFor(project, unit, index, scene, blueprint.styleBible),
+    negative: blueprint.styleBible.negative.join('，'),
+    referenceCharacterIds: referenceCharacters.map((item) => item.id),
+    referencePlaceIds: place ? [place.id] : [],
+    referencePropIds: [],
+    imageAssetId: null,
+    videoAssetId: null,
+    voiceAssetId: null,
+    imageCandidates: [],
+    videoCandidates: [],
+    continuity: index === 0
+      ? '开场；固定人物外观、服装与场景光线'
+      : `承接第 ${index} 镜尾帧；人物外观、服装与光线保持一致`,
+    lockedReference: false,
+    status: 'ready',
+    updatedAt: nowMs()
+  }
+}
+
+/**
+ * 重生成大纲时，用新 units 同步已有场景与镜头文字。
+ * 已有画面/配音保留关联并标记 stale；新增 unit 落到对应场景，不再只更新“没素材的镜头”。
+ */
+export function syncDramaOutline(project: StudioProject, blueprint: StudioBlueprint): void {
+  const units = blueprint.units
+  const now = nowMs()
+  const seeds = blueprint.scenes ?? []
+  const scenes = [...project.scenes].sort((left, right) => left.number - right.number)
+  const seededScenes = seeds.map((seed, index) => {
+    const existing = scenes[index]
+    const next: StudioScene = existing
+      ? {
+          ...existing,
+          title: seed.title || existing.title,
+          synopsis: seed.synopsis || existing.synopsis,
+          location: seed.location || existing.location,
+          timeOfDay: seed.timeOfDay || existing.timeOfDay,
+          characters: seed.characters.length ? [...seed.characters] : existing.characters,
+          updatedAt: now
+        }
+      : {
+          id: studioId('scene'),
+          episodeId: project.episodes[0]?.id ?? '',
+          number: index + 1,
+          title: seed.title || `第 ${index + 1} 场`,
+          synopsis: seed.synopsis,
+          location: seed.location,
+          timeOfDay: seed.timeOfDay,
+          characters: [...seed.characters],
+          beat: index === 0 ? 'Setup' : index === seeds.length - 1 ? 'Resolution' : 'Confrontation',
+          updatedAt: now
+        }
+    if (existing) scenes[index] = next
+    else scenes.push(next)
+    return next
+  })
+  const finalScenes = scenes.length ? scenes : seededScenes
+  if (!finalScenes.length) return
+  const fallbackPer = Math.max(1, Math.ceil(units.length / Math.max(1, seeds.length || finalScenes.length)))
+  const ranges = seeds.map((seed, index) => ({
+    start: Math.max(1, Math.min(units.length || 1, seed.unitStart || index * fallbackPer + 1)),
+    end: Math.max(1, Math.min(units.length || 1, seed.unitEnd || (index + 1) * fallbackPer))
+  }))
+  const sceneForUnit = (index: number): StudioScene => {
+    const number = index + 1
+    const found = ranges.findIndex((range) => number >= range.start && number <= range.end)
+    if (found >= 0 && finalScenes[found]) return finalScenes[found]
+    const perScene = Math.max(1, Math.ceil(units.length / Math.max(1, finalScenes.length)))
+    return finalScenes[Math.min(finalScenes.length - 1, Math.floor(index / perScene))]
+  }
+  const byNumber = new Map(project.shots.map((shot) => [shot.number, shot]))
+  units.forEach((unit, index) => {
+    const scene = sceneForUnit(index)
+    if (!scene) return
+    const shot = byNumber.get(index + 1)
+    if (!shot) {
+      const created = shotFromOutlineUnit(project, blueprint, unit, index, scene)
+      project.shots.push(created)
+      byNumber.set(created.number, created)
+      return
+    }
+    const dialogueChanged = shot.dialogue !== (unit.dialogue ?? shot.dialogue)
+    Object.assign(shot, {
+      sceneId: scene.id,
+      title: unit.title || shot.title,
+      action: unit.summary || shot.action,
+      camera: unit.camera?.trim() || shot.camera,
+      shotSize: unit.shotSize?.trim() || shot.shotSize,
+      durationSec: Math.max(3, Math.min(30, unit.seconds ?? shot.durationSec)),
+      dialogue: unit.dialogue ?? shot.dialogue,
+      speaker: unit.speaker ?? shot.speaker,
+      voiceId: project.characters.find((character) => character.name === (unit.speaker ?? shot.speaker))?.voiceId ?? shot.voiceId,
+      voiceAssetId: dialogueChanged ? null : shot.voiceAssetId,
+      updatedAt: now
+    })
+    if (shot.imageAssetId || shot.videoAssetId || shot.voiceAssetId) shot.status = 'stale'
+  })
+  for (const shot of project.shots) {
+    if (!finalScenes.some((scene) => scene.id === shot.sceneId)) shot.sceneId = finalScenes[0].id
+  }
+  const finalShots = [...project.shots].sort((left, right) => left.number - right.number)
+  const blueprintScenes: StudioBlueprintSceneSeed[] = seeds.length
+    ? finalScenes.map((scene, index) => {
+        const numbers = finalShots.filter((shot) => shot.sceneId === scene.id).map((shot) => shot.number)
+        const seed = seeds[index]
+        return {
+          title: scene.title,
+          synopsis: scene.synopsis,
+          location: scene.location,
+          timeOfDay: scene.timeOfDay,
+          characters: [...scene.characters],
+          unitStart: numbers.length ? Math.min(...numbers) : seed?.unitStart ?? index + 1,
+          unitEnd: numbers.length ? Math.max(...numbers) : seed?.unitEnd ?? index + 1
+        }
+      })
+    : (blueprint.scenes ?? [])
+  project.scenes = finalScenes
+  project.blueprint = { ...blueprint, scenes: blueprintScenes }
+  const episode = project.episodes[0]
+  if (episode) {
+    episode.sceneIds = finalScenes.map((scene) => scene.id)
+    episode.durationSec = finalShots.reduce((sum, shot) => sum + shot.durationSec, 0)
+    episode.updatedAt = now
+    project.episodes = [episode]
+  }
+  project.updatedAt = now
+}
 
 function updateDramaShots(project: StudioProject, blueprint: StudioBlueprint): void {
   const existing = [...project.shots].sort((a, b) => a.number - b.number)
@@ -11525,7 +12499,6 @@ function updateDramaShots(project: StudioProject, blueprint: StudioBlueprint): v
   })
 }
 
-
 interface StoryboardShotSeed {
   number: number
   sceneIndex: number
@@ -11541,12 +12514,10 @@ interface StoryboardShotSeed {
   negative: string
 }
 
-
 interface ModelStoryboard {
   scenes: StudioBlueprintSceneSeed[]
   shots: StoryboardShotSeed[]
 }
-
 
 function normalizeModelStoryboard(
   raw: Record<string, unknown>,
@@ -11628,7 +12599,6 @@ function normalizeModelStoryboard(
   })
   return { scenes: finalScenes, shots }
 }
-
 
 function applyModelStoryboard(project: StudioProject, storyboard: ModelStoryboard, model: string): void {
   if (!project.blueprint?.approved) throw new Error('蓝图尚未确认；分镜结果没有应用。')
@@ -11809,7 +12779,6 @@ function applyModelStoryboard(project: StudioProject, storyboard: ModelStoryboar
   project.updatedAt = now
 }
 
-
 function staleStoryboardDownstream(project: StudioProject): void {
   const now = nowMs()
   for (const stage of ['visuals', 'voice', 'timeline', 'review', 'delivery'] as const) {
@@ -11819,7 +12788,6 @@ function staleStoryboardDownstream(project: StudioProject): void {
     }
   }
 }
-
 
 function buildStoryboardImagePrompt(project: StudioProject, seed: StoryboardShotSeed, scene: StudioScene): string {
   const characters = scene.characters
@@ -11840,7 +12808,6 @@ function buildStoryboardImagePrompt(project: StudioProject, seed: StoryboardShot
   ].filter(Boolean).join('；')
 }
 
-
 function musicModelPrompt(project: StudioProject, mood: ReturnType<typeof musicMood>): string {
   return [
     '电影短片配乐，纯器乐，无人声，无歌词',
@@ -11852,7 +12819,6 @@ function musicModelPrompt(project: StudioProject, mood: ReturnType<typeof musicM
     'cinematic instrumental score, no vocals, emotional, coherent ending'
   ].filter(Boolean).join('；')
 }
-
 
 function finishVisualStage(project: StudioProject): void {
   const total = project.shots.length
@@ -11869,7 +12835,6 @@ function finishVisualStage(project: StudioProject): void {
   }
 }
 
-
 function finishVoiceStage(project: StudioProject): void {
   const shots = project.shots.filter((shot) => shot.dialogue.trim())
   if (!shots.length) {
@@ -11885,7 +12850,6 @@ function finishVoiceStage(project: StudioProject): void {
   }
 }
 
-
 function appendJobEvent(job: StudioJob, status: StudioJobStatus, message: string, progress: number): void {
   const events = job.events ?? []
   const last = events[events.length - 1]
@@ -11894,7 +12858,6 @@ function appendJobEvent(job: StudioJob, status: StudioJobStatus, message: string
   events.push({ at: nowMs(), status, message: clean, progress })
   job.events = events.slice(-80)
 }
-
 
 function makeThumbnail(file: string, projectId: string): Buffer | null {
   const paths = resolveFfmpegPaths()
@@ -11920,7 +12883,6 @@ function makeThumbnail(file: string, projectId: string): Buffer | null {
   return null
 }
 
-
 function runChecks(project: StudioProject): StudioProject['checks'] {
   const checks: StudioProject['checks'] = []
   const priorVisual = project.checks.filter((check) => check.kind === 'visual')
@@ -11941,8 +12903,9 @@ function runChecks(project: StudioProject): StudioProject['checks'] {
       if (voice?.durationSec && voice.durationSec > shot.durationSec + 0.6) tooLong.push(`镜 ${shot.number}（${voice.durationSec.toFixed(1)}s > ${shot.durationSec}s）`)
     }
     if (tooLong.length) add('audio', 'warn', '配音比镜头长', `${tooLong.join('；')}。可以拉长镜头或重配。`)
-    const hasMusic = project.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft'))
-    const hasDraftMusic = project.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && asset.tags.includes('draft'))
+    const score = resolveMusicAsset(project)
+    const hasMusic = Boolean(score?.formal || score?.demo)
+    const hasDraftMusic = Boolean(score && !score.formal && !score.demo)
     if (!hasMusic) add('audio', 'warn', hasDraftMusic ? '只有本地配乐草稿' : '还没有配乐', hasDraftMusic ? '草稿可以试听；安装 ACE-Step 配乐模型后可生成正式配乐。' : '可以先生成配乐，或把声音方向写进补充要求后再生成。')
     if (!project.timeline.clips.length) add('missing', 'warn', '时间线还没有装配', '点击“自动装配时间线”，再合成草稿。')
     if (project.stages.timeline.status === 'stale') add('missing', 'warn', '时间线需要重新装配', '有新素材还没进入时间线；直接合成会得到旧画面或旧声音。')
@@ -11958,7 +12921,11 @@ function runChecks(project: StudioProject): StudioProject['checks'] {
       if (!subtitleCount) add('subtitle', 'info', '没有字幕', '台词会在配音轨里保留，但成片没有字幕。')
     }
     if (!project.deliveries.some((delivery) => isStudioVideoDelivery(delivery.kind))) add('missing', 'info', '还没有成片', '草稿合成约需几十秒。')
-    if (!priorVisual.length) add('visual', 'info', '视觉检查需要真实视觉模型', '连接视觉模型后可以逐镜检查手部、脸、服装与道具。')
+    if (!priorVisual.length) {
+      const vision = studioVisionProvider(project.runtime.strategy)
+      if (vision) add('visual', 'info', `画面检查将使用 ${vision.model.label || vision.model.id}`, '运行检查后会自动逐镜检查手、脸、服装与道具；也可以单独点击“逐镜检查画面”。')
+      else add('visual', 'info', '视觉检查需要真实视觉模型', '在设置里连接带视觉能力的本地或云端模型后，检查会真实调用它。')
+    }
   } else {
     const empty = project.chapters.filter((chapter) => !chapter.content.trim())
     if (empty.length) add('missing', 'warn', `${empty.length} 章还没有正文`, `第 ${empty.slice(0, 8).map((chapter) => chapter.number).join('、')} 章可以继续写。`)
@@ -12029,9 +12996,7 @@ function runChecks(project: StudioProject): StudioProject['checks'] {
   return [...priorVisual, ...checks]
 }
 
-
 let service: StudioService | null = null
-
 
 export function getStudioService(): StudioService {
   if (!service) service = new StudioService()

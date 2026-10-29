@@ -19,8 +19,6 @@ import { once } from 'node:events'
 import type { MediaCatalogProgress, MediaCatalogStatus, MediaEngineInfo, MediaEngineManifest, MediaModelFile, MediaModelInfo, MediaModelManifest } from '../shared/studio'
 import { dataPath } from './workspace'
 
-
-
 /**
  * 用户可能在新数据目录里没有保存安装目录，但 ComfyUI 和模型早已在本机。
  * 显式配置优先；为空时才在常见位置和环境变量里只读探测 main.py。
@@ -46,7 +44,6 @@ export function locateComfyui(settings: Pick<MediaEngineSettings, 'comfyuiDir'>)
   return null
 }
 
-
 const QWEN_SIGMAS = '1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0'
 
 const IMAGE_MODEL_LABEL = 'Qwen-Image-2.1 Turbo'
@@ -69,14 +66,12 @@ const MAX_IMAGE_DOWNLOAD = 120 * 1024 * 1024
 
 const MAX_VIDEO_DOWNLOAD = 1024 * 1024 * 1024
 
-
 interface FileSpec {
   label: string
   dir: string
   names: { name: string; bytes?: number; minBytes?: number }[]
   pattern?: RegExp
 }
-
 
 const IMAGE_SPECS: FileSpec[] = [
   {
@@ -104,7 +99,6 @@ const IMAGE_SPECS: FileSpec[] = [
   }
 ]
 
-
 const VIDEO_SPECS: FileSpec[] = [
   {
     label: '参考图生视频模型（Ref2VA）',
@@ -128,13 +122,11 @@ const VIDEO_SPECS: FileSpec[] = [
   }
 ]
 
-
 const VIDEO_FL2VA_SPEC: FileSpec = {
   label: '首尾帧模型（FL2VA）',
   dir: 'diffusion_models',
   names: [{ name: 'minimax_h3_fl2va_dit_16g.safetensors', bytes: 28_364_846_456 }]
 }
-
 
 const MUSIC_UNET_SPEC: FileSpec = {
   label: 'ACE-Step 扩散模型',
@@ -145,13 +137,11 @@ const MUSIC_UNET_SPEC: FileSpec = {
   ]
 }
 
-
 const MUSIC_CLIP_PRIMARY_SPEC: FileSpec = {
   label: 'ACE-Step 主文本编码器',
   dir: 'text_encoders',
   names: [{ name: 'qwen_0.6b_ace15.safetensors', bytes: 1_191_588_248 }]
 }
-
 
 const MUSIC_CLIP_SECONDARY_SPEC: FileSpec = {
   label: 'ACE-Step 歌词编码器',
@@ -159,16 +149,13 @@ const MUSIC_CLIP_SECONDARY_SPEC: FileSpec = {
   names: [{ name: 'qwen_1.7b_ace15.safetensors', bytes: 3_708_523_360 }]
 }
 
-
 const MUSIC_VAE_SPEC: FileSpec = {
   label: 'ACE-Step 音频 VAE',
   dir: 'vae',
   names: [{ name: 'ace_1.5_vae.safetensors', bytes: 337_431_732 }]
 }
 
-
 const MUSIC_MODEL_LABEL = 'ACE-Step 1.5 配乐'
-
 
 interface ComfyLists {
   gguf: string[]
@@ -177,7 +164,6 @@ interface ComfyLists {
   vaes: string[]
   nodes: { gguf: boolean; minimaxH3: boolean; aceStep: boolean }
 }
-
 
 interface HealthInfo {
   online: boolean
@@ -188,13 +174,11 @@ interface HealthInfo {
   error?: string
 }
 
-
 interface PromptOutputFile {
   filename: string
   subfolder: string
   type: string
 }
-
 
 interface RunPromptOptions {
   settings: MediaEngineSettings
@@ -210,22 +194,18 @@ interface RunPromptOptions {
   onPromptId?: (promptId: string) => void
 }
 
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 }
-
 
 function asNumber(value: unknown): number | undefined {
   const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   return Number.isFinite(number) ? number : undefined
 }
 
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
-
 
 function normalizeBaseUrl(raw: string): string {
   const url = new URL(raw.trim())
@@ -235,7 +215,6 @@ function normalizeBaseUrl(raw: string): string {
   return `${url.origin}${path}`
 }
 
-
 function wsUrlFor(baseUrl: string, clientId: string): string {
   const url = new URL(normalizeBaseUrl(baseUrl))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -244,7 +223,6 @@ function wsUrlFor(baseUrl: string, clientId: string): string {
   url.searchParams.set('clientId', clientId)
   return url.toString()
 }
-
 
 function modelListFromInfo(info: Record<string, unknown> | null, node: string, input: string): string[] {
   const entry = asRecord(info?.[node])
@@ -256,7 +234,6 @@ function modelListFromInfo(info: Record<string, unknown> | null, node: string, i
   return []
 }
 
-
 function pickFromList(list: string[], spec: FileSpec): string | null {
   const set = new Set(list)
   for (const candidate of spec.names) {
@@ -267,11 +244,9 @@ function pickFromList(list: string[], spec: FileSpec): string | null {
   return null
 }
 
-
 function extOf(path: string): string {
   return extname(path).replace(/^\./, '').toLowerCase()
 }
-
 
 function mimeForExt(ext: string): string {
   switch (ext) {
@@ -293,7 +268,6 @@ function mimeForExt(ext: string): string {
   }
 }
 
-
 function kindForExt(ext: string): MediaKind | null {
   if (IMAGE_EXT.has(ext)) return 'image'
   if (VIDEO_EXT.has(ext)) return 'video'
@@ -301,12 +275,10 @@ function kindForExt(ext: string): MediaKind | null {
   return null
 }
 
-
 function kindForFile(path: string, probe?: MediaProbeResult): MediaArtifactResult['mediaKind'] {
   if (probe?.kind && probe.kind !== 'unknown') return probe.kind
   return kindForExt(extOf(path)) ?? 'image'
 }
-
 
 function ensureInside(workspace: string, target: string): string {
   const root = resolve(workspace)
@@ -317,7 +289,6 @@ function ensureInside(workspace: string, target: string): string {
   return full
 }
 
-
 function normalizeOutputDir(raw: string): string {
   const value = (raw || 'media').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   if (!value || value.startsWith('.') || value.includes('..') || /^[a-zA-Z]:/.test(value)) {
@@ -325,7 +296,6 @@ function normalizeOutputDir(raw: string): string {
   }
   return value
 }
-
 
 function uniqueFilePath(dir: string, base: string, ext: string): string {
   const safeExt = ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin'
@@ -338,18 +308,15 @@ function uniqueFilePath(dir: string, base: string, ext: string): string {
   return candidate
 }
 
-
 function abortErr(): Error {
   const error = new Error('已停止生成。')
   error.name = 'AbortError'
   return error
 }
 
-
 function timeoutSignal(signal: AbortSignal, timeoutMs: number): AbortSignal {
   return AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
 }
-
 
 function ffmpegFps(value: string | undefined): number | undefined {
   if (!value) return undefined
@@ -358,7 +325,6 @@ function ffmpegFps(value: string | undefined): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
-
 
 function imageDimensions(buffer: Buffer): { width: number; height: number } | null {
   if (buffer.length > 24 && buffer.readUInt32BE(0) === 0x89504e47) {
@@ -381,7 +347,6 @@ function imageDimensions(buffer: Buffer): { width: number; height: number } | nu
   }
   return null
 }
-
 
 export class MediaService implements MediaToolHandler {
   /** 由主进程注入的通用模型/引擎目录；工具层通过它做生命周期操作。 */
@@ -2190,25 +2155,28 @@ export class MediaService implements MediaToolHandler {
     input: MediaDescribeInput,
     startedAt: number
   ): Promise<MediaDescribeResult> {
-    const providerConfig =
-      settings.providers.find((provider) => provider.id === 'llamacpp') ??
-      settings.providers.find((provider) => provider.category === 'local' && /:8000(?:\/|$)/.test(provider.baseUrl))
-    // 只选明确支持视觉的本地模型；不能拿目录里的任意文本模型冒充视觉模型。
-    const candidates = (providerConfig?.models ?? []).filter(
-      (item) => item.supportsVision === true || /coder390|qwen3\.8-27b/i.test(item.id)
-    )
-    const model = candidates.find((item) => item.id === 'Qwen3.8-27B-Coder390') ?? candidates[0]
-    if (!providerConfig || !model) {
+    const localProviders = settings.providers.filter((provider) => provider.enabled !== false && isLocalServiceUrl(provider.baseUrl, { allowPrivate: true }))
+    const choice = localProviders
+      .map((providerConfig) => ({
+        providerConfig,
+        model: (providerConfig.models ?? []).find(
+          (item) => item.supportsVision === true || /coder390|qwen3\.8-27b/i.test(item.id)
+        )
+      }))
+      .find((item) => Boolean(item.model))
+    if (!choice?.model) {
       throw new Error(
-        '没有可用的本地视觉模型。请在设置 → 多媒体启用带 --mmproj 的 Qwen3.8-27B-Coder390，或换用支持图片输入的对话模型。'
+        '没有可用的本地视觉模型。请在设置里启用支持图片输入的本地模型（如带视觉能力的 Qwen），或换用支持图片输入的对话模型。'
       )
     }
+    const providerConfig = choice.providerConfig
+    const model = choice.model
     const base = providerConfig.baseUrl.replace(/\/v1\/?$/, '')
     try {
       const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3_000) })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
     } catch {
-      throw new Error('本地视觉模型没有运行。请先执行 %LOCALAPPDATA%\\Morrow\\local-llama\\start-qwen38.cmd，并确认启动参数包含 --mmproj。')
+      throw new Error(`本地视觉模型「${model.label || model.id}」没有运行。请先在设置里启动本机引擎，再重试。`)
     }
     input.onProgress({ stage: '本地视觉模型审看', percent: 30 })
     const provider = createProvider(providerConfig, null, model.id)
@@ -2549,22 +2517,18 @@ export class MediaService implements MediaToolHandler {
   }
 }
 
-
 let instance: MediaService | null = null
-
 
 export function getMediaService(): MediaService {
   if (!instance) instance = new MediaService()
   return instance
 }
 
-
 const LOCAL = process.env.LOCALAPPDATA || process.env.APPDATA || process.env.HOME || ''
 
 const LLAMA_MODEL_DIR = join(LOCAL, 'Morrow', 'local-models')
 
 const LLAMA_BIN_DIR = join(LOCAL, 'Morrow', 'local-llama')
-
 
 const BUILTIN_ENGINES: MediaEngineManifest[] = [
   {
@@ -2626,13 +2590,11 @@ const BUILTIN_ENGINES: MediaEngineManifest[] = [
   }
 ]
 
-
 const QWEN_FILES: MediaModelFile[] = [
   { url: 'https://www.modelscope.cn/models/unsloth/Qwen-Image-2.1-Turbo-GGUF/resolve/master/qwen-image-2.1-turbo-Q6_K.gguf', dest: 'diffusion_models/qwen-image-2.1-turbo-Q6_K.gguf', bytes: 6_271_551_296 },
   { url: 'https://www.modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_bf16.safetensors', dest: 'text_encoders/qwen3vl_8b_bf16.safetensors', bytes: 17_534_334_616 },
   { url: 'https://www.modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors', dest: 'vae/qwen_image_2.1_vae_bf16.safetensors', bytes: 675_509_688 }
 ]
-
 
 const ACE_STEP_FILES: MediaModelFile[] = [
   { url: 'https://www.modelscope.cn/models/Comfy-Org/ACE-Step-1.5/resolve/master/split_files/diffusion_models/acestep_v1.5_base.safetensors', dest: 'diffusion_models/acestep_v1.5_base.safetensors', bytes: 4_787_825_604 },
@@ -2641,7 +2603,6 @@ const ACE_STEP_FILES: MediaModelFile[] = [
   { url: 'https://www.modelscope.cn/models/Comfy-Org/ACE-Step-1.5/resolve/master/split_files/vae/ace_1.5_vae.safetensors', dest: 'vae/ace_1.5_vae.safetensors', bytes: 337_431_732 }
 ]
 
-
 const MINIMAX_FILES: MediaModelFile[] = [
   { url: 'https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/resolve/master/diffusion_models/minimax_h3_ref2va_dit_16g.safetensors', dest: 'diffusion_models/minimax_h3_ref2va_dit_16g.safetensors', bytes: 28_403_358_856 },
   { url: 'https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/resolve/master/diffusion_models/minimax_h3_fl2va_dit_16g.safetensors', dest: 'diffusion_models/minimax_h3_fl2va_dit_16g.safetensors', bytes: 28_364_846_456 },
@@ -2649,7 +2610,6 @@ const MINIMAX_FILES: MediaModelFile[] = [
   { url: 'https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/resolve/master/vae/minimax_h3_video_vae_fp16.safetensors', dest: 'vae/minimax_h3_video_vae_fp16.safetensors', bytes: 5_207_808_496 },
   { url: 'https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors', dest: 'vae/minimax_h3_audio_vae_fp32.safetensors', bytes: 605_254_808 }
 ]
-
 
 const BUILTIN_MODELS: MediaModelManifest[] = [
   {
@@ -2710,12 +2670,10 @@ const BUILTIN_MODELS: MediaModelManifest[] = [
   }
 ]
 
-
 interface EngineCache {
   info: MediaEngineInfo
   manifest: MediaEngineManifest
 }
-
 
 interface RunResult {
   code: number
@@ -2723,21 +2681,17 @@ interface RunResult {
   stderr: string
 }
 
-
 function now(): number {
   return Date.now()
 }
-
 
 function isUrl(value: string): boolean {
   return /^https?:\/\//i.test(value)
 }
 
-
 function safeId(value: string): boolean {
   return /^[a-z0-9][a-z0-9._-]{1,63}$/i.test(value)
 }
-
 
 async function hashFile(path: string): Promise<string> {
   const hash = createHash('sha256')
@@ -2750,7 +2704,6 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest('hex')
 }
 
-
 function readJsonFile<T>(file: string, fallback: T): T {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as T
@@ -2760,18 +2713,15 @@ function readJsonFile<T>(file: string, fallback: T): T {
   }
 }
 
-
 function writeJsonFile(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
-
 function within(parent: string, child: string): boolean {
   const rel = relative(resolve(parent), resolve(child))
   return Boolean(rel) && !rel.startsWith('..') && !isAbsolute(rel)
 }
-
 
 function safeRelativePath(value: string): boolean {
   if (!value || isAbsolute(value)) return false
@@ -2779,11 +2729,9 @@ function safeRelativePath(value: string): boolean {
   return !normalized.startsWith('..') && !normalized.includes(`..${sep}`)
 }
 
-
 function firstLine(value: string): string {
   return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? ''
 }
-
 
 function commandExists(command: string): string | null {
   if (isAbsolute(command)) return existsSync(command) ? command : null
@@ -2793,7 +2741,6 @@ function commandExists(command: string): string | null {
   const line = result.stdout.split(/\r?\n/).map((item) => item.trim()).find(Boolean)
   return line || null
 }
-
 
 async function runCommand(command: string, args: string[], options: { timeoutMs?: number; detached?: boolean; signal?: AbortSignal; onOutput?: (text: string) => void } = {}): Promise<RunResult> {
   return new Promise((resolvePromise, reject) => {
@@ -2842,7 +2789,6 @@ async function runCommand(command: string, args: string[], options: { timeoutMs?
   })
 }
 
-
 async function health(url: string, timeoutMs = 2_000): Promise<boolean> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
@@ -2851,7 +2797,6 @@ async function health(url: string, timeoutMs = 2_000): Promise<boolean> {
     return false
   }
 }
-
 
 async function fetchJson(url: string, timeoutMs = 5_000): Promise<unknown | null> {
   try {
@@ -2862,7 +2807,6 @@ async function fetchJson(url: string, timeoutMs = 5_000): Promise<unknown | null
     return null
   }
 }
-
 
 /** 单文件断点下载；先写 .part，校验完成后再原子重命名。 */
 async function downloadFile(
@@ -2925,7 +2869,6 @@ async function downloadFile(
   renameSync(part, dest)
   onProgress(100)
 }
-
 
 export class MediaCatalog {
   private userEngines: MediaEngineManifest[]
@@ -3409,9 +3352,7 @@ export class MediaCatalog {
   }
 }
 
-
 let catalogInstance: MediaCatalog | null = null
-
 
 export function getMediaCatalog(): MediaCatalog {
   if (!catalogInstance) catalogInstance = new MediaCatalog()

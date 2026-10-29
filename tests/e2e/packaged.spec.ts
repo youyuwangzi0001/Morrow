@@ -10,8 +10,6 @@ import { getPackagedAppExe } from './packaged-runtime'
 import { configureMockProvider, dismissOnboarding, installEventCollector, openToolPanel, readStore, setThemeViaStore, waitForRunFinished, waitForStoreReady } from './store'
 import { startMockLLM } from '../fixtures/mock-llm.mjs'
 
-
-
 test.describe("13-packaged", () => {
 // ── 原文件：packaged-terminal.spec.ts ──────────────────────────────────────────────
 test.describe('packaged-terminal.spec.ts', () => {
@@ -53,7 +51,8 @@ test('打包版：终端能创建真实 PTY 并执行命令', async () => {
     })
     if (profiles.ids.includes('gitbash')) expect(profiles.defaultShell).toBe('gitbash')
     expect(profiles.ids).not.toContain('powershell')
-    expect(profiles.ids).toContain('cmd')
+    expect(profiles.ids).not.toContain('cmd')
+    expect(profiles.ids).toContain('pwsh')
     // 当前测试宿主是受限令牌，Git Bash 的 MSYS 共享内存无法初始化；PTY 回归显式用 PowerShell 7。
     await page.evaluate(async () => {
       await window.morrow.settings.update({ terminalShell: 'pwsh' })

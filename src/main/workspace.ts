@@ -20,8 +20,6 @@ import mammoth from 'mammoth'
 import JSZip from 'jszip'
 import type { PdfOcrHandler, PdfOcrResult } from '../core/types'
 
-
-
 const LOGIN_PARTITION = 'persist:morrow-login'
 
 const LOGIN_UA =
@@ -32,11 +30,9 @@ const CHROME_BRANDS = '"Chromium";v="156", "Google Chrome";v="156", "Not?A_Brand
 const CHROME_FULL_BRANDS =
   '"Chromium";v="156.0.0.0", "Google Chrome";v="156.0.0.0", "Not?A_Brand";v="24.0.0.0"'
 
-
 let loginWindow: BrowserWindow | null = null
 
 let headerHooksInstalled = false
-
 
 function loginSession(): Electron.Session {
   const ses = session.fromPartition(LOGIN_PARTITION)
@@ -62,16 +58,13 @@ function loginSession(): Electron.Session {
   return ses
 }
 
-
 function isLoginCallback(url: string): boolean {
   return /^http:\/\/(localhost|127\.0\.0\.1):1455\/auth\/callback(?:[/?#]|$)/i.test(url)
 }
 
-
 export function isLoginSession(ses: Electron.Session): boolean {
   return ses === session.fromPartition(LOGIN_PARTITION)
 }
-
 
 /**
  * 登录页需要在自己的窗口里完成整页跳转（Qoder 的“继续”就是同页导航）。
@@ -92,7 +85,6 @@ function installLoginNavigation(window: BrowserWindow): void {
     installLoginNavigation(child)
   })
 }
-
 
 export function openLoginWindow(url: string): boolean {
   try {
@@ -173,7 +165,6 @@ export function openLoginWindow(url: string): boolean {
   }
 }
 
-
 export function closeLoginWindow(): void {
   const window = loginWindow
   loginWindow = null
@@ -182,13 +173,9 @@ export function closeLoginWindow(): void {
   }
 }
 
-
 function safeHost(url: string): string {
   try { return new URL(url).host } catch { return '' }
 }
-
-
-
 
 /**
  * 便携版数据目录策略：
@@ -207,13 +194,9 @@ function dataDirArg(): string | null {
   return value ? resolve(value) : null
 }
 
-
-
 export function hasDataDirArg(): boolean {
   return dataDirArg() !== null
 }
-
-
 
 /** 自定义目录指针放在数据目录之外，切换数据目录后仍能记住选择。 */
 export function dataLocationFile(): string {
@@ -222,8 +205,6 @@ export function dataLocationFile(): string {
   const base = process.env.LOCALAPPDATA || app.getPath('appData')
   return join(base, 'Morrow', 'data-location.json')
 }
-
-
 
 export function readDataLocation(file = dataLocationFile()): string | null {
   try {
@@ -235,8 +216,6 @@ export function readDataLocation(file = dataLocationFile()): string | null {
   }
 }
 
-
-
 export function writeDataLocation(dir: string, file = dataLocationFile()): void {
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(
@@ -246,13 +225,9 @@ export function writeDataLocation(dir: string, file = dataLocationFile()): void 
   )
 }
 
-
-
 export function removeDataLocation(file = dataLocationFile()): void {
   rmSync(file, { force: true })
 }
-
-
 
 /** 不含用户自定义指针的默认目录（用于「恢复默认」与界面说明）。 */
 export function resolveDefaultDataDir(): string {
@@ -265,17 +240,11 @@ export function resolveDefaultDataDir(): string {
   return join(app.getPath('appData'), 'Morrow')
 }
 
-
-
 let cachedDataDir: string | null = null
-
-
 
 export function resetResolveDataDirCacheForTests(): void {
   cachedDataDir = null
 }
-
-
 
 export function resolveDataDir(): string {
   if (cachedDataDir) return cachedDataDir
@@ -298,14 +267,10 @@ export function resolveDataDir(): string {
   return cachedDataDir
 }
 
-
-
 export function samePath(a: string, b: string): boolean {
   const normalize = (value: string): string => resolve(value).replace(/[\\/]+$/, '').toLowerCase()
   return normalize(a) === normalize(b)
 }
-
-
 
 /** child 是否位于 parent 内部；用于阻止迁移时目录互相包含。 */
 export function isNestedPath(parent: string, child: string): boolean {
@@ -313,14 +278,10 @@ export function isNestedPath(parent: string, child: string): boolean {
   return Boolean(rel) && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
-
-
 export function canChangeDataDir(): boolean {
   // 测试需要在不重启的情况下验证选择/迁移链路；生产环境仍由 --data-dir 锁定
   return !hasDataDirArg() || process.env.MORROW_ALLOW_DATA_DIR_CHANGE === '1'
 }
-
-
 
 export interface DataDirInfo {
   dataDir: string
@@ -329,8 +290,6 @@ export interface DataDirInfo {
   dataDirSource: DataDirSource
   canChangeDataDir: boolean
 }
-
-
 
 export function dataDirInfo(): DataDirInfo {
   const dataDir = app.getPath('userData')
@@ -353,13 +312,9 @@ export function dataDirInfo(): DataDirInfo {
   }
 }
 
-
-
 export function dataPath(...segments: string[]): string {
   return join(app.getPath('userData'), ...segments)
 }
-
-
 
 export function ensureDataDirs(): void {
   const dirs = ['sessions', 'snapshots', 'logs', 'providers', 'demo', 'tmp', 'attachments', 'schedules']
@@ -368,8 +323,6 @@ export function ensureDataDirs(): void {
     if (!existsSync(path)) mkdirSync(path, { recursive: true })
   }
 }
-
-
 
 /** 迁移数据目录时跳过的 Chromium 缓存/瞬时状态；对话、设置、项目、记忆等用户数据仍会复制。 */
 export const MIGRATION_SKIP_NAMES = new Set([
@@ -402,13 +355,9 @@ export const MIGRATION_SKIP_NAMES = new Set([
   'lockfile'
 ])
 
-
-
 function shouldSkip(name: string): boolean {
   return MIGRATION_SKIP_NAMES.has(name)
 }
-
-
 
 /**
  * 将现有数据目录复制到新目录（不删除源目录）。
@@ -450,8 +399,6 @@ export function copyUserDataForMigration(from: string, to: string): number {
   return copied
 }
 
-
-
 /** 迁移失败时清空目标目录中已复制的文件（不会删除用户选择的文件夹本身）。 */
 export function cleanTargetDataDir(dir: string): void {
   const target = resolve(dir)
@@ -460,8 +407,6 @@ export function cleanTargetDataDir(dir: string): void {
     rmSync(join(target, entry), { recursive: true, force: true })
   }
 }
-
-
 
 /** 路径是否位于根目录内；Windows 下大小写不敏感，比较解析后的绝对路径。 */
 export function isPathInside(root: string, target: string): boolean {
@@ -472,8 +417,6 @@ export function isPathInside(root: string, target: string): boolean {
   return candidate === base || candidate.startsWith(prefix)
 }
 
-
-
 /** 创作台数据目录指针：与 Agent 数据目录解耦，存放在 LOCALAPPDATA\Morrow。 */
 export function studioLocationFile(): string {
   const explicit = process.env.MORROW_STUDIO_LOCATION_FILE
@@ -481,8 +424,6 @@ export function studioLocationFile(): string {
   const base = process.env.LOCALAPPDATA || app.getPath('appData')
   return join(base, 'Morrow', 'studio-location.json')
 }
-
-
 
 export function readStudioLocation(file = studioLocationFile()): string | null {
   try {
@@ -494,8 +435,6 @@ export function readStudioLocation(file = studioLocationFile()): string | null {
   }
 }
 
-
-
 export function writeStudioLocation(dir: string, file = studioLocationFile()): void {
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(
@@ -505,19 +444,13 @@ export function writeStudioLocation(dir: string, file = studioLocationFile()): v
   )
 }
 
-
-
 export function removeStudioLocation(file = studioLocationFile()): void {
   rmSync(file, { force: true })
 }
 
-
-
 export function resolveDefaultStudioRoot(dataDir = resolveDataDir()): string {
   return join(dataDir, 'studio')
 }
-
-
 
 /** 自定义创作台目录可用时优先使用；不可用时回退到 Agent 数据目录下的 studio。 */
 export function resolveStudioDataRoot(dataDir = resolveDataDir()): string {
@@ -533,16 +466,12 @@ export function resolveStudioDataRoot(dataDir = resolveDataDir()): string {
   return resolveDefaultStudioRoot(dataDir)
 }
 
-
-
 export interface StudioDataDirInfo {
   root: string
   defaultRoot: string
   customRoot: string | null
   source: 'default' | 'custom'
 }
-
-
 
 export function studioDataDirInfo(dataDir = resolveDataDir()): StudioDataDirInfo {
   const root = resolveStudioDataRoot(dataDir)
@@ -556,27 +485,18 @@ export function studioDataDirInfo(dataDir = resolveDataDir()): StudioDataDirInfo
   }
 }
 
-
-
 const LAUNCHER_PIPE_ENV = 'MORROW_LAUNCHER_PIPE'
-
 
 const BROKER_TIMEOUT_MS = 5_000
 
-
 const CONNECT_RETRIES = 5
 
-
 const RETRY_DELAY_MS = 250
-
-
 
 type BrokerResult =
   | { kind: 'ok' }
   | { kind: 'unavailable' }
   | { kind: 'error'; message: string }
-
-
 
 /**
  * 请求启动器代理执行 OPEN / REVEAL。代理只接受绝对且真实存在的路径；
@@ -635,8 +555,6 @@ function askLauncher(command: 'OPEN' | 'REVEAL', target: string): Promise<Broker
   })
 }
 
-
-
 function existingTarget(absolutePath: string): boolean {
   try {
     return existsSync(absolutePath)
@@ -644,8 +562,6 @@ function existingTarget(absolutePath: string): boolean {
     return false
   }
 }
-
-
 
 /**
  * 在资源管理器中选中目标。返回 null 表示已成功（至少已交给系统），
@@ -671,8 +587,6 @@ export async function revealInFileManager(absolutePath: string): Promise<string 
   }
 }
 
-
-
 /** 用系统默认程序打开文件/文件夹。返回 null 表示成功，字符串表示错误。 */
 export async function openPathFromUserShell(absolutePath: string): Promise<string | null> {
   if (!existingTarget(absolutePath)) return '文件不存在或已被移动。'
@@ -690,13 +604,9 @@ export async function openPathFromUserShell(absolutePath: string): Promise<strin
   return error || null
 }
 
-
-
 function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)
 }
-
-
 
 export async function openExternalUrl(url: string): Promise<{ opened: boolean; copied: boolean }> {
   if (!isHttpUrl(url)) throw new Error('只能打开 http(s) 链接。')
@@ -734,8 +644,6 @@ export async function openExternalUrl(url: string): Promise<{ opened: boolean; c
   }
 }
 
-
-
 /**
  * 登录授权页专用：始终在 Morrow 内置 BrowserWindow 打开。
  *
@@ -759,20 +667,14 @@ export async function openLoginUrl(url: string): Promise<{ opened: boolean; copi
   return { opened: false, copied: true }
 }
 
-
-
 /** 不关心结果的场景（普通外部链接）；失败时仍有剪贴板兜底。 */
 export function openExternalQuiet(url: string): void {
   void openExternalUrl(url).catch(() => undefined)
 }
 
-
-
 export function openLoginQuiet(url: string): void {
   void openLoginUrl(url).catch(() => undefined)
 }
-
-
 
 /** 以采样方式判断内容是否像二进制；用于编辑器打开与附件分类。 */
 export function isProbablyBinary(buffer: Buffer): boolean {
@@ -787,21 +689,13 @@ export function isProbablyBinary(buffer: Buffer): boolean {
   return replacement / Math.max(1, text.length) > 0.1
 }
 
-
-
 export const MAX_READ_BYTES = TEXT_PREVIEW_MAX_BYTES
-
 
 export const MAX_WRITE_BYTES = 8 * 1024 * 1024
 
-
 export const MAX_LIST_ENTRIES = 2000
 
-
-
 export type WorkspaceEntryKind = 'file' | 'dir' | 'symlink'
-
-
 
 export interface WorkspaceFileEntry {
   name: string
@@ -814,8 +708,6 @@ export interface WorkspaceFileEntry {
   /** symlink 解析后超出工作区 / 无法解析：UI 不允许展开与操作 */
   restricted?: boolean
 }
-
-
 
 export class WorkspaceFileError extends Error {
   code: string
@@ -830,13 +722,9 @@ export class WorkspaceFileError extends Error {
   }
 }
 
-
-
 function toPosix(value: string): string {
   return value.split(sep).join('/')
 }
-
-
 
 /** 工作区相对路径；根目录返回 '' */
 export function toWorkspaceRelative(workspace: string, absolute: string): string {
@@ -845,15 +733,11 @@ export function toWorkspaceRelative(workspace: string, absolute: string): string
   return toPosix(rel)
 }
 
-
-
 function requireWorkspace(workspace: string): string {
   const raw = typeof workspace === 'string' ? workspace.trim() : ''
   if (!raw) throw new WorkspaceFileError('NO_WORKSPACE', '还没有选择工作文件夹，不能操作文件。', '请先选择一个工作文件夹。')
   return normalizeWorkspace(raw)
 }
-
-
 
 function resolveInside(workspace: string, inputPath: string): ReturnType<typeof inspectWorkspacePath> {
   const ws = requireWorkspace(workspace)
@@ -873,8 +757,6 @@ function resolveInside(workspace: string, inputPath: string): ReturnType<typeof 
   return resolved
 }
 
-
-
 function isDirectoryPath(path: string): boolean {
   try {
     return statSync(path).isDirectory()
@@ -882,8 +764,6 @@ function isDirectoryPath(path: string): boolean {
     return false
   }
 }
-
-
 
 function isFileLike(path: string): boolean {
   try {
@@ -894,8 +774,6 @@ function isFileLike(path: string): boolean {
   }
 }
 
-
-
 function lstatSafe(path: string): Stats | null {
   try {
     return lstatSync(path)
@@ -903,8 +781,6 @@ function lstatSafe(path: string): Stats | null {
     return null
   }
 }
-
-
 
 function entryFor(resolvedAbsolute: string, workspaceReal: string): WorkspaceFileEntry {
   const first = lstatSafe(resolvedAbsolute)
@@ -933,8 +809,6 @@ function entryFor(resolvedAbsolute: string, workspaceReal: string): WorkspaceFil
   }
 }
 
-
-
 function statSyncSafe(path: string): Stats | null {
   try {
     return statSync(path)
@@ -942,8 +816,6 @@ function statSyncSafe(path: string): Stats | null {
     return null
   }
 }
-
-
 
 /** 在工作区内查找某个路径所属的工作区（供编辑器只传 {path} 时回退使用） */
 export function findWorkspaceContaining(inputPath: string, candidates: string[]): string | null {
@@ -957,15 +829,11 @@ export function findWorkspaceContaining(inputPath: string, candidates: string[])
   return null
 }
 
-
-
 export interface ListWorkspaceInput {
   dir?: string
   showHidden?: boolean
   limit?: number
 }
-
-
 
 export function listWorkspaceEntries(workspace: string, options: ListWorkspaceInput = {}): {
   workspace: string
@@ -1021,8 +889,6 @@ export function listWorkspaceEntries(workspace: string, options: ListWorkspaceIn
   return { workspace: ws, dir: toWorkspaceRelative(ws, resolved.absolute), entries, limited }
 }
 
-
-
 export interface ReadWorkspaceResult {
   path: string
   absolutePath: string
@@ -1032,8 +898,6 @@ export interface ReadWorkspaceResult {
   encoding: 'utf8'
   truncated: boolean
 }
-
-
 
 export function readWorkspaceFile(
   workspace: string,
@@ -1087,8 +951,6 @@ export function readWorkspaceFile(
   }
 }
 
-
-
 export interface WorkspaceFileStat {
   path: string
   absolutePath: string
@@ -1096,8 +958,6 @@ export interface WorkspaceFileStat {
   size: number
   mtimeMs: number
 }
-
-
 
 export function statWorkspaceFile(workspace: string, inputPath: string): WorkspaceFileStat {
   const ws = requireWorkspace(workspace)
@@ -1113,8 +973,6 @@ export function statWorkspaceFile(workspace: string, inputPath: string): Workspa
   }
 }
 
-
-
 export interface SnapshotRecord {
   snapshotPath: string
   targetPath: string
@@ -1124,16 +982,12 @@ export interface SnapshotRecord {
   source: string
 }
 
-
-
 function snapshotPathFor(snapshotRoot: string, target: string, stamp: string): string {
   const date = new Date()
   const folder = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
   const safeName = basename(target).replace(/[^\w.\-\u4e00-\u9fff]+/g, '_').slice(0, 80) || 'file'
   return join(snapshotRoot, 'files', folder, `${stamp}-${randomBytes(3).toString('hex')}-${safeName}`)
 }
-
-
 
 function takeSnapshot(input: {
   snapshotRoot: string
@@ -1169,8 +1023,6 @@ function takeSnapshot(input: {
   }
 }
 
-
-
 export interface WriteWorkspaceResult {
   path: string
   absolutePath: string
@@ -1179,8 +1031,6 @@ export interface WriteWorkspaceResult {
   created: boolean
   snapshot?: string
 }
-
-
 
 export function writeWorkspaceFile(
   workspace: string,
@@ -1252,8 +1102,6 @@ export function writeWorkspaceFile(
   }
 }
 
-
-
 /** Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY。 */
 function renameWithRetry(from: string, to: string): void {
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -1269,8 +1117,6 @@ function renameWithRetry(from: string, to: string): void {
   }
 }
 
-
-
 function conflictError(currentMtimeMs: number | null): WorkspaceFileError {  const error = new WorkspaceFileError(
     'MTIME_CONFLICT',
     '文件在编辑器打开后被外部修改了，已停止保存。请重新加载文件后再试。',
@@ -1279,8 +1125,6 @@ function conflictError(currentMtimeMs: number | null): WorkspaceFileError {  con
   if (currentMtimeMs !== null) error.mtimeMs = currentMtimeMs
   return error
 }
-
-
 
 export function createWorkspaceEntry(
   workspace: string,
@@ -1322,15 +1166,11 @@ export function createWorkspaceEntry(
   return entryFor(resolved.absolute, ws)
 }
 
-
-
 export interface RenameWorkspaceResult {
   from: string
   to: string
   kind: 'file' | 'dir'
 }
-
-
 
 export function renameWorkspaceEntry(workspace: string, fromPath: string, toPath: string): RenameWorkspaceResult {
   const ws = requireWorkspace(workspace)
@@ -1350,8 +1190,6 @@ export function renameWorkspaceEntry(workspace: string, fromPath: string, toPath
   return { from: toWorkspaceRelative(ws, from.absolute), to: toWorkspaceRelative(ws, to.absolute), kind: isDir ? 'dir' : 'file' }
 }
 
-
-
 export function moveWorkspaceEntry(workspace: string, fromPath: string, toDirPath: string): RenameWorkspaceResult {
   const ws = requireWorkspace(workspace)
   const from = resolveInside(ws, fromPath)
@@ -1367,14 +1205,10 @@ export function moveWorkspaceEntry(workspace: string, fromPath: string, toDirPat
   return renameWorkspaceEntry(ws, from.absolute, target)
 }
 
-
-
 export interface DeleteWorkspaceOptions {
   recursive?: boolean
   confirm?: boolean
 }
-
-
 
 export function deleteWorkspaceEntry(
   workspace: string,
@@ -1411,8 +1245,6 @@ export function deleteWorkspaceEntry(
   return { deleted: true, path: toWorkspaceRelative(ws, resolved.absolute), kind: isDir ? 'dir' : 'file' }
 }
 
-
-
 /** 删除前预览（UI 二次确认展示内容数量） */
 export function inspectWorkspaceEntry(workspace: string, inputPath: string): WorkspaceFileEntry & { childCount?: number } {
   const ws = requireWorkspace(workspace)
@@ -1428,20 +1260,13 @@ export function inspectWorkspaceEntry(workspace: string, inputPath: string): Wor
   return entry
 }
 
-
-
 const TOKEN_TTL_MS = 6 * 60 * 60 * 1000
-
 
 const MAX_TOKENS = 1000
 
-
 const PREVIEW_ORIGIN = 'morrow-file://preview'
 
-
 const IMAGE_PREVIEW_MAX_BYTES = 50 * 1024 * 1024
-
-
 
 interface PreviewEntry {
   workspace: string
@@ -1450,19 +1275,13 @@ interface PreviewEntry {
   expiresAt: number
 }
 
-
-
 const previewTokens = new Map<string, PreviewEntry>()
-
-
 
 function pruneExpired(now = Date.now()): void {
   for (const [token, entry] of previewTokens) {
     if (entry.expiresAt <= now) previewTokens.delete(token)
   }
 }
-
-
 
 export function createPreviewUrl(workspace: string, filePath: string, mime: string): string {
   pruneExpired()
@@ -1476,8 +1295,6 @@ export function createPreviewUrl(workspace: string, filePath: string, mime: stri
   return `${PREVIEW_ORIGIN}/${token}`
 }
 
-
-
 export function resolvePreviewToken(token: string): PreviewEntry | null {
   const entry = previewTokens.get(token)
   if (!entry) return null
@@ -1488,13 +1305,9 @@ export function resolvePreviewToken(token: string): PreviewEntry | null {
   return entry
 }
 
-
-
 export function resetPreviewTokensForTest(): void {
   previewTokens.clear()
 }
-
-
 
 export function describeFilePreview(workspace: string, inputPath: string): FilePreviewMeta {
   const stat = statWorkspaceFile(workspace, inputPath)
@@ -1553,16 +1366,12 @@ export function describeFilePreview(workspace: string, inputPath: string): FileP
   }
 }
 
-
-
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Range',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
   'Cross-Origin-Resource-Policy': 'cross-origin'
 }
-
-
 
 function errorResponse(status: number, message: string, extra: Record<string, string> = {}): Response {
   return new Response(message, {
@@ -1577,14 +1386,10 @@ function errorResponse(status: number, message: string, extra: Record<string, st
   })
 }
 
-
-
 interface ByteRange {
   start: number
   end: number
 }
-
-
 
 function parseRange(value: string, size: number): ByteRange | null {
   const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim())
@@ -1607,8 +1412,6 @@ function parseRange(value: string, size: number): ByteRange | null {
   }
   return { start, end }
 }
-
-
 
 export async function handlePreviewProtocol(request: Request): Promise<Response> {
   if (request.method === 'OPTIONS') {
@@ -1669,38 +1472,25 @@ export async function handlePreviewProtocol(request: Request): Promise<Response>
   return new Response(Readable.toWeb(stream) as unknown as ReadableStream, { status: 206, headers })
 }
 
-
-
 const MAX_XML_TEXT_BYTES = 32 * 1024 * 1024
-
 
 const MAX_OUTPUT_HTML_BYTES = 6 * 1024 * 1024
 
-
 const MAX_SHEETS = 10
-
 
 const MAX_ROWS = 200
 
-
 const MAX_COLS = 30
-
 
 const MAX_CELL_CHARS = 400
 
-
 const MAX_SLIDES = 80
-
 
 const MAX_LINES_PER_SLIDE = 40
 
-
 const MAX_DOC_PARAGRAPHS = 3000
 
-
 const MAX_ARCHIVE_ENTRIES = 2000
-
-
 
 function decodeXml(value: string): string {
   return value
@@ -1713,19 +1503,13 @@ function decodeXml(value: string): string {
     .replace(/&amp;/g, '&')
 }
 
-
-
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char)
 }
 
-
-
 function stripTags(xml: string): string {
   return decodeXml(xml.replace(/<[^>]*>/g, ''))
 }
-
-
 
 function parseAttributes(tag: string): Record<string, string> {
   const attributes: Record<string, string> = {}
@@ -1735,8 +1519,6 @@ function parseAttributes(tag: string): Record<string, string> {
   }
   return attributes
 }
-
-
 
 function assertFile(workspace: string, inputPath: string, extensions: string[]): {
   absolutePath: string
@@ -1763,8 +1545,6 @@ function assertFile(workspace: string, inputPath: string, extensions: string[]):
   }
 }
 
-
-
 async function loadZip(absolutePath: string): Promise<JSZip> {
   try {
     return await JSZip.loadAsync(readFileSync(absolutePath))
@@ -1773,16 +1553,12 @@ async function loadZip(absolutePath: string): Promise<JSZip> {
   }
 }
 
-
-
 async function readZipText(zip: JSZip, entry: string): Promise<string | null> {
   const file = zip.file(entry)
   if (!file) return null
   const text = await file.async('string')
   return text.length > MAX_XML_TEXT_BYTES ? text.slice(0, MAX_XML_TEXT_BYTES) : text
 }
-
-
 
 function columnIndex(ref: string): number {
   const letters = /^([A-Z]+)/i.exec(ref)?.[1] ?? ''
@@ -1791,15 +1567,11 @@ function columnIndex(ref: string): number {
   return Math.max(0, index - 1)
 }
 
-
-
 function normalizeZipTarget(target: string): string {
   if (target.startsWith('/')) return target.slice(1)
   if (target.startsWith('xl/')) return target
   return `xl/${target.replace(/^\.\//, '')}`
 }
-
-
 
 async function parseSheetRows(xml: string, shared: string[]): Promise<{ rows: string[][]; truncated: boolean }> {
   const rows: string[][] = []
@@ -1847,8 +1619,6 @@ async function parseSheetRows(xml: string, shared: string[]): Promise<{ rows: st
   return { rows, truncated }
 }
 
-
-
 export async function convertXlsxToPreview(workspace: string, inputPath: string): Promise<XlsxPreviewResult> {
   const file = assertFile(workspace, inputPath, ['xlsx', 'xlsm', 'xltx', 'xltm'])
   const zip = await loadZip(file.absolutePath)
@@ -1892,13 +1662,9 @@ export async function convertXlsxToPreview(workspace: string, inputPath: string)
   return { sheets, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
 
-
-
 function slideNumber(path: string): number {
   return Number(/slide(\d+)\.xml$/i.exec(path)?.[1] ?? 0)
 }
-
-
 
 export async function convertPptxToPreview(workspace: string, inputPath: string): Promise<PptxPreviewResult> {
   const file = assertFile(workspace, inputPath, ['pptx', 'pptm', 'ppsx', 'potx'])
@@ -1932,8 +1698,6 @@ export async function convertPptxToPreview(workspace: string, inputPath: string)
   return { slides, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
 
-
-
 function paragraphsToHtml(paragraphs: string[], title?: string): string {
   const body = paragraphs.slice(0, MAX_DOC_PARAGRAPHS).map((paragraph) => {
     const text = paragraph.trim()
@@ -1943,8 +1707,6 @@ function paragraphsToHtml(paragraphs: string[], title?: string): string {
   })
   return `${title ? `<h1>${escapeHtml(title)}</h1>` : ''}${body.join('\n')}`
 }
-
-
 
 function decodeRtf(raw: string): string {
   let text = raw
@@ -1959,8 +1721,6 @@ function decodeRtf(raw: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-
-
 function odfParagraphs(xml: string): string[] {
   const paragraphs: string[] = []
   const regex = /<text:(p|h)\b[^>]*>([\s\S]*?)<\/text:(?:p|h)>/g
@@ -1970,8 +1730,6 @@ function odfParagraphs(xml: string): string[] {
   }
   return paragraphs
 }
-
-
 
 function odsTablesToHtml(xml: string): string {
   const tables: string[] = []
@@ -1990,8 +1748,6 @@ function odsTablesToHtml(xml: string): string {
   }
   return tables.join('\n')
 }
-
-
 
 async function epubHtml(zip: JSZip): Promise<{ html: string; warnings: string[] }> {
   const warnings: string[] = []
@@ -2030,8 +1786,6 @@ async function epubHtml(zip: JSZip): Promise<{ html: string; warnings: string[] 
   if (sections.length === 0) warnings.push('没有从 EPUB 中提取到可读正文。')
   return { html: sections.join('\n<hr>\n'), warnings }
 }
-
-
 
 export async function convertDocumentToPreview(workspace: string, inputPath: string): Promise<DocumentPreviewResult> {
   const file = assertFile(workspace, inputPath, ['rtf', 'odt', 'ods', 'odp', 'epub'])
@@ -2076,8 +1830,6 @@ export async function convertDocumentToPreview(workspace: string, inputPath: str
   return { html, format, warnings, size: file.size, mtimeMs: file.mtimeMs }
 }
 
-
-
 export async function listArchive(workspace: string, inputPath: string): Promise<ArchivePreviewResult> {
   const stat = statWorkspaceFile(workspace, inputPath)
   if (stat.kind !== 'file') throw new Error('这是一个文件夹，不能预览。')
@@ -2112,11 +1864,7 @@ export async function listArchive(workspace: string, inputPath: string): Promise
   }
 }
 
-
-
 const MAX_DOCX_HTML_BYTES = 30 * 1024 * 1024
-
-
 
 export interface DocxPreviewResult {
   html: string
@@ -2124,8 +1872,6 @@ export interface DocxPreviewResult {
   mtimeMs: number
   warnings: string[]
 }
-
-
 
 /** DOCX → 只读 HTML；图片内联为 data URI，输出体量有上限。 */
 export async function convertDocxToHtml(workspace: string, inputPath: string): Promise<DocxPreviewResult> {
@@ -2161,18 +1907,12 @@ export async function convertDocxToHtml(workspace: string, inputPath: string): P
   }
 }
 
-
-
 const OCR_TIMEOUT_MS = 180_000
-
 
 const MAX_STDERR_CHARS = 16_000
 
-
 /** 通过 base64 内存流交给系统 OCR；超大 PDF 建议先拆分 */
 const MAX_OCR_PDF_BYTES = 40 * 1024 * 1024
-
-
 
 /** 去掉中文 OCR 常见的逐字空格，并把被误识别的间隔号还原为标点。 */
 export function normalizeOcrText(text: string): string {
@@ -2197,15 +1937,11 @@ export function normalizeOcrText(text: string): string {
     .trim()
 }
 
-
-
 function scriptPath(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'pdf-ocr.ps1')
     : join(app.getAppPath(), 'resources', 'pdf-ocr.ps1')
 }
-
-
 
 function runPowerShell(args: string[], signal?: AbortSignal): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -2252,8 +1988,6 @@ function runPowerShell(args: string[], signal?: AbortSignal): Promise<{ code: nu
     })
   })
 }
-
-
 
 /** 创建主进程 OCR handler；每次调用使用独立的临时输出文件。 */
 export function createPdfOcrHandler(): PdfOcrHandler {
@@ -2348,23 +2082,15 @@ export function createPdfOcrHandler(): PdfOcrHandler {
   }
 }
 
-
-
 export const MAX_VERSIONS_PER_FILE = 30
-
 
 /** 单个版本内容上限：超过则不记录（避免把大文件/二进制塞进历史） */
 export const MAX_VERSION_BYTES = 2 * 1024 * 1024
 
-
 /** 全库容量上限 */
 export const MAX_TOTAL_BYTES = 128 * 1024 * 1024
 
-
-
 export type HistorySource = 'user' | 'agent' | 'baseline' | 'restore'
-
-
 
 export interface HistoryVersion {
   /** 版本 id（也用于内容文件名） */
@@ -2383,8 +2109,6 @@ export interface HistoryVersion {
   label?: string
 }
 
-
-
 export interface HistoryRecordInput {
   path: string
   content: string
@@ -2395,8 +2119,6 @@ export interface HistoryRecordInput {
   force?: boolean
 }
 
-
-
 export interface HistoryRestoreResult {
   path: string
   versionId: string
@@ -2406,8 +2128,6 @@ export interface HistoryRestoreResult {
   newVersionId: string | null
 }
 
-
-
 interface FileIndex {
   /** 原始路径（展示用，不参与 hash） */
   path: string
@@ -2415,27 +2135,19 @@ interface FileIndex {
   versions: HistoryVersion[]
 }
 
-
-
 /** 规范化路径：绝对路径 + Windows 大小写不敏感（hash 用） */
 export function canonicalPath(filePath: string): string {
   const resolved = resolve(filePath)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
-
-
 export function pathKey(filePath: string): string {
   return createHash('sha256').update(canonicalPath(filePath)).digest('hex').slice(0, 24)
 }
 
-
-
 function searchSha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex')
 }
-
-
 
 function safeReadJson(file: string): FileIndex | null {
   try {
@@ -2448,9 +2160,6 @@ function safeReadJson(file: string): FileIndex | null {
   }
 }
 
-
-
-
 function safeWriteFile(file: string, content: string): void {
   const dir = dirname(file)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -2459,15 +2168,11 @@ function safeWriteFile(file: string, content: string): void {
   renameWithRetry(tmp, file)
 }
 
-
-
 export interface EditorHistoryOptions {
   maxVersionsPerFile?: number
   maxTotalBytes?: number
   maxVersionBytes?: number
 }
-
-
 
 export class EditorHistoryStore {
   private readonly root: string
@@ -2713,11 +2418,7 @@ export class EditorHistoryStore {
   }
 }
 
-
-
 const IGNORE_DIRS = new Set(['node_modules', '.git', '.morrow', 'dist', 'out', 'release', 'tmp', '.cache'])
-
-
 
 export async function pickWorkspace(): Promise<WorkspaceInfo | null> {
   const result = await dialog.showOpenDialog({
@@ -2728,8 +2429,6 @@ export async function pickWorkspace(): Promise<WorkspaceInfo | null> {
   if (result.canceled || result.filePaths.length === 0) return null
   return describeWorkspace(result.filePaths[0])
 }
-
-
 
 export function describeWorkspace(path: string): WorkspaceInfo {
   const resolved = resolve(path)
@@ -2751,8 +2450,6 @@ export function describeWorkspace(path: string): WorkspaceInfo {
     git: exists && existsSync(join(resolved, '.git'))
   }
 }
-
-
 
 function countFiles(dir: string, depth: number): number {
   if (depth > 4) return 0
@@ -2783,14 +2480,10 @@ function countFiles(dir: string, depth: number): number {
   return total
 }
 
-
-
 /** 演示工作区固定位置；演示模型只允许在这里运行。 */
 export function demoWorkspacePath(): string {
   return dataPath('demo-workspace')
 }
-
-
 
 /** 判断路径是否就是 Morrow 的演示工作区（不跟随前缀，避免把真实文件夹误认成演示区）。 */
 export function isDemoWorkspace(path: string | null | undefined): boolean {
@@ -2812,8 +2505,6 @@ export function isDemoWorkspace(path: string | null | undefined): boolean {
   }
 }
 
-
-
 /** 把内置演示工作区复制到 userData/demo-workspace（只读源 assets/demo-workspace） */
 export function createDemoWorkspace(): WorkspaceInfo {
   ensureDataDirs()
@@ -2830,8 +2521,6 @@ export function createDemoWorkspace(): WorkspaceInfo {
   log.info('demo workspace prepared', { target })
   return describeWorkspace(target)
 }
-
-
 
 /** 在工作区内按文件名/路径模糊搜索（@ 引用） */
 export function searchWorkspaceFiles(root: string, query: string, limit = 12): FileSearchResult[] {
@@ -2892,8 +2581,6 @@ export function searchWorkspaceFiles(root: string, query: string, limit = 12): F
   return results.sort((a, b) => b.score - a.score).slice(0, limit)
 }
 
-
-
 function scoreMatch(haystack: string, query: string): number {
   const index = haystack.indexOf(query)
   if (index === -1) {
@@ -2906,8 +2593,6 @@ function scoreMatch(haystack: string, query: string): number {
   }
   return 100 - Math.min(50, index)
 }
-
-
 
 export async function readTextSafe(path: string, maxBytes = 512 * 1024): Promise<{ content: string; size: number; truncated: boolean }> {
   const stat = statSync(path)
@@ -2926,13 +2611,9 @@ export async function readTextSafe(path: string, maxBytes = 512 * 1024): Promise
   }
 }
 
-
-
 export function revealPath(path: string): void {
   void revealInFileManager(path)
 }
-
-
 
 /** 手写目录复制/删除：避免 Windows 上 fs.cpSync / rmSync 在特殊路径下的 EPERM */
 function copyTree(source: string, target: string): void {
@@ -2945,8 +2626,6 @@ function copyTree(source: string, target: string): void {
     else writeFileSync(to, readFileSync(from))
   }
 }
-
-
 
 function removeTree(target: string): void {
   for (const name of readdirSync(target)) {
@@ -2962,18 +2641,12 @@ function removeTree(target: string): void {
   rmdirSync(target)
 }
 
-
-
 export type SearchHitKind = 'session' | 'file' | 'artifact'
-
-
 
 export interface SearchHighlight {
   start: number
   end: number
 }
-
-
 
 export interface SearchHit {
   kind: SearchHitKind
@@ -2996,15 +2669,11 @@ export interface SearchHit {
   updatedAt?: number
 }
 
-
-
 export interface SearchGroups {
   sessions: SearchHit[]
   files: SearchHit[]
   artifacts: SearchHit[]
 }
-
-
 
 export interface SearchIndexStatus {
   ready: boolean
@@ -3016,8 +2685,6 @@ export interface SearchIndexStatus {
   lastBuiltAt?: number
 }
 
-
-
 export interface SearchResponse {
   query: string
   groups: SearchGroups
@@ -3026,16 +2693,12 @@ export interface SearchResponse {
   index: SearchIndexStatus
 }
 
-
-
 export interface SearchQueryInput {
   q: string
   /** 限定工作区；不传 = 搜索全部已索引工作区（全局） */
   workspace?: string | null
   limit?: number
 }
-
-
 
 export interface WorkspaceSearchServiceDeps {
   listSessions(): SessionMeta[]
@@ -3049,8 +2712,6 @@ export interface WorkspaceSearchServiceDeps {
   now?: () => number
 }
 
-
-
 export interface WorkspaceSearchServiceOptions {
   /** 每个工作区最多索引文件数，默认 5000 */
   maxFilesPerWorkspace?: number
@@ -3062,8 +2723,6 @@ export interface WorkspaceSearchServiceOptions {
   autoRefreshMs?: number
 }
 
-
-
 interface SessionDoc {
   id: string
   title: string
@@ -3072,8 +2731,6 @@ interface SessionDoc {
   messages: Array<{ id: string; role: ChatMessage['role']; text: string }>
   artifacts: Array<{ artifact: Artifact; sessionTitle: string }>
 }
-
-
 
 interface FileDoc {
   absolutePath: string
@@ -3085,28 +2742,19 @@ interface FileDoc {
   binary: boolean
 }
 
-
-
 const IGNORED_DIR_NAMES = new Set(['node_modules', '.git', 'Morrow Data', 'out', 'release', 'dist', '.cache'])
 
-
 const BINARY_PROBE_BYTES = 8192
-
 
 /** 单个会话最多索引的正文字符数（优先保留最近的消息/成品，避免超长会话拖垮内存） */
 export const SEARCH_SESSION_TEXT_BUDGET = 200_000
 
-
 export const SEARCH_SESSION_ARTIFACT_BUDGET = 200_000
-
-
 
 function normalizeWorkspaceOrNull(workspace: string | null | undefined): string | null {
   if (!workspace) return null
   return resolve(workspace)
 }
-
-
 
 function stripMarkup(text: string, kind?: string): string {
   if (kind === 'html' || kind === 'svg') {
@@ -3127,8 +2775,6 @@ function stripMarkup(text: string, kind?: string): string {
   return text
 }
 
-
-
 function messageText(message: ChatMessage): string {
   return message.content
     .map((block) => {
@@ -3143,8 +2789,6 @@ function messageText(message: ChatMessage): string {
     .filter(Boolean)
     .join('\n')
 }
-
-
 
 function makeSnippet(text: string, query: string): { snippet: string; highlights: SearchHighlight[] } {
   if (!query) return { snippet: '', highlights: [] }
@@ -3169,8 +2813,6 @@ function makeSnippet(text: string, query: string): { snippet: string; highlights
   }
 }
 
-
-
 function matchScore(haystack: string, needle: string, base: number, bonus = 0): number {
   if (!needle) return 0
   const index = haystack.toLowerCase().indexOf(needle.toLowerCase())
@@ -3179,15 +2821,11 @@ function matchScore(haystack: string, needle: string, base: number, bonus = 0): 
   return base + bonus
 }
 
-
-
 function lineNumberAt(text: string, index: number): number {
   let line = 1
   for (let i = 0; i < index && i < text.length; i += 1) if (text[i] === '\n') line += 1
   return line
 }
-
-
 
 export class WorkspaceSearchService {
   private readonly deps: WorkspaceSearchServiceDeps
@@ -3619,7 +3257,5 @@ export class WorkspaceSearchService {
     return hits.slice(0, limit)
   }
 }
-
-
 
 export { normalizeWorkspace as normalizeSearchWorkspace }

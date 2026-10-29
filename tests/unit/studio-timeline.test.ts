@@ -67,6 +67,45 @@ describe('剪辑表计算', () => {
     expect(subtitles.map((clip) => clip.start)).toEqual([0, 2])
   })
 
+  it('重新装配时优先使用正式配乐，而不是更早的草稿或样例配乐', () => {
+    const project = makeDramaProject(store)
+    project.assets = project.assets.filter((asset) => !asset.tags.includes('music'))
+    const draft = store.addAsset(project, {
+      bytes: Buffer.from('RIFF0000WAVEfmt draft'),
+      title: '配乐草稿 · 雨',
+      mime: 'audio/wav',
+      kindHint: 'audio',
+      tags: ['music', 'draft'],
+      origin: { source: 'local' },
+      metadata: { durationSec: 4 }
+    })
+    const demo = store.addAsset(project, {
+      bytes: Buffer.from('RIFF0000WAVEfmt demo'),
+      title: '样例配乐',
+      mime: 'audio/wav',
+      kindHint: 'audio',
+      tags: ['music', 'demo'],
+      origin: { source: 'demo' },
+      metadata: { durationSec: 4 }
+    })
+    const formal = store.addAsset(project, {
+      bytes: Buffer.from('RIFF0000WAVEfmt formal'),
+      title: 'ACE-Step 正式配乐',
+      mime: 'audio/mpeg',
+      kindHint: 'audio',
+      tags: ['music', 'model'],
+      origin: { source: 'comfyui', model: 'ACE-Step 1.5' },
+      metadata: { durationSec: 4 }
+    })
+    const timeline = buildTimelineFromProject(project)
+    const clip = timeline.clips.find((item) => item.kind === 'music')
+    expect(clip?.assetId).toBe(formal.id)
+    expect(clip?.assetId).not.toBe(draft.id)
+    expect(clip?.assetId).not.toBe(demo.id)
+    project.musicAssetId = draft.id
+    expect(buildTimelineFromProject(project).clips.find((item) => item.kind === 'music')?.assetId).toBe(draft.id)
+  })
+
   it('SRT 与 ASS 时间码和文本正确', () => {
     const project = makeDramaProject(store)
     const timeline = buildTimelineFromProject(project)

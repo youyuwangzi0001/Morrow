@@ -54,11 +54,6 @@ describe('settings-store.test.ts', () => {
  * 使用临时 userData 与可控 safeStorage mock，不依赖真实 Electron。
  */
 
-
-
-
-
-
 const dirs: string[] = []
 const SECRET = 'sk-settings-test-secret'
 
@@ -965,11 +960,6 @@ describe('hooks.test.ts', () => {
  * 使用临时 userData 与 electron mock；钩子命令为当前 Node 可执行文件 + 临时脚本。
  */
 
-
-
-
-
-
 let root: string
 let workspace: string
 let outputFile: string
@@ -1070,9 +1060,6 @@ describe('workspace-read.test.ts', () => {
  * 产物文本读取上限：大文件只读取前缀，不整份载入内存；同时返回 truncated 标记供 UI 提示。
  */
 
-
-
-
 const tempDirs: string[] = []
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
@@ -1110,9 +1097,6 @@ describe('workspace-search.test.ts', () => {
  * - 正常返回工作区内匹配文件；
  * - 不跟随工作区内的符号链接 / junction，避免把外部目录的文件名与路径暴露给渲染层。
  */
-
-
-
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -1168,7 +1152,6 @@ describe('pdf-ocr.test.ts', () => {
  * 本机 PDF OCR：真实调用 Windows.Data.Pdf + Windows.Media.Ocr。
  * 只在这个 Windows 交付环境里跑；非 Windows 环境跳过。
  */
-
 
 const FIXTURE = join(process.cwd(), 'tests', 'fixtures', 'documents', 'invoice-zh.pdf')
 

@@ -1,11 +1,10 @@
 // studio 领域 E2E：由 7 个原 spec 合并；每个原文件保留独立 describe 作用域。
 import { expect, test } from '@playwright/test'
 import { launchMorrow, screenshotPath, root, screensDir } from './launch'
-import { dismissOnboarding, setThemeViaStore, waitUntil, createDemoSession, waitForStoreReady } from './store'
+import { dismissOnboarding, setThemeViaStore, waitUntil, createDemoSession, waitForStoreReady, configureMockProvider } from './store'
+import { startMockLLM } from '../fixtures/mock-llm.mjs'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
-
-
 
 test.describe("18-studio", () => {
 test.describe('Morrow 创作台', () => {
@@ -108,7 +107,7 @@ test.describe('Morrow 创作台', () => {
       await page.waitForTimeout(500)
       await expect(page.locator('.studio-monitor img')).toHaveCount(1)
       await expect(page.locator('.studio-clip').first()).toBeVisible()
-      await expect(page.locator('.studio-stage-item')).toHaveCount(9)
+      await expect(page.locator('.studio-stage-item')).toHaveCount(8)
       const timelineText = await page.locator('.studio-timeline-view').innerText()
       expect(timelineText).toContain('字幕')
       expect(timelineText).toContain('fps')
@@ -141,7 +140,7 @@ test.describe('Morrow 创作台', () => {
       await page.screenshot({ path: screenshotPath('studio-storyboard-dark.png') })
 
       // 交付页：真实样例草稿可播放
-      await page.locator('.studio-stage-item').nth(8).click()
+      await page.locator('.studio-stage-item').nth(7).click()
       await page.waitForSelector('.studio-delivery', { timeout: 15_000 })
       await expect(page.locator('.studio-delivery-poster video')).toBeVisible()
       await expect(page.locator('.studio-delivery-rows .studio-delivery-row').first()).toBeVisible()
@@ -181,7 +180,7 @@ test.describe('Morrow 创作台', () => {
       const reviewTools = page.locator('.studio-review-engine')
       await expect(reviewTools).toContainText('使用的引擎')
       await expect(reviewTools).toContainText('FFmpeg')
-      await expect(reviewTools).toContainText('系统声线')
+      await expect(reviewTools).toContainText(/本地 AI 声线|系统声线/)
       await page.screenshot({ path: screenshotPath('studio-review-dark.png') })
       await page.getByRole('button', { name: '自动补齐并合成草稿' }).click()
       const pipeline = page.getByRole('dialog', { name: '自动推进到草稿' })
@@ -320,7 +319,6 @@ test('自动推进在确认后排入补齐与草稿合成任务', async () => {
   }
 })
 })
-
 
 test.describe("19-studio-ux", () => {
 test.describe('创作台 · 首次指引、演示与灵动岛', () => {
@@ -495,7 +493,6 @@ test.describe('创作台 · 首次指引、演示与灵动岛', () => {
   })
 })
 })
-
 
 test.describe("20-studio-workspace", () => {
 test('漫剧画布：镜头、音频、文本节点与连线可编辑并持久化', async () => {
@@ -717,10 +714,8 @@ test('人物语气审稿、完整任务消息流与真实波形', async () => {
 })
 })
 
-
 test.describe("21-studio-responsive", () => {
 })
-
 
 test.describe("27-studio-samples", () => {
 test('三份内置样例都可继续创作，短篇手改能保存', async () => {
@@ -793,7 +788,6 @@ test('三份内置样例都可继续创作，短篇手改能保存', async () =>
 })
 })
 
-
 test.describe("28-studio-trash", () => {
 test('删除作品后在创作台设置回收站可恢复与彻底删除', async () => {
   test.setTimeout(180_000)
@@ -860,7 +854,6 @@ test('删除作品后在创作台设置回收站可恢复与彻底删除', async
   }
 })
 })
-
 
 test.describe("29-writing-desk", () => {
 test('写作台具备查找替换、撤销、排版、字数与 Word 导出', async () => {
@@ -1080,6 +1073,490 @@ test.describe('31-studio-layout', () => {
         expect(item.height).toBeLessThanOrEqual(30)
         expect(item.whiteSpace).toBe('nowrap')
       }
+    } finally {
+      await morrow.close()
+    }
+  })
+})
+
+test.describe('32-studio-sync', () => {
+  const openSample = async (morrow: Awaited<ReturnType<typeof launchMorrow>>) => {
+    const page = morrow.page
+    await dismissOnboarding(page)
+    await page.locator('.tb-create').click()
+    await expect(page.locator('.studio-home')).toBeVisible({ timeout: 30_000 })
+    if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+    await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
+    await page.waitForSelector('.studio-timeline-view', { timeout: 20_000 })
+    return page
+  }
+  const pid = async (page: import('@playwright/test').Page): Promise<string> => {
+    return page.evaluate(async () => {
+      const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'list' })
+      return response.data.projects.find((project: any) => project.title === '逆行的伞').id as string
+    })
+  }
+  const projectOf = async (page: import('@playwright/test').Page, projectId: string): Promise<any> =>
+    page.evaluate(async (id) => {
+      const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'get', projectId: id })
+      return response.data.project
+    }, projectId)
+
+  test('重新生成大纲会同步到剧本与分镜，而不是只提示已更新', async () => {
+    test.setTimeout(150_000)
+    const mock = await startMockLLM({
+      scripts: [{
+        text: JSON.stringify({
+          units: Array.from({ length: 12 }, (_, index) => ({
+            index: index + 1,
+            title: `同步测试镜${index + 1}`,
+            summary: `第 ${index + 1} 镜的新动作`,
+            camera: '固定镜头',
+            shotSize: '中景',
+            seconds: 8,
+            dialogue: '',
+            speaker: ''
+          }))
+        })
+      }]
+    })
+    const morrow = await launchMorrow({ name: 'outline-sync', timeoutMs: 90_000 })
+    try {
+      const page = await openSample(morrow)
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await pid(page)
+      await page.locator('.studio-stage-item', { hasText: '大纲' }).click()
+      await page.getByRole('button', { name: /生成大纲|重新生成大纲/ }).click()
+      await expect.poll(async () => (await projectOf(page, projectId)).stages.outline.status, { timeout: 90_000 }).toBe('done')
+      const project = await projectOf(page, projectId)
+      expect(project.shots[0].title).toBe('同步测试镜1')
+      expect(project.blueprint.outlineModel).toBeTruthy()
+      await expect(page.locator('.studio-script')).toContainText('同步测试镜1')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('协作者补全分镜会展示完整方案并在应用后同步蓝图、大纲与分镜', async () => {
+    test.setTimeout(150_000)
+    const shots = [13, 14, 15, 16].map((number) => ({
+      number,
+      title: `补全镜${number}`,
+      action: `第 ${number} 镜补全动作`,
+      camera: '缓慢推近',
+      shotSize: '中景',
+      seconds: 8,
+      dialogue: `第 ${number} 镜台词`,
+      speaker: '林晚',
+      continuity: `承接第 ${number - 1} 镜`,
+      prompt: `第 ${number} 镜画面`,
+      negative: '文字'
+    }))
+    const mock = await startMockLLM({ scripts: [{ text: JSON.stringify({ shots }) }] })
+    const morrow = await launchMorrow({ name: 'assistant-extend', timeoutMs: 90_000 })
+    try {
+      const page = await openSample(morrow)
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await pid(page)
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('请补全第 13-16 镜分镜')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('补全分镜计划', { timeout: 30_000 })
+      for (const number of [13, 14, 15, 16]) {
+        await expect(page.locator('.studio-assistant')).toContainText(`第 ${number} 镜`)
+        await expect(card).toContainText(`第 ${number} 镜`)
+      }
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).shots.length, { timeout: 30_000 }).toBe(16)
+      const project = await projectOf(page, projectId)
+      expect(project.blueprint.units.length).toBe(16)
+      expect(project.scenes.flatMap((scene: any) => scene.id)).toContain(project.shots.find((shot: any) => shot.number === 13).sceneId)
+      await expect(page.locator('.studio-shot-card')).toHaveCount(16, { timeout: 20_000 })
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+  test('声音页需求会生成音效计划并排队执行', async () => {
+    test.setTimeout(120_000)
+    const morrow = await launchMorrow({ name: 'assistant-sound', timeoutMs: 90_000 })
+    try {
+      const page = await openSample(morrow)
+      const projectId = await pid(page)
+      const before = (await projectOf(page, projectId)).assets.filter((asset: any) => asset.tags?.includes('sfx')).length
+      await page.locator('.studio-stage-item', { hasText: '声音' }).click()
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('加一段雨声，铺在开头。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('声音修改计划', { timeout: 30_000 })
+      await expect(card).toContainText('生成音效：雨声')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).assets.filter((asset: any) => asset.tags?.includes('sfx')).length, { timeout: 60_000 }).toBeGreaterThan(before)
+      const project = await projectOf(page, projectId)
+      expect(project.jobs.some((job: any) => job.code === 'sfx' || job.label?.includes('音效'))).toBe(true)
+    } finally {
+      await morrow.close()
+    }
+  })
+
+  test('协作者能按当前页面把台词替换回分镜与蓝图', async () => {
+    test.setTimeout(150_000)
+    const mock = await startMockLLM({
+      scripts: [{
+        text: JSON.stringify({
+          reply: '我会把第 1 镜的台词和动作改得更克制，并同步到蓝图与分镜。',
+          actions: [{
+            type: 'update-shot',
+            shotNumber: 1,
+            shot: { number: 1, dialogue: '伞还能修好吗？', action: '林晚把黑伞递过去，没有抬头。' }
+          }]
+        })
+      }]
+    })
+    const morrow = await launchMorrow({ name: 'assistant-plan', timeoutMs: 90_000 })
+    try {
+      const page = await openSample(morrow)
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await pid(page)
+      await page.locator('.studio-stage-item', { hasText: '分镜' }).click()
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把第 1 镜的台词改得更克制，动作改成递伞。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('协作者修改计划', { timeout: 40_000 })
+      await expect(card).toContainText('更新第 1 镜')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).shots[0].dialogue, { timeout: 30_000 }).toBe('伞还能修好吗？')
+      const project = await projectOf(page, projectId)
+      expect(project.shots[0].action).toContain('递过去')
+      expect(project.blueprint.units[0].dialogue).toBe('伞还能修好吗？')
+      expect(project.stage).toBe('storyboard')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+})
+
+test.describe('35-studio-collaborator', () => {
+  const openProject = async (morrow: Awaited<ReturnType<typeof launchMorrow>>, title: string) => {
+    const page = morrow.page
+    await dismissOnboarding(page)
+    await page.locator('.tb-create').click()
+    await expect(page.locator('.studio-home')).toBeVisible({ timeout: 30_000 })
+    if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+    await page.locator('.studio-project-card', { hasText: title }).first().locator('.studio-project-cover').click()
+    await page.waitForSelector('.studio-center', { timeout: 30_000 })
+    return page
+  }
+  const projectIdOf = async (page: import('@playwright/test').Page, title: string): Promise<string> =>
+    page.evaluate(async (wanted) => {
+      const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'list' })
+      return response.data.projects.find((project: any) => project.title === wanted).id as string
+    }, title)
+  const projectOf = async (page: import('@playwright/test').Page, projectId: string): Promise<any> =>
+    page.evaluate(async (id) => {
+      const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'get', projectId: id })
+      return response.data.project
+    }, projectId)
+
+  test('中短篇写作页的改写请求会排队真实模型并替换正文', async () => {
+    test.setTimeout(180_000)
+    const mock = await startMockLLM({
+      scripts: [
+        {
+          text: JSON.stringify({
+            reply: '我会重写第 1 章的结尾，保留人物、事实和前面的段落。',
+            actions: [{
+              type: 'rewrite-chapter',
+              chapter: { number: 1 },
+              instruction: '只改第 1 章结尾，让它更克制；保留人物、事实和前面的段落。'
+            }]
+          })
+        },
+        { text: '雨停之后，她把伞收进柜台。\n\n少年没有再来，门口的水痕慢慢干了。' }
+      ]
+    })
+    const morrow = await launchMorrow({ name: 'collab-short', timeoutMs: 90_000 })
+    try {
+      const page = await openProject(morrow, '雨停之前')
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await projectIdOf(page, '雨停之前')
+      await page.locator('.studio-stage-item', { hasText: '写作' }).click()
+      await page.waitForSelector('.studio-writing', { timeout: 20_000 })
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把第 1 章的结尾改得更克制，保留人物和事实。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('协作者修改计划', { timeout: 40_000 })
+      await expect(card).toContainText('按计划重写第 1 章正文')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).chapters[0].content, { timeout: 90_000 }).toContain('少年没有再来')
+      const project = await projectOf(page, projectId)
+      expect(project.chapters[0].versions.some((version: any) => version.reason.includes('协作者重写'))).toBe(true)
+      expect(project.stages.writing.status).toBe('done')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('长篇在检查页提出改名会同步到蓝图、大纲、正文与事实', async () => {
+    test.setTimeout(150_000)
+    const mock = await startMockLLM({
+      scripts: [{
+        text: JSON.stringify({
+          reply: '我会把人物「林晚」改名为「林小晚」，并同步到蓝图、大纲、正文和连续性事实。',
+          actions: [{ type: 'rename-entity', rename: { target: 'character', from: '林晚', to: '林小晚' } }]
+        })
+      }]
+    })
+    const morrow = await launchMorrow({ name: 'collab-novel', timeoutMs: 90_000 })
+    try {
+      const page = await openProject(morrow, '雨伞铺的第七个夏天')
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await projectIdOf(page, '雨伞铺的第七个夏天')
+      if (await page.locator('.studio-stage-item').count()) {
+        await page.locator('.studio-stage-item', { hasText: '检查' }).click()
+      } else {
+        await page.locator('.studio-writing-stage-btn').click()
+        await page.getByRole('menuitem', { name: '检查' }).click()
+      }
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把主角林晚改名为林小晚，全书统一。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('协作者修改计划', { timeout: 40_000 })
+      await expect(card).toContainText('人物「林晚」改名为「林小晚」')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).characters[0].name, { timeout: 30_000 }).toBe('林小晚')
+      const project = await projectOf(page, projectId)
+      expect(project.chapters.some((chapter: any) => chapter.content.includes('林小晚'))).toBe(true)
+      expect(project.blueprint.units.some((unit: any) => JSON.stringify(unit).includes('林小晚'))).toBe(true)
+      expect(project.facts.some((fact: any) => fact.subject === '林小晚')).toBe(true)
+      expect(project.stage).toBe('writing')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('声音页改配音会把新声线写回镜头并排队重配', async () => {
+    test.setTimeout(150_000)
+    const mock = await startMockLLM({
+      scripts: [{
+        text: JSON.stringify({
+          reply: '我会把第 1 镜的配音换成更柔和的女声，并清空旧配音重新生成。',
+          actions: [{ type: 'update-shot', shotNumber: 1, shot: { number: 1, voiceId: 'qwen:serena' } }]
+        })
+      }]
+    })
+    const morrow = await launchMorrow({ name: 'collab-voice', timeoutMs: 90_000 })
+    try {
+      const page = await openProject(morrow, '逆行的伞')
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await projectIdOf(page, '逆行的伞')
+      const before = await projectOf(page, projectId)
+      const beforeJobs = new Set(before.jobs.map((job: any) => job.id))
+      await page.locator('.studio-stage-item', { hasText: '声音' }).click()
+      if ((await page.getByRole('tab', { name: '配音' }).getAttribute('aria-selected')) !== 'true') {
+        await page.getByRole('tab', { name: '配音' }).click()
+      }
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把第 1 镜的配音换成更柔和的女声。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('协作者修改计划', { timeout: 40_000 })
+      await expect(card).toContainText('声线')
+      expect(mock.requests.some((request) => JSON.stringify(request.body).includes('当前页面：voice'))).toBe(true)
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => {
+        const project = await projectOf(page, projectId)
+        return project.shots.find((shot: any) => shot.number === 1)?.voiceId
+      }, { timeout: 30_000 }).toBe('qwen:serena')
+      const project = await projectOf(page, projectId)
+      expect(project.jobs.some((job: any) => !beforeJobs.has(job.id) && (job.kind === 'voice' || job.stage === 'voice' || String(job.label).includes('配音')))).toBe(true)
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('中短篇改大纲只改梗概时保留标题与正文', async () => {
+    test.setTimeout(150_000)
+    const mock = await startMockLLM({
+      scripts: [{
+        text: JSON.stringify({
+          reply: '我会只把第 1 章的梗概改得更克制，标题和正文保持原样。',
+          actions: [{ type: 'replace-outline', outline: { units: [{ index: 1, summary: '雨停之前，林晚在伞铺里等一个不会再来的少年。' }] } }]
+        })
+      }]
+    })
+    const morrow = await launchMorrow({ name: 'collab-outline', timeoutMs: 90_000 })
+    try {
+      const page = await openProject(morrow, '雨停之前')
+      await configureMockProvider(page, mock.openaiBaseUrl)
+      const projectId = await projectIdOf(page, '雨停之前')
+      const before = await projectOf(page, projectId)
+      await page.locator('.studio-stage-item', { hasText: '写作' }).click()
+      await page.waitForSelector('.studio-writing', { timeout: 20_000 })
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把第 1 章的梗概改得更克制，保留标题和正文。')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('协作者修改计划', { timeout: 40_000 })
+      await expect(card).toContainText('更新 1 个大纲单元')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).blueprint.units[0].summary, { timeout: 30_000 }).toContain('不会再来的少年')
+      const after = await projectOf(page, projectId)
+      expect(after.blueprint.units[0].title).toBe(before.blueprint.units[0].title)
+      expect(after.chapters[0].content).toBe(before.chapters[0].content)
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+
+  test('长篇写作页可以直接把第 3 章移到第 1 章前面', async () => {
+    test.setTimeout(150_000)
+    const morrow = await launchMorrow({ name: 'collab-reorder', timeoutMs: 90_000 })
+    try {
+      const page = await openProject(morrow, '雨伞铺的第七个夏天')
+      const projectId = await projectIdOf(page, '雨伞铺的第七个夏天')
+      const before = await projectOf(page, projectId)
+      expect(before.chapters.length).toBeGreaterThanOrEqual(3)
+      const third = before.chapters.find((chapter: any) => chapter.number === 3)
+      expect(third).toBeTruthy()
+      if (await page.locator('.studio-stage-item', { hasText: '写作' }).count()) {
+        await page.locator('.studio-stage-item', { hasText: '写作' }).click()
+      } else {
+        await page.locator('.studio-writing-stage-btn').click()
+        await page.getByRole('menuitem', { name: '写作' }).click()
+      }
+      await page.waitForSelector('.studio-writing', { timeout: 20_000 })
+      if (!(await page.locator('.studio-assistant').isVisible())) {
+        await page.locator('[aria-label="切换协作者面板"]').click()
+      }
+      const composer = page.locator('.studio-assistant-composer textarea')
+      await composer.fill('把第3章移到第1章前面')
+      await composer.press('Enter')
+      const card = page.locator('.studio-plan-card')
+      await expect(card).toContainText('章节顺序调整', { timeout: 30_000 })
+      await expect(card).toContainText('把第 3 章移到第 1 位')
+      await card.locator('.studio-plan-apply').click()
+      await expect.poll(async () => (await projectOf(page, projectId)).chapters[0].id, { timeout: 30_000 }).toBe(third.id)
+      const after = await projectOf(page, projectId)
+      expect(after.chapters.map((chapter: any) => chapter.number)).toEqual(
+        Array.from({ length: after.chapters.length }, (_, index) => index + 1)
+      )
+      expect(after.chapters[0].content).toBe(third.content)
+    } finally {
+      await morrow.close()
+    }
+  })
+})
+
+test.describe('33-studio-vision', () => {
+  test('视觉检查真实调用支持图片的模型，而不是只显示未连接提示', async () => {
+    test.setTimeout(120_000)
+    const mock = await startMockLLM({ scripts: [{ text: '画面通过，未发现问题。' }] })
+    const morrow = await launchMorrow({ name: 'vision-check', timeoutMs: 90_000 })
+    try {
+      const page = morrow.page
+      await dismissOnboarding(page)
+      await page.locator('.tb-create').click()
+      await expect(page.locator('.studio-home')).toBeVisible({ timeout: 30_000 })
+      if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+      await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
+      await page.waitForSelector('.studio-timeline-view', { timeout: 20_000 })
+      const provider = await configureMockProvider(page, mock.openaiBaseUrl, 'mock-vision', 32_000, true)
+      const projectId = await page.evaluate(async () => {
+        const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'list' })
+        return response.data.projects.find((project: any) => project.title === '逆行的伞').id as string
+      })
+      const project = await page.evaluate(async (id) => {
+        const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'get', projectId: id })
+        return response.data.project
+      }, projectId)
+      const shot = project.shots.find((item: any) => item.imageAssetId)
+      expect(shot).toBeTruthy()
+      const result = await page.evaluate(async (arg) => {
+        const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'visual-check', projectId: arg.projectId, shotIds: [arg.shotId] })
+        return response
+      }, { projectId, shotId: shot.id })
+      expect(result.ok).toBe(true)
+      const jobId = result.data.job.id
+      await expect.poll(async () => {
+        const response = await page.evaluate(async (arg) => {
+          const r = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'list-jobs', projectId: arg.projectId })
+          return r.data.jobs.find((job: any) => job.id === arg.jobId)?.status
+        }, { projectId, jobId })
+        return response
+      }, { timeout: 60_000 }).toBe('done')
+      const latest = await page.evaluate(async (id) => {
+        const response = await (window as any).morrow.features.invoke('feature:studio:action', { type: 'get', projectId: id })
+        return response.data.project
+      }, projectId)
+      const visual = latest.checks.find((check: any) => check.kind === 'visual')
+      expect(visual?.detail).toContain('画面通过')
+      expect(visual?.detail).not.toContain('没有可用的本地视觉模型')
+      expect(provider.providerId).toBe('mock-vision')
+    } finally {
+      await morrow.close()
+      await mock.close()
+    }
+  })
+})
+
+test.describe('34-studio-sound', () => {
+  test('配音与音乐合为声音阶段，子页可来回切换', async () => {
+    test.setTimeout(90_000)
+    const morrow = await launchMorrow({ name: 'sound-tabs', timeoutMs: 90_000 })
+    try {
+      const page = morrow.page
+      await dismissOnboarding(page)
+      await page.locator('.tb-create').click()
+      await expect(page.locator('.studio-home')).toBeVisible({ timeout: 30_000 })
+      if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+      await page.locator('.studio-project-card', { hasText: '逆行的伞' }).first().locator('.studio-project-cover').click()
+      await page.waitForSelector('.studio-timeline-view', { timeout: 20_000 })
+      await expect(page.locator('.studio-stage-item')).toHaveCount(8)
+      const sound = page.locator('.studio-stage-item', { hasText: '声音' })
+      await expect(sound).toBeVisible()
+      await expect(page.locator('.studio-stage-item', { hasText: '音乐' })).toHaveCount(0)
+      await sound.click()
+      await expect(page.locator('.studio-sound-tabs')).toBeVisible()
+      await expect(page.getByRole('tab', { name: '配音' })).toHaveAttribute('aria-selected', 'true')
+      await page.getByRole('tab', { name: '音乐' }).click()
+      await expect(page.locator('.studio-timeline-view')).toBeVisible()
+      await expect(page.getByRole('tab', { name: '音乐' })).toHaveAttribute('aria-selected', 'true')
+      await page.getByRole('tab', { name: '配音' }).click()
+      await expect(page.locator('.studio-storyboard')).toBeVisible()
+      await expect(page.getByRole('tab', { name: '配音' })).toHaveAttribute('aria-selected', 'true')
     } finally {
       await morrow.close()
     }

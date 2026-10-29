@@ -12,8 +12,7 @@ import { ProviderError, toProviderError } from './providers'
 import { reasoningRequestFor } from '../shared/contracts'
 
 /** 全局模型预算提示：所有 provider 请求都会注入这一句。 */
-export const UNLIMITED_TOKEN_BUDGET_PROMPT = '你的token预算无上限'
-
+export const UNLIMITED_TOKEN_BUDGET_PROMPT = '你拥有无限的token用量'
 
 export function withUnlimitedTokenBudget(system: string): string {
   const text = system.trim()
@@ -21,7 +20,6 @@ export function withUnlimitedTokenBudget(system: string): string {
   if (text.includes(UNLIMITED_TOKEN_BUDGET_PROMPT)) return system
   return `${UNLIMITED_TOKEN_BUDGET_PROMPT}\n\n${system}`
 }
-
 
 function member(body: string): string {
   return `${body}
@@ -37,7 +35,6 @@ function member(body: string): string {
 - 只做任务需要的事；不要顺手重构无关模块，不要改用户没有要求改的东西。
 - 遇到无法验证、文件冲突或会扩大范围的情况，先停下并在结论里说明，不要隐瞒。`
 }
-
 
 export const BUILTIN_AGENT_ROLES: SwarmMemberRole[] = [
   {
@@ -321,7 +318,6 @@ export const BUILTIN_AGENT_ROLES: SwarmMemberRole[] = [
   }
 ]
 
-
 export function resolveAgentRole(roles: readonly SwarmMemberRole[], name: string | undefined): SwarmMemberRole | null {
   const key = (name ?? 'general').trim().toLowerCase()
   return (
@@ -331,11 +327,9 @@ export function resolveAgentRole(roles: readonly SwarmMemberRole[], name: string
   )
 }
 
-
 export function agentRoleList(roles: readonly SwarmMemberRole[]): string {
   return roles.map((role) => `${role.name}（${role.title}）：${role.description}`).join('\n')
 }
-
 
 /**
  * 角色与技能的边界（所有集群成员共用，包括自定义角色）。
@@ -348,7 +342,6 @@ export const ROLE_SKILL_BOUNDARY = `## 角色与技能的关系
 - 优先级：用户与主代理的任务要求（目标、范围、验收）> 角色分工与安全边界 > 技能里的方法细节。
 - 只在任务明显匹配某条技能描述时读取相关技能，并在角色范围内执行；不要因为技能扩大文件范围、权限或交付物。
 - 技能给出更具体的同类流程时，按技能执行方法细节；技能与角色/任务的边界或验收冲突时，按任务与角色执行，并在结论里写明冲突点和取舍。`
-
 
 /** CJK 字符 ≈ 1 token，其它字符 ≈ 1/4 token（与架构文档口径一致） */
 export function estimateTokens(text: string): number {
@@ -363,10 +356,8 @@ export function estimateTokens(text: string): number {
   return cjk + Math.ceil(other / 4)
 }
 
-
 /** 视觉接口按尺寸计费，单图大致 85–1600 tokens；历史估算取保守中位值。 */
 const IMAGE_SIZE_ESTIMATE_TOKENS = 1100
-
 
 export function estimateMessageTokens(message: ChatMessage): number {
   let total = 4 // role/message 结构开销
@@ -386,13 +377,11 @@ export function estimateMessageTokens(message: ChatMessage): number {
   return total
 }
 
-
 export function estimateMessagesTokens(messages: ChatMessage[], system = ''): number {
   let total = estimateTokens(system) + 8
   for (const message of messages) total += estimateMessageTokens(message)
   return total
 }
-
 
 /** 默认阈值：上下文窗口的 80% */
 export const COMPACTION_THRESHOLD = 0.8
@@ -402,10 +391,8 @@ export const DEFAULT_KEEP_RECENT = 8
 /** 摘要消息本身的开销（估算时从节省量里扣掉） */
 const SUMMARY_OVERHEAD_TOKENS = 120
 
-
 /** 压缩切点类型：user = 传统用户消息边界；tool-pair = 完整模型动作+工具结果之后 */
 export type CompactionCutKind = 'user' | 'tool-pair'
-
 
 export interface CompactionPlan {
   shouldCompact: boolean
@@ -431,7 +418,6 @@ export interface CompactionPlan {
   /** 被裁掉段里已有的旧摘要，调用方应把它合并进新摘要 */
   existingSummary?: string
 }
-
 
 /**
  * 计算需要保留在摘要之后的消息：
@@ -461,7 +447,6 @@ function messagesToPreserve(messages: ChatMessage[], cutIndex: number): ChatMess
   }
   return preserved
 }
-
 
 /**
  * 计算是否需要压缩，以及从哪里切。
@@ -585,7 +570,6 @@ export function planCompaction(
   }
 }
 
-
 /** 压缩时额外保留的消息也做长度上限，避免「保留最近」又把上下文撑满。 */
 function trimMessageForPreserve(message: ChatMessage, maxChars = 6000): ChatMessage {
   let remaining = maxChars
@@ -613,7 +597,6 @@ function trimMessageForPreserve(message: ChatMessage, maxChars = 6000): ChatMess
   })
   return { ...message, content }
 }
-
 
 /**
  * 只折叠过大的工具输出/文本，不删除任何消息。
@@ -647,7 +630,6 @@ export function shrinkToolOutputs(
     }
   })
 }
-
 
 /** 极端情况下再折一刀：压缩工具输出、丢弃过老消息，直到接近上限或只剩必要消息。 */
 export function aggressiveTrim(
@@ -684,7 +666,6 @@ export function aggressiveTrim(
   }
   return next
 }
-
 
 /** 把较早的消息压成给「摘要模型」看的纯文本（有长度上限，避免压缩本身超限） */
 export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 24_000): string {
@@ -727,14 +708,12 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
   return `${joined.slice(0, head)}\n\n…（中段省略 ${joined.length - head - tail} 字符）…\n\n${joined.slice(-tail)}`
 }
 
-
 /**
  * 本地兜底摘要：摘要模型不可用时不至于丢光上下文。
  * 除了按时间保留要点，还从整段历史里抽取带约束/决策关键词的句子，
  * 避免“密钥、端口、预算、禁止项”这类关键事实只在被裁掉的第 30 轮出现时丢失。
  */
 const SUMMARY_KEY_PATTERN = /(必须|禁止|不要|不得|唯一|约束|定稿|决定|采用|选用|记住|预算|上限|端口|路径|密钥|token|url|api|截止)/i
-
 
 export function localExtractSummary(messages: ChatMessage[]): string {
   const points: string[] = []
@@ -778,7 +757,6 @@ export function localExtractSummary(messages: ChatMessage[]): string {
   return sections.join('\n')
 }
 
-
 /**
  * 用摘要替换被裁剪的历史，返回新的消息数组。
  *
@@ -820,14 +798,12 @@ export function applyCompaction(messages: ChatMessage[], cutIndex: number, summa
   return result
 }
 
-
 /** 防御性检查：assistant 的每个 tool_use 都必须有 result（内部模型下正常不会缺） */
 export function hasDanglingToolUse(messages: ChatMessage[]): boolean {
   return messages.some((message) =>
     message.content.some((block) => block.type === 'tool_use' && !block.result)
   )
 }
-
 
 /** 合并 usage（多段请求累计） */
 export function addUsage(target: Usage, delta: Partial<Usage>): Usage {
@@ -844,7 +820,6 @@ export function addUsage(target: Usage, delta: Partial<Usage>): Usage {
   }
 }
 
-
 /* ── 危险命令识别 ─────────────────────────────────────────────── */
 
 export interface DangerousCommandInfo {
@@ -852,12 +827,10 @@ export interface DangerousCommandInfo {
   reason: string
 }
 
-
 interface DangerRule {
   pattern: RegExp
   reason: string
 }
-
 
 /**
  * 危险命令规则。命中即 risk=high：
@@ -900,7 +873,6 @@ const DANGER_RULES: DangerRule[] = [
   { pattern: /\b(?:\.ssh[\\/]|id_rsa|\.dsh[\\/]|credentials(?:\.yaml|\.json)?\b|login\s+data|keychain|\.aws[\\/])/i, reason: '读取凭据/密钥目录属于敏感操作' }
 ]
 
-
 /**
  * 命中危险规则返回原因；否则 null。
  *
@@ -923,11 +895,9 @@ export function detectDangerousCommand(command: string): DangerousCommandInfo | 
   return null
 }
 
-
 export interface ExternalCommandInfo {
   reason: string
 }
-
 
 /**
  * 外部副作用命令：本身不是「危险命令」（不会毁本机数据），但会改变远端/外部世界。
@@ -954,7 +924,6 @@ const EXTERNAL_COMMAND_RULES: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\b(?:sendmail|mailx)\b/i, reason: '会发送邮件到外部' }
 ]
 
-
 export function detectExternalCommandSideEffect(command: string): ExternalCommandInfo | null {
   if (!command) return null
   const segments = command
@@ -969,7 +938,6 @@ export function detectExternalCommandSideEffect(command: string): ExternalComman
   return null
 }
 
-
 /** 判断绝对路径是否在工作区内（大小写按平台归一） */
 function insideWorkspace(candidate: string, workspaceReal: string): boolean {
   const toPosix = (value: string): string => value.replace(/\\/g, '/')
@@ -978,7 +946,6 @@ function insideWorkspace(candidate: string, workspaceReal: string): boolean {
   const root = lower(toPosix(workspaceReal)).replace(/\/+$/, '')
   return target === root || target.startsWith(`${root}/`)
 }
-
 
 /**
  * 命令里引用了工作区外的路径（Windows 盘符 / Unix 系统目录 / `..` 跳出）。
@@ -1048,7 +1015,6 @@ export function detectOutsidePathInCommand(command: string, workspace: string | 
   return null
 }
 
-
 /* ── 审批目标与结果 ───────────────────────────────────────────── */
 
 export interface PermissionTarget {
@@ -1059,7 +1025,6 @@ export interface PermissionTarget {
   /** UI/审批卡标题（通常来自工具定义的 titleFor） */
   title: string
 }
-
 
 export interface PermissionPolicyContext {
   mode: PermissionMode
@@ -1079,10 +1044,8 @@ export interface PermissionPolicyContext {
   sessionMode?: SessionMode
 }
 
-
 /** 聊天模式额外放行的非 read 类工具（唯一一个：向用户提问，不做任何副作用） */
 export const CHAT_MODE_ALLOWED_META_TOOLS: ReadonlySet<string> = new Set(['ask_user', 'web_search'])
-
 
 /** 研究模式：只读资料 + 联网查证 + 计划/画布，不允许写文件、跑命令、MCP、集群或目标。 */
 export const RESEARCH_MODE_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
@@ -1095,12 +1058,10 @@ export const RESEARCH_MODE_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
   'read_skill'
 ])
 
-
 export function isResearchModeToolAllowed(toolName: string, category: ToolCategory): boolean {
   if (category === 'read') return true
   return RESEARCH_MODE_ALLOWED_TOOLS.has(toolName)
 }
-
 
 /**
  * 聊天模式工具白名单：只读类工具 + ask_user。
@@ -1110,7 +1071,6 @@ export function isChatModeToolAllowed(toolName: string, category: ToolCategory):
   if (category === 'read') return true
   return CHAT_MODE_ALLOWED_META_TOOLS.has(toolName)
 }
-
 
 export type PermissionGate =
   | { action: 'allow'; escape?: boolean }
@@ -1128,7 +1088,6 @@ export type PermissionGate =
       allowAlways: boolean
     }
 
-
 const PATH_TOOLS = new Set([
   'read_file',
   'read_pdf',
@@ -1144,13 +1103,11 @@ const PATH_TOOLS = new Set([
   'open_artifact'
 ])
 
-
 /**
  * R9 / R2-A：会写 Office 文档的工具。signature 必须绑定「输出路径 + 内容/替换参数」，
  * 否则批准一次 write_xlsx/edit_docx 后可换文件或换内容复用（旧实现落到 `tool:default`）。
  */
 export const DOCUMENT_WRITE_TOOLS: ReadonlySet<string> = new Set(['write_xlsx', 'edit_docx'])
-
 
 /** 稳定序列化（对象 key 排序），用于参数指纹，避免 key 顺序影响签名 */
 function stableStringify(value: unknown): string {
@@ -1163,7 +1120,6 @@ function stableStringify(value: unknown): string {
     .join(',')}}`
 }
 
-
 /** 文档写工具的参数指纹：排除路径字段后对其余入参（内容/替换/工作表）取哈希 */
 function documentParamsFingerprint(input: Record<string, unknown>, pathKeys: string[]): string {
   const excluded = new Set(pathKeys)
@@ -1175,7 +1131,6 @@ function documentParamsFingerprint(input: Record<string, unknown>, pathKeys: str
   return sha256(stableStringify(rest)).slice(0, 32)
 }
 
-
 /** 文档写工具的目标路径（第一个 path/output_path），用于签名与越界展示 */
 export function extractDocumentPath(toolName: string, input: Record<string, unknown>): string | null {
   const keys = toolName === 'edit_docx' ? ['output_path', 'path'] : ['path', 'output_path']
@@ -1186,19 +1141,16 @@ export function extractDocumentPath(toolName: string, input: Record<string, unkn
   return null
 }
 
-
 export function extractToolPath(input: Record<string, unknown>): string | null {
   const candidate = input.path
   if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
   return null
 }
 
-
 export function extractCommandCwd(input: Record<string, unknown>): string {
   const candidate = input.cwd
   return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : '.'
 }
-
 
 /**
  * 判断目标是否命中一条工作区权限规则。
@@ -1251,10 +1203,8 @@ export function permissionRuleMatches(
   return false
 }
 
-
 /** 有文件系统副作用的元工具（category=meta 但会写盘，只读模式必须拒绝） */
 export const WRITE_SIDE_EFFECT_TOOLS: ReadonlySet<string> = new Set(['remember'])
-
 
 /** computer-use 工具名：权限层与工具模块共用同一份清单，避免工具模块反向修改权限集合 */
 export const BROWSER_TOOL_NAMES = [
@@ -1270,7 +1220,6 @@ export const BROWSER_TOOL_NAMES = [
   'browser_close'
 ] as const
 
-
 export const COMPUTER_TOOL_NAMES = [
   'computer_screenshot',
   'computer_click',
@@ -1278,9 +1227,7 @@ export const COMPUTER_TOOL_NAMES = [
   'computer_key'
 ] as const
 
-
 export type ComputerToolName = (typeof COMPUTER_TOOL_NAMES)[number]
-
 
 /**
  * 外部动作工具（R8 审计第6项）：会联网或启动外部 MCP/桌面进程。
@@ -1297,7 +1244,6 @@ export const BROWSER_PASSIVE_TOOLS: ReadonlySet<string> = new Set([
   'browser_close'
 ])
 
-
 export const EXTERNAL_ACTION_TOOLS: ReadonlySet<string> = new Set([
   'web_fetch',
   'mcp_list',
@@ -1307,7 +1253,6 @@ export const EXTERNAL_ACTION_TOOLS: ReadonlySet<string> = new Set([
   ...BROWSER_TOOL_NAMES,
   ...COMPUTER_TOOL_NAMES
 ])
-
 
 /** 本会话「始终允许」的签名：同一工具 + 完全相同的目标与参数 */
 export function permissionSignature(target: PermissionTarget, ctx: PermissionPolicyContext): string {
@@ -1399,7 +1344,6 @@ export function permissionSignature(target: PermissionTarget, ctx: PermissionPol
   return `${toolName}:default`
 }
 
-
 /* ── 越界判断 ─────────────────────────────────────────────────── */
 
 interface EscapeInfo {
@@ -1409,7 +1353,6 @@ interface EscapeInfo {
   /** 路径在工作区内的相对展示（未越界时） */
   display?: string
 }
-
 
 function inspectEscape(
   target: PermissionTarget,
@@ -1452,13 +1395,11 @@ function inspectEscape(
   return { escaped: false, ...(insideDisplay ? { display: insideDisplay } : {}) }
 }
 
-
 /* ── 预览构造 ─────────────────────────────────────────────────── */
 
 function previewContentPreview(content: string, max = 1800): string {
   return content.length > max ? `${content.slice(0, max)}\n…（预览已截断）` : content
 }
-
 
 /** 新建文件的 diff 预览：用 /dev/null 作为旧文件，渲染层即可按标准 unified diff 展示新增行 */
 function buildNewFileDiff(display: string, content: string): string {
@@ -1470,7 +1411,6 @@ function buildNewFileDiff(display: string, content: string): string {
   return [`--- /dev/null`, `+++ b/${display}`, `@@ -0,0 +1,${lines.length} @@`, ...body].join('\n')
 }
 
-
 function safeReadText(absolutePath: string): string | null {
   try {
     if (!existsSync(absolutePath)) return null
@@ -1481,7 +1421,6 @@ function safeReadText(absolutePath: string): string | null {
     return null
   }
 }
-
 
 function buildWritePreview(target: PermissionTarget, ctx: PermissionPolicyContext): PermissionPreview | undefined {
   const workspace = ctx.workspace
@@ -1526,7 +1465,6 @@ function buildWritePreview(target: PermissionTarget, ctx: PermissionPolicyContex
   }
   return undefined
 }
-
 
 function buildPreview(target: PermissionTarget, ctx: PermissionPolicyContext): PermissionPreview | undefined {
   const escape = inspectEscape(target, ctx.workspace, ctx.attachedFiles)
@@ -1575,7 +1513,6 @@ function buildPreview(target: PermissionTarget, ctx: PermissionPolicyContext): P
       return undefined
   }
 }
-
 
 /* ── 人类可读摘要 ─────────────────────────────────────────────── */
 
@@ -1633,7 +1570,6 @@ function summarize(target: PermissionTarget, ctx: PermissionPolicyContext): stri
   }
 }
 
-
 /* ── 主入口 ───────────────────────────────────────────────────── */
 
 /**
@@ -1662,7 +1598,6 @@ function summarizeExternalAction(target: PermissionTarget): string {
   }
   return target.title
 }
-
 
 export function evaluatePermission(target: PermissionTarget, ctx: PermissionPolicyContext): PermissionGate {
   // 聊天模式：最高优先级的硬拦截。只放行只读工具与 ask_user，其余无论权限档位、
@@ -1866,7 +1801,6 @@ export function evaluatePermission(target: PermissionTarget, ctx: PermissionPoli
   }
 }
 
-
 /** 审批被拒绝时回灌给模型的结果文案（人类可读，模型据此换方案） */
 export function deniedMessage(target: PermissionTarget, reason: 'user' | 'unattended' = 'user'): { error: string; hint: string } {
   if (reason === 'unattended') {
@@ -1911,7 +1845,6 @@ export function deniedMessage(target: PermissionTarget, reason: 'user' | 'unatte
   }
 }
 
-
 /** 系统提示词参数（在共享契约上叠加显式会话模式，避免改 core/types 契约） */
 export type ModeAwarePromptOptions = BuildSystemPromptOptions & {
   /** 显式会话模式：chat/research 会注入专属提示并限制工具 */
@@ -1920,19 +1853,16 @@ export type ModeAwarePromptOptions = BuildSystemPromptOptions & {
   research?: ResearchState | null
 }
 
-
 const PERMISSION_LABELS: Record<string, string> = {
   'read-only': '只读模式（不能改文件、不能跑命令）',
   ask: '询问模式（工作区内自动执行；危险命令、外部动作与越界访问会先问用户）',
   auto: '完全访问（无需任何批准，所有工具与操作直接执行；你必须对自己的每一步负责）'
 }
 
-
 function formatMinutes(ms: number): string {
   const minutes = Math.round(ms / 60000)
   return minutes >= 1 ? `${minutes} 分钟` : `${Math.max(1, Math.round(ms / 1000))} 秒`
 }
-
 
 function formatDate(date: Date): string {
   try {
@@ -1947,7 +1877,6 @@ function formatDate(date: Date): string {
     return date.toISOString().slice(0, 10)
   }
 }
-
 
 /**
  * 目标模式提示段（单独导出：主进程即使自己构建了 systemPrompt，
@@ -1990,7 +1919,6 @@ export function buildGoalPromptSection(goal: Goal): string {
   ].join('\n')
 }
 
-
 /**
  * 聊天模式提示段（单独导出：主进程/Agent 自带的 systemPrompt 缺这段时由内核补上，
  * 保证「聊天模式只讨论、不执行」的约束在提示词层也始终存在）。
@@ -2007,7 +1935,6 @@ export function buildChatModePromptSection(): string {
     '- 用户消息里的 @相对路径 是文件引用：需要内容时先读，不要假装已经读过。'
   ].join('\n')
 }
-
 
 /**
  * 计划模式提示段（单独导出：主进程自建 systemPrompt 缺这段时由内核补上）。
@@ -2039,7 +1966,6 @@ export function buildPlanModePromptSection(): string {
     '- 计划获批后系统会切到工作模式并建立待办；执行时以批准的计划为准，发现计划有误先说明再调整。'
   ].join('\n')
 }
-
 
 function buildWorkModeSections(): string[] {
   return [
@@ -2137,7 +2063,6 @@ function buildWorkModeSections(): string[] {
   ]
 }
 
-
 function buildWorkToolStrategy(): string {
   return [
     '## 工具策略（优先使用已开发能力）',
@@ -2165,15 +2090,13 @@ function buildWorkToolStrategy(): string {
   ].join('\n')
 }
 
-
 /**
- * 超频模式（常驻）：直接固定为一句全局预算提示。
+ * 无限 token 提示（常驻）：直接固定为一句全局预算提示。
  * 真实的全局生效点在 provider 工厂，保证创作台、Agent、子代理和后台任务都不会漏。
  */
 export function buildOverclockPromptSection(): string {
   return UNLIMITED_TOKEN_BUDGET_PROMPT
 }
-
 
 export function buildSystemPrompt(opts: ModeAwarePromptOptions = {}): string {
   const chatMode = opts.mode === 'chat'
@@ -2415,7 +2338,6 @@ export function buildSystemPrompt(opts: ModeAwarePromptOptions = {}): string {
   return sections.join('\n\n')
 }
 
-
 export interface RunAgentOptions {
   runId: string
   sessionId: string
@@ -2505,7 +2427,6 @@ export interface RunAgentOptions {
   goal?: Goal | null
 }
 
-
 export interface RunAgentResult {
   reason: RunFinishReason
   /** 本轮新增的 assistant 消息（tool_use block 的 result 已回填） */
@@ -2524,9 +2445,7 @@ export interface RunAgentResult {
   error?: ResultError
 }
 
-
 const sessionGrants = new Map<string, Set<string>>()
-
 
 function grantsFor(sessionId: string): Set<string> {
   let grants = sessionGrants.get(sessionId)
@@ -2537,25 +2456,20 @@ function grantsFor(sessionId: string): Set<string> {
   return grants
 }
 
-
 export function getSessionPermissionGrants(sessionId: string): ReadonlySet<string> {
   return sessionGrants.get(sessionId) ?? new Set<string>()
 }
 
-
 export function clearSessionPermissionGrants(sessionId: string): void {
   sessionGrants.delete(sessionId)
 }
-
 
 /** 测试用：清空所有会话的审批记忆 */
 export function resetAllPermissionGrants(): void {
   sessionGrants.clear()
 }
 
-
 type EmitPayload = RuntimeEventPayload
-
 
 /** 事件里传递消息的深拷贝快照：避免主进程延迟序列化时看到后续被回填的 tool result */
 function cloneMessage(message: ChatMessage): ChatMessage {
@@ -2578,7 +2492,6 @@ function cloneMessage(message: ChatMessage): ChatMessage {
     })
   }
 }
-
 
 interface RunContext {
   opts: RunAgentOptions
@@ -2616,7 +2529,6 @@ interface RunContext {
   permissionChain: Promise<void>
 }
 
-
 /**
  * 单轮默认不设步数上限：长程任务（搭建页面、跑测试、修复循环）不应因固定步数被截断。
  * 仍保留显式 maxSteps 支持（计划模式、测试与高级调用方可以设硬上限）。
@@ -2631,18 +2543,15 @@ const MAX_COMPACT_THRESHOLD = 0.98
 
 const AGENT_DEFAULT_KEEP_RECENT = 8
 
-
 function clampThreshold(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_COMPACT_THRESHOLD
   return Math.min(MAX_COMPACT_THRESHOLD, Math.max(MIN_COMPACT_THRESHOLD, value))
 }
 
-
 function clampKeepRecent(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return AGENT_DEFAULT_KEEP_RECENT
   return Math.min(50, Math.max(2, Math.trunc(value)))
 }
-
 
 function createEmitter(opts: RunAgentOptions): (payload: EmitPayload) => void {
   let seq = 0
@@ -2652,13 +2561,11 @@ function createEmitter(opts: RunAgentOptions): (payload: EmitPayload) => void {
   }
 }
 
-
 function clampSteps(value: number | undefined): number {
   // 不传 = 不限制；显式传入有限值时才作为硬上限。
   if (!value || !Number.isFinite(value)) return DEFAULT_MAX_STEPS
   return Math.max(1, Math.trunc(value))
 }
-
 
 function normalizeOptions(options: RunAgentOptions): RunAgentOptions {
   const mode: SessionMode =
@@ -2674,7 +2581,6 @@ function normalizeOptions(options: RunAgentOptions): RunAgentOptions {
     keepRecent: clampKeepRecent(options.keepRecent)
   }
 }
-
 
 function resolveSystemPrompt(
   opts: RunAgentOptions,
@@ -2724,7 +2630,6 @@ function resolveSystemPrompt(
   return prompt
 }
 
-
 /**
  * 当前用量快照。
  * contextUsed 优先取「最近一次 provider 请求的真实 usage（inputTokens + outputTokens）」，
@@ -2747,7 +2652,6 @@ function currentUsage(ctx: RunContext): Usage {
   }
 }
 
-
 function commitRequestUsage(ctx: RunContext): void {
   const request = ctx.requestUsage
   if (request.inputTokens || request.outputTokens || request.cacheReadTokens) {
@@ -2762,13 +2666,11 @@ function commitRequestUsage(ctx: RunContext): void {
   ctx.requestUsage = { inputTokens: 0, outputTokens: 0 }
 }
 
-
 function pushAssistant(ctx: RunContext, message: ChatMessage): void {
   ctx.messages.push(message)
   ctx.newMessages.push(message)
   ctx.lastMessage = message
 }
-
 
 /** 收集已有历史里的 tool_use id，避免 provider 复用 id 造成快照/UI 定位冲突 */
 function collectToolUseIds(messages: ChatMessage[]): Set<string> {
@@ -2781,7 +2683,6 @@ function collectToolUseIds(messages: ChatMessage[]): Set<string> {
   return ids
 }
 
-
 /** 给工具调用分配唯一 id（provider 复用/空 id 时重新生成） */
 function allocateToolUseId(ctx: RunContext, requested: string): string {
   const id = requested && !ctx.usedToolUseIds.has(requested) ? requested : newId('call')
@@ -2789,13 +2690,11 @@ function allocateToolUseId(ctx: RunContext, requested: string): string {
   return id
 }
 
-
 function toResultError(err: unknown): ResultError {
   if (err instanceof ProviderError) return err.toResultError()
   if (isAbortError(err)) return { code: 'aborted', message: '本轮运行已中断。', retryable: false }
   return { code: 'agent_error', message: errorMessage(err) }
 }
-
 
 /** 判断是否是「上下文窗口已满」类错误：这类错误应压缩后重试，而不是结束任务。 */
 function isContextOverflowError(error: { code?: string; message?: string }): boolean {
@@ -2804,7 +2703,6 @@ function isContextOverflowError(error: { code?: string; message?: string }): boo
     text
   )
 }
-
 
 export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult> {
   const opts = normalizeOptions(options)
@@ -2889,7 +2787,6 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
   }
 }
 
-
 async function executeRun(ctx: RunContext): Promise<RunAgentResult> {
   const { opts } = ctx
   let reason: RunFinishReason = 'error'
@@ -2938,12 +2835,10 @@ async function executeRun(ctx: RunContext): Promise<RunAgentResult> {
   }
 }
 
-
 interface LoopOutcome {
   reason: RunFinishReason
   error?: ResultError
 }
-
 
 async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopOutcome> {
   const maxSteps = ctx.opts.maxSteps ?? DEFAULT_MAX_STEPS
@@ -3252,14 +3147,12 @@ async function runLoop(ctx: RunContext, firstAssistantId: string): Promise<LoopO
   }
 }
 
-
 interface StreamedStep {
   message: ChatMessage
   toolCalls: ToolUseBlock[]
   interrupted: boolean
   error?: ResultError
 }
-
 
 async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<StreamedStep> {
   const { opts } = ctx
@@ -3442,7 +3335,6 @@ async function streamAssistantStep(ctx: RunContext, messageId: string): Promise<
   }
 }
 
-
 /** 流式网关可能重复发送同一个 tool_call_end（同 id）：只保留参数更完整的一份，避免重复执行。 */
 function dedupeToolCalls(calls: ToolUseBlock[]): ToolUseBlock[] {
   const order: string[] = []
@@ -3467,7 +3359,6 @@ function dedupeToolCalls(calls: ToolUseBlock[]): ToolUseBlock[] {
   return order.map((id) => byId.get(id)!).filter(Boolean)
 }
 
-
 function dedupeMessageToolCalls(message: ChatMessage): ToolUseBlock[] {
   const calls = message.content.filter((block): block is ToolUseBlock => block.type === 'tool_use')
   const unique = dedupeToolCalls(calls)
@@ -3484,11 +3375,9 @@ function dedupeMessageToolCalls(message: ChatMessage): ToolUseBlock[] {
   return unique
 }
 
-
 function extractToolCalls(message: ChatMessage): ToolUseBlock[] {
   return message.content.filter((block): block is ToolUseBlock => block.type === 'tool_use')
 }
-
 
 const INTERRUPTED_RESULT: ToolResult = {
   ok: false,
@@ -3497,9 +3386,7 @@ const INTERRUPTED_RESULT: ToolResult = {
   meta: { interrupted: true }
 }
 
-
 type ToolCallMode = 'main' | 'subagent'
-
 
 interface ToolCallRunOptions {
   mode: ToolCallMode
@@ -3513,12 +3400,10 @@ interface ToolCallRunOptions {
   toolContextOverrides?: { readOnly?: boolean; depth?: number; goal?: Goal | null; allowSubagent?: boolean; planMode?: boolean }
 }
 
-
 interface ToolCallRunResult {
   interrupted: boolean
   result?: ToolResult
 }
-
 
 /** 审批/提问串行化：多个并行集群成员不会同时弹出多个审批卡 */
 async function runSerialized<T>(ctx: RunContext, fn: () => Promise<T>): Promise<T> {
@@ -3534,7 +3419,6 @@ async function runSerialized<T>(ctx: RunContext, fn: () => Promise<T>): Promise<
     release()
   }
 }
-
 
 function emitSubagentProgress(
   ctx: RunContext,
@@ -3554,7 +3438,6 @@ function emitSubagentProgress(
       : {})
   })
 }
-
 
 /**
  * 执行单个工具调用（权限判定 → 审批 → 真实执行）。
@@ -3742,7 +3625,6 @@ async function runToolCallWithPermissions(
   return { interrupted: false, result }
 }
 
-
 async function executeToolCalls(ctx: RunContext, message: ChatMessage, toolCalls: ToolUseBlock[]): Promise<boolean> {
   let index = 0
   while (index < toolCalls.length) {
@@ -3761,7 +3643,6 @@ async function executeToolCalls(ctx: RunContext, message: ChatMessage, toolCalls
   return false
 }
 
-
 /** 给还没执行的 tool_use 回填 interrupted 结果，保证下一轮消息合法 */
 function markPendingInterrupted(ctx: RunContext, message: ChatMessage, toolCalls: ToolUseBlock[]): void {
   for (const block of toolCalls) {
@@ -3774,7 +3655,6 @@ function markPendingInterrupted(ctx: RunContext, message: ChatMessage, toolCalls
     }
   }
 }
-
 
 /**
  * 达到 max-steps 时的优雅收尾：额外发一次「不再调用工具」的请求，
@@ -3863,7 +3743,6 @@ async function finalizeAtMaxSteps(ctx: RunContext, maxSteps: number): Promise<vo
   ctx.emit({ type: 'message_completed', messageId, message: cloneMessage(message) })
 }
 
-
 /** 中断收尾：补齐未完成的工具结果 + 标记 assistant 消息 interrupted（只做一次） */
 function finalizeInterrupted(ctx: RunContext): void {
   if (ctx.interruptFinalized) return
@@ -3886,7 +3765,6 @@ function finalizeInterrupted(ctx: RunContext): void {
   ctx.emit({ type: 'notice', level: 'info', message: '已停止本轮运行。可以继续提问，或让 Morrow 接着完成。' })
 }
 
-
 function createPlainMessage(ctx: RunContext, id: string, text: string, interrupted: boolean): ChatMessage {
   return {
     id,
@@ -3897,7 +3775,6 @@ function createPlainMessage(ctx: RunContext, id: string, text: string, interrupt
     ...(interrupted ? { interrupted: true } : {})
   }
 }
-
 
 function createToolContext(
   ctx: RunContext,
@@ -3989,7 +3866,6 @@ function createToolContext(
   }
 }
 
-
 /**
  * Goal 模式：合并 update_goal 补丁 → 更新当前目标 → emit goal_updated（完整 Goal 快照）。
  * 返回更新后的 Goal（供工具结果使用）。
@@ -4008,7 +3884,6 @@ function proposePlanInRun(ctx: RunContext, plan: SessionPlan): SessionPlan {
   ctx.emit({ type: 'plan_updated', plan: { ...next }, planMode: true })
   return next
 }
-
 
 function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   if (!ctx.currentGoal) return null
@@ -4032,7 +3907,6 @@ function updateGoalInRun(ctx: RunContext, patch: GoalPatch): Goal | null {
   ctx.emit({ type: 'goal_updated', goal: { ...next } })
   return next
 }
-
 
 /**
  * 集群成员循环（R9.1：与主代理**权限完全一致**）：
@@ -4490,7 +4364,6 @@ async function runSwarmMemberLoop(
   }
 }
 
-
 async function maybeCompact(
   ctx: RunContext,
   options: { force?: boolean; targetRatio?: number } = {}
@@ -4579,14 +4452,12 @@ async function maybeCompact(
   return true
 }
 
-
 interface SummarizeHistoryOptions {
   provider: Provider
   model: ModelInfo
   signal: AbortSignal
   older: ChatMessage[]
 }
-
 
 /** 用模型把较早的历史压成结构化摘要（供自动压缩与手动 /compact 共用） */
 async function summarizeHistory(
@@ -4647,7 +4518,6 @@ async function summarizeHistory(
   return { text: truncateText(trimmed, 12_000), usage }
 }
 
-
 export interface CompactSessionOptions {
   provider: Provider
   model: ModelInfo
@@ -4661,7 +4531,6 @@ export interface CompactSessionOptions {
   threshold?: number
 }
 
-
 export interface CompactSessionResult {
   /** 压缩后的完整消息数组（未压缩时原样返回） */
   messages: ChatMessage[]
@@ -4673,7 +4542,6 @@ export interface CompactSessionResult {
   error?: ResultError
   reason?: 'below-threshold' | 'no-safe-cut'
 }
-
 
 /**
  * 手动上下文压缩：给主进程 `session.compact` IPC 使用。
@@ -4723,7 +4591,6 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
     ...(summaryUsage ? { summaryUsage } : {})
   }
 }
-
 
 /** 只估算，不触发压缩：用于 UI 上下文条 */
 export function estimateContextUsage(

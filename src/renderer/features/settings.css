@@ -2633,7 +2633,6 @@
   color: var(--gold-bright);
 }
 
-
 /* 代码字体预览：与编辑器/终端共用字体与字重 */
 .st-code-preview {
   margin: 4px 0 2px;
@@ -2659,7 +2658,6 @@
 .st-code-preview-comment {
   color: var(--text-3);
 }
-
 
 /* 创作台只在关于页露出品牌图标 */
 .st-about-studio {

@@ -985,7 +985,6 @@ test.describe('成品落盘', () => {
 })
 })
 
-
 test.describe("06-editor", () => {
 // ── 原文件：r10-editor.spec.ts ──────────────────────────────────────────────
 test.describe('r10-editor.spec.ts', () => {
@@ -1994,7 +1993,6 @@ test('自定义命令展开参数，钩子可阻断并持久化', async () => {
 
 })
 })
-
 
 test.describe("07-browser", () => {
 // ── 原文件：r10-browser.spec.ts ──────────────────────────────────────────────
@@ -3479,7 +3477,6 @@ test('浏览器返回主页面后保留页面并可切回', async () => {
 })
 })
 
-
 test.describe("11-terminal-git", () => {
 // ── 原文件：terminal-panel.spec.ts ──────────────────────────────────────────────
 test.describe('terminal-panel.spec.ts', () => {
@@ -3523,7 +3520,8 @@ test('真实终端、默认终端切换与后台任务', async () => {
     })
     expect(shellProfiles.defaultShell).toBe('gitbash')
     expect(shellProfiles.ids).not.toContain('powershell')
-    expect(shellProfiles.ids).toContain('cmd')
+    expect(shellProfiles.ids).not.toContain('cmd')
+    expect(shellProfiles.ids).toContain('pwsh')
     // 后续用例使用 PowerShell 语法；显式选择 PowerShell 7，同时保留上面的 Git Bash 默认断言。
     await page.evaluate(async () => {
       await window.morrow.settings.update({ terminalShell: 'pwsh' })
@@ -3730,7 +3728,7 @@ test('真实终端、默认终端切换与后台任务', async () => {
     await shellSelect.click()
     await expect(page.getByRole('option', { name: /Git Bash/ })).toBeVisible()
     await expect(page.getByRole('option', { name: /Windows PowerShell/ })).toHaveCount(0)
-    await expect(page.getByRole('option', { name: /命令提示符/ })).toBeVisible()
+    await expect(page.getByRole('option', { name: /PowerShell 7/ })).toBeVisible()
     await page.getByRole('option', { name: /Git Bash/ }).click()
     await expect(shellSelect).toContainText('Git Bash')
     const savedShell = await page.evaluate(() => {
@@ -3931,7 +3929,7 @@ test('没有工作区时终端回退到可用 Shell 并保持运行', async () =
       const shells = await listShells(page)
       return shells[0]?.status === 'running' ? shells[0] : null
     }, 25_000, '终端保持运行')
-    expect(['gitbash', 'pwsh', 'cmd']).toContain(running.shellId ?? '')
+    expect(['gitbash', 'pwsh']).toContain(running.shellId ?? '')
     const shell = await page.evaluate(async () => {
       const result = await window.morrow.features.invoke('feature:terminal:list')
       return result.ok

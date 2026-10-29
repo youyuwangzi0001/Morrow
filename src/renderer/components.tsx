@@ -28,12 +28,9 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
 
-
-
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold'
 
 type ButtonSize = 'sm' | 'md' | 'lg'
-
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -43,7 +40,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconRight?: ReactNode
   block?: boolean
 }
-
 
 export function Button({
   variant = 'secondary',
@@ -71,14 +67,12 @@ export function Button({
   )
 }
 
-
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string
   size?: number
   active?: boolean
   tone?: 'default' | 'danger'
 }
-
 
 export function IconButton({ label, size = 30, active, tone = 'default', className, children, ...rest }: IconButtonProps): React.JSX.Element {
   return (
@@ -95,11 +89,9 @@ export function IconButton({ label, size = 30, active, tone = 'default', classNa
   )
 }
 
-
 export function Kbd({ children }: { children: ReactNode }): React.JSX.Element {
   return <kbd className="kbd">{children}</kbd>
 }
-
 
 export function Badge({
   children,
@@ -113,7 +105,6 @@ export function Badge({
   return <span className={['badge', `badge-${tone}`, mono ? 'mono' : ''].join(' ')}>{children}</span>
 }
 
-
 export function Spinner({ size = 14, label }: { size?: number; label?: string }): React.JSX.Element {
   return (
     <span className="spinner" role="status" aria-label={label ?? '加载中'}>
@@ -121,7 +112,6 @@ export function Spinner({ size = 14, label }: { size?: number; label?: string })
     </span>
   )
 }
-
 
 export function HorizonLoader({ active = true }: { active?: boolean }): React.JSX.Element {
   return (
@@ -131,14 +121,12 @@ export function HorizonLoader({ active = true }: { active?: boolean }): React.JS
   )
 }
 
-
 export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
   hint?: string
   error?: string
   mono?: boolean
 }
-
 
 export function TextInput({ label, hint, error, mono, className, id, ...rest }: TextInputProps): React.JSX.Element {
   const autoId = useId()
@@ -155,7 +143,6 @@ export function TextInput({ label, hint, error, mono, className, id, ...rest }: 
     </div>
   )
 }
-
 
 export function TextArea({
   label,
@@ -182,7 +169,6 @@ export function TextArea({
     </div>
   )
 }
-
 
 export function Switch({
   checked,
@@ -218,13 +204,11 @@ export function Switch({
   )
 }
 
-
 export interface SegmentedOption<T extends string> {
   value: T
   label: string
   description?: string
 }
-
 
 export function Segmented<T extends string>({
   value,
@@ -256,14 +240,12 @@ export function Segmented<T extends string>({
   )
 }
 
-
 export interface SelectOption<T extends string> {
   value: T
   label: string
   description?: string
   disabled?: boolean
 }
-
 
 export function Select<T extends string>({
   value,
@@ -380,7 +362,6 @@ export function Select<T extends string>({
   )
 }
 
-
 export interface DropdownItem {
   id: string
   label: string
@@ -391,7 +372,6 @@ export interface DropdownItem {
   separatorBefore?: boolean
   onSelect: () => void
 }
-
 
 export function Dropdown({
   trigger,
@@ -476,9 +456,7 @@ export function Dropdown({
   )
 }
 
-
 const ModalStackContext = createContext<{ depth: number }>({ depth: 0 })
-
 
 /**
  * 全局弹窗栈：只有最上层响应 Esc / Tab，避免设置 + 命令面板同时打开时一起关闭或抢焦点。
@@ -486,11 +464,9 @@ const ModalStackContext = createContext<{ depth: number }>({ depth: 0 })
  */
 const openModals: symbol[] = []
 
-
 export function hasOpenModal(): boolean {
   return openModals.length > 0
 }
-
 
 export function Modal({
   open,
@@ -634,7 +610,6 @@ export function Modal({
   )
 }
 
-
 export function WithTooltip({
   label,
   children,
@@ -651,11 +626,9 @@ export function WithTooltip({
   )
 }
 
-
 export function EmptyHint({ children }: { children: ReactNode }): React.JSX.Element {
   return <p className="empty-hint">{children}</p>
 }
-
 
 export function ErrorNote({
   title,
@@ -677,7 +650,6 @@ export function ErrorNote({
   )
 }
 
-
 /** 简单键盘提示列表（设置/命令面板用） */
 export function Shortcut({ keys, label }: { keys: string; label: string }): React.JSX.Element {
   return (
@@ -691,7 +663,6 @@ export function Shortcut({ keys, label }: { keys: string; label: string }): Reac
     </div>
   )
 }
-
 
 /** 让父级知道点击发生在外部（轻量场景使用） */
 export function useClickOutside(onOutside: () => void, enabled = true): React.RefObject<HTMLDivElement | null> {
@@ -710,7 +681,6 @@ export function useClickOutside(onOutside: () => void, enabled = true): React.Re
   return ref
 }
 
-
 export interface ResizeHandleProps {
   value: number
   min: number
@@ -727,10 +697,8 @@ export interface ResizeHandleProps {
   className?: string
 }
 
-
 const clampResize = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Math.round(value)))
-
 
 /**
  * 拖拽调宽手柄：拖动时在落点显示 1px 香槟金渐变线 + px 读数，
@@ -837,7 +805,6 @@ export function ResizeHandle({
   )
 }
 
-
 /** 双主题品牌徽记：日常会话、演示入口与工作状态共用同一套图标资产。 */
 export function BrandMark({
   size = 16,
@@ -860,12 +827,10 @@ export function BrandMark({
   )
 }
 
-
 interface TokenColor {
   scope: string[]
   settings: { foreground?: string; fontStyle?: string }
 }
-
 
 /** 两套主题共用的 token 作用域映射（颜色分开） */
 function tokenColors(p: {
@@ -919,7 +884,6 @@ function tokenColors(p: {
   ]
 }
 
-
 export const morrowDark: ThemeRegistration = {
   name: 'morrow-dark',
   type: 'dark',
@@ -944,7 +908,6 @@ export const morrowDark: ThemeRegistration = {
   })
 }
 
-
 export const morrowLight: ThemeRegistration = {
   name: 'morrow-light',
   type: 'light',
@@ -968,7 +931,6 @@ export const morrowLight: ThemeRegistration = {
     deleted: '#A2543F'
   })
 }
-
 
 /** 常见的别名 → shiki 语言 id */
 const ALIAS: Record<string, string> = {
@@ -999,16 +961,13 @@ const ALIAS: Record<string, string> = {
   cmd: 'bat'
 }
 
-
 const MAX_HIGHLIGHT_CHARS = 120_000
 
 const MAX_HIGHLIGHT_LINES = 2_000
 
-
 let highlighterPromise: Promise<Highlighter> | null = null
 
 const languageLoads = new Map<string, Promise<void>>()
-
 
 /** 语言 id 归一化；不支持的语言返回 null（渲染为纯文本） */
 export function resolveLanguage(language?: string | null): string | null {
@@ -1021,7 +980,6 @@ export function resolveLanguage(language?: string | null): string | null {
   return null
 }
 
-
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
@@ -1031,7 +989,6 @@ function getHighlighter(): Promise<Highlighter> {
   }
   return highlighterPromise
 }
-
 
 function loadLanguage(highlighter: Highlighter, id: string): Promise<void> {
   const existing = languageLoads.get(id)
@@ -1047,7 +1004,6 @@ function loadLanguage(highlighter: Highlighter, id: string): Promise<void> {
   languageLoads.set(id, loading)
   return loading
 }
-
 
 /**
  * 高亮一段代码，返回 Shiki 的 `<pre>` HTML。
@@ -1071,7 +1027,6 @@ export async function highlightToHtml(code: string, language?: string | null): P
   }
 }
 
-
 export interface CodeBlockProps {
   code: string
   language?: string | null
@@ -1086,7 +1041,6 @@ export interface CodeBlockProps {
   /** 流式生成中：跳过语法高亮，避免每个分片重复高亮并造成纯文本/高亮闪烁 */
   streaming?: boolean
 }
-
 
 const CodeBlockLANGUAGE_LABEL: Record<string, string> = {
   javascript: 'JavaScript',
@@ -1112,13 +1066,11 @@ const CodeBlockLANGUAGE_LABEL: Record<string, string> = {
   diff: 'Diff'
 }
 
-
 function labelFor(language?: string | null): string {
   const id = resolveLanguage(language)
   if (!id) return language ? language : '文本'
   return CodeBlockLANGUAGE_LABEL[id] ?? id
 }
-
 
 /** 估算行数（供折叠/行号判断，不用于渲染） */
 function countLines(text: string): number {
@@ -1127,7 +1079,6 @@ function countLines(text: string): number {
   for (let i = 0; i < text.length; i += 1) if (text.charCodeAt(i) === 10) count += 1
   return count
 }
-
 
 /**
  * 代码块：Shiki 异步高亮 + 复制 + 行号 + 长代码折叠。
@@ -1254,7 +1205,6 @@ export function CodeBlock({
   )
 }
 
-
 export type EditorLanguage =
   | 'javascript'
   | 'typescript'
@@ -1265,7 +1215,6 @@ export type EditorLanguage =
   | 'python'
   | 'xml'
   | 'text'
-
 
 const EXT_LANGUAGE: Record<string, EditorLanguage> = {
   js: 'javascript',
@@ -1302,7 +1251,6 @@ const EXT_LANGUAGE: Record<string, EditorLanguage> = {
   bat: 'text'
 }
 
-
 const languagesLANGUAGE_LABEL: Record<EditorLanguage, string> = {
   javascript: 'JavaScript',
   typescript: 'TypeScript',
@@ -1315,7 +1263,6 @@ const languagesLANGUAGE_LABEL: Record<EditorLanguage, string> = {
   text: '纯文本'
 }
 
-
 export function languageForPath(path: string | null | undefined): EditorLanguage {
   if (!path) return 'text'
   const base = path.split(/[\\/]/).pop() ?? ''
@@ -1324,14 +1271,11 @@ export function languageForPath(path: string | null | undefined): EditorLanguage
   return EXT_LANGUAGE[base.slice(dot + 1).toLowerCase()] ?? 'text'
 }
 
-
 export function languageLabel(language: EditorLanguage): string {
   return languagesLANGUAGE_LABEL[language] ?? '纯文本'
 }
 
-
 type Loader = () => Promise<LanguageSupport>
-
 
 const LOADERS: Record<Exclude<EditorLanguage, 'text'>, Loader> = {
   javascript: () => import('@codemirror/lang-javascript').then((mod) => mod.javascript({ jsx: true })),
@@ -1344,9 +1288,7 @@ const LOADERS: Record<Exclude<EditorLanguage, 'text'>, Loader> = {
   xml: () => import('@codemirror/lang-xml').then((mod) => mod.xml())
 }
 
-
 const languageCache = new Map<EditorLanguage, LanguageSupport>()
-
 
 /** 异步加载语言支持；失败/纯文本返回 null（编辑器退化为纯文本） */
 export async function loadLanguageExtension(language: EditorLanguage): Promise<LanguageSupport | null> {
@@ -1362,7 +1304,6 @@ export async function loadLanguageExtension(language: EditorLanguage): Promise<L
   }
 }
 
-
 /** 与 shiki 主题同源的 CM 语法配色（颜色经由 tokens.css 的 CSS 变量） */
 const highlightColors = {
   keyword: 'var(--syntax-keyword)',
@@ -1375,7 +1316,6 @@ const highlightColors = {
   operator: 'var(--syntax-operator)',
   invalid: 'var(--syntax-invalid)'
 }
-
 
 const morrowHighlightStyle = HighlightStyle.define([
   { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: highlightColors.comment, fontStyle: 'italic' },
@@ -1396,11 +1336,9 @@ const morrowHighlightStyle = HighlightStyle.define([
   { tag: [t.invalid], color: highlightColors.invalid }
 ])
 
-
 export function morrowSyntaxHighlighting(): Extension {
   return syntaxHighlighting(morrowHighlightStyle)
 }
-
 
 export interface CodeEditorHandle {
   focus: () => void
@@ -1408,7 +1346,6 @@ export interface CodeEditorHandle {
   getValue: () => string
   setValue: (value: string) => void
 }
-
 
 export interface CodeEditorProps {
   value: string
@@ -1424,7 +1361,6 @@ export interface CodeEditorProps {
   onSave?: () => void
   onCursor?: (line: number, column: number) => void
 }
-
 
 const baseTheme = EditorView.theme({
   '&': {
@@ -1536,7 +1472,6 @@ const baseTheme = EditorView.theme({
   '.cm-placeholder': { color: 'var(--text-3)' }
 })
 
-
 const darkEditorTheme = EditorView.theme(
   {
     '&': { backgroundColor: 'var(--code-bg)' },
@@ -1546,7 +1481,6 @@ const darkEditorTheme = EditorView.theme(
   { dark: true }
 )
 
-
 const lightEditorTheme = EditorView.theme(
   {
     '&': { backgroundColor: 'var(--code-bg)' },
@@ -1555,7 +1489,6 @@ const lightEditorTheme = EditorView.theme(
   },
   { dark: false }
 )
-
 
 /**
  * CodeMirror 6 编辑器封装：行号、折叠、括号匹配、查找替换、撤销重做、自动缩进、
@@ -1753,12 +1686,9 @@ export const CodeEditor = forwardRef(function CodeEditor(
   return <div className="code-editor-host" ref={hostRef} data-language={language} />
 })
 
-
 export default CodeEditor
 
-
 type RowKind = 'add' | 'del' | 'ctx' | 'note'
-
 
 interface DiffRow {
   kind: RowKind
@@ -1769,14 +1699,12 @@ interface DiffRow {
   index: number
 }
 
-
 interface DiffHunk {
   header: string
   oldStart: number
   newStart: number
   rows: DiffRow[]
 }
-
 
 interface ParsedDiffModel {
   hunks: DiffHunk[]
@@ -1786,7 +1714,6 @@ interface ParsedDiffModel {
   /** 无法逐行展示时的说明（文件过大等） */
   note: string | null
 }
-
 
 export interface DiffViewProps {
   /** unified diff 文本（引擎 createUnifiedDiff 的 patch） */
@@ -1804,9 +1731,7 @@ export interface DiffViewProps {
   className?: string
 }
 
-
 const HUNK_HEADER = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@/
-
 
 function parseUnified(patch: string): ParsedDiffModel {
   const lines = patch.replace(/\r\n/g, '\n').split('\n')
@@ -1887,7 +1812,6 @@ function parseUnified(patch: string): ParsedDiffModel {
   return { hunks, added, removed, filePath, note }
 }
 
-
 function buildFromText(before: string, after: string, filePath: string, context: number): ParsedDiffModel {
   const parsed = structuredPatch(`a/${filePath}`, `b/${filePath}`, before, after, '', '', { context })
   const hunks: DiffHunk[] = []
@@ -1926,14 +1850,12 @@ function buildFromText(before: string, after: string, filePath: string, context:
   return { hunks, added, removed, filePath, note: null }
 }
 
-
 interface RenderBlock {
   kind: 'rows' | 'collapsed'
   rows: DiffRow[]
   hiddenCount: number
   start: number
 }
-
 
 /** 把 hunk 拆成「显示行」「折叠的未改动块」 */
 function splitContext(rows: DiffRow[], contextLines: number): RenderBlock[] {
@@ -1977,7 +1899,6 @@ function splitContext(rows: DiffRow[], contextLines: number): RenderBlock[] {
   flushBuffer()
   return blocks
 }
-
 
 function HunkView({
   hunk,
@@ -2041,7 +1962,6 @@ function HunkView({
   )
 }
 
-
 /**
  * 差异视图：红绿低饱和、行号、上下文折叠。
  * 数据来源兼容两种：unified diff 文本（工具结果/审批预览）或修改前后文本。
@@ -2101,19 +2021,16 @@ export function DiffView({
   )
 }
 
-
 interface MenuState {
   x: number
   y: number
 }
-
 
 interface ResolvedPath {
   absolute: string | null
   relative: string | null
   workspace: string | null
 }
-
 
 function resolvePath(parsed: ParsedFilePath): ResolvedPath {
   const state = useAppStore.getState()
@@ -2133,11 +2050,9 @@ function resolvePath(parsed: ParsedFilePath): ResolvedPath {
   }
 }
 
-
 function errorOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
 }
-
 
 /**
  * Markdown 中的文件路径：单击在画布/编辑器中打开，右键提供资源管理器、复制内容与路径。
@@ -2330,17 +2245,14 @@ export function FilePathLink({
   )
 }
 
-
 export interface MarkdownProps {
   text: string
   /** 流式输出中：链接暂不渲染成可点击样式，减少误触 */
   streaming?: boolean
 }
 
-
 /* react-markdown v10 的组件 props 带 node，转发 DOM 前需要剔除 */
 type DivProps = ComponentPropsWithoutRef<'div'> & { node?: unknown }
-
 
 function extractText(children: ReactNode): string {
   if (typeof children === 'string') return children
@@ -2352,14 +2264,12 @@ function extractText(children: ReactNode): string {
   return ''
 }
 
-
 /**
  * 渲染层只允许应用自身可信来源的图片：data:image、blob:、morrow-file:。
  * 远程 http(s) 图片在 CSP 里本就被拦截，直接渲染只会出现破图；
  * 这里改成带域名和「打开链接」的占位条，既避免破图，也不把 IP/Referer 发给第三方。
  */
 const SAFE_IMAGE_SRC = /^(?:data:image\/|blob:|morrow-file:)/i
-
 
 /**
  * react-markdown 默认会清空 data: 图片地址；这里显式放行应用可信图片协议。
@@ -2373,7 +2283,6 @@ const markdownUrlTransform: UrlTransform = (url, _key, node) => {
   return ''
 }
 
-
 function imageFallbackLabel(src: string, alt?: string): string {
   try {
     const url = new URL(src)
@@ -2383,7 +2292,6 @@ function imageFallbackLabel(src: string, alt?: string): string {
   }
   return alt || '图片无法显示'
 }
-
 
 function createComponents(streaming: boolean): Components {
   return {
@@ -2512,7 +2420,6 @@ function createComponents(streaming: boolean): Components {
   }
 }
 
-
 /**
  * Markdown 渲染：react-markdown + GFM（表格/任务列表/删除线）。
  * 代码块交给 CodeBlock 异步高亮；流式时父组件控制重渲染频率。
@@ -2531,7 +2438,6 @@ export const Markdown = memo(function Markdown({ text, streaming = false }: Mark
     </div>
   )
 })
-
 
 // 渲染层通用小工具（原 lib.ts）
 export function errorText(err: unknown, fallback = '操作失败，请重试。'): string {

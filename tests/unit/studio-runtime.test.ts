@@ -1,7 +1,8 @@
 // studio-runtime 单元测试：由 10 个原测试文件合并；每个文件保留独立 describe 作用域。
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import type { StudioAgentFacade } from '../../src/main/studio'
-import { runStudioAgentTool, dramaQualityChecks, measureProseQuality, proseQualityChecks, qualityPromptContext, creativePromptContext, promptModuleIds, selectCreativePrompts, StudioStore, synthesizeCloudSpeech, extractJson, auditCharacterVoices, extractChapterDialogue, synthesizeSpeech } from '../../src/main/studio'
+import { runStudioAgentTool, dramaQualityChecks, measureProseQuality, proseQualityChecks, StudioStore, synthesizeCloudSpeech, extractJson, auditCharacterVoices, extractChapterDialogue, synthesizeSpeech } from '../../src/main/studio'
+import { creativeMasterPrompt, creativeMasterSelection, resetCreativeMasterCache } from '../../src/main/creative-masters'
 import type { StudioActionResult, StudioJob, StudioProject, StudioStatus } from '../../src/shared/studio'
 import { emptyCanvas, emptyStageStates, emptyTimeline, STUDIO_SCHEMA_VERSION, STUDIO_STATUS_TRANSITIONS, canTransitionStudioStatus } from '../../src/shared/studio'
 import { makeDramaProject, makeNovelProject, tempStore } from './studio-fixtures'
@@ -13,8 +14,6 @@ import type { Server } from 'node:http'
 import { createServer } from 'node:http'
 import { LARGE_DIFF_CHARS, candidateDiff, previewBrief } from '../../src/shared/types'
 import { TOOL_DEFINITIONS, getToolDefinition, isReadOnlyTool } from '../../src/core/tools'
-
-
 
 describe("agent-tools", () => {
 function project(overrides: Partial<StudioProject> = {}): StudioProject {
@@ -139,7 +138,6 @@ describe('创作台 Agent 工具适配层', () => {
 })
 })
 
-
 describe("prompt-quality", () => {
 describe('studio quality framework', () => {
   it('量出 AI 腔与具体写作的差异', () => {
@@ -153,13 +151,12 @@ describe('studio quality framework', () => {
     expect(concreteMetrics.paragraphMax).toBeGreaterThan(0)
   })
 
-  it('把创作层与质检层拼进同一段系统提示', () => {
-    const context = creativePromptContext({ kind: 'novel', task: 'chapter', query: '结尾留钩子，少解释', limit: 4 })
-    expect(context).toContain('【创作手法库·按需调取】')
-    expect(context).toContain('【质量门禁')
-    expect(context).toContain('平均句长 15–25 字')
-    expect(qualityPromptContext('novel', 'chapter')).toContain('伏笔')
-    expect(qualityPromptContext('drama', 'storyboard')).toContain('180°')
+  it('底层创作方法只来自大师文件', () => {
+    resetCreativeMasterCache()
+    const chapter = creativeMasterPrompt({ kind: 'novel', task: 'chapter', query: '结尾留钩子，少解释' })
+    expect(chapter).toContain('写作大师')
+    expect(chapter).toContain('第五步')
+    expect(chapter).not.toContain('导演定调')
   })
 
   it('把正文质检写进作品检查项', () => {
@@ -180,37 +177,43 @@ describe('studio quality framework', () => {
     expect(checks.some((check) => check.title.includes('没有画面提示词'))).toBe(true)
   })
 })
-describe('studio prompt library', () => {
-  it('按任务与用户话语调取不同创作手法', () => {
-    const blueprint = promptModuleIds({ kind: 'novel', task: 'blueprint', query: '一个修伞女孩继承外婆的伞铺，悬疑，克制', limit: 6 })
-    expect(blueprint).toEqual(expect.arrayContaining(['story-core', 'character-matrix', 'world-rules']))
-
-    const chapter = promptModuleIds({ kind: 'novel', task: 'chapter', query: '这一章让对话更克制，少解释，结尾留一个具体钩子', limit: 6 })
-    expect(chapter).toEqual(expect.arrayContaining(['dialogue-subtext', 'prose-concrete', 'pacing-tension']))
-
-    const storyboard = promptModuleIds({ kind: 'drama', task: 'storyboard', query: '一个雨夜追击镜头，需要低角度和连续运镜', limit: 6 })
-    expect(storyboard).toEqual(expect.arrayContaining(['storyboard-cinema', 'image-prompt', 'video-motion']))
-
-    const adaptation = promptModuleIds({ kind: 'drama', task: 'adaptation', query: '把小说第3章改成可拍的漫剧剧本', limit: 6 })
-    expect(adaptation).toEqual(expect.arrayContaining(['adaptation-source', 'screenplay-format', 'story-core']))
+describe('creative masters', () => {
+  it('小说写作走写作大师，剧本改编走编剧大师，漫剧分镜走导演大师', () => {
+    resetCreativeMasterCache()
+    expect(creativeMasterSelection({ kind: 'short', task: 'chapter' }).master).toBe('writing')
+    expect(creativeMasterSelection({ kind: 'novel', task: 'outline' }).master).toBe('writing')
+    expect(creativeMasterSelection({ kind: 'drama', task: 'adaptation' }).master).toBe('screenwriting')
+    expect(creativeMasterSelection({ kind: 'drama', task: 'storyboard' }).master).toBe('directing')
+    expect(creativeMasterSelection({ kind: 'drama', task: 'assistant', view: 'blueprint' }).master).toBe('screenwriting')
+    expect(creativeMasterSelection({ kind: 'drama', task: 'assistant', view: 'music' }).master).toBe('directing')
   })
 
-  it('返回结果受 limit 控制且不重复', () => {
-    const selected = selectCreativePrompts({ kind: 'drama', task: 'image', query: '角色参考和雨向连续性', limit: 3 })
-    expect(selected.length).toBeLessThanOrEqual(3)
-    expect(new Set(selected.map((module) => module.id)).size).toBe(selected.length)
-    expect(selected.every((module) => module.score >= 12)).toBe(true)
+  it('按任务加载对应方法论，并受字符预算约束', () => {
+    resetCreativeMasterCache()
+    const storyboard = creativeMasterSelection({ kind: 'drama', task: 'storyboard', budgetChars: 12_000 })
+    expect(storyboard.methodology).toEqual(expect.arrayContaining(['shot-design.md', 'storyboard-format.md']))
+    expect(storyboard.chars).toBeLessThanOrEqual(12_000)
+    const chapter = creativeMasterSelection({ kind: 'novel', task: 'chapter', budgetChars: 12_000 })
+    expect(chapter.methodology).toEqual(expect.arrayContaining(['scene-dialogue.md']))
+    expect(chapter.chars).toBeLessThanOrEqual(12_000)
   })
 
-  it('生成可直接拼接的创作手法上下文', () => {
-    const context = creativePromptContext({ kind: 'drama', task: 'outline', query: '三幕结构、伏笔、情绪曲线', limit: 4 })
-    expect(context).toContain('【创作手法库·按需调取】')
-    expect(context).toContain('情绪曲线')
-    expect(context.split('\n').length).toBeGreaterThan(2)
+  it('生成可直接拼接的单一大师上下文', () => {
+    const context = creativeMasterPrompt({ kind: 'drama', task: 'outline', query: '三幕结构、伏笔、情绪曲线', budgetChars: 10_000 })
+    expect(context).toContain('【底层创作方法：编剧大师】')
+    expect(context).toContain('八步工作流')
+    expect(context.split('\n').length).toBeGreaterThan(10)
+  })
+
+  it('提示词编译进主进程，不依赖外部文件', () => {
+    resetCreativeMasterCache()
+    const selection = creativeMasterSelection({ kind: 'novel', task: 'chapter' })
+    expect(selection.root).toBe('embedded')
+    expect(selection.master).toBe('writing')
+    expect(selection.methodology).toEqual(expect.arrayContaining(['scene-dialogue.md', 'prose-craft.md']))
   })
 })
 })
-
 
 describe("data-dir", () => {
 describe('创作台自定义数据目录', () => {
@@ -273,7 +276,6 @@ describe('创作台自定义数据目录', () => {
   })
 })
 })
-
 
 describe("cloud-tts", () => {
 describe('云端配音', () => {
@@ -344,7 +346,6 @@ describe('云端配音', () => {
 })
 })
 
-
 describe("text", () => {
 describe('模型 JSON 容错', () => {
   it('修复键名漏写开头引号', () => {
@@ -409,7 +410,6 @@ describe('brief preview', () => {
 })
 })
 
-
 describe("trash", () => {
 describe('创作台回收站', () => {
   let dir = ''
@@ -456,7 +456,6 @@ describe('创作台回收站', () => {
 })
 })
 
-
 describe("voice-audit", () => {
 describe('人物语气审稿', () => {
   it('提取“谁说 + 说了什么”，忽略没有明确归属的引号', () => {
@@ -496,7 +495,6 @@ describe('人物语气审稿', () => {
   })
 })
 })
-
 
 describe("registry", () => {
 describe('创作台 Agent 工具注册', () => {
@@ -538,7 +536,6 @@ describe('创作台 Agent 工具注册', () => {
 })
 })
 
-
 describe("local-tts", () => {
 describe('本机配音引擎', () => {
   let dir = ''
@@ -563,7 +560,6 @@ describe('本机配音引擎', () => {
   }, 90_000)
 })
 })
-
 
 describe("status-transitions", () => {
 const STATUSES: StudioStatus[] = ['waiting', 'ready', 'running', 'review', 'done', 'failed', 'stale', 'skipped']

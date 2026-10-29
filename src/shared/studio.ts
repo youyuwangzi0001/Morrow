@@ -1,13 +1,10 @@
 // 创作台与媒体模型契约：studio 领域模型与通用模型目录合并为一个契约文件。
 
-
 // 通用模型/引擎清单。
 
 export type MediaEngineKind = 'comfyui' | 'llamacpp' | 'ollama' | 'lmstudio' | 'openai-compat' | 'custom'
 
-
 export type MediaModelKind = 'image' | 'video' | 'audio' | 'multimodal'
-
 
 export type MediaCapability =
   | 'text-to-image'
@@ -21,7 +18,6 @@ export type MediaCapability =
   | 'vision'
   | 'chat'
 
-
 export interface MediaEngineCommand {
   command: string
   args?: string[]
@@ -29,7 +25,6 @@ export interface MediaEngineCommand {
   detached?: boolean
   timeoutMs?: number
 }
-
 
 export interface MediaEngineManifest {
   id: string
@@ -66,7 +61,6 @@ export interface MediaEngineManifest {
   modelDir?: string
 }
 
-
 export interface MediaModelFile {
   /** 下载地址；没有时表示用户手动放置 */
   url?: string
@@ -77,12 +71,10 @@ export interface MediaModelFile {
   optional?: boolean
 }
 
-
 export interface MediaWorkflowBinding {
   node: string
   input: string
 }
-
 
 export interface MediaWorkflowSpec {
   /** ComfyUI API 格式工作流；占位符由 bindings 写入 */
@@ -104,7 +96,6 @@ export interface MediaWorkflowSpec {
   filenamePrefix?: string
 }
 
-
 export interface MediaModelInstall {
   /** files = ComfyUI/llama.cpp 文件下载；ollama/lmstudio = 引擎拉取；provider = 已有模型提供方 */
   type: 'files' | 'ollama' | 'lmstudio' | 'provider'
@@ -118,7 +109,6 @@ export interface MediaModelInstall {
   alias?: string
   providerId?: string
 }
-
 
 export interface MediaModelManifest {
   id: string
@@ -142,7 +132,6 @@ export interface MediaModelManifest {
   healthUrl?: string
 }
 
-
 export interface MediaEngineInfo {
   id: string
   label: string
@@ -162,7 +151,6 @@ export interface MediaEngineInfo {
   message: string
 }
 
-
 export interface MediaModelInfo {
   id: string
   label: string
@@ -181,13 +169,11 @@ export interface MediaModelInfo {
   message: string
 }
 
-
 export interface MediaCatalogStatus {
   engines: MediaEngineInfo[]
   models: MediaModelInfo[]
   modal: 'running' | 'idle' | 'installing'
 }
-
 
 export interface MediaCatalogAction {
   action:
@@ -206,7 +192,6 @@ export interface MediaCatalogAction {
   manifest?: Record<string, unknown>
 }
 
-
 export interface MediaCatalogProgress {
   stage: string
   percent?: number
@@ -219,13 +204,11 @@ export const STUDIO_ASPECTS = ['16:9', '9:16', '1:1'] as const
 
 export const STUDIO_PACES = ['速成草稿', '精制', '电影级'] as const
 
-
 export type StudioKind = 'short' | 'novel' | 'drama'
 
 export type StudioAspect = (typeof STUDIO_ASPECTS)[number]
 
 export type StudioPace = (typeof STUDIO_PACES)[number]
-
 
 /** 统一阶段 id；不同形态只展示与自己相关的阶段。 */
 export type StudioStageId =
@@ -240,7 +223,6 @@ export type StudioStageId =
   | 'review'
   | 'delivery'
 
-
 export type StudioStatus =
   | 'waiting'
   | 'ready'
@@ -250,7 +232,6 @@ export type StudioStatus =
   | 'failed'
   | 'stale'
   | 'skipped'
-
 
 /** 阶段状态的合法转移；用于审计与 future 状态机校验。 */
 export const STUDIO_STATUS_TRANSITIONS: Record<StudioStatus, StudioStatus[]> = {
@@ -264,11 +245,9 @@ export const STUDIO_STATUS_TRANSITIONS: Record<StudioStatus, StudioStatus[]> = {
   skipped: ['ready', 'running', 'review', 'done', 'stale']
 }
 
-
 export function canTransitionStudioStatus(from: StudioStatus, to: StudioStatus): boolean {
   return from === to || STUDIO_STATUS_TRANSITIONS[from].includes(to)
 }
-
 
 export interface StudioStageState {
   status: StudioStatus
@@ -278,14 +257,12 @@ export interface StudioStageState {
   progress?: number
 }
 
-
 export interface StudioStageDef {
   id: StudioStageId
   label: string
   short: string
   description: string
 }
-
 
 export interface StudioBrief {
   form: StudioPace
@@ -300,7 +277,6 @@ export interface StudioBrief {
   targetSeconds?: number
 }
 
-
 export interface StudioStyleBible {
   look: string
   palette: string[]
@@ -310,14 +286,12 @@ export interface StudioStyleBible {
   updatedAt?: number
 }
 
-
 export interface StudioEstimateLine {
   label: string
   costMin: number | null
   costMax: number | null
   note?: string
 }
-
 
 export interface StudioEstimate {
   minutesMin: number
@@ -330,12 +304,10 @@ export interface StudioEstimate {
   basis: 'local' | 'cloud' | 'mixed' | 'unknown'
 }
 
-
 export interface StudioRelationship {
   target: string
   label: string
 }
-
 
 export interface StudioCharacter {
   id: string
@@ -354,7 +326,6 @@ export interface StudioCharacter {
   firstChapterId?: string
 }
 
-
 export interface StudioPlace {
   id: string
   name: string
@@ -362,13 +333,11 @@ export interface StudioPlace {
   refAssetIds: string[]
 }
 
-
 export interface StudioFaction {
   id: string
   name: string
   description: string
 }
-
 
 export interface StudioRule {
   id: string
@@ -376,14 +345,12 @@ export interface StudioRule {
   content: string
 }
 
-
 export interface StudioProp {
   id: string
   name: string
   description: string
   refAssetIds: string[]
 }
-
 
 export interface StudioFact {
   id: string
@@ -398,7 +365,6 @@ export interface StudioFact {
   createdAt: number
 }
 
-
 export interface StudioCandidate {
   id: string
   content: string
@@ -410,7 +376,6 @@ export interface StudioCandidate {
   wordCount: number
 }
 
-
 export interface StudioChapterVersion {
   id: string
   content: string
@@ -418,7 +383,6 @@ export interface StudioChapterVersion {
   reason: string
   wordCount: number
 }
-
 
 export interface StudioChapterIllustration {
   id: string
@@ -428,7 +392,6 @@ export interface StudioChapterIllustration {
   source: 'model' | 'local' | 'import'
   createdAt: number
 }
-
 
 export interface StudioChapter {
   id: string
@@ -458,7 +421,6 @@ export interface StudioChapter {
   updatedAt: number
 }
 
-
 export interface StudioVolume {
   id: string
   title: string
@@ -466,7 +428,6 @@ export interface StudioVolume {
   number: number
   chapterIds: string[]
 }
-
 
 export interface StudioScene {
   id: string
@@ -482,7 +443,6 @@ export interface StudioScene {
   updatedAt: number
 }
 
-
 export interface StudioEpisode {
   id: string
   number: number
@@ -492,7 +452,6 @@ export interface StudioEpisode {
   durationSec: number
   updatedAt: number
 }
-
 
 export interface StudioCandidateAsset {
   id: string
@@ -504,7 +463,6 @@ export interface StudioCandidateAsset {
   note?: string
   adopted?: boolean
 }
-
 
 export interface StudioShot {
   id: string
@@ -535,7 +493,6 @@ export interface StudioShot {
   updatedAt: number
 }
 
-
 export interface StudioAsset {
   id: string
   kind: 'image' | 'video' | 'audio' | 'other'
@@ -563,9 +520,7 @@ export interface StudioAsset {
   thumbUrl?: string
 }
 
-
 export type StudioTrackKind = 'video' | 'dialogue' | 'music' | 'sfx' | 'subtitle'
-
 
 export interface StudioTrack {
   id: string
@@ -576,9 +531,7 @@ export interface StudioTrack {
   volume: number
 }
 
-
 export type StudioTransition = 'cut' | 'fade-in' | 'fade-out' | 'fade-both'
-
 
 export interface StudioClip {
   id: string
@@ -608,7 +561,6 @@ export interface StudioClip {
   locked?: boolean
 }
 
-
 export interface StudioTimelineSnapshot {
   id: string
   createdAt: number
@@ -616,7 +568,6 @@ export interface StudioTimelineSnapshot {
   tracks: StudioTrack[]
   clips: StudioClip[]
 }
-
 
 export interface StudioTimeline {
   fps: number
@@ -631,7 +582,6 @@ export interface StudioTimeline {
   snapshots: StudioTimelineSnapshot[]
 }
 
-
 export type StudioJobKind =
   | 'text'
   | 'image'
@@ -644,9 +594,7 @@ export type StudioJobKind =
   | 'review'
   | 'import'
 
-
 export type StudioJobStatus = 'queued' | 'running' | 'review' | 'done' | 'failed' | 'cancelled'
-
 
 export interface StudioJobEventEntry {
   at: number
@@ -654,7 +602,6 @@ export interface StudioJobEventEntry {
   message: string
   progress: number
 }
-
 
 export interface StudioJob {
   id: string
@@ -691,7 +638,6 @@ export interface StudioJob {
   finishedAt?: number
 }
 
-
 export interface StudioDelivery {
   id: string
   kind: 'mp4' | 'mov' | 'mkv' | 'webm' | 'wav' | 'mp3' | 'm4a' | 'flac' | 'comic' | 'srt' | 'ass' | 'epub' | 'pdf' | 'docx' | 'txt' | 'md' | 'package' | 'cover' | 'folder' | 'png'
@@ -705,7 +651,6 @@ export interface StudioDelivery {
   meta?: Record<string, string | number | boolean>
 }
 
-
 export interface StudioCheck {
   id: string
   kind: 'continuity' | 'visual' | 'audio' | 'subtitle' | 'missing' | 'price' | 'voice' | 'quality'
@@ -716,7 +661,6 @@ export interface StudioCheck {
   createdAt: number
   resolved?: boolean
 }
-
 
 export interface StudioBlueprintUnit {
   index: number
@@ -731,13 +675,11 @@ export interface StudioBlueprintUnit {
   beats?: string[]
 }
 
-
 export interface StudioBlueprintFactSeed {
   subject: string
   predicate: string
   object: string
 }
-
 
 export interface StudioBlueprintVolumeSeed {
   title: string
@@ -745,7 +687,6 @@ export interface StudioBlueprintVolumeSeed {
   unitStart: number
   unitEnd: number
 }
-
 
 export interface StudioBlueprintSceneSeed {
   title: string
@@ -758,7 +699,6 @@ export interface StudioBlueprintSceneSeed {
   /** 改编自小说时，本场来源的章节号。 */
   sourceChapter?: number
 }
-
 
 export interface StudioBlueprint {
   approved: boolean
@@ -791,7 +731,6 @@ export interface StudioBlueprint {
   createdAt: number
 }
 
-
 export type StudioActionType =
   | 'set-clip-speed'
   | 'set-clip-volume'
@@ -803,9 +742,127 @@ export type StudioActionType =
   | 'regenerate-shot-image'
   | 'regenerate-shot-video'
   | 'regenerate-voice'
+  | 'append-shots'
   | 'lock-reference'
+  | 'update-blueprint'
+  | 'replace-outline'
+  | 'update-chapter'
+  | 'update-shot'
+  | 'move-chapter'
+  | 'move-shot'
+  | 'update-character'
+  | 'update-place'
+  | 'rename-entity'
+  | 'generate-sfx'
+  | 'generate-music'
+  | 'remove-sfx'
+  | 'remove-music'
   | 'noop'
 
+export interface StudioBlueprintPatch {
+  title?: string
+  logline?: string
+  genre?: string
+  tone?: string
+  audience?: string
+  storyCore?: string
+  emotion?: string
+  pitch?: string
+  structure?: string
+  styleBible?: Partial<StudioStyleBible>
+  characters?: StudioCharacter[]
+  places?: StudioPlace[]
+}
+
+export interface StudioOutlinePatch {
+  /** 只写需要改动的单元；按 index 合并，不会清空未提到的章节。 */
+  units: Array<Partial<StudioBlueprintUnit> & { index: number }>
+  scenes?: StudioBlueprintSceneSeed[]
+}
+
+export interface StudioChapterPatch {
+  number?: number
+  title?: string
+  synopsis?: string
+  beats?: string[]
+  /** 传入完整新正文时直接替换；长正文建议用 rewrite-chapter 走模型任务。 */
+  content?: string
+}
+
+export interface StudioShotPatch {
+  number?: number
+  sceneIndex?: number
+  title?: string
+  action?: string
+  camera?: string
+  shotSize?: string
+  durationSec?: number
+  dialogue?: string
+  speaker?: string
+  /** 改声线时写入；改了声线会清空旧配音，等待重新生成。 */
+  voiceId?: string
+  continuity?: string
+  prompt?: string
+  negative?: string
+}
+
+export interface StudioCharacterPatch {
+  /** 当前人物名，用来定位；不会直接改名。 */
+  name: string
+  newName?: string
+  role?: string
+  age?: string
+  look?: string
+  voiceId?: string
+  desire?: string
+  fear?: string
+  secret?: string
+  arc?: string
+  relationships?: StudioRelationship[]
+  refAssetIds?: string[]
+  locked?: boolean
+}
+
+export interface StudioPlacePatch {
+  /** 当前地点名，用来定位；不会直接改名。 */
+  name: string
+  newName?: string
+  description?: string
+  refAssetIds?: string[]
+}
+
+export interface StudioSfxRequest {
+  kind: 'rain' | 'umbrella' | 'heartbeat' | 'street'
+  seconds?: number
+  shotNumber?: number
+}
+
+export interface StudioMusicRequest {
+  mood?: string
+  seconds?: number
+  engine?: 'model' | 'local'
+}
+
+export interface StudioRenameRequest {
+  target: 'character' | 'place'
+  from: string
+  to: string
+}
+
+export interface StudioShotSeed {
+  number: number
+  sceneIndex: number
+  title: string
+  action: string
+  camera: string
+  shotSize: string
+  durationSec: number
+  dialogue: string
+  speaker: string
+  continuity: string
+  prompt: string
+  negative: string
+}
 
 export interface StudioEditAction {
   type: StudioActionType
@@ -813,13 +870,29 @@ export interface StudioEditAction {
   trackId?: string
   chapterId?: string
   shotId?: string
+  chapterNumber?: number
+  shotNumber?: number
+  /** move-chapter / move-shot 的目标位置（从 1 开始）。 */
+  to?: number
   target?: string
   value?: number
   text?: string
   instruction?: string
   note?: string
+  shots?: StudioShotSeed[]
+  blueprint?: StudioBlueprintPatch
+  outline?: StudioOutlinePatch
+  chapter?: StudioChapterPatch
+  shot?: StudioShotPatch
+  character?: StudioCharacterPatch
+  place?: StudioPlacePatch
+  rename?: StudioRenameRequest
+  sfx?: StudioSfxRequest
+  music?: StudioMusicRequest
+  /** regenerate-voice 的目标范围；all 表示所有有台词的镜头。 */
+  scope?: 'shot' | 'all'
+  voiceId?: string
 }
-
 
 export interface StudioEditPlan {
   id: string
@@ -836,13 +909,11 @@ export interface StudioEditPlan {
   undoVersion?: string
 }
 
-
 export interface StudioMessageSource {
   kind: 'chapter' | 'shot' | 'clip' | 'facts'
   id: string
   label: string
 }
-
 
 export interface StudioChatMessage {
   id: string
@@ -853,13 +924,11 @@ export interface StudioChatMessage {
   sources?: StudioMessageSource[]
 }
 
-
 export interface StudioBudget {
   limit: number
   spent: number
   currency: 'CNY'
 }
-
 
 export interface StudioRuntime {
   strategy: 'local-first' | 'cloud-first' | 'local-only' | 'cloud-only'
@@ -876,9 +945,7 @@ export interface StudioRuntime {
   updatedAt: number
 }
 
-
 export type StudioCanvasNodeKind = 'shot' | 'image' | 'video' | 'audio' | 'text'
-
 
 export interface StudioCanvasNode {
   id: string
@@ -896,7 +963,6 @@ export interface StudioCanvasNode {
   updatedAt: number
 }
 
-
 export interface StudioCanvasConnection {
   id: string
   fromNodeId: string
@@ -904,13 +970,11 @@ export interface StudioCanvasConnection {
   label?: string
 }
 
-
 export interface StudioCanvasViewport {
   x: number
   y: number
   zoom: number
 }
-
 
 export interface StudioCanvasGroup {
   id: string
@@ -918,7 +982,6 @@ export interface StudioCanvasGroup {
   nodeIds: string[]
   createdAt: number
 }
-
 
 export interface StudioCanvas {
   version: number
@@ -929,7 +992,6 @@ export interface StudioCanvas {
   viewport: StudioCanvasViewport
   updatedAt: number
 }
-
 
 export interface StudioProject {
   schemaVersion: number
@@ -967,9 +1029,10 @@ export interface StudioProject {
   canvas: StudioCanvas
   voiceAudit?: StudioVoiceAudit | null
   coverAssetId: string | null
+  /** 用户在配乐列表里明确采用的曲目；时间线优先使用它。 */
+  musicAssetId?: string | null
   demo: boolean
 }
-
 
 export interface StudioVoiceProfile {
   characterId: string
@@ -984,14 +1047,12 @@ export interface StudioVoiceProfile {
   summary: string
 }
 
-
 export interface StudioVoiceAudit {
   createdAt: number
   profiles: StudioVoiceProfile[]
   unresolved: number
   warnings: Array<{ level: 'info' | 'warn'; title: string; detail: string; characterId?: string }>
 }
-
 
 export interface StudioProjectSummary {
   id: string
@@ -1012,7 +1073,6 @@ export interface StudioProjectSummary {
   missingVisuals?: number
 }
 
-
 export interface StudioTrashItem {
   /** 回收目录里的条目名，恢复/彻底删除时原样传回。 */
   entry: string
@@ -1026,13 +1086,15 @@ export interface StudioTrashItem {
   shots: number
 }
 
-
 export interface StudioVoice {
+  /** 生成时使用的稳定 id；系统声线缺省时使用 name。 */
+  id?: string
   name: string
+  label?: string
   culture: string
   gender?: string
+  kind?: 'local' | 'system'
 }
-
 
 export interface StudioEngineStatus {
   dataDir: string
@@ -1084,17 +1146,25 @@ export interface StudioEngineStatus {
       supportsReasoning?: boolean
     }>
   }
+  vision?: {
+    ready: boolean
+    modelLabel?: string
+    local?: boolean
+  }
   voices: StudioVoice[]
   voiceError?: string
+  tts?: {
+    localReady: boolean
+    running: boolean
+    message: string
+  }
   version: string
 }
-
 
 export interface StudioListResult {
   projects: StudioProjectSummary[]
   engine: StudioEngineStatus
 }
-
 
 export interface StudioCreateInput {
   kind: StudioKind
@@ -1111,14 +1181,12 @@ export interface StudioCreateInput {
   targetSeconds?: number
 }
 
-
 export interface StudioDataDirInfo {
   root: string
   defaultRoot: string
   customRoot: string | null
   source: 'default' | 'custom'
 }
-
 
 export interface StudioDataDirChangeResult {
   restarted: boolean
@@ -1127,7 +1195,6 @@ export interface StudioDataDirChangeResult {
   files?: number
 }
 
-
 export interface StudioActionResult {
   project: StudioProject
   job?: StudioJob
@@ -1135,12 +1202,10 @@ export interface StudioActionResult {
   message?: string
 }
 
-
 export interface StudioJobEvent {
   type: 'job'
   job: StudioJob
 }
-
 
 export interface StudioProjectEvent {
   type: 'project'
@@ -1148,9 +1213,7 @@ export interface StudioProjectEvent {
   summary: StudioProjectSummary
 }
 
-
 export type StudioEvent = StudioJobEvent | StudioProjectEvent
-
 
 export interface StudioExportFormatStatus {
   format: string
@@ -1158,7 +1221,6 @@ export interface StudioExportFormatStatus {
   ready: boolean
   note: string
 }
-
 
 export interface StudioExportPreflight {
   platform: string
@@ -1178,7 +1240,6 @@ export interface StudioExportPreflight {
   warnings: string[]
 }
 
-
 export interface StudioRenderInput {
   projectId: string
   quality: 'draft' | 'final'
@@ -1189,12 +1250,10 @@ export interface StudioRenderInput {
   resolution?: '1080p' | '2160p'
 }
 
-
 export interface StudioExportInput {
   projectId: string
   format: 'txt' | 'md' | 'epub' | 'pdf' | 'docx' | 'srt' | 'ass' | 'package' | 'cover' | 'folder'
 }
-
 
 export const STUDIO_STAGE_DEFS: Record<StudioStageId, StudioStageDef> = {
   blueprint: { id: 'blueprint', label: '故事蓝图', short: '蓝图', description: '故事主线、人物、结构、风格与预算' },
@@ -1209,7 +1268,6 @@ export const STUDIO_STAGE_DEFS: Record<StudioStageId, StudioStageDef> = {
   delivery: { id: 'delivery', label: '交付', short: '交付', description: '成片、成书与可继续的工程包' }
 }
 
-
 export function studioStages(kind: StudioKind): StudioStageDef[] {
   const ids: StudioStageId[] =
     kind === 'drama'
@@ -1220,21 +1278,17 @@ export function studioStages(kind: StudioKind): StudioStageDef[] {
   return ids.map((id) => STUDIO_STAGE_DEFS[id])
 }
 
-
 export function studioKindLabel(kind: StudioKind): string {
   return kind === 'short' ? '中短篇' : kind === 'novel' ? '长篇' : '漫剧'
 }
-
 
 export function isStudioVideoDelivery(kind: StudioDelivery['kind']): boolean {
   return kind === 'mp4' || kind === 'mov' || kind === 'mkv' || kind === 'webm'
 }
 
-
 export function studioKindScale(kind: StudioKind): string {
   return kind === 'short' ? '3–8 万字 · 章节 · 情绪曲线' : kind === 'novel' ? '20–100 万字 · 卷章 · 世界图谱' : '30–180 秒 · 分镜 · 配音 · 成片'
 }
-
 
 export function studioStatusLabel(status: StudioStatus): string {
   switch (status) {
@@ -1257,7 +1311,6 @@ export function studioStatusLabel(status: StudioStatus): string {
   }
 }
 
-
 export function studioJobStatusLabel(status: StudioJobStatus): string {
   switch (status) {
     case 'queued':
@@ -1275,7 +1328,6 @@ export function studioJobStatusLabel(status: StudioJobStatus): string {
   }
 }
 
-
 export function emptyStageStates(now = Date.now()): Record<StudioStageId, StudioStageState> {
   const states = {} as Record<StudioStageId, StudioStageState>
   for (const id of Object.keys(STUDIO_STAGE_DEFS) as StudioStageId[]) {
@@ -1283,7 +1335,6 @@ export function emptyStageStates(now = Date.now()): Record<StudioStageId, Studio
   }
   return states
 }
-
 
 export function emptyCanvas(now = Date.now()): StudioCanvas {
   return {
@@ -1295,7 +1346,6 @@ export function emptyCanvas(now = Date.now()): StudioCanvas {
     updatedAt: now
   }
 }
-
 
 export function emptyTimeline(aspect: StudioAspect = '16:9', now = Date.now()): StudioTimeline {
   const size = aspect === '9:16' ? { width: 1080, height: 1920 } : aspect === '1:1' ? { width: 1080, height: 1080 } : { width: 1920, height: 1080 }
@@ -1319,12 +1369,10 @@ export function emptyTimeline(aspect: StudioAspect = '16:9', now = Date.now()): 
   }
 }
 
-
 export function countWords(text: string): number {
   const clean = text.replace(/\s+/g, '')
   return clean.length
 }
-
 
 export function formatTimecode(seconds: number, fps = 30): string {
   const clamped = Math.max(0, seconds)
@@ -1336,7 +1384,6 @@ export function formatTimecode(seconds: number, fps = 30): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}:${String(frames).padStart(2, '0')}`
 }
 
-
 export function formatDuration(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds))
   if (whole < 60) return `${whole} 秒`
@@ -1345,24 +1392,20 @@ export function formatDuration(seconds: number): string {
   return ss ? `${mm} 分 ${ss} 秒` : `${mm} 分钟`
 }
 
-
 export function formatWordCount(words: number): string {
   if (words >= 10_000) return `${(words / 10_000).toFixed(1)} 万`
   if (words >= 1000) return `${(words / 1000).toFixed(1)}k`
   return String(words)
 }
 
-
 export function projectWordCount(project: Pick<StudioProject, 'chapters'>): number {
   return project.chapters.reduce((sum, chapter) => sum + countWords(chapter.content), 0)
 }
-
 
 export function timelineDuration(timeline: Pick<StudioTimeline, 'clips' | 'durationSec'>): number {
   const max = timeline.clips.reduce((value, clip) => Math.max(value, clip.start + clip.duration), 0)
   return Math.max(timeline.durationSec, max)
 }
-
 
 /** 首页/作品库的“进度”是阶段完成度，而不是生成量。 */
 export function computeProjectProgress(project: StudioProject): number {
@@ -1371,7 +1414,7 @@ export function computeProjectProgress(project: StudioProject): number {
     const visuals = shots ? project.shots.filter((shot) => shot.imageAssetId || shot.videoAssetId).length / shots : 0
     const voicesNeeded = project.shots.filter((shot) => shot.dialogue.trim()).length
     const voices = voicesNeeded ? project.shots.filter((shot) => shot.voiceAssetId).length / voicesNeeded : 0
-    const hasMusic = project.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft'))
+    const hasMusic = resolveMusicAsset(project)?.formal === true
     const hasTimeline = project.timeline.clips.length > 0
     const hasDelivery = project.deliveries.some((item) => isStudioVideoDelivery(item.kind))
     const weights = [0.18, 0.16, 0.26, 0.14, 0.06, 0.1, 0.1]
@@ -1386,6 +1429,33 @@ export function computeProjectProgress(project: StudioProject): number {
   return Math.round(Math.min(1, base * 0.75 + reviewed * 0.15 + delivered * 0.1) * 100)
 }
 
+export function isFormalMusicAsset(asset: StudioAsset): boolean {
+  return asset.kind === 'audio'
+    && asset.tags.includes('music')
+    && !asset.tags.includes('draft')
+    && !asset.tags.includes('demo')
+    && asset.origin?.source !== 'demo'
+}
+
+/** 时间线与“配乐就绪”统一走这里：明确的采用曲目 → 正式配乐 → 样例配乐 → 草稿。 */
+export function resolveMusicAsset(project: StudioProject): { asset: StudioAsset; formal: boolean; demo: boolean } | null {
+  const explicit = project.musicAssetId
+    ? project.assets.find((asset) => asset.id === project.musicAssetId && asset.kind === 'audio' && asset.tags.includes('music'))
+    : undefined
+  if (explicit) {
+    const demo = explicit.tags.includes('demo') || explicit.origin?.source === 'demo'
+    return { asset: explicit, formal: isFormalMusicAsset(explicit), demo }
+  }
+  const music = project.assets
+    .filter((asset) => asset.kind === 'audio' && asset.tags.includes('music'))
+    .sort((left, right) => right.createdAt - left.createdAt)
+  const formal = music.find(isFormalMusicAsset)
+  if (formal) return { asset: formal, formal: true, demo: false }
+  const demo = music.find((asset) => asset.tags.includes('demo') || asset.origin?.source === 'demo')
+  if (demo) return { asset: demo, formal: false, demo: true }
+  const draft = music.find((asset) => asset.tags.includes('draft'))
+  return draft ? { asset: draft, formal: false, demo: false } : null
+}
 
 export function stageProgress(project: StudioProject, stage: StudioStageId): number | undefined {
   if (stage === 'blueprint') return project.blueprint ? (project.blueprint.approved ? 100 : 55) : 0
@@ -1414,7 +1484,8 @@ export function stageProgress(project: StudioProject, stage: StudioStageId): num
     return Math.round((project.shots.filter((shot) => shot.voiceAssetId).length / needed) * 100)
   }
   if (stage === 'music') {
-    return project.assets.some((asset) => asset.kind === 'audio' && asset.tags.includes('music') && !asset.tags.includes('draft')) ? 100 : 0
+    const score = resolveMusicAsset(project)
+    return score?.formal || score?.demo ? 100 : 0
   }
   if (stage === 'timeline') return project.timeline.clips.length ? 100 : 0
   if (stage === 'review') {
@@ -1425,12 +1496,10 @@ export function stageProgress(project: StudioProject, stage: StudioStageId): num
   return 0
 }
 
-
 export function isStudioFinalDelivery(kind: StudioKind, delivery: StudioDelivery['kind']): boolean {
   if (kind === 'drama') return isStudioVideoDelivery(delivery)
   return ['txt', 'md', 'docx', 'epub', 'pdf'].includes(delivery)
 }
-
 
 export function defaultStageStatuses(project: StudioProject): Record<StudioStageId, StudioStageState> {
   const now = Date.now()
@@ -1461,7 +1530,6 @@ export function defaultStageStatuses(project: StudioProject): Record<StudioStage
   return stages
 }
 
-
 export interface StudioAudioLibraryItem {
   id: string
   label: string
@@ -1471,7 +1539,6 @@ export interface StudioAudioLibraryItem {
   seconds: number
   description: string
 }
-
 
 /** 内置音频素材：全部由本机合成，授权随素材标注。 */
 export const STUDIO_AUDIO_LIBRARY: StudioAudioLibraryItem[] = [
@@ -1485,7 +1552,6 @@ export const STUDIO_AUDIO_LIBRARY: StudioAudioLibraryItem[] = [
   { id: 'sfx-umbrella', label: '伞骨', kind: 'sfx', sfx: 'umbrella', seconds: 6, description: '金属开合与细响。' },
   { id: 'sfx-street', label: '街声', kind: 'sfx', sfx: 'street', seconds: 8, description: '远处车流与低频环境声。' }
 ]
-
 
 export const STUDIO_AUDIO_LICENSE = '配乐由 ACE-Step 生成；音效为 Morrow 原创合成'
 

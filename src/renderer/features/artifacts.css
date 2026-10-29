@@ -1220,7 +1220,6 @@
   border-left-color: transparent !important;
 }
 
-
 /* 拖动/悬浮分隔线时只高亮画布自身的 1px 左边框。 */
 .canvas-root {
   transition: border-color var(--dur-fast) ease;
@@ -2211,7 +2210,6 @@ body.is-resizing-panel[data-resize-target='canvas-resizer'] .canvas-resizer::aft
   background: var(--bg-elev);
   user-select: none;
 }
-
 
 .preview-pdf-pagenav {
   display: inline-flex;

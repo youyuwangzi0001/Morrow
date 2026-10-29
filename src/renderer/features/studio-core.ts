@@ -1,19 +1,16 @@
 // studio 功能域逻辑：由 3 个 TS 文件扁平合并。
 import type { Result } from '@shared/types'
 import type { StudioActionResult, StudioCreateInput, StudioEditPlan, StudioDataDirChangeResult, StudioDataDirInfo, StudioEngineStatus, StudioEvent, StudioExportInput, StudioListResult, StudioProject, StudioRenderInput, StudioAsset, StudioCanvasConnection, StudioCanvasGroup, StudioCanvasNode, StudioShot, StudioProjectSummary, StudioStageId } from '@shared/studio'
+import { assistantContextFor } from '@shared/studio-assistant'
 import { create } from 'zustand'
 
-
-
 type FeatureResult<T> = Result<T>
-
 
 const invoke = async <T>(type: string, payload: Record<string, unknown> = {}): Promise<T> => {
   const response = (await window.morrow.features.invoke<T>('feature:studio:action', { type, ...payload })) as FeatureResult<T>
   if (!response.ok) throw new Error(response.error?.message || '操作失败。')
   return response.data as T
 }
-
 
 export const studioApi = {
   list(): Promise<StudioListResult> {
@@ -31,8 +28,8 @@ export const studioApi = {
   action<T = StudioActionResult>(type: string, payload: Record<string, unknown> = {}): Promise<T> {
     return invoke<T>(type, payload)
   },
-  assistant(input: { projectId: string; text: string; selection?: { kind: 'chapter' | 'shot' | 'clip'; id: string } }): Promise<StudioActionResult & { plan: StudioEditPlan }> {
-    return invoke<StudioActionResult & { plan: StudioEditPlan }>('assistant', input as unknown as Record<string, unknown>)
+  assistant(input: { projectId: string; text: string; view?: string; selection?: { kind: 'chapter' | 'shot' | 'clip'; id: string } }): Promise<StudioActionResult & { plan?: StudioEditPlan }> {
+    return invoke<StudioActionResult & { plan?: StudioEditPlan }>('assistant', input as unknown as Record<string, unknown>)
   },
   render(input: StudioRenderInput): Promise<StudioActionResult> {
     return invoke<StudioActionResult>('render', input as unknown as Record<string, unknown>)
@@ -93,12 +90,9 @@ export const studioApi = {
   }
 }
 
-
-
 export function assetById(project: StudioProject, id: string | null | undefined) {
   return id ? project.assets.find((asset) => asset.id === id) : undefined
 }
-
 
 interface SnapshotInput {
   title: string
@@ -110,14 +104,12 @@ interface SnapshotInput {
   waveforms: Record<string, number[]>
 }
 
-
 interface Box {
   x: number
   y: number
   width: number
   height: number
 }
-
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
   const r = Math.min(radius, width / 2, height / 2)
@@ -129,7 +121,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: n
   ctx.arcTo(x, y, x + width, y, r)
   ctx.closePath()
 }
-
 
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
   const lines: string[] = []
@@ -154,7 +145,6 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
   return lines.slice(0, maxLines)
 }
 
-
 function loadImage(url: string | undefined): Promise<HTMLImageElement | null> {
   if (!url) return Promise.resolve(null)
   return new Promise((resolve) => {
@@ -173,7 +163,6 @@ function loadImage(url: string | undefined): Promise<HTMLImageElement | null> {
   })
 }
 
-
 function groupBounds(group: StudioCanvasGroup, nodes: StudioCanvasNode[]): Box | null {
   const members = nodes.filter((node) => group.nodeIds.includes(node.id))
   if (!members.length) return null
@@ -183,7 +172,6 @@ function groupBounds(group: StudioCanvasGroup, nodes: StudioCanvasNode[]): Box |
   const maxY = Math.max(...members.map((node) => node.y + node.height))
   return { x: minX - 18, y: minY - 42, width: maxX - minX + 36, height: maxY - minY + 60 }
 }
-
 
 export async function renderCanvasSnapshot(input: SnapshotInput): Promise<{ dataUrl: string; width: number; height: number }> {
   const { nodes, connections, groups, assets, shots, waveforms } = input
@@ -1031,16 +1019,10 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
   async sendAssistant(text) {
     const active = get().active
     if (!active) return
-    const selection = (() => {
-      const state = get()
-      if (state.selectedClipId) return { kind: 'clip' as const, id: state.selectedClipId }
-      if (state.view === 'writing' && state.selectedChapterId) return { kind: 'chapter' as const, id: state.selectedChapterId }
-      if (state.selectedShotId) return { kind: 'shot' as const, id: state.selectedShotId }
-      return undefined
-    })()
+    const context = assistantContextFor(get())
     set({ assistantBusy: true })
     try {
-      const result = await studioApi.assistant({ projectId: active.id, text, ...(selection ? { selection } : {}) })
+      const result = await studioApi.assistant({ projectId: active.id, text, ...context })
       set({ active: result.project })
       if (result.message) get().notify('info', result.message)
     } catch (err) {
@@ -1058,6 +1040,10 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     try {
       const result = await studioApi.action('apply-plan', { projectId: active.id, planId })
       set({ active: result.project })
+      const appliedPlan = result.plan as { actions?: Array<{ type: string }> } | undefined
+      if (appliedPlan?.actions?.some((action) => action.type === 'append-shots' || action.type === 'move-shot')) get().navigateStage('storyboard')
+      const targetStage = result.project?.stage
+      if (targetStage && targetStage !== get().focusedStage) get().navigateStage(targetStage)
       if (result.job) get().notify('info', '计划已应用，重做任务已排队。')
     } catch (err) {
       get().notify('error', errorMessage(err))

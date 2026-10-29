@@ -9,15 +9,11 @@ import { log } from './logger'
 import { createHash } from 'node:crypto'
 import { inspectWorkspacePath } from '@core/tools'
 
-
-
 const SAFE_ID = /^[A-Za-z0-9_-]{4,80}$/
-
 
 function finiteNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
-
 
 function isStoredMessage(value: unknown): value is ChatMessage {
   if (!value || typeof value !== 'object') return false
@@ -30,13 +26,11 @@ function isStoredMessage(value: unknown): value is ChatMessage {
   )
 }
 
-
 function isStoredGoal(value: unknown): value is Goal {
   if (!value || typeof value !== 'object') return false
   const goal = value as Record<string, unknown>
   return typeof goal.id === 'string' && typeof goal.status === 'string' && typeof goal.objective === 'string'
 }
-
 
 function isStoredPlan(value: unknown): value is SessionPlan {
   if (!value || typeof value !== 'object') return false
@@ -50,7 +44,6 @@ function isStoredPlan(value: unknown): value is SessionPlan {
     ['pending', 'executing', 'completed', 'rejected'].includes(plan.status)
   )
 }
-
 
 function isStoredResearch(value: unknown): value is ResearchState {
   if (!value || typeof value !== 'object') return false
@@ -77,7 +70,6 @@ function isStoredResearch(value: unknown): value is ResearchState {
     typeof research.updatedAt === 'number'
   )
 }
-
 
 /**
  * 兼容旧会话/半损坏文件：只补齐必要结构，不猜测业务内容。
@@ -148,18 +140,15 @@ function normalizeStoredSession(raw: unknown, expectedId?: string): Session | nu
   }
 }
 
-
 export function makeId(prefix = 's'): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
-
 
 export function deriveTitle(text: string): string {
   const clean = text.replace(/\s+/g, ' ').trim()
   if (!clean) return '新对话'
   return clean.length > 26 ? `${clean.slice(0, 26)}…` : clean
 }
-
 
 export function deriveMeta(session: Session): SessionMeta {
   const lastUser = [...session.messages].reverse().find((m) => m.role === 'user' && !m.hidden)
@@ -191,7 +180,6 @@ export function deriveMeta(session: Session): SessionMeta {
       : undefined
   }
 }
-
 
 export class SessionStore {
   private revision = 0
@@ -514,14 +502,12 @@ export class SessionStore {
   }
 }
 
-
 let instance: SessionStore | null = null
 
 export function getSessionStore(): SessionStore {
   if (!instance) instance = new SessionStore()
   return instance
 }
-
 
 function timeText(timestamp: number): string {
   try {
@@ -530,7 +516,6 @@ function timeText(timestamp: number): string {
     return new Date(timestamp).toISOString()
   }
 }
-
 
 function toolLines(message: ChatMessage): string[] {
   const lines: string[] = []
@@ -547,7 +532,6 @@ function toolLines(message: ChatMessage): string[] {
   }
   return lines
 }
-
 
 export function sessionToMarkdown(session: Session): string {
   const lines = [
@@ -593,7 +577,6 @@ export function sessionToMarkdown(session: Session): string {
   return `${lines.join('\n')}\n`
 }
 
-
 export function sessionExportContent(session: Session, format: 'markdown' | 'json'): { filename: string; content: string } {
   const safeTitle = session.title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'Morrow 对话'
   if (format === 'json') {
@@ -602,9 +585,7 @@ export function sessionExportContent(session: Session, format: 'markdown' | 'jso
   return { filename: `${safeTitle}.md`, content: sessionToMarkdown(session) }
 }
 
-
 export const RESTORE_MANIFEST_FILE = '.restore.json'
-
 
 export interface RestoreSnapshotInput {
   /** 当前会话的快照根目录（<userData>/snapshots/<sessionId>） */
@@ -616,7 +597,6 @@ export interface RestoreSnapshotInput {
   /** 会话工作区（恢复目标必须在其内部） */
   workspace: string | null
 }
-
 
 export type RestoreSnapshotOutcome =
   | { ok: true; written: boolean; message: string }
@@ -634,13 +614,11 @@ export type RestoreSnapshotOutcome =
       hint?: string
     }
 
-
 interface RestoreManifest {
   targetPath?: string
   beforeHash?: string | null
   afterHash?: string
 }
-
 
 function fail(
   code: Extract<RestoreSnapshotOutcome, { ok: false }>['code'],
@@ -650,13 +628,11 @@ function fail(
   return { ok: false, code, message, ...(hint ? { hint } : {}) }
 }
 
-
 /** 严格判断 child 是否在 parent 内（跨盘 relative 返回绝对路径，必须拒绝） */
 function isInside(child: string, parent: string): boolean {
   const rel = relative(parent, child)
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
 }
-
 
 function samePath(a: string, b: string): boolean {
   const fold = (value: string): string => {
@@ -665,7 +641,6 @@ function samePath(a: string, b: string): boolean {
   }
   return fold(a) === fold(b)
 }
-
 
 function hashFileSync(path: string): string {
   const fd = openSync(path, 'r')
@@ -685,7 +660,6 @@ function hashFileSync(path: string): string {
   return hash.digest('hex')
 }
 
-
 function readManifest(snapshotPath: string): RestoreManifest | null {
   try {
     const parsed = JSON.parse(readFileSync(join(dirname(snapshotPath), RESTORE_MANIFEST_FILE), 'utf8')) as unknown
@@ -700,7 +674,6 @@ function readManifest(snapshotPath: string): RestoreManifest | null {
     return null
   }
 }
-
 
 /** 原子复制（避免打断时留下半个文件；不把整个快照读进内存） */
 function atomicCopy(target: string, source: string): void {
@@ -717,7 +690,6 @@ function atomicCopy(target: string, source: string): void {
     }
   }
 }
-
 
 export function restoreSnapshotSafely(input: RestoreSnapshotInput): RestoreSnapshotOutcome {
   try {
@@ -819,13 +791,11 @@ export function restoreSnapshotSafely(input: RestoreSnapshotInput): RestoreSnaps
   }
 }
 
-
 const CHECKPOINT_SAFE_ID = /^[A-Za-z0-9_-]{4,100}$/
 
 const MAX_CHECKPOINTS = 100
 
 const MAX_LABEL = 160
-
 
 function sha256File(path: string): string | null {
   try {
@@ -838,7 +808,6 @@ function sha256File(path: string): string | null {
   }
 }
 
-
 function checkpointIsInside(root: string, target: string): boolean {
   const normalize = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
   const base = normalize(resolve(root))
@@ -846,7 +815,6 @@ function checkpointIsInside(root: string, target: string): boolean {
   const prefix = base.endsWith(sep) ? base : `${base}${sep}`
   return candidate === base || candidate.startsWith(prefix)
 }
-
 
 function normalizeCheckpoint(raw: unknown, sessionId: string): TurnCheckpoint | null {
   if (!raw || typeof raw !== 'object') return null
@@ -893,12 +861,10 @@ function normalizeCheckpoint(raw: unknown, sessionId: string): TurnCheckpoint | 
   }
 }
 
-
 interface RestorePlanEntry {
   pre: CheckpointFile
   expectedAfter: string | null
 }
-
 
 export class CheckpointService {
   constructor(
@@ -1308,7 +1274,6 @@ export class CheckpointService {
     return { checkpointId, kind: checkpoint.kind ?? 'turn', scope, restoredFiles, removedFiles, removedMessages }
   }
 }
-
 
 let checkpointInstance: CheckpointService | null = null
 

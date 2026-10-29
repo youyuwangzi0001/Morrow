@@ -764,16 +764,12 @@
 
 /* R5：侧栏宽度拖拽手柄（悬停/拖动时出现 1px 金线） */
 
-
-
 /* 置顶 / 归档 */
 .sb-session-pin {
   flex: 0 0 auto;
   color: var(--gold);
   opacity: 0.9;
 }
-
-
 
 /* 拖动/悬浮分隔线时只高亮侧栏自身的 1px 右边框，不叠加第二条线。 */
 .sidebar {
@@ -1054,7 +1050,6 @@ body.is-resizing-panel[data-resize-target='sidebar-resizer'] .sidebar-resizer::a
   font-size: var(--fs-3xs);
   letter-spacing: var(--ls-label);
 }
-
 
 /* 创作台入口：标题栏唯一新增项，金色只用于羽毛与悬停描边 */
 .tb-create {

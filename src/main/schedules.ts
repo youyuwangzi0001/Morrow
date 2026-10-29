@@ -14,23 +14,18 @@ import { getIslandWindow } from './runtime'
 import { sendFeatureEvent } from './feature-ipc'
 import { log } from './logger'
 
-
-
 const STORE_VERSION = 1
 
 const STORE_MAX_BYTES = 2 * 1024 * 1024
-
 
 interface StoreFile {
   version: number
   tasks: ScheduledTask[]
 }
 
-
 function newTaskId(): string {
   return `sch_${createHash('sha1').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 12)}`
 }
-
 
 function atomicWrite(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -78,7 +73,6 @@ function atomicWrite(path: string, value: unknown): void {
   }
 }
 
-
 function readSafe(path: string): unknown | null {
   if (!existsSync(path)) return null
   try {
@@ -92,12 +86,10 @@ function readSafe(path: string): unknown | null {
   }
 }
 
-
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('参数格式不正确')
   return value as Record<string, unknown>
 }
-
 
 function clampText(value: unknown, max: number, label: string, required = true): string {
   if (value === undefined || value === null) {
@@ -111,7 +103,6 @@ function clampText(value: unknown, max: number, label: string, required = true):
   return cleaned
 }
 
-
 function sanitizeSpec(raw: unknown): ScheduleSpec {
   const record = asRecord(raw)
   return {
@@ -121,7 +112,6 @@ function sanitizeSpec(raw: unknown): ScheduleSpec {
     ...(typeof record.weekday === 'number' ? { weekday: record.weekday } : {})
   }
 }
-
 
 function normalizeWorkspace(value: unknown): string | null {
   if (value === null || value === undefined) return null
@@ -136,7 +126,6 @@ function normalizeWorkspace(value: unknown): string | null {
   return real
 }
 
-
 function normalizeStatus(value: unknown): ScheduledTaskStatus {
   return value === 'running' ||
     value === 'success' ||
@@ -147,13 +136,11 @@ function normalizeStatus(value: unknown): ScheduledTaskStatus {
     : 'never'
 }
 
-
 export interface ScheduleStoreOptions {
   /** 数据目录（任务文件会写到 <dataDir>/tasks.json） */
   dir: string
   now?: () => number
 }
-
 
 export class ScheduleStore {
   private readonly dir: string
@@ -449,7 +436,6 @@ export class ScheduleStore {
   }
 }
 
-
 export function scheduledInputFromRecord(payload: unknown): ScheduledTaskInput {
   const record = asRecord(payload)
   const schedule = asRecord(record.schedule)
@@ -463,12 +449,10 @@ export function scheduledInputFromRecord(payload: unknown): ScheduledTaskInput {
   }
 }
 
-
 export interface ScheduleState {
   tasks: ScheduledTask[]
   runningTaskIds: string[]
 }
-
 
 let store: ScheduleStore | null = null
 
@@ -478,11 +462,9 @@ let runningTaskId: string | null = null
 
 let initialized = false
 
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
-
 
 function mainWindow(): BrowserWindow | null {
   const island = getIslandWindow()
@@ -491,12 +473,10 @@ function mainWindow(): BrowserWindow | null {
   )
 }
 
-
 function requireStore(): ScheduleStore {
   if (!store) throw new Error('定时任务还没有初始化。')
   return store
 }
-
 
 export function scheduleState(): ScheduleState {
   const current = store
@@ -506,11 +486,9 @@ export function scheduleState(): ScheduleState {
   }
 }
 
-
 function broadcast(): void {
   sendFeatureEvent('feature:schedules:changed', scheduleState())
 }
-
 
 export function initializeScheduleRuntime(): void {
   if (initialized) return
@@ -527,7 +505,6 @@ export function initializeScheduleRuntime(): void {
   log.info('schedule runtime initialized', { tasks: store.list().length })
 }
 
-
 export function disposeScheduleRuntime(): void {
   if (timer) clearInterval(timer)
   timer = null
@@ -535,7 +512,6 @@ export function disposeScheduleRuntime(): void {
   store = null
   initialized = false
 }
-
 
 async function tick(): Promise<void> {
   if (!store || runningTaskId) return
@@ -553,7 +529,6 @@ async function tick(): Promise<void> {
   }
 }
 
-
 function scheduledPrompt(task: ScheduledTask): string {
   return [
     task.prompt,
@@ -562,7 +537,6 @@ function scheduledPrompt(task: ScheduledTask): string {
     '需要额外授权的高风险操作会被自动拒绝，请不要尝试绕过限制。）'
   ].join('\n')
 }
-
 
 /**
  * 启动一次任务。同步完成「建会话 + 发起运行」后返回；结果在后台跟踪，不阻塞 IPC。
@@ -628,7 +602,6 @@ async function launchTask(task: ScheduledTask, manual: boolean): Promise<Schedul
   }
 }
 
-
 async function trackCompletion(
   task: ScheduledTask,
   sessionId: string,
@@ -688,7 +661,6 @@ async function trackCompletion(
   }
 }
 
-
 function finish(
   taskId: string,
   status: 'success' | 'error' | 'stopped',
@@ -704,16 +676,13 @@ function finish(
   }
 }
 
-
 export function listSchedules(): ScheduleState {
   return scheduleState()
 }
 
-
 export interface ScheduleMutation extends ScheduleState {
   task: ScheduledTask
 }
-
 
 export function createSchedule(input: ScheduledTaskInput): ScheduleMutation {
   const task = requireStore().create(input)
@@ -721,13 +690,11 @@ export function createSchedule(input: ScheduledTaskInput): ScheduleMutation {
   return { ...scheduleState(), task }
 }
 
-
 export function updateSchedule(id: string, input: ScheduledTaskInput): ScheduleMutation {
   const task = requireStore().update(id, input)
   broadcast()
   return { ...scheduleState(), task }
 }
-
 
 export function removeSchedule(id: string): ScheduleState {
   requireStore().remove(id)
@@ -735,13 +702,11 @@ export function removeSchedule(id: string): ScheduleState {
   return scheduleState()
 }
 
-
 export function setScheduleEnabled(id: string, enabled: boolean): ScheduleMutation {
   const task = requireStore().setEnabled(id, enabled)
   broadcast()
   return { ...scheduleState(), task }
 }
-
 
 /** 清除全部对话后移除任务对已删除会话的引用，避免「查看上次结果」指向空会话。 */
 export function clearScheduleSessionReferences(): void {
@@ -752,7 +717,6 @@ export function clearScheduleSessionReferences(): void {
     broadcast()
   }
 }
-
 
 export async function runScheduleNow(id: string): Promise<ScheduleState> {
   const task = requireStore().get(id)

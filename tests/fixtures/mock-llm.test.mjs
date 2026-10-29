@@ -4,8 +4,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { startMockLLM } from './mock-llm.mjs'
 
-
-
 /** 把 SSE 响应体拆成 [{ event?, data }]。 */
 async function readSse(response) {
   const text = await response.text()

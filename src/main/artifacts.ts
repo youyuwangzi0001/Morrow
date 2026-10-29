@@ -12,8 +12,6 @@ import { BROWSER_LIMITS, BROWSER_PARTITION, BROWSER_WEB_PREFERENCES, checkBrowse
 import { dataPath, revealInFileManager } from './workspace'
 import { log } from './logger'
 
-
-
 // 成品导出转换：HTML → Markdown / 纯文本，Markdown → HTML，以及 PDF 用的打印文档。
 
 const ENTITIES: Record<string, string> = {
@@ -45,8 +43,6 @@ const ENTITIES: Record<string, string> = {
   yen: '¥'
 }
 
-
-
 export function decodeEntities(input: string): string {
   return input.replace(/&(#x?[0-9a-f]+|[a-z][a-z0-9]+);/gi, (match, body: string) => {
     const key = body.toLowerCase()
@@ -66,8 +62,6 @@ export function decodeEntities(input: string): string {
   })
 }
 
-
-
 export function escapeHtml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -77,14 +71,10 @@ export function escapeHtml(input: string): string {
     .replace(/'/g, '&#39;')
 }
 
-
-
 function bodyOf(html: string): string {
   const match = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)
   return match ? match[1] : html
 }
-
-
 
 function stripNoise(html: string): string {
   return html
@@ -93,15 +83,11 @@ function stripNoise(html: string): string {
     .replace(/<(script|style|head|noscript|template|iframe|object|svg)\b[\s\S]*?<\/\1>/gi, '')
 }
 
-
-
 function attribute(tag: string, name: string): string | null {
   const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
   if (!match) return null
   return decodeEntities(match[1] ?? match[2] ?? match[3] ?? '')
 }
-
-
 
 function inlineMarkdown(html: string): string {
   let out = html
@@ -130,8 +116,6 @@ function inlineMarkdown(html: string): string {
     .trim()
 }
 
-
-
 function tableToMarkdown(table: string): string {
   const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
     .map((row) =>
@@ -148,8 +132,6 @@ function tableToMarkdown(table: string): string {
   for (const row of body) lines.push(`| ${row.join(' | ')} |`)
   return lines.join('\n')
 }
-
-
 
 function convertLists(html: string): string {
   // 由内向外转换，避免嵌套 <li> 的非贪婪匹配置断父列表
@@ -173,8 +155,6 @@ function convertLists(html: string): string {
   }
   return current
 }
-
-
 
 /** 把 HTML 报告转成可读的 Markdown：标题、列表、表格、代码块、链接都会被保留。 */
 export function htmlToMarkdown(input: string): string {
@@ -212,8 +192,6 @@ export function htmlToMarkdown(input: string): string {
     .trim()
 }
 
-
-
 /** HTML → 纯文本：去掉样式与脚本，保留段落、列表和表格的可读换行。 */
 export function htmlToText(input: string): string {
   let html = stripNoise(bodyOf(input))
@@ -230,8 +208,6 @@ export function htmlToText(input: string): string {
     .trim()
 }
 
-
-
 function safeUrl(raw: string): string | null {
   const url = decodeEntities(raw).trim()
   if (!url) return null
@@ -239,13 +215,9 @@ function safeUrl(raw: string): string | null {
   return null
 }
 
-
-
 function escapeAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-
-
 
 function inlineHtml(text: string): string {
   let out = escapeHtml(text)
@@ -262,8 +234,6 @@ function inlineHtml(text: string): string {
   out = out.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?，。！？]|$)/g, '$1<em>$2</em>')
   return out
 }
-
-
 
 /** 轻量 Markdown → HTML，用于 Markdown 成品的 HTML/PDF 导出。 */
 export function markdownToHtml(markdown: string): string {
@@ -355,8 +325,6 @@ export function markdownToHtml(markdown: string): string {
   return out.join('\n')
 }
 
-
-
 const PAPER_STYLE = `
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -381,8 +349,6 @@ const PAPER_STYLE = `
   @media print { body { padding: 0; background: #fff; } a { color: inherit; } pre { white-space: pre-wrap; } }
 `
 
-
-
 function paperDocument(title: string, body: string): string {
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -390,8 +356,6 @@ function paperDocument(title: string, body: string): string {
 <title>${escapeHtml(title)}</title><style>${PAPER_STYLE}</style></head>
 <body><main>${body}</main></body></html>`
 }
-
-
 
 function ensureHtmlDocument(html: string, title: string): string {
   if (/<html[\s>]/i.test(html)) {
@@ -406,8 +370,6 @@ function ensureHtmlDocument(html: string, title: string): string {
   return paperDocument(title, html)
 }
 
-
-
 /** 生成可直接保存/打印的 HTML 文档。 */
 export function buildExportHtml(artifact: { title: string; kind: string }, content: string): string {
   const title = artifact.title || 'Morrow 成品'
@@ -416,8 +378,6 @@ export function buildExportHtml(artifact: { title: string; kind: string }, conte
   if (artifact.kind === 'svg') return paperDocument(title, `<div class="svg-wrap">${content}</div>`)
   return paperDocument(title, `<pre><code>${escapeHtml(content)}</code></pre>`)
 }
-
-
 
 const CODE_FENCE_LANG: Record<string, string> = {
   typescript: 'ts',
@@ -440,8 +400,6 @@ const CODE_FENCE_LANG: Record<string, string> = {
   markdown: 'md'
 }
 
-
-
 /** 任意文本型成品 → Markdown。HTML 报告会保留结构；代码会放进围栏代码块。 */
 export function buildExportMarkdown(artifact: { title: string; kind: string; language?: string }, content: string): string {
   if (artifact.kind === 'html') return htmlToMarkdown(content)
@@ -451,37 +409,25 @@ export function buildExportMarkdown(artifact: { title: string; kind: string; lan
   return `\`\`\`${lang}\n${content.replace(/\s+$/g, '')}\n\`\`\``
 }
 
-
-
 /** 任意文本型成品 → 纯文本。 */
 export function buildExportText(artifact: { kind: string }, content: string): string {
   if (artifact.kind === 'html') return htmlToText(content)
   return content
 }
 
-
-
 export const ARTIFACT_PREVIEW_SCHEME = 'morrow-artifact'
-
-
 
 const PREVIEW_TTL_MS = 60 * 60 * 1000
 
-
 const MAX_ENTRIES = 40
-
 
 // 画布读取上限为 8MB；这里再留出滚动条/外链桥接注入的余量
 const MAX_HTML_BYTES = 10 * 1024 * 1024
 
-
 // 所有未过期预览的总内存上限，避免频繁切换大产物把渲染进程/主进程拖垮
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
 
-
 const TOKEN_PATTERN = /^[a-f0-9]{36}$/
-
-
 
 interface Entry {
   html: string
@@ -489,14 +435,9 @@ interface Entry {
   bytes: number
 }
 
-
-
 const entries = new Map<string, Entry>()
 
-
 let totalBytes = 0
-
-
 
 function drop(token: string): void {
   const entry = entries.get(token)
@@ -504,8 +445,6 @@ function drop(token: string): void {
   totalBytes = Math.max(0, totalBytes - entry.bytes)
   entries.delete(token)
 }
-
-
 
 export const ARTIFACT_PREVIEW_CSP = [
   "default-src 'none'",
@@ -521,8 +460,6 @@ export const ARTIFACT_PREVIEW_CSP = [
   "base-uri 'none'",
   "form-action 'none'"
 ].join('; ')
-
-
 
 function prune(now = Date.now()): void {
   for (const [token, entry] of entries) {
@@ -540,8 +477,6 @@ function prune(now = Date.now()): void {
   }
 }
 
-
-
 /** 登记一份 HTML 内容，返回可放进 sandbox iframe 的 URL（token 随内容更新而变化） */
 export function registerArtifactHtml(html: unknown): string {
   if (typeof html !== 'string') throw new Error('网页内容无效。')
@@ -557,8 +492,6 @@ export function registerArtifactHtml(html: unknown): string {
   prune(now)
   return `${ARTIFACT_PREVIEW_SCHEME}://preview/${token}`
 }
-
-
 
 /**
  * 内置浏览器只允许打开本服务签发的预览 URL：固定 host + 36 位 token，
@@ -576,8 +509,6 @@ export function isArtifactPreviewUrl(value: unknown): value is string {
     return false
   }
 }
-
-
 
 /** `protocol.handle` 入口；预览 URL 过期/不存在时返回可读的 404 */
 export function handleArtifactPreview(request: Request): Response {
@@ -602,20 +533,13 @@ export function handleArtifactPreview(request: Request): Response {
   })
 }
 
-
-
 const MAX_VERSIONS = 30
-
 
 const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
 
-
 const SAFE_SEGMENT = /^[A-Za-z0-9_-]{1,120}$/
 
-
 const SAFE_VERSION_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,160}$/
-
-
 
 const EXT: Record<string, string> = {
   html: '.html',
@@ -625,14 +549,10 @@ const EXT: Record<string, string> = {
   code: '.txt'
 }
 
-
-
 interface StoredVersion extends ArtifactVersionInfo {
   /** 快照文件（相对当前成品目录） */
   file: string
 }
-
-
 
 interface VersionIndex {
   version: 1
@@ -640,20 +560,14 @@ interface VersionIndex {
   versions: StoredVersion[]
 }
 
-
-
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex')
 }
-
-
 
 function safeSegment(value: string): string {
   if (SAFE_SEGMENT.test(value)) return value
   return `v_${createHash('sha1').update(value).digest('hex').slice(0, 16)}`
 }
-
-
 
 function artifactText(artifact: Artifact): string | null {
   // 文件型成品可能是图片/PDF/Office，按 UTF-8 读取会破坏内容，因此不做快照。
@@ -668,8 +582,6 @@ function artifactText(artifact: Artifact): string | null {
     return null
   }
 }
-
-
 
 function atomicWrite(path: string, content: string | Buffer): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -715,22 +627,16 @@ function atomicWrite(path: string, content: string | Buffer): void {
   }
 }
 
-
-
 function publicInfo(stored: StoredVersion): ArtifactVersionInfo {
   const { file: _file, ...info } = stored
   return info
 }
-
-
 
 export interface ArtifactVersionStoreOptions {
   /** 数据目录（会写到 <dir>/<sessionId>/<artifactId>/） */
   dir: string
   now?: () => number
 }
-
-
 
 export class ArtifactVersionStore {
   private readonly dir: string
@@ -862,8 +768,6 @@ export class ArtifactVersionStore {
   }
 }
 
-
-
 export function describeAttachment(file: string): Attachment | null {
   let stat
   try {
@@ -929,8 +833,6 @@ export function describeAttachment(file: string): Attachment | null {
   return { ...base, kind: 'file', content: null }
 }
 
-
-
 /** 从会话用户消息中收集显式附加的文件路径，作为只读工具的白名单。 */
 export function collectAttachedFilePaths(messages: readonly ChatMessage[]): string[] {
   const paths = new Set<string>()
@@ -943,8 +845,6 @@ export function collectAttachedFilePaths(messages: readonly ChatMessage[]): stri
   }
   return [...paths]
 }
-
-
 
 export function buildUserMessage(text: string, attachments?: Attachment[]): ChatMessage {
   const userText = text.trim()
@@ -1006,8 +906,6 @@ export function buildUserMessage(text: string, attachments?: Attachment[]): Chat
   }
 }
 
-
-
 /** 附件来自渲染层，进入模型上下文前统一钳制，避免超长内容或控制字符污染提示词。 */
 function prepareAttachment(input: Attachment): Attachment {
   const name = sanitizeLabel(input.name, 200) || '附件'
@@ -1048,16 +946,12 @@ function prepareAttachment(input: Attachment): Attachment {
   }
 }
 
-
-
 function sanitizeLabel(value: string, maxLength: number): string {
   return String(value ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .trim()
     .slice(0, maxLength)
 }
-
-
 
 function attachmentBlock(attachment: Attachment, imageSent: boolean, note?: string): string {
   const header = `[附件] ${attachment.name}（${formatBytes(attachment.size)}${attachment.path ? `，路径：${attachment.path}` : ''}）`
@@ -1093,8 +987,6 @@ function attachmentBlock(attachment: Attachment, imageSent: boolean, note?: stri
   return `${header}：${note ?? '该格式无法直接内联'}。不要猜测文件内容；需要时先与用户确认，或转换为文本/PDF/DOCX/XLSX 后再处理。`
 }
 
-
-
 /** 只接受主流视觉接口支持的格式；BMP 由渲染层先转成 PNG 再发送。 */
 function parseDataUrl(dataUrl: string): ChatImage | null {
   const trimmed = dataUrl.trim()
@@ -1111,27 +1003,21 @@ function parseDataUrl(dataUrl: string): ChatImage | null {
   return { mediaType, dataBase64 }
 }
 
-
-
 function base64Bytes(dataBase64: string): number {
   if (dataBase64.length % 4 !== 0) return Number.POSITIVE_INFINITY
   const padding = dataBase64.endsWith('==') ? 2 : dataBase64.endsWith('=') ? 1 : 0
   return (dataBase64.length / 4) * 3 - padding
 }
 
-
-
 function makeAttachmentId(): string {
   return `att_${Date.now()}_${randomBytes(3).toString('hex')}`
 }
-
 
 /** Agent 打开网页时通知渲染层展开浏览器面板 */
 export const BROWSER_PRESENT_EVENT = 'feature:browser:present'
 
 /** Agent 关闭浏览器时通知渲染层收起面板 */
 export const BROWSER_CLOSED_EVENT = 'feature:browser:closed'
-
 
 interface SurfaceHandle {
   id: string
@@ -1142,7 +1028,6 @@ interface SurfaceHandle {
   error: { code: string; message: string } | null
   createdAt: number
 }
-
 
 interface PendingDownload {
   request: BrowserDownloadRequest
@@ -1157,7 +1042,6 @@ interface PendingDownload {
   approved: boolean
   timer: NodeJS.Timeout
 }
-
 
 function emptyState(): BrowserState {
   return {
@@ -1175,7 +1059,6 @@ function emptyState(): BrowserState {
   }
 }
 
-
 function safeFilename(name: string): string {
   let base = basename(name || 'download.bin')
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
@@ -1185,7 +1068,6 @@ function safeFilename(name: string): string {
   if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(base)) base = `_${base}`
   return (base || 'download.bin').slice(0, 160)
 }
-
 
 /** 同名冲突时保留原扩展名，例如 report.pdf → report-1.pdf */
 function uniqueDownloadPath(target: string): string {
@@ -1199,11 +1081,9 @@ function uniqueDownloadPath(target: string): string {
   return `${stem}-${Date.now()}${ext}`
 }
 
-
 function describeTarget(target: string): string {
   return target.length > 80 ? `${target.slice(0, 80)}…` : target
 }
-
 
 /** Windows 上杀毒/索引服务可能短暂占用目标文件，rename 会报 EPERM/EBUSY。 */
 function renameWithRetry(from: string, to: string): void {
@@ -1220,7 +1100,6 @@ function renameWithRetry(from: string, to: string): void {
   }
 }
 
-
 function insideDirectory(root: string, target: string): boolean {
   const normalize = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
   const base = normalize(root).replace(/[\\/]+$/, '')
@@ -1228,15 +1107,12 @@ function insideDirectory(root: string, target: string): boolean {
   return candidate === base || candidate.startsWith(`${base}${sep}`)
 }
 
-
 /** executeJavaScript 可能返回 undefined/不可序列化值：统一转成 JSON 安全结构 */
 type LocateResult =
   | { ok: true; x: number; y: number; tag: string; label: string; locatorId: string }
   | { ok: false; reason: string }
 
-
 type ReadPageResult = { url: string; title: string; text: string }
-
 
 export class BrowserService {
   private static instance: BrowserService | null = null
@@ -2721,9 +2597,7 @@ export class BrowserService {
   }
 }
 
-
 /** 进程级单例（feature 模块 import 时初始化） */
 export const browserService = BrowserService.getInstance()
-
 
 export { describeTarget }

@@ -1230,15 +1230,12 @@ export function HistoryDrawer({
   )
 }
 
-
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
-
 
 interface PdfPreviewProps {
   url: string
   title: string
 }
-
 
 export function PdfPreview({ url, title }: PdfPreviewProps): React.JSX.Element {
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)

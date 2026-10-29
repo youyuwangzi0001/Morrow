@@ -19,6 +19,7 @@
     "probe:live": "node scripts/probe-live.mjs",
     "dist": "npm run build && node scripts/dist-portable.mjs --portable",
     "dist:all": "npm run build && node scripts/dist-portable.mjs",
+    "dist:final": "npm run build && node scripts/dist-portable.mjs --two-files",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "pack:source": "node scripts/pack-source.mjs",
@@ -119,6 +120,10 @@
       {
         "from": "resources/studio-demo",
         "to": "studio-demo"
+      },
+      {
+        "from": "resources/tts",
+        "to": "tts"
       }
     ],
     "compression": "maximum",

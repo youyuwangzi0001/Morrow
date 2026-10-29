@@ -20,12 +20,10 @@ export type CellValue = string | number | boolean | null
 
 export type CellInput = CellValue | undefined
 
-
 export interface FormulaEvalOptions {
   /** 最多求值单元格数，避免病态工作簿拖慢主进程 */
   maxCells?: number
 }
-
 
 export interface EvaluatedCell {
   /** 缓存值；null = 无法求值（公式仍会写入，但不带缓存结果） */
@@ -33,9 +31,7 @@ export interface EvaluatedCell {
   error?: string
 }
 
-
 const MAX_CELLS = 20_000
-
 
 export function coordToRef(column: number, row: number): string {
   let col = column + 1
@@ -48,7 +44,6 @@ export function coordToRef(column: number, row: number): string {
   return `${label}${row + 1}`
 }
 
-
 export function cellRefToCoord(ref: string): { column: number; row: number } | null {
   const match = /^\$?([A-Za-z]{1,3})\$?(\d{1,7})$/.exec(ref.trim())
   if (!match) return null
@@ -60,7 +55,6 @@ export function cellRefToCoord(ref: string): { column: number; row: number } | n
   return { column: column - 1, row: row - 1 }
 }
 
-
 type Token =
   | { type: 'number'; value: number }
   | { type: 'string'; value: string }
@@ -68,9 +62,7 @@ type Token =
   | { type: 'ident'; value: string }
   | { type: 'op'; value: string }
 
-
 class FormulaError extends Error {}
-
 
 function tokenize(formula: string): Token[] {
   const tokens: Token[] = []
@@ -137,16 +129,13 @@ function tokenize(formula: string): Token[] {
   return tokens
 }
 
-
 type RangeValue = { range: CellInput[][] }
 
 type RuntimeValue = CellValue | RangeValue
 
-
 function isRange(value: RuntimeValue): value is RangeValue {
   return typeof value === 'object' && value !== null && 'range' in value
 }
-
 
 function toNumber(value: RuntimeValue): number {
   if (typeof value === 'number') return value
@@ -160,7 +149,6 @@ function toNumber(value: RuntimeValue): number {
   throw new FormulaError('无法把值转换为数字')
 }
 
-
 function flatten(values: RuntimeValue[]): CellInput[] {
   const output: CellInput[] = []
   for (const value of values) {
@@ -171,12 +159,10 @@ function flatten(values: RuntimeValue[]): CellInput[] {
   return output
 }
 
-
 function round(value: number, digits: number): number {
   const factor = 10 ** Math.trunc(digits)
   return Math.round(value * factor) / factor
 }
-
 
 class Parser {
   private position = 0
@@ -388,7 +374,6 @@ class Parser {
   }
 }
 
-
 /**
  * 对一个工作表（二维原始值，公式以 "=" 开头）求值。
  * 返回 `ref → EvaluatedCell`；非公式单元格不返回（写入时直接用原值）。
@@ -472,7 +457,6 @@ export function evaluateSheet(rows: CellInput[][], options: FormulaEvalOptions =
   return results
 }
 
-
 const MAX_READ_BYTES = 256 * 1024
 
 const MAX_WRITE_CHARS = 2 * 1024 * 1024
@@ -490,11 +474,9 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '.morrow', '.svn', '.hg'])
 
 const MAX_OUTPUT_CHARS = 64 * 1024
 
-
 function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
-
 
 /** 解码文本；识别 UTF-16LE/BE BOM；前 8KB 含 NUL 判定为二进制 */
 export function decodeTextBuffer(buffer: Buffer): { text: string; binary: boolean } {
@@ -515,7 +497,6 @@ export function decodeTextBuffer(buffer: Buffer): { text: string; binary: boolea
   return { text: stripBom(buffer.toString('utf8')), binary: false }
 }
 
-
 /** 只读取文件头，避免把超大文件整个读进内存 */
 function readFileHead(absolutePath: string, maxBytes: number): { buffer: Buffer; fileSize: number; truncated: boolean } {
   const stat = statSync(absolutePath)
@@ -533,7 +514,6 @@ function readFileHead(absolutePath: string, maxBytes: number): { buffer: Buffer;
     closeSync(fd)
   }
 }
-
 
 /** 原子写文件：先写同目录临时文件再 rename，避免进程崩溃留下半个文件 */
 export function atomicWriteFileSync(target: string, data: string | Uint8Array): void {
@@ -581,11 +561,9 @@ export function atomicWriteFileSync(target: string, data: string | Uint8Array): 
   }
 }
 
-
 function atomicWriteTextFile(target: string, content: string): void {
   atomicWriteFileSync(target, content)
 }
-
 
 /** 流式哈希：大文件/二进制快照不整文件读入内存 */
 function hashFileSync(absolutePath: string): string {
@@ -606,7 +584,6 @@ function hashFileSync(absolutePath: string): string {
   return hash.digest('hex')
 }
 
-
 export interface SnapshotInfo {
   snapshotId: string
   snapshotPath: string
@@ -614,7 +591,6 @@ export interface SnapshotInfo {
   beforeText: string | null
   beforeBinary: boolean
 }
-
 
 /**
  * 记录「这次写入后的文件哈希」。撤销（restoreSnapshot）用它判断文件在写入之后
@@ -630,7 +606,6 @@ function snapshotSegment(value: string): string {
     .slice(0, 120)
   return cleaned || 'tool'
 }
-
 
 export function recordRestoreManifest(
   ctx: ToolContext,
@@ -651,9 +626,7 @@ export function recordRestoreManifest(
   }
 }
 
-
 export const RESTORE_MANIFEST_FILE = '.restore.json'
-
 
 /**
  * 写/编辑前备份旧文件：<snapshotDir>/<toolUseId>/<filename>。
@@ -687,13 +660,11 @@ export function snapshotFile(absolutePath: string, ctx: ToolContext): SnapshotIn
   }
 }
 
-
 function toLines(text: string): string[] {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
   return lines
 }
-
 
 function countLines(text: string): number {
   if (!text) return 0
@@ -701,11 +672,9 @@ function countLines(text: string): number {
   return text.endsWith('\n') ? lines - 1 : lines
 }
 
-
 function relativeOrAbsolute(absolute: string, ctx: ToolContext): string {
   return displayPath(absolute, ctx.workspace)
 }
-
 
 export const readFileTool: ToolImpl = {
   definition: {
@@ -772,7 +741,6 @@ export const readFileTool: ToolImpl = {
     })
   }
 }
-
 
 export const writeFileTool: ToolImpl = {
   definition: {
@@ -881,7 +849,6 @@ export const writeFileTool: ToolImpl = {
   }
 }
 
-
 /** 在 old_string 直接匹配失败时尝试适配文件的行尾风格（Windows CRLF 是常见坑） */
 function findMatchVariant(text: string, oldString: string): { needle: string; count: number } {
   const candidates: string[] = [oldString]
@@ -899,7 +866,6 @@ function findMatchVariant(text: string, oldString: string): { needle: string; co
   }
   return { needle: oldString, count: 0 }
 }
-
 
 export const editFileTool: ToolImpl = {
   definition: {
@@ -978,7 +944,6 @@ export const editFileTool: ToolImpl = {
   }
 }
 
-
 export const deleteFileTool: ToolImpl = {
   definition: {
     name: 'delete_file',
@@ -1054,14 +1019,12 @@ export const deleteFileTool: ToolImpl = {
   }
 }
 
-
 interface TreeEntry {
   name: string
   relative: string
   isDirectory: boolean
   size: number
 }
-
 
 export const listDirTool: ToolImpl = {
   definition: {
@@ -1152,7 +1115,6 @@ export const listDirTool: ToolImpl = {
   }
 }
 
-
 export const moveFileTool: ToolImpl = {
   definition: {
     name: 'move_file',
@@ -1196,7 +1158,6 @@ export const moveFileTool: ToolImpl = {
     )
   }
 }
-
 
 export const copyFileTool: ToolImpl = {
   definition: {
@@ -1245,7 +1206,6 @@ export const copyFileTool: ToolImpl = {
   }
 }
 
-
 export const makeDirTool: ToolImpl = {
   definition: {
     name: 'make_dir',
@@ -1278,7 +1238,6 @@ export const makeDirTool: ToolImpl = {
   }
 }
 
-
 export const fsTools: ToolImpl[] = [
   readFileTool,
   writeFileTool,
@@ -1289,7 +1248,6 @@ export const fsTools: ToolImpl[] = [
   copyFileTool,
   makeDirTool
 ]
-
 
 const MAX_DOCX_BYTES = 100 * 1024 * 1024
 
@@ -1304,7 +1262,6 @@ const MAX_REPLACEMENTS = 50
 const MAX_PLACEHOLDERS = 100
 
 const DOCX_PARTS_WITH_TEXT = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/
-
 
 export function decodeXmlText(text: string): string {
   return text.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (_match, entity: string) => {
@@ -1327,7 +1284,6 @@ export function decodeXmlText(text: string): string {
   })
 }
 
-
 export function encodeXmlText(text: string): string {
   // XML 1.0 不允许的控制字符会让 Word 打不开文档；替换文本时直接剔除
   return text
@@ -1336,7 +1292,6 @@ export function encodeXmlText(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 }
-
 
 /** 收集一段 XML 里所有 <w:t> 的文字（按出现顺序拼接；换行/制表符保留为分隔） */
 export function collectWordText(xml: string): string {
@@ -1350,7 +1305,6 @@ export function collectWordText(xml: string): string {
   return output
 }
 
-
 async function loadDocxZip(resolvedReal: string, display: string): Promise<JSZip> {
   let buffer: Buffer
   try {
@@ -1360,7 +1314,6 @@ async function loadDocxZip(resolvedReal: string, display: string): Promise<JSZip
   }
   return loadDocxZipFromBuffer(buffer, display)
 }
-
 
 async function loadDocxZipFromBuffer(buffer: Buffer, display: string): Promise<JSZip> {
   if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
@@ -1388,7 +1341,6 @@ async function loadDocxZipFromBuffer(buffer: Buffer, display: string): Promise<J
   return zip
 }
 
-
 async function readZipText(zip: JSZip, entryName: string): Promise<string> {
   const entry = zip.file(entryName)
   if (!entry) return ''
@@ -1399,12 +1351,10 @@ async function readZipText(zip: JSZip, entryName: string): Promise<string> {
   return text
 }
 
-
 interface ParagraphRender {
   line: string
   style: string
 }
-
 
 function renderParagraph(paragraphXml: string): ParagraphRender | null {
   const text = collectWordText(paragraphXml)
@@ -1419,7 +1369,6 @@ function renderParagraph(paragraphXml: string): ParagraphRender | null {
   // 软换行 w:br 在文本节点之间，collectWordText 不保留；这里统一压成一行，避免输出歧义
   return { line: `${prefix}${text.replace(/\s*\n\s*/g, ' ')}`, style }
 }
-
 
 function renderTable(tableXml: string, index: number): string[] {
   const rows: string[][] = []
@@ -1438,13 +1387,11 @@ function renderTable(tableXml: string, index: number): string[] {
   return lines
 }
 
-
 interface DocxBody {
   body: string
   paragraphCount: number
   tableCount: number
 }
-
 
 function extractBody(documentXml: string): DocxBody {
   const bodyMatch = /<w:body(?:\s[^>]*)?>([\s\S]*)<\/w:body>/.exec(documentXml)
@@ -1469,7 +1416,6 @@ function extractBody(documentXml: string): DocxBody {
   return { body: blocks.join('\n'), paragraphCount, tableCount }
 }
 
-
 function uniquePlaceholders(text: string): string[] {
   const found = new Set<string>()
   const regex = /\{\{[^{}\n]{1,120}\}\}/g
@@ -1479,7 +1425,6 @@ function uniquePlaceholders(text: string): string[] {
   }
   return [...found]
 }
-
 
 export const readDocxTool: ToolImpl = {
   definition: {
@@ -1560,12 +1505,10 @@ export const readDocxTool: ToolImpl = {
   }
 }
 
-
 export interface DocxReplacement {
   find: string
   replace: string
 }
-
 
 export function parseDocxReplacements(raw: unknown): DocxReplacement[] {
   const items: DocxReplacement[] = []
@@ -1601,7 +1544,6 @@ export function parseDocxReplacements(raw: unknown): DocxReplacement[] {
   return items
 }
 
-
 interface WordTextNode {
   openStart: number
   openEnd: number
@@ -1611,7 +1553,6 @@ interface WordTextNode {
   attrs: string
   text: string
 }
-
 
 function collectWordTextNodes(xml: string): WordTextNode[] {
   const nodes: WordTextNode[] = []
@@ -1633,13 +1574,11 @@ function collectWordTextNodes(xml: string): WordTextNode[] {
   return nodes
 }
 
-
 interface ParagraphReplaceResult {
   xml: string
   counts: number[]
   changed: boolean
 }
-
 
 /** 在一个段落 XML 内做跨 run 替换（保留未被改动的 XML 字节） */
 export function replaceInParagraphXml(
@@ -1715,13 +1654,11 @@ export function replaceInParagraphXml(
   return { xml: rebuilt, counts, changed: true }
 }
 
-
 interface XmlFileReplaceResult {
   xml: string
   counts: number[]
   changed: boolean
 }
-
 
 /** 在一个 word/*.xml 里替换所有段落中的文字（标题/表格/页眉都是 w:p） */
 export function replaceInDocxXmlFile(
@@ -1743,7 +1680,6 @@ export function replaceInDocxXmlFile(
   })
   return { xml: nextXml, counts, changed }
 }
-
 
 /**
  * 轻量 XML 良构校验（替换后的安全网：宁可报错也不写坏文档）。
@@ -1772,7 +1708,6 @@ export function checkXmlWellFormed(xml: string): { ok: boolean; error?: string }
   return { ok: true }
 }
 
-
 function assertWellFormedXml(xml: string, part: string): void {
   const result = checkXmlWellFormed(xml)
   if (result.ok) return
@@ -1781,7 +1716,6 @@ function assertWellFormedXml(xml: string, part: string): void {
     '可以换一种方式：先 read_docx 确认结构，或让用户把文档另存为简单格式；不要重试同一操作。'
   )
 }
-
 
 export const editDocxTool: ToolImpl = {
   definition: {
@@ -1948,9 +1882,7 @@ export const editDocxTool: ToolImpl = {
   }
 }
 
-
 export const docxTools: ToolImpl[] = [readDocxTool, editDocxTool]
-
 
 const MAX_PPTX_BYTES = 50 * 1024 * 1024
 
@@ -1962,13 +1894,11 @@ const PPTX_MAX_CHARS_LIMIT = 120_000
 
 const MAX_SLIDES = 200
 
-
 interface Relationship {
   id: string
   target: string
   type: string
 }
-
 
 function readText(zip: JSZip, path: string): Promise<string> {
   const file = zip.file(path)
@@ -1981,7 +1911,6 @@ function readText(zip: JSZip, path: string): Promise<string> {
   return file.async('text')
 }
 
-
 function attributes(tag: string): Record<string, string> {
   const out: Record<string, string> = {}
   const regex = /([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
@@ -1990,7 +1919,6 @@ function attributes(tag: string): Record<string, string> {
   }
   return out
 }
-
 
 function parseRelationships(xml: string): Relationship[] {
   const out: Relationship[] = []
@@ -2002,7 +1930,6 @@ function parseRelationships(xml: string): Relationship[] {
   }
   return out
 }
-
 
 function normalizePart(baseDir: string, target: string): string {
   const raw = target.replace(/\\/g, '/')
@@ -2020,12 +1947,10 @@ function normalizePart(baseDir: string, target: string): string {
   return out.join('/')
 }
 
-
 function relsPath(part: string): string {
   const dir = dirname(part).replace(/\\/g, '/')
   return `${dir}/_rels/${basename(part)}.rels`
 }
-
 
 /** 把幻灯片 XML 转成可读文本：段落换行、表格单元格以制表符分隔。 */
 function extractSlideText(xml: string): string {
@@ -2044,7 +1969,6 @@ function extractSlideText(xml: string): string {
     .filter(Boolean)
     .join('\n')
 }
-
 
 async function slidePartsInOrder(zip: JSZip): Promise<string[]> {
   const presentation = await readText(zip, 'ppt/presentation.xml')
@@ -2066,7 +1990,6 @@ async function slidePartsInOrder(zip: JSZip): Promise<string[]> {
       return left - right
     })
 }
-
 
 function parseSlideSelection(raw: string, total: number): Set<number> | null {
   const trimmed = raw.trim()
@@ -2099,7 +2022,6 @@ function parseSlideSelection(raw: string, total: number): Set<number> | null {
   return wanted.size > 0 ? wanted : null
 }
 
-
 async function notesForSlide(zip: JSZip, slidePart: string): Promise<string> {
   const rels = parseRelationships(await readText(zip, relsPath(slidePart)))
   const notes = rels.find((rel) => /\/notesSlide$/i.test(rel.type))
@@ -2107,7 +2029,6 @@ async function notesForSlide(zip: JSZip, slidePart: string): Promise<string> {
   const part = normalizePart(dirname(slidePart).replace(/\\/g, '/'), notes.target)
   return extractSlideText(await readText(zip, part))
 }
-
 
 export const readPptxTool: ToolImpl = {
   definition: {
@@ -2217,9 +2138,7 @@ export const readPptxTool: ToolImpl = {
   }
 }
 
-
 export const pptxTools: ToolImpl[] = [readPptxTool]
-
 
 const MAX_XLSX_BYTES = 50 * 1024 * 1024
 
@@ -2248,7 +2167,6 @@ const MAX_CELL_CHARS = 32_767
 
 const MAX_FORMULA_CHARS = 8_192
 
-
 /* ── XML 小工具（XLSX 部件都是简单 XML，用轻量解析避免引入 DOM） ── */
 
 function stripInvalidXml(text: string): string {
@@ -2256,16 +2174,13 @@ function stripInvalidXml(text: string): string {
   return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
 }
 
-
 function escapeXml(text: string): string {
   return stripInvalidXml(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-
 function escapeXmlAttribute(text: string): string {
   return escapeXml(text).replace(/"/g, '&quot;')
 }
-
 
 function parseAttributes(tag: string): Record<string, string> {
   const attributes: Record<string, string> = {}
@@ -2276,7 +2191,6 @@ function parseAttributes(tag: string): Record<string, string> {
   return attributes
 }
 
-
 function collectInlineText(xml: string): string {
   let text = ''
   const regex = /<t(?:\s[^>]*)?>([^<]*)<\/t>/g
@@ -2284,17 +2198,14 @@ function collectInlineText(xml: string): string {
   return text
 }
 
-
 function xmlText(xml: string, tag: string): string | null {
   const match = new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`).exec(xml)
   return match ? decodeXmlText(match[1]) : null
 }
 
-
 function needsPreserve(text: string): boolean {
   return /^\s|\s$/.test(text) || text.includes('\n')
 }
-
 
 async function loadXlsxZip(resolvedReal: string, display: string): Promise<JSZip> {
   let buffer: Buffer
@@ -2321,7 +2232,6 @@ async function loadXlsxZip(resolvedReal: string, display: string): Promise<JSZip
   return zip
 }
 
-
 async function readZipXml(zip: JSZip, entryName: string): Promise<string> {
   const entry = zip.file(entryName)
   if (!entry) return ''
@@ -2330,12 +2240,10 @@ async function readZipXml(zip: JSZip, entryName: string): Promise<string> {
   return text
 }
 
-
 function normalizePartTarget(target: string): string {
   if (target.startsWith('/')) return target.slice(1)
   return `xl/${target}`
 }
-
 
 function cleanPathPart(part: string): string {
   const segments: string[] = []
@@ -2347,7 +2255,6 @@ function cleanPathPart(part: string): string {
   return segments.join('/')
 }
 
-
 export interface WorkbookSheetRef {
   name: string
   sheetId: string
@@ -2355,12 +2262,10 @@ export interface WorkbookSheetRef {
   part: string
 }
 
-
 interface WorkbookParts {
   sheets: WorkbookSheetRef[]
   sharedStrings: string[]
 }
-
 
 function parseWorkbookParts(workbookXml: string, relsXml: string): WorkbookParts {
   const rels = new Map<string, string>()
@@ -2381,7 +2286,6 @@ function parseWorkbookParts(workbookXml: string, relsXml: string): WorkbookParts
   return { sheets, sharedStrings: [] }
 }
 
-
 function parseSharedStrings(xml: string): string[] {
   const strings: string[] = []
   const siRegex = /<si\b(?:\s[^>]*)?>([\s\S]*?)<\/si>/g
@@ -2391,7 +2295,6 @@ function parseSharedStrings(xml: string): string[] {
   }
   return strings
 }
-
 
 export interface ParsedCell {
   ref: string
@@ -2403,7 +2306,6 @@ export interface ParsedCell {
   inlineText?: string
   styleIndex?: number
 }
-
 
 function cellDisplay(cell: ParsedCell, sharedStrings: string[]): string {
   if (cell.formula) return `=${cell.formula}`
@@ -2419,12 +2321,10 @@ function cellDisplay(cell: ParsedCell, sharedStrings: string[]): string {
   return cell.rawValue ?? ''
 }
 
-
 interface ParsedSheetCells {
   cells: ParsedCell[]
   truncated: boolean
 }
-
 
 function parseSheetCells(sheetXml: string): ParsedSheetCells {
   const cells: ParsedCell[] = []
@@ -2466,14 +2366,12 @@ function parseSheetCells(sheetXml: string): ParsedSheetCells {
   return { cells, truncated: false }
 }
 
-
 interface ReadRange {
   startRow: number
   startColumn: number
   endRow: number
   endColumn: number
 }
-
 
 function parseA1Range(range: string): ReadRange | null {
   const text = range.trim()
@@ -2492,7 +2390,6 @@ function parseA1Range(range: string): ReadRange | null {
   }
 }
 
-
 function markdownTable(matrix: string[][]): string[] {
   if (matrix.length === 0) return ['（空表）']
   const columns = matrix.reduce((max, row) => Math.max(max, row.length), 0)
@@ -2507,7 +2404,6 @@ function markdownTable(matrix: string[][]): string[] {
   }
   return lines
 }
-
 
 function resolveSheetSelection(sheets: WorkbookSheetRef[], raw: string): WorkbookSheetRef[] {
   if (!raw) return sheets
@@ -2526,7 +2422,6 @@ function resolveSheetSelection(sheets: WorkbookSheetRef[], raw: string): Workboo
     `可用工作表：${sheets.map((sheet, index) => `${index + 1}. ${sheet.name}`).join('、')}`
   )
 }
-
 
 export const readXlsxTool: ToolImpl = {
   definition: {
@@ -2670,12 +2565,10 @@ export const readXlsxTool: ToolImpl = {
   }
 }
 
-
 interface WriteSheetInput {
   name: string
   rows: CellInput[][]
 }
-
 
 function normalizeSheetName(raw: string, index: number, used: Set<string>): string {
   let name = (raw || '').trim() || `Sheet${index + 1}`
@@ -2692,7 +2585,6 @@ function normalizeSheetName(raw: string, index: number, used: Set<string>): stri
   used.add(candidate.toLowerCase())
   return candidate
 }
-
 
 export function parseWriteSheets(raw: unknown): WriteSheetInput[] {
   if (!Array.isArray(raw) || raw.length === 0) {
@@ -2756,7 +2648,6 @@ export function parseWriteSheets(raw: unknown): WriteSheetInput[] {
   })
 }
 
-
 function cellXml(ref: string, raw: CellInput, cached?: { value: CellInput; error?: string }): string {
   if (raw === undefined || raw === null || raw === '') return ''
   if (typeof raw === 'string' && raw.startsWith('=') && raw.length > 1) {
@@ -2773,7 +2664,6 @@ function cellXml(ref: string, raw: CellInput, cached?: { value: CellInput; error
   const preserve = needsPreserve(raw) ? ' xml:space="preserve"' : ''
   return `<c r="${ref}" t="inlineStr"><is><t${preserve}>${escapeXml(raw)}</t></is></c>`
 }
-
 
 function buildSheetXml(rows: CellInput[][], cached: Map<string, { value: CellInput; error?: string }>): string {
   const rowXmls: string[] = []
@@ -2803,7 +2693,6 @@ function buildSheetXml(rows: CellInput[][], cached: Map<string, { value: CellInp
   )
 }
 
-
 function buildWorkbookXml(sheets: WriteSheetInput[]): string {
   const entries = sheets
     .map((sheet, index) => `<sheet name="${escapeXmlAttribute(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
@@ -2817,7 +2706,6 @@ function buildWorkbookXml(sheets: WriteSheetInput[]): string {
     '</workbook>'
   )
 }
-
 
 function buildWorkbookRelsXml(sheetCount: number): string {
   const relationships: string[] = []
@@ -2836,7 +2724,6 @@ function buildWorkbookRelsXml(sheetCount: number): string {
     '</Relationships>'
   )
 }
-
 
 function buildContentTypesXml(sheetCount: number): string {
   const overrides: string[] = [
@@ -2858,7 +2745,6 @@ function buildContentTypesXml(sheetCount: number): string {
   )
 }
 
-
 function buildRootRelsXml(): string {
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
@@ -2867,7 +2753,6 @@ function buildRootRelsXml(): string {
     '</Relationships>'
   )
 }
-
 
 function buildStylesXml(): string {
   return (
@@ -2883,7 +2768,6 @@ function buildStylesXml(): string {
   )
 }
 
-
 interface FormulaCellMeta {
   sheet: string
   ref: string
@@ -2891,7 +2775,6 @@ interface FormulaCellMeta {
   cached: CellInput
   error?: string
 }
-
 
 async function buildWorkbookBuffer(sheets: WriteSheetInput[]): Promise<{ buffer: Buffer; formulas: FormulaCellMeta[] }> {
   const zip = new JSZip()
@@ -2915,7 +2798,6 @@ async function buildWorkbookBuffer(sheets: WriteSheetInput[]): Promise<{ buffer:
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } })
   return { buffer, formulas }
 }
-
 
 /** 重新解包 + 解析，确认公式单元格真的按期望写入了（写入自检，失败就不交付） */
 async function verifyWorkbookBuffer(
@@ -2954,7 +2836,6 @@ async function verifyWorkbookBuffer(
   }
   return { sheetCount: parts.sheets.length, formulaCount: formulas.length, cachedCount }
 }
-
 
 export const writeXlsxTool: ToolImpl = {
   definition: {
@@ -3048,9 +2929,7 @@ export const writeXlsxTool: ToolImpl = {
   }
 }
 
-
 export const xlsxTools: ToolImpl[] = [readXlsxTool, writeXlsxTool]
-
 
 const MAX_PDF_BYTES = 100 * 1024 * 1024
  // 100MB：正常文档远小于此，避免恶意/超大文件拖垮主进程
@@ -3063,7 +2942,6 @@ const MAX_SELECTED_PAGES = 500
 
 /** 每次 read_pdf 最多 OCR 的扫描页数：渲染+识别耗时随页数线性增长 */
 const MAX_OCR_PAGES = 12
-
 
 /** 解析 pages 参数："1" / "1-3" / "1,3,5" / "1-2,5"；返回去重后的 1-based 页码数组（null = 全部） */
 export function parsePageSelection(raw: string): number[] | null {
@@ -3099,11 +2977,9 @@ export function parsePageSelection(raw: string): number[] | null {
   return pages.size > 0 ? [...pages].sort((a, b) => a - b) : null
 }
 
-
 function splitPages(text: string): string[] {
   return text.split('\f')
 }
-
 
 export const readPdfTool: ToolImpl = {
   definition: {
@@ -3282,6 +3158,5 @@ export const readPdfTool: ToolImpl = {
     return okResult(output, meta)
   }
 }
-
 
 export const pdfTools: ToolImpl[] = [readPdfTool]

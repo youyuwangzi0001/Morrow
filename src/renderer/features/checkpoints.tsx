@@ -6,8 +6,6 @@ import type { RewindPreview, TurnCheckpoint } from '@shared/types'
 import { useAppStore } from '../store'
 import { Modal } from '../components'
 
-
-
 const TIME_FORMAT = new Intl.DateTimeFormat('zh-CN', {
   month: 'numeric',
   day: 'numeric',
@@ -15,7 +13,6 @@ const TIME_FORMAT = new Intl.DateTimeFormat('zh-CN', {
   minute: '2-digit',
   hour12: false
 })
-
 
 /** 显示文件夹相对路径，避免一长串 C:\... 干扰确认。 */
 function displayPath(path: string, workspace: string | null | undefined): string {
@@ -28,7 +25,6 @@ function displayPath(path: string, workspace: string | null | undefined): string
   }
   return path
 }
-
 
 /**
  * 回退确认：入口在回答末尾的操作栏，这里只负责“确认一次”。

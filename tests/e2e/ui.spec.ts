@@ -12,8 +12,6 @@ import type { Server, IncomingMessage } from 'node:http'
 import { createServer } from 'node:http'
 import type { AddressInfo, Socket } from 'node:net'
 
-
-
 test.describe("01-ui-smoke", () => {
 // ── 原文件：smoke.spec.ts ──────────────────────────────────────────────
 test.describe('smoke.spec.ts', () => {
@@ -1369,7 +1367,6 @@ test('M32：隐私脱敏（safe.log + 可见回复/持久会话均无原值）',
 
 })
 })
-
 
 test.describe("04-modes", () => {
 // ── 原文件：goal-mode.spec.ts ──────────────────────────────────────────────
@@ -2869,7 +2866,6 @@ test('规则文件注入、/init 生成与设置页可见', async () => {
 })
 })
 
-
 test.describe("08-settings", () => {
 // ── 原文件：b6-settings.spec.ts ──────────────────────────────────────────────
 test.describe('b6-settings.spec.ts', () => {
@@ -3882,7 +3878,6 @@ test.describe('ChatGPT 登录交互', () => {
   })
 })
 })
-
 
 test.describe("09-panels", () => {
 // ── 原文件：a1-projects-home.spec.ts ──────────────────────────────────────────────
@@ -6256,7 +6251,6 @@ test.describe('R10 UI 文案与布局复审', () => {
 
 })
 })
-
 
 test.describe("12-command-ipc", () => {
 // ── 原文件：command-palette.spec.ts ──────────────────────────────────────────────

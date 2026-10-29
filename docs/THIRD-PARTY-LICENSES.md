@@ -1,6 +1,6 @@
 # 第三方许可清单
 
-更新日期：2026-10-27 · 版本：Morrow 0.2.0
+更新日期：2026-10-29 · 版本：Morrow 0.2.0
 
 本清单覆盖 Morrow 直接依赖、随应用打包的字体与图标库。所有依赖均为宽松许可；`jszip` 为 MIT 或 GPL-3.0 双许可，本项目按 MIT 使用。完整许可文本随各依赖包分发，可在 `node_modules/<包名>/LICENSE*` 查看。
 
@@ -16,10 +16,6 @@
 | pdf-parse | 1.1.1 | MIT | PDF 文本读取 |
 | pdfjs-dist | 6.4.299 | Apache-2.0 | PDF 预览 |
 | @fontsource/jetbrains-mono | 5.3.0 | OFL-1.1 | 等宽字体 |
-| @fontsource-variable/manrope | 5.2.8 | OFL-1.1 | 界面字体 |
-| @fontsource-variable/newsreader | 5.2.8 | OFL-1.1 | 衬线标题 |
-| @fontsource-variable/noto-serif-sc | 5.3.1 | OFL-1.1 | 中文衬线 |
-| @fontsource/ibm-plex-mono | 5.3.0 | OFL-1.1 | 辅助等宽字体 |
 
 ## 随包打包的界面与编辑依赖
 
@@ -35,6 +31,10 @@
 | diff | 7.0.0 | BSD-3-Clause | 候选稿对照 |
 | @codemirror/* | 6.x | MIT | 编辑器内核、语言与搜索 |
 | @lezer/highlight | 1.2.5 | MIT | 语法高亮 |
+| @fontsource-variable/manrope | 5.2.8 | OFL-1.1 | 界面字体 |
+| @fontsource-variable/newsreader | 5.2.8 | OFL-1.1 | 衬线标题 |
+| @fontsource-variable/noto-serif-sc | 5.3.1 | OFL-1.1 | 中文衬线 |
+| @fontsource/ibm-plex-mono | 5.3.0 | OFL-1.1 | 辅助等宽字体 |
 
 ## 构建与测试工具（不进用户运行时）
 
@@ -54,8 +54,13 @@
 
 - **FFmpeg**：Morrow 不内置 FFmpeg 二进制，调用用户本机安装或设置中指定的 `ffmpeg.exe`。FFmpeg 的许可取决于所下载构建（通常为 LGPL-2.1+ 或 GPL-2.0+）；分发或商用前请核对所选构建的许可与 `--enable-gpl` / `--enable-nonfree` 选项。
 - **ComfyUI 与模型权重**：不在 Morrow 安装包内，由用户本机安装；Qwen-Image、MiniMax-H3 等模型按其各自许可使用。
+- **ACE-Step**：通过本机 ComfyUI 调用；模型与代码按其各自许可使用。
+- **Qwen3-TTS**：本机声线依赖用户安装的模型与运行时；按其许可使用。
 - **系统语音（Windows SAPI / WinRT）**：由操作系统提供，不随应用分发。
+- **模型服务与订阅**：OpenAI/Anthropic/Gemini/DeepSeek/Kimi/Qwen/GLM/MiniMax 等服务按其条款使用，Morrow 不转售额度。
 
 ## 独立实现说明
 
-创作台的画布、时间线、导出器、提示词检索、人物语气审稿与媒体代理逻辑均为本项目实现；未复制第三方应用的源代码或素材。`Agent阵法` 资料仅用于提炼提示词结构，最终模块为本项目重新撰写的中文提示词。
+创作台的画布、时间线、导出器、协作者计划、人物语气审稿与媒体代理逻辑均为本项目实现；未复制第三方应用的源代码或素材。写作/编剧/导演三套大师文本由项目方提供并编译进主进程，不随包分发独立 Markdown 文件。历史上的 `Agent阵法` 资料只用于早期结构参考，当前运行时不包含该手法库。
+
+![关于页](guide/screens/20-studio-about-dark.png)

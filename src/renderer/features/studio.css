@@ -19,7 +19,6 @@
   isolation: isolate;
 }
 
-
 .studio-root *,
 .studio-root *::before,
 .studio-root *::after {
@@ -2560,7 +2559,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 
 .studio-character-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -2570,7 +2569,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   align-items: flex-start;
   gap: 10px;
   min-width: 0;
-  padding: 14px;
+  padding: 14px 30px 14px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--surface);
@@ -2591,34 +2590,18 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   font-size: var(--fs-3xs);
 }
 
-.studio-character-avatar {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border: 1px solid var(--line-gold);
-  border-radius: 50%;
-  color: var(--gold);
-  background: var(--gold-ghost);
-}
-
-.studio-character-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .studio-character-copy {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
+  max-width: 78ch;
 }
 
 .studio-character-copy b {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 6px;
   color: var(--text);
   font-size: var(--fs-base-plus);
@@ -2633,14 +2616,10 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 }
 
 .studio-character-copy > span {
-  display: -webkit-box;
   margin-top: 4px;
-  overflow: hidden;
   color: var(--text-3);
   font-size: var(--fs-xs);
-  line-height: var(--lh-copy);
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: var(--lh-readable);
 }
 
 .studio-character-copy i {
@@ -2839,39 +2818,54 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 }
 
 .studio-generating-mark {
+  position: relative;
   display: grid;
   place-items: center;
   width: 84px;
   height: 84px;
   margin-bottom: 22px;
+  overflow: hidden;
   border: 1px solid var(--line-gold);
   border-radius: 50%;
   color: var(--gold);
   background: radial-gradient(circle, var(--gold-ghost), transparent 70%);
 }
 
-.studio-feather-pulse {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
+.studio-generating-mark .studio-mark {
+  border-radius: var(--r-sm);
 }
 
-.studio-feather-pulse > span {
+.studio-generating-mark.is-generating::after {
+  content: '';
   position: absolute;
-  inset: 0;
-  border: 1px solid var(--line-gold);
-  border-radius: 50%;
-  animation: studio-feather-ring 2.4s ease-out infinite;
+  inset: -40% -60%;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 248, 230, 0.34) 50%, transparent 62%);
+  animation: studio-mark-shimmer 1.9s ease-in-out infinite;
+  pointer-events: none;
 }
 
-.studio-feather-pulse > span:nth-child(2) { animation-delay: 0.8s; }
-.studio-feather-pulse > span:nth-child(3) { animation-delay: 1.6s; }
+.studio-generating-mark.is-generating .studio-mark {
+  animation: studio-mark-breathe 2.4s ease-in-out infinite;
+}
 
-@keyframes studio-feather-ring {
-  0% { transform: scale(0.55); opacity: 0.5; }
-  80%, 100% { transform: scale(1.55); opacity: 0; }
+@keyframes studio-mark-shimmer {
+  0% { transform: translateX(-55%) rotate(8deg); opacity: 0; }
+  35% { opacity: 0.9; }
+  100% { transform: translateX(55%) rotate(8deg); opacity: 0; }
+}
+
+@keyframes studio-mark-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.88; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-generating-mark.is-generating::after {
+    display: none;
+  }
+  .studio-generating-mark.is-generating .studio-mark {
+    animation: none;
+  }
 }
 
 .studio-blueprint-generating h2 {
@@ -2916,7 +2910,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   border-radius: 50%;
   background: var(--gold);
 }
-
 
 @media (max-height: 920px) and (min-width: 900px) {
   .studio-hero {
@@ -3811,7 +3804,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   gap: 12px;
   padding-inline: 20px;
 }
-
 
 /* 大屏：内容页在保持阅读宽度的同时利用更多横向空间 */
 @media (min-width: 2100px) {
@@ -5692,7 +5684,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   }
 }
 
-
 /* 目录标题与协作者保持一致的面板层级 */
 .studio-outline-head .studio-eyebrow {
   font-size: var(--fs-panel-body);
@@ -6948,6 +6939,13 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 .studio-tab-switch button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.studio-sound-tabs {
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
 }
 
 /* 主区被协作者挤窄时，大纲/剧本页先放说明，再放操作，避免标题被压成窄列。 */
@@ -11233,7 +11231,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   }
 }
 
-
 /* 交付页按主区实际宽度适配：右侧协作栏展开后按钮和文字不竖排。 */
 .studio-delivery-actions .btn {
   white-space: nowrap;
@@ -11939,9 +11936,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   .studio-template-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .studio-character-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .studio-blueprint-grid,
   .studio-bp-section.is-split {
     grid-template-columns: 1fr;
@@ -12039,8 +12033,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 
 @media (max-width: 900px) {
   .studio-project-grid,
-  .studio-template-grid,
-  .studio-character-grid {
+  .studio-template-grid {
     grid-template-columns: 1fr;
   }
   .studio-kind-row {
@@ -12069,9 +12062,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   .studio-review-actions,
   .studio-delivery-actions {
     justify-content: flex-start;
-  }
-  .studio-character-grid {
-    grid-template-columns: 1fr;
   }
   .studio-board-toolbar {
     flex-direction: column;
@@ -12139,7 +12129,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   color: var(--gold);
 }
 
-
 /* 高亮由拖拽手柄的单线负责；面板边框让位，避免双线。 */
 .studio-body:has(> .studio-right-resizer:hover) .studio-assistant,
 .studio-body:has(> .studio-right-resizer.is-hovered) .studio-assistant,
@@ -12183,7 +12172,6 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   font-family: var(--font-ui);
   isolation: isolate;
 }
-
 
 .studio-demo *,
 .studio-demo *::before,

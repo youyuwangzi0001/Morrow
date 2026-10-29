@@ -28,8 +28,6 @@ import * as core from '../../src/core/index'
 import { buildOneShotInvocation, commandFailureHint, shellSyntaxHint } from '../../src/core/util'
 import { createSafeLookup, createWebFetchTool, fetchWebPage, htmlToReadable, isBlockedAddress, validatePublicUrl, WebFetchError, WEB_FETCH_LIMITS } from '../../src/core/tool-media'
 
-
-
 describe("agent", () => {
 beforeEach(() => {
   resetAllPermissionGrants()
@@ -2954,7 +2952,6 @@ ${textOf(result.messages)}`
 })
 })
 
-
 describe("goal", () => {
 beforeEach(() => {
   resetAllPermissionGrants()
@@ -4560,7 +4557,7 @@ describe('prompt-mentions.test.ts', () => {
     })
   })
 })
-describe('超频模式提示词', () => {
+describe('无限 token 提示词', () => {
   it('在聊天、工作、计划与研究模式下都常驻，且不受思考强度档位影响', () => {
     const prompts = [
       buildSystemPrompt({ mode: 'work', workspace: 'C:\work' }),
@@ -4569,20 +4566,18 @@ describe('超频模式提示词', () => {
       buildSystemPrompt({ mode: 'research', workspace: 'C:\work' })
     ]
     for (const prompt of prompts) {
-      expect(prompt).toContain('你的token预算无上限')
-      expect(prompt).not.toContain('## 超频模式（常驻）')
-      expect(prompt.match(/你的token预算无上限/g)).toHaveLength(1)
+      expect(prompt).toContain('你拥有无限的token用量')
+      expect(prompt.match(/你拥有无限的token用量/g)).toHaveLength(1)
     }
   })
 })
 })
 
-
 describe("model-budget", () => {
 describe('全局 token 预算提示', () => {
-  it('超频模式段落只剩固定一句话', () => {
+  it('无限 token 段落只剩固定一句话', () => {
     expect(buildOverclockPromptSection()).toBe(UNLIMITED_TOKEN_BUDGET_PROMPT)
-    expect(UNLIMITED_TOKEN_BUDGET_PROMPT).toBe('你的token预算无上限')
+    expect(UNLIMITED_TOKEN_BUDGET_PROMPT).toBe('你拥有无限的token用量')
   })
 
   it('空 system 只返回这句话；已有 system 前置且不重复', () => {
@@ -4626,7 +4621,6 @@ describe('全局 token 预算提示', () => {
   })
 })
 })
-
 
 describe("providers", () => {
 beforeEach(() => {

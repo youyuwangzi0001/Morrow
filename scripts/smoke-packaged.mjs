@@ -119,7 +119,6 @@ async function connectToApp(port) {
   throw new Error('CDP 已连接，但 60s 内没有出现应用窗口')
 }
 
-
 /**
  * 验证文件夹版 `portable.marker`：不带 --data-dir 启动 → 数据目录应落在 exe 同级 `Morrow Data/`。
  * 验证后清理该目录，避免污染交付文件夹（zip 在冒烟前已生成，不受影响）。

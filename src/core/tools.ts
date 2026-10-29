@@ -21,10 +21,7 @@ import { computerTools } from './tool-media'
 import { mediaTools } from './tool-media'
 import { xlsxTools } from './tool-files'
 
-
-
 export const WEB_SEARCH_MAX_RESULTS = 10
-
 
 function formatSearchResult(result: WebSearchResponse): string {
   const lines = [
@@ -46,7 +43,6 @@ function formatSearchResult(result: WebSearchResponse): string {
   )
   return lines.join('\n')
 }
-
 
 export const webSearchTool: ToolImpl = {
   definition: {
@@ -110,9 +106,7 @@ export const webSearchTool: ToolImpl = {
   }
 }
 
-
 const MAX_STEPS = 12
-
 
 function parseSteps(raw: unknown): PlanStep[] {
   if (!Array.isArray(raw)) return []
@@ -131,7 +125,6 @@ function parseSteps(raw: unknown): PlanStep[] {
   return steps
 }
 
-
 function planMarkdown(plan: SessionPlan): string {
   const lines = [`# ${plan.title}`, '', plan.summary, '', '## 执行步骤', '']
   plan.steps.forEach((step, index) => {
@@ -143,7 +136,6 @@ function planMarkdown(plan: SessionPlan): string {
   lines.push('', '> 本计划由 Morrow 生成，经用户批准后才会执行。')
   return lines.join('\n')
 }
-
 
 export const submitPlanTool: ToolImpl = {
   definition: {
@@ -219,12 +211,9 @@ export const submitPlanTool: ToolImpl = {
   }
 }
 
-
 export const planTools: ToolImpl[] = [submitPlanTool]
 
-
 const ACTIONS = ['list', 'start', 'run', 'read', 'write', 'stop', 'restart'] as const
-
 
 function formatProcesses(response: TerminalToolResponse): string {
   if (!response.processes?.length) return '当前没有运行中的终端或后台任务。'
@@ -235,7 +224,6 @@ function formatProcesses(response: TerminalToolResponse): string {
     })
     .join('\n\n')
 }
-
 
 export const terminalTool: ToolImpl = {
   definition: {
@@ -333,7 +321,6 @@ export const terminalTool: ToolImpl = {
   }
 }
 
-
 async function callStudio(ctx: ToolContext, input: Record<string, unknown>, action: string): Promise<{ summary: string; data?: unknown }> {
   if (!ctx.studio) {
     throw new Error('创作台服务没有启动；请在 Morrow 主窗口打开创作台后再试。')
@@ -341,7 +328,6 @@ async function callStudio(ctx: ToolContext, input: Record<string, unknown>, acti
   const { action: subAction, ...rest } = input
   return ctx.studio({ ...rest, action, ...(typeof subAction === 'string' ? { subAction } : {}) })
 }
-
 
 export const studioProjectTool: ToolImpl = {
   definition: {
@@ -369,7 +355,6 @@ export const studioProjectTool: ToolImpl = {
     }
   }
 }
-
 
 export const studioCreateTool: ToolImpl = {
   definition: {
@@ -399,7 +384,6 @@ export const studioCreateTool: ToolImpl = {
   }
 }
 
-
 export const studioBlueprintTool: ToolImpl = {
   definition: {
     name: 'studio_blueprint',
@@ -426,7 +410,6 @@ export const studioBlueprintTool: ToolImpl = {
     }
   }
 }
-
 
 export const studioWriteTool: ToolImpl = {
   definition: {
@@ -457,7 +440,6 @@ export const studioWriteTool: ToolImpl = {
   }
 }
 
-
 export const studioStoryboardTool: ToolImpl = {
   definition: {
     name: 'studio_storyboard',
@@ -487,7 +469,6 @@ export const studioStoryboardTool: ToolImpl = {
     }
   }
 }
-
 
 export const studioMediaTool: ToolImpl = {
   definition: {
@@ -520,7 +501,6 @@ export const studioMediaTool: ToolImpl = {
   }
 }
 
-
 export const studioTimelineTool: ToolImpl = {
   definition: {
     name: 'studio_timeline',
@@ -547,7 +527,6 @@ export const studioTimelineTool: ToolImpl = {
     }
   }
 }
-
 
 export const studioEditTool: ToolImpl = {
   definition: {
@@ -580,7 +559,6 @@ export const studioEditTool: ToolImpl = {
   }
 }
 
-
 export const studioReviewTool: ToolImpl = {
   definition: {
     name: 'studio_review',
@@ -605,7 +583,6 @@ export const studioReviewTool: ToolImpl = {
     }
   }
 }
-
 
 export const studioRenderTool: ToolImpl = {
   definition: {
@@ -637,7 +614,6 @@ export const studioRenderTool: ToolImpl = {
   }
 }
 
-
 export const studioExportTool: ToolImpl = {
   definition: {
     name: 'studio_export',
@@ -664,7 +640,6 @@ export const studioExportTool: ToolImpl = {
   }
 }
 
-
 export const studioTools: ToolImpl[] = [
   studioProjectTool,
   studioCreateTool,
@@ -678,7 +653,6 @@ export const studioTools: ToolImpl[] = [
   studioRenderTool,
   studioExportTool
 ]
-
 
 /**
  * 顺序即暴露给模型的顺序（保持稳定，帮助 prompt cache）。
@@ -724,17 +698,13 @@ const ALL_TOOLS: ToolImpl[] = [...BASE_TOOLS, ...PLAN_TOOLS, updateGoalTool]
 
 const TOOL_BY_NAME = new Map<string, ToolImpl>(ALL_TOOLS.map((tool) => [tool.definition.name, tool]))
 
-
 export const TOOL_DEFINITIONS: ToolDefinition[] = BASE_TOOLS.map((tool) => tool.definition)
-
 
 /** Goal 模式专用工具定义（仅 active 目标时注入） */
 export const GOAL_TOOL_DEFINITION: ToolDefinition = updateGoalTool.definition
 
-
 /** 计划模式专用工具定义 */
 export const PLAN_TOOL_DEFINITION: ToolDefinition = submitPlanTool.definition
-
 
 /**
  * 计划模式工具集：只读工具 + 计划/提问/任务面板。
@@ -751,7 +721,6 @@ export const PLAN_MODE_TOOL_DEFINITIONS: ToolDefinition[] = [
 ]
 
 const PLAN_MODE_TOOL_NAMES = new Set(PLAN_MODE_TOOL_DEFINITIONS.map((definition) => definition.name))
-
 
 /** 按运行模式返回本次暴露给模型的工具列表（web_search 仅在已配置搜索服务时暴露） */
 export function toolDefinitionsForRun(
@@ -775,25 +744,20 @@ export function toolDefinitionsForRun(
   return goalMode ? [...base, GOAL_TOOL_DEFINITION] : base
 }
 
-
 /** 只读类工具清单：聊天模式过滤与审计参考（集群成员与主代理共用完整工具集） */
 export const READ_ONLY_TOOL_DEFINITIONS: ToolDefinition[] = TOOL_DEFINITIONS.filter((definition) => definition.category === 'read')
-
 
 export function getToolDefinition(name: string): ToolDefinition | undefined {
   return TOOL_BY_NAME.get(name)?.definition
 }
 
-
 export function isKnownTool(name: string): boolean {
   return TOOL_BY_NAME.has(name)
 }
 
-
 export function isReadOnlyTool(name: string): boolean {
   return TOOL_BY_NAME.get(name)?.definition.category === 'read'
 }
-
 
 export function toolTitleFor(name: string, input: Record<string, unknown> = {}): string {
   const tool = TOOL_BY_NAME.get(name)
@@ -805,11 +769,9 @@ export function toolTitleFor(name: string, input: Record<string, unknown> = {}):
   }
 }
 
-
 export function toolCategory(name: string): ToolCategory {
   return TOOL_BY_NAME.get(name)?.definition.category ?? 'meta'
 }
-
 
 /** 基础风险 + 按输入提升（危险命令 → high） */
 export function toolRiskFor(name: string, input: Record<string, unknown> = {}): ToolRisk {
@@ -827,7 +789,6 @@ export function toolRiskFor(name: string, input: Record<string, unknown> = {}): 
   }
   return base
 }
-
 
 /**
  * 执行工具：所有异常都转成 ToolResult（绝不把异常抛给 Agent 循环，

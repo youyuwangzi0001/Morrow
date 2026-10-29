@@ -203,27 +203,7 @@ function windowsSpecs(): ShellSpec[] {
       disabled: wsl.distros.length === 0
     })
   }
-  // 极端环境下至少保留一个可用 Shell；正常安装 Git Bash 后不会出现该回退项。
-  if (specs.length === 0) {
-    specs.push({
-      id: 'cmd',
-      label: '命令提示符',
-      detail: '兼容回退（未检测到 Git Bash / PowerShell 7 / WSL）',
-      file: 'cmd.exe',
-      args: ['/Q', '/K', 'chcp 65001>nul'],
-      isDefault: false
-    })
-  } else if (!specs.some((spec) => spec.id === 'cmd')) {
-    // cmd 始终可用，作为其它 Shell 起不来时的最后兜底，也允许用户在设置里主动选择。
-    specs.push({
-      id: 'cmd',
-      label: '命令提示符',
-      detail: 'Windows 内置命令提示符（兜底）',
-      file: 'cmd.exe',
-      args: ['/Q', '/K', 'chcp 65001>nul'],
-      isDefault: false
-    })
-  }
+  // 只保留 PowerShell 7 作为 Git Bash 不可用时的回退；不再提供 Windows PowerShell 5.1 或 cmd。
   const preferred =
     specs.find((spec) => spec.id === 'gitbash') ??
     specs.find((spec) => spec.id === 'pwsh') ??
@@ -272,16 +252,7 @@ export class TerminalManager {
       try {
         this.shellCache = process.platform === 'win32' ? windowsSpecs() : posixSpecs()
       } catch {
-        this.shellCache = [
-          {
-            id: 'default',
-            label: '默认终端',
-            detail: process.platform === 'win32' ? 'PowerShell' : '系统 Shell',
-            file: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh',
-            args: [],
-            isDefault: true
-          }
-        ]
+        this.shellCache = []
       }
     }
     return this.shellCache
@@ -476,8 +447,7 @@ export class TerminalManager {
   }
 
   private fallbackSpec(failed: ShellSpec): ShellSpec | null {
-    const order =
-      failed.id === 'gitbash' ? ['pwsh', 'cmd'] : failed.id === 'pwsh' ? ['cmd', 'gitbash'] : ['pwsh', 'cmd']
+    const order = failed.id === 'gitbash' ? ['pwsh'] : ['gitbash']
     for (const id of order) {
       const spec = this.specs().find((candidate) => candidate.id === id && !candidate.disabled)
       if (spec) return spec

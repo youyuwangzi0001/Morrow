@@ -2,14 +2,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { CommandShell } from './types'
 
-
-
 /** 生成带前缀的短 id：msg_lx3k9a1f2b3c */
 export function newId(prefix: string): string {
   const uuid = randomUUID().replace(/-/g, '')
   return `${prefix}_${uuid.slice(0, 16)}`
 }
-
 
 /** 可被 AbortSignal 打断的 sleep；被打断时 reject 一个 name='AbortError' 的错误 */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -35,20 +32,17 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-
 export function abortError(message = '操作已中断'): Error {
   const err = new Error(message)
   err.name = 'AbortError'
   return err
 }
 
-
 export function isAbortError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const name = (err as { name?: unknown }).name
   return name === 'AbortError' || name === 'AbortException'
 }
-
 
 /** 让 promise 与 AbortSignal 竞争：中断时立即 reject，避免审批/提问把整个 run 挂死 */
 export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {  if (!signal) return promise
@@ -77,11 +71,9 @@ export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   })
 }
 
-
 export function sha256(data: string | Uint8Array): string {
   return createHash('sha256').update(data).digest('hex')
 }
-
 
 /**
  * 带 AbortSignal 的异步迭代：即使 Provider 内部不响应中断（例如自定义实现），
@@ -119,7 +111,6 @@ async function nextWithAbort<T>(iterator: AsyncIterator<T>, signal: AbortSignal)
   })
 }
 
-
 /** 把任意 AsyncIterable 包装成「可被 signal 立刻打断」的迭代器 */
 export async function* iterateWithAbort<T>(iterable: AsyncIterable<T>, signal: AbortSignal): AsyncGenerator<T> {
   const iterator = iterable[Symbol.asyncIterator]()
@@ -138,13 +129,11 @@ export async function* iterateWithAbort<T>(iterable: AsyncIterable<T>, signal: A
   }
 }
 
-
 /** 单行单元格（用于报告/日志，不做 HTML 转义） */
 export function oneLine(text: string, max = 200): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > max ? `${flat.slice(0, max)}…` : flat
 }
-
 
 /** 安全 JSON 解析：失败返回 null，绝不抛错（模型输出/SSE 帧都可能不完整） */
 export function safeJsonParse<T = unknown>(text: string): T | null {
@@ -155,7 +144,6 @@ export function safeJsonParse<T = unknown>(text: string): T | null {
     return null
   }
 }
-
 
 /**
  * 容错解析工具参数 JSON：
@@ -187,13 +175,11 @@ export function parseToolArgs(raw: string): Record<string, unknown> | null {
   return null
 }
 
-
 /** 按字符截断并给出「已截断」说明（中英文按字符，不做字节裁剪） */
 export function truncateText(text: string, maxChars: number, note = '输出已截断'): string {
   if (text.length <= maxChars) return text
   return `${text.slice(0, maxChars)}\n…（${note}，共 ${text.length} 字符，仅显示前 ${maxChars} 字符）`
 }
-
 
 /** 形如 1.2 秒 / 850 毫秒 */
 export function formatDuration(ms: number): string {
@@ -205,9 +191,7 @@ export function formatDuration(ms: number): string {
   return `${minutes} 分 ${seconds} 秒`
 }
 
-
 export { formatBytes } from '../shared/types'
-
 
 /** 把任意异常归一化为可读文本 */
 export function errorMessage(err: unknown): string {
@@ -220,25 +204,21 @@ export function errorMessage(err: unknown): string {
   }
 }
 
-
 /** 限制整数到 [min,max] */
 export function clampInt(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, Math.trunc(value)))
 }
 
-
 const PS_PREFIX =
   '[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); ' +
   '$OutputEncoding=[Console]::OutputEncoding; $ProgressPreference="SilentlyContinue"; '
-
 
 export function fallbackCommandShell(): CommandShell {
   return process.platform === 'win32'
     ? { id: 'powershell', label: 'Windows PowerShell', file: 'powershell.exe' }
     : { id: 'default', label: '默认终端', file: '/bin/sh' }
 }
-
 
 export function buildOneShotInvocation(
   shell: CommandShell | null | undefined,
@@ -284,7 +264,6 @@ export function buildOneShotInvocation(
   }
 }
 
-
 /**
  * 命令失败后的可执行建议：让模型看到「下一步怎么改」，而不是只看到通用提示后原样重试。
  * 只做文本识别，不改变命令本身。
@@ -311,7 +290,6 @@ export function commandFailureHint(stderr: string, stdout: string, shellLabel: s
   }
   return '检查命令语法、文件路径是否正确；如果是脚本报错，先读一下错误信息再修改，避免原样重试。'
 }
-
 
 /** 给模型看的命令语法提示；避免用户选 cmd/Git Bash 时仍写 PowerShell。 */
 export function shellSyntaxHint(
@@ -345,10 +323,8 @@ export function shellSyntaxHint(
 /** 浏览器专用持久化 session 分区（与主应用 session 隔离） */
 export const BROWSER_PARTITION = 'persist:morrow-browser'
 
-
 /** 允许的导航协议（地址栏/页面跳转/自动化 open 统一口径） */
 export const BROWSER_ALLOWED_PROTOCOLS = ['http:', 'https:'] as const
-
 
 /** 远程页面 WebPreferences 安全基线（main 直接展开使用；纯对象便于单测断言） */
 export const BROWSER_WEB_PREFERENCES = {
@@ -367,7 +343,6 @@ export const BROWSER_WEB_PREFERENCES = {
   backgroundThrottling: false
   // 注意：不设置 preload —— 远程页面拿不到任何 Morrow 能力
 } as const
-
 
 /** K1 自动化限制（工具层与 service 层双重约束） */
 export const BROWSER_LIMITS = {
@@ -393,14 +368,12 @@ export const BROWSER_LIMITS = {
   loadPollMs: 200
 } as const
 
-
 export interface BrowserBounds {
   x: number
   y: number
   width: number
   height: number
 }
-
 
 export interface BrowserTabInfo {
   id: string
@@ -412,7 +385,6 @@ export interface BrowserTabInfo {
   /** 该标签最近一次致命错误；错误标签仍保留在标签栏，方便关闭或重试 */
   error: { code: string; message: string } | null
 }
-
 
 export interface BrowserState {
   /** 当前是否已创建浏览器视图（至少有一个标签） */
@@ -435,7 +407,6 @@ export interface BrowserState {
   activeTabId: string | null
 }
 
-
 export interface BrowserDownloadRequest {
   id: string
   filename: string
@@ -446,7 +417,6 @@ export interface BrowserDownloadRequest {
   createdAt: number
 }
 
-
 export interface BrowserScreenshotResult {
   /** PNG base64（不含 data: 前缀） */
   pngBase64: string
@@ -456,14 +426,12 @@ export interface BrowserScreenshotResult {
   title: string
 }
 
-
 export interface BrowserReadResult {
   url: string
   title: string
   text: string
   truncated: boolean
 }
-
 
 export interface BrowserActionResult {
   url: string
@@ -477,13 +445,11 @@ export interface BrowserActionResult {
   navigating?: boolean
 }
 
-
 /** 每次调用都带 runId：bridge 用它做「单轮步数上限」，避免自动化无限自循环 */
 export interface BrowserCallContext {
   runId: string
   timeoutMs?: number
 }
-
 
 export interface BrowserBridge {
   open(url: string, ctx: BrowserCallContext): Promise<BrowserState>
@@ -499,20 +465,16 @@ export interface BrowserBridge {
   closeAutomation(): Promise<void>
 }
 
-
 let bridge: BrowserBridge | null = null
-
 
 /** 主进程启动时注入真实实现；传 null 可清除（测试用） */
 export function setBrowserBridge(next: BrowserBridge | null): void {
   bridge = next
 }
 
-
 export function getBrowserBridge(): BrowserBridge | null {
   return bridge
 }
-
 
 /** bridge 未注入时工具返回的用户可读错误 */
 export class BrowserUnavailableError extends Error {
@@ -521,7 +483,6 @@ export class BrowserUnavailableError extends Error {
     this.name = 'BrowserUnavailableError'
   }
 }
-
 
 /* ── 纯函数安全策略（main 与单测共用） ─────────────────────────── */
 
@@ -532,7 +493,6 @@ export interface BrowserUrlCheck {
   /** 拒绝原因（给用户/模型看的人话） */
   reason?: string
 }
-
 
 /**
  * 地址栏/自动化入口的 URL 安全检查：
@@ -571,7 +531,6 @@ export function checkBrowserUrl(raw: string): BrowserUrlCheck {
   return { allowed: true, url: parsed.toString() }
 }
 
-
 /**
  * 地址栏输入规范化（给用户便利）：
  * - 完整 URL 直接走 checkBrowserUrl；
@@ -589,7 +548,6 @@ export function normalizeBrowserAddress(raw: string): BrowserUrlCheck {
   return checkBrowserUrl(`${local ? 'http://' : 'https://'}${trimmed}`)
 }
 
-
 /** 页面内导航（will-navigate/will-redirect/窗口打开）的安全检查：不补协议，必须已规范 */
 export function isBrowserNavigationAllowed(rawUrl: string): boolean {
   if (/[\u0000-\u001f\u007f]/.test(rawUrl)) return false
@@ -605,13 +563,11 @@ export function isBrowserNavigationAllowed(rawUrl: string): boolean {
   }
 }
 
-
 /** 判断是否是本地回环地址（localhost 允许；用于 UI 提示与日志，不改变放行规则） */
 export function isLoopbackHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
   return host === 'localhost' || host === '127.0.0.1' || host === '::1'
 }
-
 
 /** bounds 安全化：必须是有限非负整数；不合法时返回 null（调用方保持原 bounds） */
 export function sanitizeBrowserBounds(raw: unknown): BrowserBounds | null {
@@ -624,7 +580,6 @@ export function sanitizeBrowserBounds(raw: unknown): BrowserBounds | null {
   if (width > 10_000 || height > 10_000) return null
   return { x, y, width, height }
 }
-
 
 /** 工具/自动化目标（CSS selector 或可见文本）的长度与内容基础校验 */
 export function validateBrowserTarget(raw: unknown): { ok: true; target: string } | { ok: false; reason: string } {

@@ -22,8 +22,6 @@ import { ArtifactVersionStore } from './artifacts'
 import type { TokenUsageRecord } from './agent'
 import { TokenActivityService } from './agent'
 
-
-
 /** 收起态窗口（含 8px 透明留白给阴影）。 */
 const COLLAPSED = { width: 356, height: 84 }
 
@@ -31,7 +29,6 @@ const COLLAPSED = { width: 356, height: 84 }
 const EXPANDED = { width: 396, height: 520 }
 
 const EDGE = 8
-
 
 const TOOL_LABELS: Record<string, string> = {
   run_command: '运行命令',
@@ -60,7 +57,6 @@ const TOOL_LABELS: Record<string, string> = {
   memory: '整理记忆'
 }
 
-
 let islandWindow: BrowserWindow | null = null
 
 let expanded = false
@@ -75,7 +71,6 @@ let openMainHandler: (() => void) | null = null
 
 let requestCloseHandler: (() => void) | null = null
 
-
 function idleSnapshot(): IslandSnapshot {
   return {
     status: 'idle',
@@ -89,7 +84,6 @@ function idleSnapshot(): IslandSnapshot {
   }
 }
 
-
 let snapshot: IslandSnapshot = idleSnapshot()
 
 /** 灵动岛跟随的主窗口会话；null = 尚未选择会话。 */
@@ -98,12 +92,10 @@ let followedSessionId: string | null = null
 /** 创作台覆盖在 Agent 之上时，灵动岛优先显示创作台任务。 */
 let studioActive = false
 
-
 export function configureIsland(options: { openMain: () => void; requestClose?: () => void }): void {
   openMainHandler = options.openMain
   requestCloseHandler = options.requestClose ?? null
 }
-
 
 function isEnabled(): boolean {
   try {
@@ -112,7 +104,6 @@ function isEnabled(): boolean {
     return true
   }
 }
-
 
 function clampPosition(x: number, y: number, width: number, height: number): { x: number; y: number } {
   const display = screen.getDisplayMatching({ x: Math.round(x), y: Math.round(y), width, height })
@@ -123,7 +114,6 @@ function clampPosition(x: number, y: number, width: number, height: number): { x
   }
 }
 
-
 function defaultPosition(width: number, height: number): { x: number; y: number } {
   const area = screen.getPrimaryDisplay().workArea
   return {
@@ -131,7 +121,6 @@ function defaultPosition(width: number, height: number): { x: number; y: number 
     y: area.y + area.height - height - 28
   }
 }
-
 
 function readSavedPosition(width: number, height: number): { x: number; y: number } {
   let saved: { x: number; y: number } | null = null
@@ -144,7 +133,6 @@ function readSavedPosition(width: number, height: number): { x: number; y: numbe
   return clampPosition(raw.x, raw.y, width, height)
 }
 
-
 function rendererUrl(): { url?: string; file?: string } {
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) {
@@ -154,7 +142,6 @@ function rendererUrl(): { url?: string; file?: string } {
   }
   return { file: join(__dirname, '../renderer/index.html') }
 }
-
 
 function createWindow(): BrowserWindow {
   if (islandWindow && !islandWindow.isDestroyed()) return islandWindow
@@ -230,7 +217,6 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-
 export function createIsland(): void {
   if (!isEnabled()) return
   const isTest = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
@@ -239,14 +225,12 @@ export function createIsland(): void {
   createWindow()
 }
 
-
 export function showIsland(): void {
   if (!isEnabled()) return
   const win = createWindow()
   if (win.isMinimized()) win.restore()
   win.showInactive()
 }
-
 
 export function hideIsland(destroy = false): void {
   const win = islandWindow
@@ -256,7 +240,6 @@ export function hideIsland(destroy = false): void {
   win.hide()
   if (destroy) win.destroy()
 }
-
 
 export function toggleIsland(): void {
   if (!isEnabled()) return
@@ -268,22 +251,18 @@ export function toggleIsland(): void {
   showIsland()
 }
 
-
 export function syncIslandVisibility(): void {
   if (isEnabled()) createIsland()
   else hideIsland(true)
 }
 
-
 export function isIslandWindow(win: BrowserWindow | null): boolean {
   return !!win && win === islandWindow
 }
 
-
 export function getIslandWindow(): BrowserWindow | null {
   return islandWindow && !islandWindow.isDestroyed() ? islandWindow : null
 }
-
 
 export function setIslandExpanded(next: boolean): void {
   const win = islandWindow
@@ -316,11 +295,9 @@ export function setIslandExpanded(next: boolean): void {
   }
 }
 
-
 export function getIslandSnapshot(): IslandSnapshot {
   return snapshot
 }
-
 
 /** 清除全部对话后把桌面小伙伴恢复为空闲，避免它继续指向已删除的会话。 */
 export function resetIslandAfterClear(): void {
@@ -330,7 +307,6 @@ export function resetIslandAfterClear(): void {
   sendSnapshot()
 }
 
-
 /** 单个会话被删除时，只在它正是岛上显示的会话时复位，避免快速发送落到别的会话。 */
 export function clearIslandSession(sessionId: string): void {
   if (snapshot.sessionId !== sessionId) return
@@ -338,7 +314,6 @@ export function clearIslandSession(sessionId: string): void {
   snapshot = idleSnapshot()
   sendSnapshot()
 }
-
 
 /**
  * 主窗口切换会话：灵动岛实时跟随当前会话。
@@ -375,7 +350,6 @@ export function syncIslandSession(
   }
   sendSnapshot()
 }
-
 
 /**
  * 主窗口切到创作台：灵动岛显示当前作品、活动任务与进度。
@@ -430,25 +404,21 @@ export function syncIslandStudio(input: IslandStudioSyncInput): void {
   sendSnapshot()
 }
 
-
 function sendSnapshot(): void {
   const win = getIslandWindow()
   if (!win || win.isDestroyed()) return
   win.webContents.send(ISLAND_UPDATE_CHANNEL, snapshot)
 }
 
-
 function broadcast(): void {
   snapshot = { ...snapshot, updatedAt: Date.now() }
   sendSnapshot()
 }
 
-
 function publish(next: Partial<IslandSnapshot>): void {
   snapshot = { ...snapshot, ...next, updatedAt: Date.now() }
   sendSnapshot()
 }
-
 
 function sessionTitle(sessionId: string): string {
   try {
@@ -458,7 +428,6 @@ function sessionTitle(sessionId: string): string {
   }
 }
 
-
 function sessionTodos(sessionId: string): TodoItem[] {
   try {
     return getSessionStore().get(sessionId)?.todos ?? []
@@ -467,12 +436,10 @@ function sessionTodos(sessionId: string): TodoItem[] {
   }
 }
 
-
 function isMainFocused(): boolean {
   const wins = BrowserWindow.getAllWindows().filter((win) => !isIslandWindow(win) && win.isVisible())
   return wins.some((win) => win.isFocused())
 }
-
 
 /** 只把消息交给可见的主窗口；隐藏的 PDF 打印窗口/后台窗口不能抢走快速发送。 */
 function findVisibleMainWindow(): BrowserWindow | null {
@@ -483,12 +450,10 @@ function findVisibleMainWindow(): BrowserWindow | null {
   )
 }
 
-
 function inProgressDetail(todos: TodoItem[]): string | null {
   const current = todos.find((todo) => todo.status === 'in_progress')
   return current ? `正在做：${current.text}` : null
 }
-
 
 /**
  * 把主进程运行事件翻译成小伙伴的一句话状态。
@@ -590,7 +555,6 @@ export function ingestIslandRuntimeEvent(event: RuntimeEvent): void {
   }
 }
 
-
 /** 主窗口获得焦点后，小伙伴的“未读”提示消除。 */
 export function markIslandRead(): void {
   if (!snapshot.unread && snapshot.status !== 'done') return
@@ -602,7 +566,6 @@ export function markIslandRead(): void {
   snapshot = next
   sendSnapshot()
 }
-
 
 export function quickSendToMain(input: IslandQuickSendInput): boolean {
   const text = typeof input?.text === 'string' ? input.text.trim() : ''
@@ -621,7 +584,6 @@ export function quickSendToMain(input: IslandQuickSendInput): boolean {
   return true
 }
 
-
 export function openMainFromIsland(input: IslandOpenMainInput): boolean {
   openMainHandler?.()
   const target = findVisibleMainWindow()
@@ -634,21 +596,13 @@ export function openMainFromIsland(input: IslandOpenMainInput): boolean {
   return true
 }
 
-
-
-
 const MAX_FILE_BYTES = 64 * 1024
-
 
 const MAX_BODY_CHARS = 16 * 1024
 
-
 const MAX_COMMANDS = 100
 
-
 const NAME_RE = /^[a-z][a-z0-9-]{0,48}$/i
-
-
 
 function unquote(value: string): string {
   const trimmed = value.trim()
@@ -660,8 +614,6 @@ function unquote(value: string): string {
   }
   return trimmed
 }
-
-
 
 export function parseCommandFile(
   raw: string,
@@ -703,8 +655,6 @@ export function parseCommandFile(
   }
 }
 
-
-
 function readCommandsFrom(
   dir: string,
   scope: 'project' | 'user',
@@ -735,8 +685,6 @@ function readCommandsFrom(
   }
 }
 
-
-
 function isInside(root: string, target: string): boolean {
   const normalize = (value: string): string => (process.platform === 'win32' ? value.toLowerCase() : value)
   const base = normalize(root)
@@ -744,8 +692,6 @@ function isInside(root: string, target: string): boolean {
   const prefix = base.endsWith(sep) ? base : `${base}${sep}`
   return candidate === base || candidate.startsWith(prefix)
 }
-
-
 
 /** 项目命令目录必须是工作区内的真实目录；拒绝把 .morrow 链接到工作区外读取文件。 */
 function projectCommandsDir(workspace: string): string | null {
@@ -758,8 +704,6 @@ function projectCommandsDir(workspace: string): string | null {
   }
 }
 
-
-
 /** 用户命令先读，项目命令后读（同名时项目覆盖用户）。 */
 export function discoverCustomCommands(workspace: string | null, home = homedir()): CustomCommandInfo[] {
   const commands = new Map<string, CustomCommandInfo>()
@@ -770,8 +714,6 @@ export function discoverCustomCommands(workspace: string | null, home = homedir(
   }
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name)).slice(0, MAX_COMMANDS)
 }
-
-
 
 /* ── 公开类型（与渲染层 features/projects/projects-api.ts 保持一致） ── */
 
@@ -792,15 +734,11 @@ export interface ProjectRecord {
   updatedAt: number
 }
 
-
-
 export interface ProjectSummary extends ProjectRecord {
   /** 记录中的工作区当前是否还存在（便于 UI 提示「工作区已移动/删除」） */
   workspaceExists: boolean
   knowledgeCount: number
 }
-
-
 
 export interface ProjectKnowledgeInfo {
   /** 相对工作区的 POSIX 路径 */
@@ -814,8 +752,6 @@ export interface ProjectKnowledgeInfo {
   /** 校验失败原因（UI/上下文生成时跳过该文件） */
   error?: string
 }
-
-
 
 export interface ProjectContext {
   project: ProjectRecord
@@ -835,8 +771,6 @@ export interface ProjectContext {
   truncated: boolean
 }
 
-
-
 export interface ProjectCreateInput {
   workspace: string
   name?: string
@@ -847,8 +781,6 @@ export interface ProjectCreateInput {
   active?: boolean
 }
 
-
-
 export interface ProjectUpdateInput {
   name?: string
   description?: string
@@ -857,8 +789,6 @@ export interface ProjectUpdateInput {
   pinned?: boolean
   active?: boolean
 }
-
-
 
 export interface ProjectContextOptions {
   /** 显式数据目录（Lead 集成入口可不传，用 configure/环境变量） */
@@ -871,51 +801,34 @@ export interface ProjectContextOptions {
   ignoreActive?: boolean
 }
 
-
-
 export interface ProjectServiceOptions {
   dataDir: string
   now?: () => number
 }
 
-
-
 export const PROJECT_STORE_VERSION = 1
-
 
 export const PROJECT_STORE_FILE = 'projects.json'
 
-
 export const PROJECT_MAX_NAME_CHARS = 80
-
 
 export const PROJECT_MAX_DESCRIPTION_CHARS = 1000
 
-
 export const PROJECT_MAX_INSTRUCTIONS_CHARS = 8000
-
 
 export const PROJECT_MAX_KNOWLEDGE = 20
 
-
 export const PROJECT_MAX_RECORDS = 200
-
 
 export const PROJECT_STORE_MAX_BYTES = 2 * 1024 * 1024
 
-
 export const PROJECT_KNOWLEDGE_MAX_BYTES = 512 * 1024
-
 
 export const PROJECT_KNOWLEDGE_MAX_EXCERPT_CHARS = 4000
 
-
 export const PROJECT_CONTEXT_DEFAULT_TOKENS = 2000
 
-
 export const PROJECT_MEMORY_DEFAULT_TOKENS = 500
-
-
 
 /** 允许作为项目知识的文本类扩展名 */
 const KNOWLEDGE_TEXT_EXTS = new Set([
@@ -925,24 +838,16 @@ const KNOWLEDGE_TEXT_EXTS = new Set([
   'svg'
 ])
 
-
-
 const BLOCKED_KNOWLEDGE_PREFIXES = ['.morrow', '.git', 'node_modules']
-
-
 
 interface ProjectStoreFile {
   version: number
   projects: ProjectRecord[]
 }
 
-
-
 function newProjectId(): string {
   return `proj_${createHash('sha1').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 12)}`
 }
-
-
 
 function atomicWriteJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -995,8 +900,6 @@ function atomicWriteJson(path: string, data: unknown): void {
   }
 }
 
-
-
 function readJsonSafe(path: string): unknown | null {
   if (!existsSync(path)) return null
   try {
@@ -1011,13 +914,9 @@ function readJsonSafe(path: string): unknown | null {
   }
 }
 
-
-
 function toPosixPath(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).join('/')
 }
-
-
 
 function clampText(value: unknown, max: number, label: string, required = false): string {
   if (value === undefined || value === null) {
@@ -1031,8 +930,6 @@ function clampText(value: unknown, max: number, label: string, required = false)
   return cleaned
 }
 
-
-
 /** 工作区必须是真实存在的目录；返回 realpath（链接归一） */
 export function normalizeProjectWorkspace(workspace: string): string {
   if (typeof workspace !== 'string' || !workspace.trim()) throw new Error('缺少工作区路径')
@@ -1045,8 +942,6 @@ export function normalizeProjectWorkspace(workspace: string): string {
   if (!statSync(real).isDirectory()) throw new Error('工作区不是文件夹')
   return real
 }
-
-
 
 export class ProjectService {
   private readonly dataDir: string
@@ -1393,8 +1288,6 @@ export class ProjectService {
   }
 }
 
-
-
 function buildMemoryInjection(workspace: string, options: ProjectContextOptions): MemoryInjection | null {
   const dataDir = resolveMemoryDataDir(options.dataDir)
   if (!dataDir) return null
@@ -1409,14 +1302,10 @@ function buildMemoryInjection(workspace: string, options: ProjectContextOptions)
   }
 }
 
-
-
 function clampTokens(value: number | undefined, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(8000, Math.max(128, Math.round(value)))
 }
-
-
 
 /** 在给定 token 预算内截断正文，保留可读后缀；预算连后缀都放不下时返回 null */
 function truncateForBudget(body: string, availableTokens: number, suffix: string): string | null {
@@ -1435,11 +1324,7 @@ function truncateForBudget(body: string, availableTokens: number, suffix: string
   return null
 }
 
-
-
 let projectRuntimeDataDir: string | null = null
-
-
 
 /** 功能模块启动时调用一次（features/projects.ts 里会调）；传 null 可重置（测试用） */
 export function configureProjectsRuntime(dataDir: string | null): void {
@@ -1450,8 +1335,6 @@ export function configureProjectsRuntime(dataDir: string | null): void {
   projectRuntimeDataDir = resolve(dataDir)
 }
 
-
-
 export function resolveProjectsDataDir(explicit?: string | null): string | null {
   if (explicit && explicit.trim()) return resolve(explicit)
   if (projectRuntimeDataDir) return projectRuntimeDataDir
@@ -1459,8 +1342,6 @@ export function resolveProjectsDataDir(explicit?: string | null): string | null 
   if (env && env.trim()) return resolve(env)
   return null
 }
-
-
 
 /**
  * Lead 集成入口：`getProjectContext(workspace)`。
@@ -1478,8 +1359,6 @@ export function getProjectContext(workspace: string, options: ProjectContextOpti
   const service = new ProjectService({ dataDir })
   return service.context(real, { ...options, dataDir })
 }
-
-
 
 /**
  * Lead 集成入口（一步到位）：返回可拼进 system prompt 的项目 + 记忆文本。
@@ -1502,46 +1381,30 @@ export function getProjectPrompt(workspace: string | null | undefined, options: 
   }
 }
 
-
-
 const FILE_VERSION = 1
-
 
 const MAX_RULES = 300
 
-
 const MAX_LOG_BYTES = 1024 * 1024
-
 
 const MAX_LOG_ENTRIES = 100
 
-
 const VALID_KINDS: ReadonlySet<PermissionRuleKind> = new Set(['tool', 'prefix', 'path'])
-
 
 const PREFIX_TOOLS = new Set(['run_command', 'terminal'])
 
-
 const PATH_TOOLS = new Set(['write_file', 'edit_file', 'write_xlsx', 'edit_docx'])
-
-
 
 interface RulesFile {
   version: number
   rules: PermissionRule[]
 }
 
-
-
 let runtimeDataDir: string | null = null
-
-
 
 export function configurePermissionRulesRuntime(dataDir: string | null): void {
   runtimeDataDir = dataDir && dataDir.trim() ? resolve(dataDir) : null
 }
-
-
 
 function dataDirOf(explicit?: string): string {
   if (explicit && explicit.trim()) return resolve(explicit)
@@ -1550,8 +1413,6 @@ function dataDirOf(explicit?: string): string {
   if (env && env.trim()) return resolve(env)
   throw new Error('权限规则数据目录未配置')
 }
-
-
 
 function atomicWrite(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -1568,8 +1429,6 @@ function atomicWrite(path: string, content: string): void {
   }
 }
 
-
-
 /** 规则与运行时都使用真实路径，避免 junction/符号链接导致规则「写了却不生效」。 */
 function canonicalWorkspace(workspace: string): string {
   const trimmed = workspace.trim()
@@ -1582,22 +1441,16 @@ function canonicalWorkspace(workspace: string): string {
   }
 }
 
-
-
 function workspaceKey(workspace: string): string {
   const canonical = canonicalWorkspace(workspace)
   return process.platform === 'win32' ? canonical.toLowerCase() : canonical
 }
-
-
 
 function normalizeWorkspace(workspace: string): string {
   const normalized = canonicalWorkspace(workspace)
   if (!normalized) throw new Error('缺少工作区路径。')
   return normalized
 }
-
-
 
 function isRule(value: unknown): value is PermissionRule {
   if (!value || typeof value !== 'object') return false
@@ -1613,8 +1466,6 @@ function isRule(value: unknown): value is PermissionRule {
     typeof rule.createdAt === 'number'
   )
 }
-
-
 
 export class PermissionRulesService {
   constructor(private readonly dataDir: string) {}
@@ -1807,25 +1658,16 @@ export class PermissionRulesService {
   }
 }
 
-
-
 let instance: PermissionRulesService | null = null
-
 
 export function getPermissionRulesService(explicitDataDir?: string): PermissionRulesService {
   if (!instance) instance = new PermissionRulesService(dataDirOf(explicitDataDir))
   return instance
 }
 
-
-
 export type { PermissionDecision }
 
-
-
 let artifactVersionStore: ArtifactVersionStore | null = null
-
-
 
 export function getArtifactVersionStore(): ArtifactVersionStore {
   if (!artifactVersionStore) {
@@ -1834,21 +1676,14 @@ export function getArtifactVersionStore(): ArtifactVersionStore {
   return artifactVersionStore
 }
 
-
-
 let tokenActivity: TokenActivityService | null = null
 
-
 let legacyUsageSynced = false
-
-
 
 export function getTokenActivityService(): TokenActivityService {
   if (!tokenActivity) tokenActivity = new TokenActivityService(resolveDataDir())
   return tokenActivity
 }
-
-
 
 /** 启动时执行一次历史回填；失败的旧会话不影响应用启动。 */
 export function initializeTokenActivity(): void {
@@ -1866,8 +1701,6 @@ export function initializeTokenActivity(): void {
   }
 }
 
-
-
 export function recordTokenUsage(input: TokenUsageRecord): void {
   try {
     getTokenActivityService().record(input)
@@ -1876,70 +1709,46 @@ export function recordTokenUsage(input: TokenUsageRecord): void {
   }
 }
 
-
-
 type SearchInvalidationHandler = (sessionId: string) => void | Promise<void>
-
-
 
 let invalidateHandler: SearchInvalidationHandler | null = null
 
-
 let clearHandler: (() => void | Promise<void>) | null = null
-
-
 
 export function setSearchInvalidationHandler(next: SearchInvalidationHandler | null): void {
   invalidateHandler = next
 }
 
-
-
 export function setSearchClearHandler(next: (() => void | Promise<void>) | null): void {
   clearHandler = next
 }
-
-
 
 /** 会话删除/覆盖后通知索引失效。 */
 export async function invalidateSearchSession(sessionId: string): Promise<void> {
   await invalidateHandler?.(sessionId)
 }
 
-
-
 /** 清除全部对话后立刻丢掉搜索索引里的会话条目。 */
 export async function clearSearchIndex(): Promise<void> {
   await clearHandler?.()
 }
 
-
-
 let quitting = false
 
-
 let getMainWindowProvider: () => BrowserWindow | null = () => null
-
-
 
 export function configureLifecycle(getMainWindow: () => BrowserWindow | null): void {
   getMainWindowProvider = getMainWindow
 }
 
-
-
 export function isAppQuitting(): boolean {
   return quitting
 }
-
-
 
 /** before-quit 由系统/托盘触发时同步状态，主窗口 close 处理器据此放行。 */
 export function markAppQuitting(): void {
   quitting = true
 }
-
-
 
 export function quitApp(): void {
   if (quitting) return
@@ -1960,8 +1769,6 @@ export function quitApp(): void {
   timer.unref?.()
 }
 
-
-
 /** 主窗口最小化到任务栏：确保不是被隐藏，任务栏必须有图标。 */
 export function minimizeMainWindow(win: BrowserWindow | null): void {
   if (!win || win.isDestroyed()) return
@@ -1970,8 +1777,6 @@ export function minimizeMainWindow(win: BrowserWindow | null): void {
   win.minimize()
 }
 
-
-
 function persistCloseAction(action: Exclude<CloseAction, 'ask'>): void {
   try {
     getSettingsStore().update({ closeAction: action })
@@ -1979,8 +1784,6 @@ function persistCloseAction(action: Exclude<CloseAction, 'ask'>): void {
     log.warn('persist close action failed', { error: String(err) })
   }
 }
-
-
 
 /** 主窗口的 close 事件入口（标题栏关闭按钮、Alt+F4）。 */
 export function handleMainWindowClose(event: ElectronEvent, win: BrowserWindow): void {
@@ -2007,8 +1810,6 @@ export function handleMainWindowClose(event: ElectronEvent, win: BrowserWindow):
   }
 }
 
-
-
 /** 渲染层在关闭询问弹窗里做出选择后调用：记住选择并立即执行。 */
 export function resolveWindowClose(win: BrowserWindow | null, action: Exclude<CloseAction, 'ask'>): void {
   if (quitting) return
@@ -2019,8 +1820,6 @@ export function resolveWindowClose(win: BrowserWindow | null, action: Exclude<Cl
   }
   quitApp()
 }
-
-
 
 /**
  * 灵动岛右键菜单的“关闭 Morrow”：岛是独立小窗，用系统原生询问框，
@@ -2069,21 +1868,13 @@ export async function requestCloseFromIsland(): Promise<void> {
   }
 }
 
-
-
 export type AppIconTheme = 'dark' | 'light'
-
-
 
 let iconTheme: AppIconTheme = 'dark'
 
-
 let iconWindow: BrowserWindow | null = null
 
-
 let iconTray: Tray | null = null
-
-
 
 function iconCandidates(file: string): string[] {
   return [
@@ -2094,25 +1885,17 @@ function iconCandidates(file: string): string[] {
   ]
 }
 
-
-
 export function appIconPath(next: AppIconTheme = iconTheme): string | null {
   return iconCandidates(`icon-${next}.png`).find((candidate) => existsSync(candidate)) ?? null
 }
-
-
 
 function trayIconPath(next: AppIconTheme): string | null {
   return iconCandidates(`tray-${next}.png`).find((candidate) => existsSync(candidate)) ?? null
 }
 
-
-
 export function currentIconTheme(): AppIconTheme {
   return iconTheme
 }
-
-
 
 function applyIconToTargets(): void {
   const icon = appIconPath(iconTheme)
@@ -2125,37 +1908,25 @@ function applyIconToTargets(): void {
   }
 }
 
-
-
 export function setAppIconTheme(next: AppIconTheme): void {
   iconTheme = next === 'light' ? 'light' : 'dark'
   applyIconToTargets()
 }
-
-
 
 export function attachIconWindow(win: BrowserWindow): void {
   iconWindow = win
   applyIconToTargets()
 }
 
-
-
 export function attachIconTray(tray: Tray): void {
   iconTray = tray
   applyIconToTargets()
 }
 
-
-
 const APP_RESTART_NOTE =
   '应用重启前目标正在运行，已自动暂停；轮次与预算计数已保留，可从目标条「继续」接着做。'
 
-
-
 let goalsRecoveredThisProcess = false
-
-
 
 /** 重启后把 active 目标转为可恢复的 paused；保留轮次、摘要与预算计数。 */
 function recoverGoalsOnStartup(sessionStore: ReturnType<typeof getSessionStore>): number {
@@ -2177,8 +1948,6 @@ function recoverGoalsOnStartup(sessionStore: ReturnType<typeof getSessionStore>)
   return count
 }
 
-
-
 /** 应用关闭时研究轮次无法继续：重启后如实标记为停止，用户可继续发消息。 */
 function recoverResearchOnStartup(sessionStore: ReturnType<typeof getSessionStore>): void {
   for (const meta of sessionStore.list()) {
@@ -2197,8 +1966,6 @@ function recoverResearchOnStartup(sessionStore: ReturnType<typeof getSessionStor
     sessionStore.save(session)
   }
 }
-
-
 
 /**
  * 临时对话只在内存中，正常退出时随进程消失；崩溃/强杀可能留下它的撤销快照、
@@ -2228,8 +1995,6 @@ function cleanupTemporarySessionData(): void {
   } catch {
   }
 }
-
-
 
 /** 启动数据：设置 + 会话元信息 + 项目列表 + 应用信息 */
 export async function createBootstrap(): Promise<Bootstrap> {

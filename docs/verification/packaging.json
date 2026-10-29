@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-10-28T17:27:08.618Z",
+  "startedAt": "2026-10-29T15:42:17.283Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,47 +13,47 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 19326,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output"
+      "durationMs": 19715,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050"
     },
     {
       "name": "zip",
       "exitCode": 0,
-      "durationMs": 19331
+      "durationMs": 19126
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 18877,
-      "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-portable.exe)"
+      "durationMs": 18638,
+      "command": "launcher(C:\\交付成品\\Morrow\\release-r050\\Morrow-0.2.0-portable.exe)"
     },
     {
       "name": "nsis",
       "exitCode": 0,
-      "durationMs": 20367,
-      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win nsis --x64 --prepackaged C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked --publish never -c.directories.output=C:\\交付成品\\Morrow\\release"
+      "durationMs": 20156,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win nsis --x64 --prepackaged C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050\\win-unpacked --publish never -c.directories.output=C:\\交付成品\\Morrow\\release-r050"
     },
     {
       "name": "installer",
       "exitCode": 0,
-      "durationMs": 21722,
-      "command": "installer(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe)"
+      "durationMs": 21482,
+      "command": "installer(C:\\交付成品\\Morrow\\release-r050\\Morrow-0.2.0-setup.exe)"
     }
   ],
   "artifacts": {
     "portableFolder": {
       "kind": "folder",
-      "path": "deliver/Morrow-0.2.0-portable",
-      "exePath": "deliver/Morrow-0.2.0-portable/Morrow.exe",
+      "path": "release-r050/Morrow-0.2.0-portable",
+      "exePath": "release-r050/Morrow-0.2.0-portable/Morrow.exe",
       "exeSizeBytes": 126464,
-      "exeSha256": "91748901f56f57fbd5803906b5ef97973fd5edb89c7d36f131f409ec63522980",
-      "appExePath": "deliver/Morrow-0.2.0-portable/Morrow-app.exe",
+      "exeSha256": "f37e951d5407e7e09eb11509dca7fc776e98e1113b7706344bc9bb4ff4f3a05e",
+      "appExePath": "release-r050/Morrow-0.2.0-portable/Morrow-app.exe",
       "appExeSizeBytes": 247250432,
-      "appExeSha256": "a5ac2d968acdfad8601a247f7e59ca148ff6d56995e2887fcb80a0566b27d51f",
-      "appAsarSha256": "3b5058b4d308faf068bc4ef0a76142935ec046d0f0e9a5e4d24657d9ff228c7e",
-      "sizeBytes": 540317524,
-      "sizeMB": 515.29,
-      "fileCount": 367,
+      "appExeSha256": "776a2e41d5023987a1e005a51e63c480f581981dcb1c599a32ecf3a7e71ac2b6",
+      "appAsarSha256": "041ae4aed0411d90c1fa5d9ac3411b386f5e306007a5755ffba6270fff498a63",
+      "sizeBytes": 540593990,
+      "sizeMB": 515.55,
+      "fileCount": 368,
       "extras": [
         "portable.marker",
         "使用说明.txt",
@@ -67,7 +67,7 @@
         "launcher": {
           "signed": false,
           "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.2.0-portable\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050\\win-unpacked\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -77,7 +77,7 @@
         "app": {
           "signed": false,
           "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.2.0-portable\\Morrow-app.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "statusMessage": "未对文件 C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050\\win-unpacked\\Morrow-app.exe 进行数字签名。无法在当前系统上运行该脚本。有关运行脚本和设置执行策略的详细信息，请参阅 https:/go.microsoft.com/fwlink/?LinkID=135170 中的 about_Execution_Policies",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -89,10 +89,10 @@
     },
     "portableZip": {
       "kind": "zip",
-      "path": "deliver/Morrow-0.2.0-portable-win64.zip",
-      "sizeBytes": 220307201,
-      "sizeMB": 210.1,
-      "sha256": "df4e9cdf0019cf29a3dd8314c5353f21e46935ee75994cc39edb048e420c3365",
+      "path": "release-r050/Morrow-0.2.0-portable-win64.zip",
+      "sizeBytes": 220448626,
+      "sizeMB": 210.24,
+      "sha256": "f90ee8a8b2fb56b6f15b691285e581e1650073980179a200acd0429b22c3c446",
       "signed": false,
       "signature": {
         "signed": false,
@@ -104,9 +104,9 @@
     "portableExe": {
       "kind": "portable-exe",
       "path": "deliver/Morrow-0.2.0-portable.exe",
-      "sizeBytes": 220408832,
-      "sizeMB": 210.2,
-      "sha256": "15ca7437e90a7ebe5b0530bef33e09fce285165d6115dd4fcede75727d9f9912",
+      "sizeBytes": 220550144,
+      "sizeMB": 210.33,
+      "sha256": "31f5b086db8bc280150ebffdd198b95f3832ac5853c3ca51168e6b9453d0989f",
       "signed": false,
       "signature": {
         "signed": false,
@@ -123,14 +123,14 @@
     "installer": {
       "kind": "nsis-installer",
       "path": "deliver/Morrow-0.2.0-setup.exe",
-      "sizeBytes": 168273799,
-      "sizeMB": 160.48,
-      "sha256": "13e44572f4ffdb706dc8a5ebbb94d5c9220efd515e34328b793080c08f262714",
+      "sizeBytes": 168375330,
+      "sizeMB": 160.58,
+      "sha256": "c223f38060921b40adbed87d597692f737c5f6b1fc0a018d26300f05887e4eb8",
       "signed": false,
       "signature": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\release-r050\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -141,7 +141,7 @@
     }
   },
   "logs": {
-    "combined": "docs/verification/logs/dist-all-2026-10-28T17-27-08-531Z.log"
+    "combined": "docs/verification/logs/dist-all-2026-10-29T15-42-17-252Z.log"
   },
   "signing": {
     "enabled": false,
@@ -156,7 +156,7 @@
         "launcher": {
           "signed": false,
           "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.2.0-portable\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050\\win-unpacked\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -166,7 +166,7 @@
         "app": {
           "signed": false,
           "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\deliver\\Morrow-0.2.0-portable\\Morrow-app.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "statusMessage": "未对文件 C:\\交付成品\\Morrow\\tmp\\electron-builder-output-r050\\win-unpacked\\Morrow-app.exe 进行数字签名。无法在当前系统上运行该脚本。有关运行脚本和设置执行策略的详细信息，请参阅 https:/go.microsoft.com/fwlink/?LinkID=135170 中的 about_Execution_Policies",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -192,7 +192,7 @@
       "installer": {
         "signed": false,
         "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "statusMessage": "The file C:\\交付成品\\Morrow\\release-r050\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -204,121 +204,34 @@
   "delivery": {
     "dir": "deliver",
     "cleaned": true,
-    "createdAt": "2026-10-28T17:28:33.796Z",
-    "folder": {
-      "path": "deliver/Morrow-0.2.0-portable",
-      "exePath": "deliver/Morrow-0.2.0-portable/Morrow.exe",
-      "appExePath": "deliver/Morrow-0.2.0-portable/Morrow-app.exe",
-      "sizeBytes": 540317524,
-      "sizeMB": 515.29,
-      "fileCount": 367,
-      "exeSizeBytes": 126464,
-      "exeSha256": "91748901f56f57fbd5803906b5ef97973fd5edb89c7d36f131f409ec63522980",
-      "appExeSizeBytes": 247250432,
-      "appExeSha256": "a5ac2d968acdfad8601a247f7e59ca148ff6d56995e2887fcb80a0566b27d51f",
-      "appAsarSha256": "3b5058b4d308faf068bc4ef0a76142935ec046d0f0e9a5e4d24657d9ff228c7e"
-    },
+    "createdAt": "2026-10-29T15:43:41.952Z",
+    "folder": null,
     "artifacts": [
-      {
-        "name": "portable-folder",
-        "path": "deliver/Morrow-0.2.0-portable",
-        "sizeBytes": 540317524,
-        "sizeMB": 515.29,
-        "fileCount": 367
-      },
-      {
-        "name": "portable-zip",
-        "path": "deliver/Morrow-0.2.0-portable-win64.zip",
-        "sizeBytes": 220307201,
-        "sizeMB": 210.1,
-        "sha256": "df4e9cdf0019cf29a3dd8314c5353f21e46935ee75994cc39edb048e420c3365"
-      },
       {
         "name": "portable-exe",
         "path": "deliver/Morrow-0.2.0-portable.exe",
-        "sizeBytes": 220408832,
-        "sizeMB": 210.2,
-        "sha256": "15ca7437e90a7ebe5b0530bef33e09fce285165d6115dd4fcede75727d9f9912"
+        "sizeBytes": 220550144,
+        "sizeMB": 210.33,
+        "sha256": "31f5b086db8bc280150ebffdd198b95f3832ac5853c3ca51168e6b9453d0989f"
       },
       {
         "name": "installer",
         "path": "deliver/Morrow-0.2.0-setup.exe",
-        "sizeBytes": 168273799,
-        "sizeMB": 160.48,
-        "sha256": "13e44572f4ffdb706dc8a5ebbb94d5c9220efd515e34328b793080c08f262714"
+        "sizeBytes": 168375330,
+        "sizeMB": 160.58,
+        "sha256": "c223f38060921b40adbed87d597692f737c5f6b1fc0a018d26300f05887e4eb8"
       }
     ],
-    "usage": "deliver/使用说明.txt",
-    "sha256Sums": "deliver/SHA256SUMS.txt",
-    "checksums": [
-      {
-        "path": "Morrow-0.2.0-portable-win64.zip",
-        "sizeBytes": 220307201,
-        "sha256": "df4e9cdf0019cf29a3dd8314c5353f21e46935ee75994cc39edb048e420c3365"
-      },
-      {
-        "path": "Morrow-0.2.0-portable.exe",
-        "sizeBytes": 220408832,
-        "sha256": "15ca7437e90a7ebe5b0530bef33e09fce285165d6115dd4fcede75727d9f9912"
-      },
-      {
-        "path": "Morrow-0.2.0-setup.exe",
-        "sizeBytes": 168273799,
-        "sha256": "13e44572f4ffdb706dc8a5ebbb94d5c9220efd515e34328b793080c08f262714"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/Morrow.exe",
-        "sizeBytes": 126464,
-        "sha256": "91748901f56f57fbd5803906b5ef97973fd5edb89c7d36f131f409ec63522980"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/Morrow-app.exe",
-        "sizeBytes": 247250432,
-        "sha256": "a5ac2d968acdfad8601a247f7e59ca148ff6d56995e2887fcb80a0566b27d51f"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/resources/app.asar",
-        "sizeBytes": 79766142,
-        "sha256": "3b5058b4d308faf068bc4ef0a76142935ec046d0f0e9a5e4d24657d9ff228c7e"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/portable.marker",
-        "sizeBytes": 0,
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/使用说明.txt",
-        "sizeBytes": 6583,
-        "sha256": "f0cccf462ec6c780a9c4776a95aac2a5b140688e0ac5702f2a80dc6460cf2062"
-      },
-      {
-        "path": "Morrow-0.2.0-portable/LICENSE",
-        "sizeBytes": 1070,
-        "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
-      },
-      {
-        "path": "使用说明.txt",
-        "sizeBytes": 7133,
-        "sha256": "617df9990a7cc3ffd43921804867ebe3509f938bce7ad7f047374e4ee50f3557"
-      },
-      {
-        "path": "LICENSE",
-        "sizeBytes": 1070,
-        "sha256": "5a147a0421a711a0b44a5ecab6f6b0e8f0002dca17a8ecccef1599faaf70aa97"
-      }
-    ],
-    "totalSizeBytes": 1149316609,
-    "totalSizeMB": 1096.07,
-    "totalFileCount": 373,
-    "localData": {
-      "path": "deliver/Morrow Data",
-      "sizeBytes": 28419564,
-      "fileCount": 276,
-      "preserved": true
-    }
+    "usage": null,
+    "sha256Sums": null,
+    "checksums": [],
+    "totalSizeBytes": 468963766,
+    "totalSizeMB": 447.24,
+    "totalFileCount": 3,
+    "localData": null
   },
   "primaryArtifact": "portableFolder",
-  "notes": "Morrow 0.2.0 打包完成：启动器嵌入完整 Win32 manifest；交付便携版 exe 与安装包。未配置代码签名证书，产物 signed:false。 deliver/ 保留三份便携产物、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。",
-  "finishedAt": "2026-10-28T17:28:42.807Z",
-  "durationMs": 94189
+  "notes": "Morrow 0.2.0 打包完成：启动器嵌入完整 Win32 manifest；交付便携版 exe 与安装包。未配置代码签名证书，产物 signed:false。 deliver/ 保留便携版、安装包、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。",
+  "finishedAt": "2026-10-29T15:43:43.779Z",
+  "durationMs": 86496
 }

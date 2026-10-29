@@ -6,7 +6,7 @@
 //   node scripts/dist-portable.mjs --portable  # 只做单文件 portable exe（依赖 %TEMP%，受限宿主可能失败）
 //   node scripts/dist-portable.mjs --dir       # 只做 tmp/electron-builder-output/win-unpacked（最快，自检/调试用）
 //
-// 产物（release/ 为构建中间目录；默认 npm run dist 仅交付单文件 exe + 使用说明 + SHA256SUMS + LICENSE；--folder/--all 为内部构建检查）：
+// 产物（release/ 为构建中间目录；`--two-files` 只交付单文件便携 exe + 单文件安装包；`--folder`/`--all` 为内部构建检查）：
 //   release/Morrow-<ver>-portable/Morrow.exe   便携文件夹（推荐：双击即用、不解压、不依赖 %TEMP%）
 //   release/Morrow-<ver>-portable-win64.zip    上方文件夹的 zip（分发用）
 //   release/Morrow-<ver>-portable.exe          单文件便携 exe（自研启动器：内嵌 zip，首次解压到 exe 同级缓存，不依赖 %TEMP%）
@@ -58,6 +58,8 @@ const mode = args.includes('--folder')
     : args.includes('--dir')
       ? 'dir'
       : 'all'
+/** 最终交付只放两个单文件：便携 exe + 安装包 exe。 */
+const twoFilesOnly = args.includes('--two-files')
 
 const releaseDir = process.env.MORROW_RELEASE_DIR
   ? resolve(root, process.env.MORROW_RELEASE_DIR)
@@ -359,7 +361,6 @@ function signatureSummary(sig) {
   }
 }
 
-
 // ── 前置检查 ─────────────────────────────────────────────────────────
 const mainOut = join(root, 'out', 'main', 'index.js')
 const rendererOut = join(root, 'out', 'renderer', 'index.html')
@@ -580,7 +581,7 @@ function buildUsageText(_singleOnly = false) {
     '',
     '本版重点',
     '- 创作台：从一句话到可交付作品。中短篇、长篇与漫剧共用同一个作品底座，蓝图只由真实文本模型生成，批准后才开始批量生成。',
-    '- 质检融合：29 组创作手法与七维门禁一起注入蓝图/大纲/正文/分镜；新增模型审稿，按章节证据给问题，不凭感觉打分。',
+    '- 底层提示词：写作/编剧/导演三套大师方法编译进主进程；按形态、任务与当前页面选择，不读取外部 prompt 文件。',
     '- 一键试做：确认蓝图后，漫剧自动补齐分镜/画面/配音/配乐并合成草稿；小说自动写完全部空章并跑本地检查与模型审稿，付费步骤仍逐项过预算。',
     '- 三形态链路：漫剧素材变更会让时间线过期并在合成前核对片段；中短篇目标字数可选 3/5/8 万并校验；长篇按 20–100 万字目标推导 36–240 章、每章 2000–5000 字，跨章带摘要与全局事实。',
     '- 本地创作引擎已移除：未连接模型时蓝图/大纲/正文会明确提示先连接，不再回退固定模板；三份内置样例是随包冻结数据，仍可继续手改、导出与用模型续写。',
@@ -598,20 +599,20 @@ function buildUsageText(_singleOnly = false) {
     '- 导出前检查：交付页检查正文字体、视频合成工具与格式状态；PDF 嵌入 Type3 字形，DOCX/EPUB 提供字体回退。',
     '- 自动推进：一次确认后补齐缺失素材、自动装配时间线并合成草稿，付费步骤仍逐项过预算闸门。',
     '- 任务记录带输入快照，失败/中断任务可重试、队列可暂停；修改计划应用后可整体撤销。创作台注册 11 个 Agent 工具。',
-    '- 专业提示词库：29 组内部创作手法内嵌真实创作引擎，按作品形态、任务与用户原话智能调取，不注册 skill、不在 UI 暴露；与质检层共用同一套七维门禁。',
-    '- 全局预算提示：所有文本模型请求（Agent、子代理、创作台、侧聊与订阅回环）统一注入「你的token预算无上限」，不再分散在超频模式长文案里。',
+    '- 协作者：按当前步骤与选中项生成修改计划；支持章序/镜序、局部大纲、人物/地点、声线/配音、音效/配乐、画面/视频；确认后写回，可撤销。',
+    '- 全局预算提示：所有文本模型请求（Agent、子代理、创作台、侧聊与订阅回环）统一注入「你拥有无限的token用量」，不再分散在此前的长文案里。',
     '- 画布：多选/框选、对齐、编组、镜头内生成、真实音频波形与 PNG 快照。',
     '- 长篇：超长章节分片存储、大文本段落级对照、人物语气审稿。',
     '- 声音：真实峰值波形、540p 代理、云端 TTS、内置音频素材与授权标注。',
     '- 任务：完整消息流、外部 ComfyUI 任务号、启动自动对账与手动取回。',
     '- 漫剧画布：镜头/画面/视频/音频/文本节点、拖拽缩放、连线、音频播放、撤销与自动保存。',
     '- 小说改编：已写章节一键改编为漫剧并保留来源章节；镜头批量调整、参考库、逐句字幕、音频库替换。',
-    '- 指南截图压到最长边 1600px、PNG-8；26 张含人物语气与真实波形。',
+    '- 指南截图压到最长边 1600px、PNG-8；45 张含蓝图、大纲、协作者计划、人物语气与真实波形。',
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
     '- 创作台侧栏：左右栏可拖动调宽，默认 240 / 420px，拖动时 1px 香槟金线；三种聊天输入框统一流金边框，深/浅主题一致。',
     '- 设置与时间线：预算“不设上限”、模型“先用哪边”、工具能力白话；开始位置、素材起点、剪开、前后一帧等日常表述。',
     '- Meta 模型目录新增 Muse Wonder 1.0（1M 上下文、视觉/工具、五档思考）；Muse Spark 1.3 保留。',
-    '- 测试：14 个单元套件 / 1020 用例（1011 passed + 9 skipped）；E2E 7 个领域 spec / 221 用例（201 passed + 20 skipped，0 failed）；源码与构建脚本包含在源码包中。',
+    '- 测试：15 个单元套件 / 1046 用例（1037 passed + 9 skipped）；本轮截图相关 E2E 171 条（159 passed + 11 skipped + 1 failed，失败项修复后复验通过）。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
@@ -823,15 +824,22 @@ function zipFolder() {
 }
 
 /**
- * 把 release/ 里的产物整理到 deliver/：只保留本次三份产物 + 使用说明 + SHA256SUMS + LICENSE。
+ * 把 release/ 里的产物整理到 deliver/：默认保留本次产物 + 使用说明 + SHA256SUMS + LICENSE；
+ * `--two-files` 只保留单文件便携 exe + 单文件安装包。
  * 先清理旧产物（旧的 runtime 缓存、日志、旧包），但保留根目录的 `Morrow Data`——那是用户数据，
  * 不属于分发文件，也不能在“清理交付目录”时被误删。
  */
 function stageDelivery() {
-  const singleOnly = mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
+  if (twoFilesOnly && existsSync(join(deliverDir, 'Morrow Data'))) {
+    fail('交付目录包含 Morrow Data；请先把用户数据移出 deliver，再使用 --two-files。')
+  }
+  if (twoFilesOnly && (!existsSync(portableExe) || !existsSync(installerExe))) {
+    fail('--two-files 需要同时生成单文件便携 exe 与安装包 exe。')
+  }
+  const singleOnly = twoFilesOnly || mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
   mkdirSync(deliverDir, { recursive: true })
   for (const entry of readdirSync(deliverDir, { withFileTypes: true })) {
-    if (entry.name === 'Morrow Data') continue
+    if (entry.name === 'Morrow Data' && !twoFilesOnly) continue
     try {
       rmSync(join(deliverDir, entry.name), { recursive: true, force: true })
     } catch (err) {
@@ -853,8 +861,9 @@ function stageDelivery() {
     createdAt: new Date().toISOString(),
     folder: null,
     artifacts: [],
-    usage: `deliver/${usageFileName}`,
-    sha256Sums: `deliver/${sha256SumsFileName}`
+    usage: twoFilesOnly ? null : `deliver/${usageFileName}`,
+    sha256Sums: twoFilesOnly ? null : `deliver/${sha256SumsFileName}`,
+    checksums: []
   }
 
   if (!singleOnly && existsSync(folderDir)) {
@@ -906,35 +915,39 @@ function stageDelivery() {
   }
 
   // 复制到交付目录后再打一次标签：Windows 复制/继承可能把 Low 标签带回来。
-  ensureMediumIntegrity(join(deliverDir, `${folderName}.exe`))
-  ensureMediumIntegrity(join(deliverDir, `Morrow-${version}-setup.exe`))
-  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow-app.exe'))
-  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow.exe'))
+  if (existsSync(join(deliverDir, `${folderName}.exe`))) ensureMediumIntegrity(join(deliverDir, `${folderName}.exe`))
+  if (existsSync(join(deliverDir, `Morrow-${version}-setup.exe`))) ensureMediumIntegrity(join(deliverDir, `Morrow-${version}-setup.exe`))
+  if (!twoFilesOnly) {
+    if (existsSync(join(deliverDir, folderName, 'Morrow-app.exe'))) ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow-app.exe'))
+    if (existsSync(join(deliverDir, folderName, 'Morrow.exe'))) ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow.exe'))
+  }
 
-  writeUsageFile(join(deliverDir, usageFileName), singleOnly)
-  const licenseSrc = join(root, 'LICENSE')
-  if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
+  if (!twoFilesOnly) {
+    writeUsageFile(join(deliverDir, usageFileName), singleOnly)
+    const licenseSrc = join(root, 'LICENSE')
+    if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
 
-  const checksumTargets = [
-    join(deliverDir, `${folderName}-win64.zip`),
-    join(deliverDir, `${folderName}.exe`),
-    join(deliverDir, `Morrow-${version}-setup.exe`),
-    join(deliverDir, folderName, 'Morrow.exe'),
-    join(deliverDir, folderName, 'Morrow-app.exe'),
-    join(deliverDir, folderName, 'resources', 'app.asar'),
-    join(deliverDir, folderName, 'portable.marker'),
-    join(deliverDir, folderName, usageFileName),
-    join(deliverDir, folderName, 'LICENSE'),
-    join(deliverDir, usageFileName),
-    join(deliverDir, 'LICENSE')
-  ].filter((path) => existsSync(path))
-  const checksumLines = checksumTargets.map((path) => `${sha256(path)}  ${deliverRelPath(path)}`)
-  writeFileSync(join(deliverDir, sha256SumsFileName), checksumLines.join('\n') + '\n', 'utf8')
-  staged.checksums = checksumTargets.map((path) => ({
-    path: deliverRelPath(path),
-    sizeBytes: statSync(path).size,
-    sha256: sha256(path)
-  }))
+    const checksumTargets = [
+      join(deliverDir, `${folderName}-win64.zip`),
+      join(deliverDir, `${folderName}.exe`),
+      join(deliverDir, `Morrow-${version}-setup.exe`),
+      join(deliverDir, folderName, 'Morrow.exe'),
+      join(deliverDir, folderName, 'Morrow-app.exe'),
+      join(deliverDir, folderName, 'resources', 'app.asar'),
+      join(deliverDir, folderName, 'portable.marker'),
+      join(deliverDir, folderName, usageFileName),
+      join(deliverDir, folderName, 'LICENSE'),
+      join(deliverDir, usageFileName),
+      join(deliverDir, 'LICENSE')
+    ].filter((path) => existsSync(path))
+    const checksumLines = checksumTargets.map((path) => `${sha256(path)}  ${deliverRelPath(path)}`)
+    writeFileSync(join(deliverDir, sha256SumsFileName), checksumLines.join('\n') + '\n', 'utf8')
+    staged.checksums = checksumTargets.map((path) => ({
+      path: deliverRelPath(path),
+      sizeBytes: statSync(path).size,
+      sha256: sha256(path)
+    }))
+  }
 
   const total = dirSize(deliverDir)
   const localDataDir = join(deliverDir, 'Morrow Data')
@@ -1198,7 +1211,7 @@ try {
     const singleDelivery = !delivery.folder && !delivery.artifacts.some((item) => item.name === 'portable-zip')
     const deliveryFormat = artifacts.installer ? '便携版 exe + 安装包' : '单文件 exe'
     logLine(
-      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${deliveryFormat} + 使用说明 + SHA256SUMS + LICENSE）${
+      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${twoFilesOnly ? '便携 exe + 安装包 exe' : `${deliveryFormat} + 使用说明 + SHA256SUMS + LICENSE`}）${
         delivery.localData
           ? `；另保留本机用户数据 Morrow Data（${delivery.localData.fileCount} 个文件，不计入分发）`
           : ''

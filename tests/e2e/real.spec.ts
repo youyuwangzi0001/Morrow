@@ -5,8 +5,6 @@ import { join } from 'node:path'
 import { launchMorrow, root } from './launch'
 import { waitUntil } from './store'
 
-
-
 test.describe("91-comfy-port", () => {
 test.skip(process.env.MORROW_COMFY_PORT_TEST !== '1', 'ComfyUI 端口回退：设置 MORROW_COMFY_PORT_TEST=1 后运行')
 test('ComfyUI 端口被系统保留时自动换端口并写回设置', async () => {
@@ -37,7 +35,6 @@ test('ComfyUI 端口被系统保留时自动换端口并写回设置', async () 
   }
 })
 })
-
 
 test.describe("92-real-export", () => {
 test.skip(process.env.MORROW_REAL_EXPORT !== '1', '真实导出：设置 MORROW_REAL_EXPORT=1 后运行')
@@ -80,7 +77,6 @@ test('真实导出：长篇项目重新导出 EPUB 并写入交付记录', async
   }
 })
 })
-
 
 test.describe("93-real-long", () => {
 test.skip(process.env.MORROW_REAL_MODEL !== '1', '真实长篇链路：设置 MORROW_REAL_MODEL=1 后运行')
@@ -180,7 +176,6 @@ test('真实长篇六步：蓝图→大纲→写作→画面→检查→交付',
 })
 })
 
-
 test.describe("94-real-short", () => {
 test.skip(process.env.MORROW_REAL_MODEL !== '1', '真实中短篇链路：设置 MORROW_REAL_MODEL=1 后运行')
 const LOGLINE = '旧城最后一班夜班公交司机，在末班车上捡到一封写给十年前自己的信'
@@ -273,7 +268,6 @@ test('真实中短篇五步：蓝图→大纲→写作→检查→交付', async
 })
 })
 
-
 test.describe("95-real-adapt", () => {
 test.skip(process.env.MORROW_REAL_ADAPT !== '1', '真实小说改编：设置 MORROW_REAL_ADAPT=1 后运行')
 async function action<T>(page: import('@playwright/test').Page, type: string, payload: Record<string, unknown> = {}): Promise<T> {
@@ -343,7 +337,6 @@ test('真实小说改编：模型把已写章节拆成漫剧分镜并保留来�
 })
 })
 
-
 test.describe("96-real-music", () => {
 test.skip(process.env.MORROW_REAL_MUSIC !== '1', '真实配乐：设置 MORROW_REAL_MUSIC=1 后运行')
 const COMFYUI_URL = process.env.MORROW_TEST_COMFYUI_URL || 'http://127.0.0.1:8288'
@@ -394,7 +387,6 @@ test('真实配乐：ACE-Step 生成正式配乐并入库', async () => {
 })
 })
 
-
 test.describe("97-real-voice", () => {
 test.skip(process.env.MORROW_REAL_VOICE !== '1', '真实本机配音：设置 MORROW_REAL_VOICE=1 后运行')
 async function action<T>(page: import('@playwright/test').Page, type: string, payload: Record<string, unknown> = {}): Promise<T> {
@@ -436,7 +428,6 @@ test('真实本机配音：样例台词重新生成语音文件', async () => {
   }
 })
 })
-
 
 test.describe("98-real-drama", () => {
 test.skip(process.env.MORROW_REAL_MODEL !== '1', '真实漫剧链路：设置 MORROW_REAL_MODEL=1 后运行')
@@ -611,7 +602,6 @@ test('真实漫剧九步：蓝图→大纲→分镜→画面→配音→配乐�
   }
 })
 })
-
 
 test.describe("99-real-blueprint", () => {
 test.skip(process.env.MORROW_REAL_MODEL !== '1', '真实模型联调：设置 MORROW_REAL_MODEL=1 后运行')

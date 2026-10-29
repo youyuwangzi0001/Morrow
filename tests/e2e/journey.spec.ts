@@ -12,8 +12,6 @@ import type { Server } from 'node:http'
 import { createServer } from 'node:http'
 import { startMockComfyUI } from '../fixtures/mock-comfyui.mjs'
 
-
-
 test.describe("14-journey", () => {
 // ── 原文件：journey.spec.ts ──────────────────────────────────────────────
 test.describe('journey.spec.ts', () => {
@@ -651,7 +649,6 @@ test.describe('Morrow 完整旅程', () => {
 
 })
 })
-
 
 test.describe("15-local-model", () => {
 const LOCAL_BASE_URL = process.env.MORROW_LOCAL_BASE_URL ?? 'http://127.0.0.1:8000/v1'
@@ -1732,7 +1729,6 @@ describeEval('Morrow Agent 通用能力评测', () => {
 })
 })
 
-
 test.describe("16-media", () => {
 function makeWorkspace(): string {
   const dir = join(root, 'tmp', `e2e-media-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
@@ -2425,7 +2421,6 @@ test('ComfyUI 自定义工作流：应用内粘贴 API 工作流即可注册模�
   }
 })
 })
-
 
 test.describe("17-memory", () => {
 // ── 自进化建议（原 r19-evolution.spec.ts） ─────────────────────

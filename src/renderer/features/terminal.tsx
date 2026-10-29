@@ -9,16 +9,12 @@ import type { Result, TerminalEventPayload, TerminalProcessInfo, ThemeMode } fro
 import { useAppStore } from '../store'
 import { Button } from '../components'
 
-
-
 const CODE_FONT_FAMILY =
   "'JetBrains Mono', 'Noto Sans SC', 'Microsoft YaHei UI', 'PingFang SC', 'Cascadia Mono', Consolas, 'Courier New', monospace"
-
 
 function resolvedCodeFont(): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--font-code').trim() || CODE_FONT_FAMILY
 }
-
 
 const EVENT_CHANNEL = 'feature:terminal:event'
 
@@ -28,25 +24,21 @@ const MIN_HEIGHT = 190
 
 const DEFAULT_HEIGHT = 240
 
-
 async function call<T>(channel: string, payload?: unknown): Promise<T> {
   const result = (await window.morrow.features.invoke(channel, payload)) as Result<T>
   if (!result.ok) throw new Error(result.error.message)
   return result.data
 }
 
-
 function clampHeight(value: number): number {
   const max = Math.max(MIN_HEIGHT, Math.min(680, window.innerHeight * 0.72))
   return Math.round(Math.max(MIN_HEIGHT, Math.min(max, value)))
 }
 
-
 function storedHeight(): number {
   const raw = Number(window.localStorage.getItem(HEIGHT_KEY))
   return Number.isFinite(raw) && raw > 0 ? clampHeight(raw) : DEFAULT_HEIGHT
 }
-
 
 function xtermTheme(theme: ThemeMode): ITheme {
   const light = theme === 'light'
@@ -74,7 +66,6 @@ function xtermTheme(theme: ThemeMode): ITheme {
     brightWhite: light ? '#1b1a17' : '#f5f0e6'
   }
 }
-
 
 function TerminalSurface({
   process,
@@ -255,7 +246,6 @@ function TerminalSurface({
   return <div ref={hostRef} className="terminal-xterm" hidden={!active} />
 }
 
-
 function TaskView({
   process,
   logs,
@@ -305,7 +295,6 @@ function TaskView({
     </div>
   )
 }
-
 
 export function TerminalPanel({
   open,

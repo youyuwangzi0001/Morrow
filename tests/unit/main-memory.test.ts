@@ -63,8 +63,6 @@ describe('memory.test.ts', () => {
  * 这里只 mock electron 的 app/dialog/ipcMain，服务本身仍是真实实现。
  */
 
-
-
 const tempDirs: string[] = []
 
 function makeRoot(): { root: string; dataDir: string; wsA: string; wsB: string } {
@@ -523,8 +521,6 @@ describe('projects.test.ts', () => {
  */
 
 /** feature IPC 频道测试需要 mock electron（服务本身仍是真实实现） */
-
-
 
 const tempDirs: string[] = []
 
@@ -1043,11 +1039,6 @@ describe('mcp-connectors.test.ts', () => {
  */
 
 /* ── mock Electron（safeStorage 用可控的假加密；app.getPath = 临时目录） ── */
-
-
-
-
-
 
 /* ── 测试环境 ─────────────────────────────────────────────────── */
 

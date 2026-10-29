@@ -8,8 +8,6 @@ import { ToolProtocolStreamFilter, parseTextToolCalls } from '../shared/types'
 import { isLocalServiceUrl } from '../shared/contracts'
 import { withUnlimitedTokenBudget } from './agent'
 
-
-
 export class ProviderError extends Error {
   readonly code: string
   readonly retryable: boolean
@@ -34,7 +32,6 @@ export class ProviderError extends Error {
   }
 }
 
-
 export interface RetryPolicy {
   /** 最多重试次数（不含首次请求） */
   maxRetries: number
@@ -42,15 +39,12 @@ export interface RetryPolicy {
   delays: number[]
 }
 
-
 /** 架构约定：0.8s / 2s / 5s，最多 3 次 */
 export const DEFAULT_RETRY: RetryPolicy = { maxRetries: 3, delays: [800, 2000, 5000] }
-
 
 export function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500
 }
-
 
 /** 从错误响应体里挖出人类可读的 detail（OpenAI/Anthropic/网关各不相同） */
 export function extractErrorDetail(body: string): string {
@@ -70,7 +64,6 @@ export function extractErrorDetail(body: string): string {
   }
   return body.replace(/\s+/g, ' ').trim().slice(0, 300)
 }
-
 
 /** HTTP 状态码 → 中文人话（新手用户必须看得懂） */
 export function normalizeHttpError(status: number, body: string, providerId?: string): ProviderError {
@@ -124,7 +117,6 @@ export function normalizeHttpError(status: number, body: string, providerId?: st
   })
 }
 
-
 /** 把任意异常归一化成 ProviderError（网络错误标可重试，中断标 aborted） */
 export function toProviderError(err: unknown, providerId?: string): ProviderError {
   if (err instanceof ProviderError) return err
@@ -143,7 +135,6 @@ export function toProviderError(err: unknown, providerId?: string): ProviderErro
   const message = err instanceof Error ? err.message : String(err)
   return new ProviderError(`模型请求失败：${message}`, { code: 'provider_error', retryable: false, providerId, cause: err })
 }
-
 
 /**
  * 读取错误响应文本（失败不抛错）。
@@ -186,7 +177,6 @@ export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Pr
   return text
 }
 
-
 /**
  * 流式请求的退避重试包装：
  * - 只有「尚未产出任何内容」时失败才重试，避免重复文本；
@@ -222,13 +212,11 @@ export async function* streamWithRetry(
   }
 }
 
-
 /** 拼接 baseUrl 与 API 路径，避免出现重复斜杠 */
 export function joinUrl(baseUrl: string, path: string): string {
   const base = baseUrl.replace(/\/+$/, '')
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }
-
 
 /** OpenAI 兼容接口地址：支持用户填 https://host、https://host/v1、完整 /chat/completions */
 export function resolveChatCompletionsUrl(baseUrl: string): string {
@@ -237,7 +225,6 @@ export function resolveChatCompletionsUrl(baseUrl: string): string {
   if (/\/v1$/.test(url)) return `${url}/chat/completions`
   return `${url}/v1/chat/completions`
 }
-
 
 /** Anthropic Messages 接口地址：支持 https://host、https://host/v1、完整 /v1/messages */
 export function resolveAnthropicMessagesUrl(baseUrl: string): string {
@@ -254,7 +241,6 @@ export interface SSEFrame {
   id?: string
   retry?: number
 }
-
 
 export class SSEParser {
   /** 尚未按行结束符切开的残余文本（可能以孤立的 \r 结尾，等待下一块确认 CRLF） */
@@ -361,9 +347,7 @@ export class SSEParser {
   }
 }
 
-
 export const STREAM_IDLE_TIMEOUT_MS = 180_000
-
 
 /**
  * 把 fetch 的 body 流转成 SSE 帧。
@@ -408,7 +392,6 @@ export async function* iterateSSE(
   }
 }
 
-
 /**
  * 逐帧 JSON 解析（跳过注释/心跳/空 data/[DONE]）。
  * onDone：收到 `[DONE]` 哨兵时回调，供 Provider 区分「正常收尾」与「中途断流」。
@@ -432,7 +415,6 @@ export async function* iterateSSEData(
   }
 }
 
-
 function cleanFailureText(text: string, max = 2000): string {
   return text
     .replace(/\u001b\[[0-9;]*m/g, '')
@@ -443,7 +425,6 @@ function cleanFailureText(text: string, max = 2000): string {
     .trim()
     .slice(0, max)
 }
-
 
 /** 工具结果回给模型：失败时保留可行动信息，去掉栈帧与内部实现噪音。 */
 export function toolResultTextForModel(
@@ -460,9 +441,7 @@ export function toolResultTextForModel(
   return parts.join('\n')
 }
 
-
 export const ANTHROPIC_VERSION = '2023-06-01'
-
 
 export type AnthropicBlock =
   | { type: 'text'; text: string }
@@ -470,12 +449,10 @@ export type AnthropicBlock =
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error: boolean }
 
-
 export interface AnthropicMessage {
   role: 'user' | 'assistant'
   content: AnthropicBlock[]
 }
-
 
 function textOf(message: ChatMessage): string {
   return message.content
@@ -483,7 +460,6 @@ function textOf(message: ChatMessage): string {
     .map((b) => b.text)
     .join('')
 }
-
 
 /**
  * 内部 ChatMessage[] → Anthropic {system, messages}。
@@ -551,7 +527,6 @@ export function toAnthropicMessages(
   return { system: systemParts.filter(Boolean).join('\n\n'), messages: out }
 }
 
-
 export function buildAnthropicRequestBody(
   req: ProviderStreamRequest,
   model: string
@@ -578,11 +553,9 @@ export function buildAnthropicRequestBody(
   return body
 }
 
-
 export function toAnthropicTool(tool: ToolDefinition): Record<string, unknown> {
   return { name: tool.name, description: tool.description, input_schema: tool.parameters }
 }
-
 
 function mapAnthropicUsage(usage: {
   input_tokens?: number
@@ -601,7 +574,6 @@ function mapAnthropicUsage(usage: {
   }
 }
 
-
 interface AnthropicStreamPayload {
   type?: string
   index?: number
@@ -618,12 +590,10 @@ interface AnthropicStreamPayload {
   error?: { type?: string; message?: string }
 }
 
-
 export interface AnthropicProviderOptions {
   retryDelays?: number[]
   fetchImpl?: typeof fetch
 }
-
 
 export class AnthropicProvider implements Provider {
   readonly id: string
@@ -829,13 +799,15 @@ export class AnthropicProvider implements Provider {
       yield {
         type: 'notice',
         level: 'warn',
-        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。'
+        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。',
+        code: 'max_tokens'
       }
     } else if (stopReason === 'refusal') {
       yield {
         type: 'notice',
         level: 'warn',
-        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。'
+        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。',
+        code: 'content_filter'
       }
     }
     if (!completed) {
@@ -858,7 +830,6 @@ export class AnthropicProvider implements Provider {
   }
 }
 
-
 interface OpenAIDelta {
   /** 少数网关在多模态流里返回 content 数组 */
   content?: string | Array<{ type?: string; text?: string }> | null
@@ -874,7 +845,6 @@ interface OpenAIDelta {
   }>
 }
 
-
 interface OpenAIStreamChunk {
   choices?: Array<{ index?: number; delta?: OpenAIDelta; finish_reason?: string | null }>
   usage?: {
@@ -888,11 +858,9 @@ interface OpenAIStreamChunk {
   error?: { message?: string; type?: string } | string
 }
 
-
 export type OpenAIContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
-
 
 export interface OpenAIChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -900,7 +868,6 @@ export interface OpenAIChatMessage {
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
   tool_call_id?: string
 }
-
 
 /**
  * 内部 ChatMessage[]（tool_result 内嵌在 tool_use.result）→ OpenAI messages。
@@ -955,7 +922,6 @@ export function toOpenAIMessages(messages: ChatMessage[], system: string): OpenA
   return systemText ? [{ role: 'system', content: systemText }, ...out] : out
 }
 
-
 export function buildOpenAIRequestBody(
   req: ProviderStreamRequest,
   model: string,
@@ -984,14 +950,12 @@ export function buildOpenAIRequestBody(
   return body
 }
 
-
 export function toOpenAITool(tool: ToolDefinition): Record<string, unknown> {
   return {
     type: 'function',
     function: { name: tool.name, description: tool.description, parameters: tool.parameters }
   }
 }
-
 
 function mapUsage(usage: NonNullable<OpenAIStreamChunk['usage']>): Usage {
   const cached = usage.prompt_cache_hit_tokens ?? usage.prompt_tokens_details?.cached_tokens
@@ -1002,14 +966,12 @@ function mapUsage(usage: NonNullable<OpenAIStreamChunk['usage']>): Usage {
   }
 }
 
-
 export interface OpenAICompatProviderOptions {
   /** 测试用：自定义退避（毫秒数组） */
   retryDelays?: number[]
   /** 测试用：注入 fetch */
   fetchImpl?: typeof fetch
 }
-
 
 interface ToolAccumulator {
   index: number
@@ -1019,13 +981,11 @@ interface ToolAccumulator {
   started: boolean
 }
 
-
 function contentText(content: OpenAIDelta['content']): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) return content.map((part) => part.text ?? '').join('')
   return ''
 }
-
 
 function argsText(value: unknown): string {
   if (typeof value === 'string') return value
@@ -1038,7 +998,6 @@ function argsText(value: unknown): string {
   }
   return ''
 }
-
 
 export class OpenAICompatProvider implements Provider {
   readonly id: string
@@ -1219,13 +1178,15 @@ export class OpenAICompatProvider implements Provider {
       yield {
         type: 'notice',
         level: 'warn',
-        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。'
+        message: '模型回复达到单次输出长度上限，内容可能被截断；可以回复「继续」让模型接着写。',
+        code: 'max_tokens'
       }
     } else if (finishReason === 'content_filter') {
       yield {
         type: 'notice',
         level: 'warn',
-        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。'
+        message: '模型输出被服务商的内容安全策略拦截，部分内容可能没有返回。',
+        code: 'content_filter'
       }
     }
 
@@ -1252,7 +1213,6 @@ export class OpenAICompatProvider implements Provider {
   }
 }
 
-
 interface SalesRow {
   line: number
   date: string
@@ -1267,14 +1227,12 @@ interface SalesRow {
   amount: number
 }
 
-
 export interface DemoAnomaly {
   orderId: string
   line: number
   reason: string
   detail: string
 }
-
 
 export interface DemoMetrics {
   rawRows: number
@@ -1304,7 +1262,6 @@ export interface DemoMetrics {
   source: 'workspace' | 'fallback'
 }
 
-
 interface DemoStep {
   caption: string
   thinking?: string
@@ -1312,12 +1269,10 @@ interface DemoStep {
   tools?: Array<{ name: string; input: Record<string, unknown> }>
 }
 
-
 export interface DemoProviderOptions {
   /** 播放速度倍率：0 = 不等待（测试），1 = 正常演示 */
   speed?: number
 }
-
 
 function demoEnvSpeed(): number {
   const raw = process.env.MORROW_DEMO_SPEED
@@ -1325,7 +1280,6 @@ function demoEnvSpeed(): number {
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 ? value : 1
 }
-
 
 function parseCsvLine(line: string): string[] {
   const out: string[] = []
@@ -1357,7 +1311,6 @@ function parseCsvLine(line: string): string[] {
   return out
 }
 
-
 function parseCsv(text: string): Array<Record<string, string>> {
   const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = clean.split('\n').filter((line) => line.trim().length > 0)
@@ -1376,23 +1329,19 @@ function parseCsv(text: string): Array<Record<string, string>> {
   return rows
 }
 
-
 function num(value: string | undefined): number {
   if (!value) return 0
   const parsed = Number(value.replace(/[,\s¥￥]/g, ''))
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
-
 function toPosix(path: string): string {
   return path.split(sep).join('/')
 }
-
 
 function listFiles(root: string, depth = 3, prefix = ''): string[] {
   const out: string[] = []
@@ -1414,7 +1363,6 @@ function listFiles(root: string, depth = 3, prefix = ''): string[] {
   return out
 }
 
-
 function readTextFile(path: string): string {
   try {
     return readFileSync(path, 'utf8')
@@ -1423,7 +1371,6 @@ function readTextFile(path: string): string {
   }
 }
 
-
 function isSalesHeader(rows: Array<Record<string, string>>): boolean {
   if (rows.length === 0) return false
   const headers = Object.keys(rows[0])
@@ -1431,13 +1378,11 @@ function isSalesHeader(rows: Array<Record<string, string>>): boolean {
   return has('订单号') && has('金额') && has('日期')
 }
 
-
 function isCustomerHeader(rows: Array<Record<string, string>>): boolean {
   if (rows.length === 0) return false
   const headers = Object.keys(rows[0])
   return headers.some((header) => header.includes('客户')) && headers.some((header) => header.includes('城市'))
 }
-
 
 function findField(row: Record<string, string>, keywords: string[]): string {
   for (const key of Object.keys(row)) {
@@ -1445,7 +1390,6 @@ function findField(row: Record<string, string>, keywords: string[]): string {
   }
   return ''
 }
-
 
 function fallbackMetrics(): DemoMetrics {
   return {
@@ -1502,7 +1446,6 @@ function fallbackMetrics(): DemoMetrics {
     source: 'fallback'
   }
 }
-
 
 /** 从演示工作区读取真实数据并计算报告所需指标（文件缺失时退回基准数据） */
 export function collectDemoMetrics(workspace: string | null): DemoMetrics {
@@ -1718,7 +1661,6 @@ export function collectDemoMetrics(workspace: string | null): DemoMetrics {
   }
 }
 
-
 /** 千分位金额（不带 ¥） */
 export function fmtMoney(value: number): string {
   const sign = value < 0 ? '-' : ''
@@ -1726,11 +1668,9 @@ export function fmtMoney(value: number): string {
   return `${sign}${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-
 function fmtPct(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
 }
-
 
 function esc(value: string): string {
   return value
@@ -1740,11 +1680,9 @@ function esc(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-
 function psQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
-
 
 function buildAggregateCommand(files: DemoMetrics['files']): string {
   const sales = psQuote(files.sales)
@@ -1766,7 +1704,6 @@ function buildAggregateCommand(files: DemoMetrics['files']): string {
   ].join('\n')
 }
 
-
 function buildAnomalyCommand(files: DemoMetrics['files']): string {
   const sales = psQuote(files.sales)
   return [
@@ -1783,7 +1720,6 @@ function buildAnomalyCommand(files: DemoMetrics['files']): string {
   ].join('\n')
 }
 
-
 function buildQ2Command(files: DemoMetrics['files']): string {
   const q2 = psQuote(files.q2)
   return [
@@ -1798,7 +1734,6 @@ function buildQ2Command(files: DemoMetrics['files']): string {
     `"差额: $([math]::Round([double]$totalRow[0].'销售额' - $sum, 2))"`
   ].join('\n')
 }
-
 
 function svgBars(
   items: Array<{ label: string; value: number; note?: string }>,
@@ -1836,7 +1771,6 @@ function svgBars(
   ].join('\n')
 }
 
-
 function anomalyCards(metrics: DemoMetrics): string {
   return metrics.anomalies
     .map((anomaly) => {
@@ -1845,7 +1779,6 @@ function anomalyCards(metrics: DemoMetrics): string {
     })
     .join('\n')
 }
-
 
 function rankRows(items: Array<{ name: string; revenue: number }>, total: number): string {
   return items
@@ -1856,7 +1789,6 @@ function rankRows(items: Array<{ name: string; revenue: number }>, total: number
     })
     .join('\n')
 }
-
 
 /** 生成自包含 HTML 报告（无外链、内联 CSS/SVG，可直接在 iframe 预览/发给老板） */
 export function renderDemoReportHtml(metrics: DemoMetrics, generatedAt: Date): string {
@@ -2111,7 +2043,6 @@ export function renderDemoReportHtml(metrics: DemoMetrics, generatedAt: Date): s
 `
 }
 
-
 function buildDemoScript(workspace: string | null, now: Date): DemoStep[] {
   const m = collectDemoMetrics(workspace)
   const anomalyCount = m.anomalies.length
@@ -2246,7 +2177,6 @@ function buildDemoScript(workspace: string | null, now: Date): DemoStep[] {
   ]
 }
 
-
 export class DemoProvider implements Provider {
   readonly id = 'demo'
   private readonly speed: number
@@ -2364,7 +2294,6 @@ export class DemoProvider implements Provider {
   }
 }
 
-
 export class ToolProtocolProvider implements Provider {
   readonly id: string
   private readonly inner: Provider
@@ -2435,7 +2364,6 @@ export class ToolProtocolProvider implements Provider {
   }
 }
 
-
 /**
  * 按 ProviderConfig.kind 选择实现。
  * demo 走离线剧本引擎（忽略 apiKey/modelId；模型 id 只用于 UI 展示）。
@@ -2454,7 +2382,6 @@ export class UnlimitedBudgetProvider implements Provider {
   }
 }
 
-
 export function createProvider(config: ProviderConfig, apiKey: string | null, modelId?: string): Provider {
   const inner =
     config.kind === 'demo' || config.id === 'demo'
@@ -2467,7 +2394,6 @@ export function createProvider(config: ProviderConfig, apiKey: string | null, mo
   // 所有 provider（含订阅回环、创作台、Agent、子代理）统一注入同一句预算提示。
   return new UnlimitedBudgetProvider(inner)
 }
-
 
 /**
  * 测试模型连接：发一个极短的流式请求（最多 16 token），返回首字延迟与人话结论。

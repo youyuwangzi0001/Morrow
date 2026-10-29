@@ -327,7 +327,6 @@
   }
 }
 
-
 /* 拖动/悬浮分隔线时只高亮侧聊自身的 1px 左边框。 */
 .sidechat-rail {
   transition: border-color var(--dur-fast) ease;

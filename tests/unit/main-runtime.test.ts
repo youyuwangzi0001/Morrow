@@ -34,8 +34,6 @@ import { createHash } from 'node:crypto'
 import type { CodexCredential, QoderCredential, QoderModel } from '../../src/main/subscriptions'
 import { antigravityRuntime, buildAntigravityRequest, parseAntigravityFrame, parseAntigravityQuota, sanitizeGeminiSchema, CLINE_MODELS, parseClineQuota, rewriteClineBody, unwrapClineJson, parseCommandCodeAccount, parseCommandCodeCatalog, parseCommandCodeQuota, rewriteCommandCodeAnthropic, rewriteCommandCodeChat, GLM_KEY_NAME, parseCustomerScope, parseGlmQuota, pickGlmApiKey, rewriteGlmBody, parseKimiQuota, rewriteKimiBody, parseMinimaxLocalAuth, parseMinimaxQuota, rewriteMinimaxBody, parseOpencodeAuth, parseOpencodeModels, rewriteOpencodeBody, STEP_PROFILES, parseStepLocalAuth, parseStepModels, rewriteStepBody, startCodexProxy, toResponsesPayload, startSubscriptionRelay, decodeQoderBody, encodeQoderBody, parseQoderModelCatalog, startQoderProxy } from '../../src/main/subscriptions'
 
-
-
 describe("browser", () => {
 describe('browser.test.ts', () => {
 /**
@@ -1180,15 +1178,18 @@ describe('TerminalManager', () => {
     }
   })
 
-  it('Git Bash is the default shell while legacy PowerShell 5.1 is removed and cmd stays as fallback', async () => {
+  it('Git Bash is the default shell while PowerShell 5.1 and cmd are removed; pwsh is the fallback', async () => {
     if (process.platform !== 'win32') return
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
       const ids = manager.profiles().map((profile) => profile.id)
       expect(ids).not.toContain('powershell')
-      expect(ids).toContain('cmd')
-      if (!ids.includes('gitbash')) return
+      expect(ids).not.toContain('cmd')
+      if (!ids.includes('gitbash')) {
+        expect(ids).toContain('pwsh')
+        return
+      }
       expect(manager.defaultShellId()).toBe('gitbash')
       const shell = manager.createShell(ws.root, 'Git Bash 测试')
       expect(shell.shellId).toBe('gitbash')
@@ -1901,7 +1902,6 @@ describe('search-web.test.ts', () => {
 })
 })
 })
-
 
 describe("files", () => {
 describe('files.test.ts', () => {
@@ -3764,7 +3764,6 @@ describe('app-icon.test.ts', () => {
 })
 })
 
-
 describe("subscription-protocols", () => {
 describe('Antigravity 协议', () => {
   it('按模型与思考档位选择运行时 ID', () => {
@@ -4306,7 +4305,6 @@ describe('Step Plan 协议', () => {
   })
 })
 })
-
 
 describe("subscriptions", () => {
 describe('Codex 订阅代理文件', () => {

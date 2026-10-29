@@ -66,8 +66,7 @@ describe('openLoginUrl', () => {
     expect(mocks.openLoginWindow).not.toHaveBeenCalled()
   })
 
-
-  it('内置窗口不可用时仍复制链接', async () => {
+it('内置窗口不可用时仍复制链接', async () => {
     mocks.openLoginWindow.mockReturnValue(false)
     const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
     expect(result).toEqual({ opened: false, copied: true })

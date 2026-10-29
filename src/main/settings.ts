@@ -8,8 +8,6 @@ import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'nod
 import { dataPath, ensureDataDirs } from './workspace'
 import { log } from './logger'
 
-
-
 export interface SyncModelsOutcome {
   added: number
   updated: number
@@ -21,7 +19,6 @@ export interface SyncModelsOutcome {
   skipped?: number
 }
 
-
 /** 与设置存储的模型数量上限保持一致 */
 const MAX_SYNC_MODELS = 200
 
@@ -29,12 +26,10 @@ const MAX_SYNC_RESPONSE_BYTES = 5 * 1024 * 1024
 
 const MAX_MODEL_ID_CHARS = 160
 
-
 function positiveNumber(value: unknown): number | null {
   const number = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
   return Number.isFinite(number) && number > 0 ? number : null
 }
-
 
 function explain(status: number): string {
   if (status === 401 || status === 403) return 'API Key 无效或没有权限。'
@@ -42,7 +37,6 @@ function explain(status: number): string {
   if (status === 429) return '请求太频繁，稍后再试。'
   return `服务商返回 HTTP ${status}。`
 }
-
 
 /**
  * 从服务商 /models 接口同步模型清单与上下文元数据。
@@ -54,7 +48,6 @@ function explain(status: number): string {
 function isLocalProvider(config: ProviderConfig): boolean {
   return config.category === 'local' || isLocalServiceUrl(config.baseUrl, { allowPrivate: true })
 }
-
 
 export async function syncProviderModels(
   config: ProviderConfig,
@@ -196,7 +189,6 @@ export async function syncProviderModels(
   }
 }
 
-
 /**
  * API Key 加密存储编解码（R7 审计修复）。
  *
@@ -209,11 +201,8 @@ export async function syncProviderModels(
 
 export const ENCRYPT_PREFIX = 'enc:'
 
-
 /** 历史降级格式（仅用于读取兼容，绝不新写） */
 export const LEGACY_FALLBACK_PREFIX = 'b64:'
-
-
 
 export interface SecretCrypto {
   /** 系统加密（Windows DPAPI / macOS Keychain 等）是否可用 */
@@ -224,8 +213,6 @@ export interface SecretCrypto {
   decrypt(encoded: string): string
 }
 
-
-
 export class SecretStorageUnavailableError extends Error {
   readonly code = 'SECRET_STORAGE_UNAVAILABLE'
   constructor(message: string) {
@@ -233,8 +220,6 @@ export class SecretStorageUnavailableError extends Error {
     this.name = 'SecretStorageUnavailableError'
   }
 }
-
-
 
 /**
  * 加密保存 API Key。
@@ -256,15 +241,11 @@ export function encodeSecret(value: string, crypto: SecretCrypto): string {
   }
 }
 
-
-
 export interface DecodedSecret {
   value: string
   /** true = 历史遗留的非加密存储（b64:），需要提示用户重新保存 */
   legacyInsecure: boolean
 }
-
-
 
 /** 读取 API Key。支持当前加密格式 + 只读兼容历史 b64 格式；损坏返回 null。 */
 export function decodeSecret(raw: string | null | undefined, crypto: SecretCrypto): DecodedSecret | null {
@@ -286,37 +267,25 @@ export function decodeSecret(raw: string | null | undefined, crypto: SecretCrypt
   }
 }
 
-
-
 interface SecretsFile {
   version: 1
   /** providerId -> base64(encrypted)（历史版本可能是 `b64:` 前缀的降级明文，只读兼容） */
   keys: Record<string, string>
 }
 
-
-
 const PROVIDER_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/
-
 
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 
-
 const PROVIDER_KINDS: ReadonlySet<ProviderKind> = new Set(['openai-compat', 'anthropic', 'demo'])
-
 
 const PROVIDER_CATEGORIES: ReadonlySet<ProviderCategory> = new Set(['cn', 'global', 'local', 'custom'])
 
-
 const MAX_MODELS = 200
-
 
 const MAX_HEADERS = 32
 
-
 const WEB_SEARCH_PROVIDERS: ReadonlySet<WebSearchProvider> = new Set(['builtin', 'tavily', 'brave', 'serper', 'searxng'])
-
-
 
 /** 从磁盘/设置页读入的钩子做宽松归一化；执行前仍由 HookService 过滤。 */
 export function normalizeHooks(raw: unknown): HookConfig[] {
@@ -335,13 +304,9 @@ export function normalizeHooks(raw: unknown): HookConfig[] {
   return hooks
 }
 
-
-
 export function webSearchKeyId(provider: WebSearchProvider): string {
   return `websearch:${provider}`
 }
-
-
 
 function normalizeWebSearch(raw: unknown, fallback: WebSearchSettings): WebSearchSettings {
   if (!isRecord(raw)) return fallback
@@ -362,8 +327,6 @@ function normalizeWebSearch(raw: unknown, fallback: WebSearchSettings): WebSearc
     maxResults
   }
 }
-
-
 
 function normalizeMediaEngine(raw: unknown, fallback: MediaEngineSettings): MediaEngineSettings {
   if (!isRecord(raw)) return fallback
@@ -401,19 +364,13 @@ function normalizeMediaEngine(raw: unknown, fallback: MediaEngineSettings): Medi
   }
 }
 
-
-
 function failValidation(message: string): never {
   throw new Error(message)
 }
 
-
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
-
-
 
 /** 原子写并清理临时文件；设置/密钥文件只允许当前用户读写（Windows 上忽略 mode） */
 function atomicWrite(path: string, content: string): void {
@@ -430,8 +387,6 @@ function atomicWrite(path: string, content: string): void {
     throw err
   }
 }
-
-
 
 function normalizeModels(raw: unknown): ModelInfo[] {
   if (!Array.isArray(raw)) failValidation('模型列表格式不正确。')
@@ -514,8 +469,6 @@ function normalizeModels(raw: unknown): ModelInfo[] {
   return models
 }
 
-
-
 function normalizeHeaders(raw: unknown): Record<string, string> | undefined {
   if (raw === undefined || raw === null) return undefined
   if (!isRecord(raw)) failValidation('请求头格式不正确。')
@@ -535,8 +488,6 @@ function normalizeHeaders(raw: unknown): Record<string, string> | undefined {
   return Object.keys(headers).length > 0 ? headers : undefined
 }
 
-
-
 function validateBaseUrl(kind: ProviderKind, raw: string): string {
   const baseUrl = raw.trim()
   if (kind === 'demo') return baseUrl
@@ -553,8 +504,6 @@ function validateBaseUrl(kind: ProviderKind, raw: string): string {
   if (parsed.username || parsed.password) failValidation('接口地址不能包含用户名/密码，请改用请求头。')
   return baseUrl
 }
-
-
 
 function validateDefaultModel(providers: ProviderConfig[], raw: unknown): Settings['defaultModel'] {
   if (!isRecord(raw)) failValidation('默认模型格式不正确。')
@@ -578,8 +527,6 @@ function validateDefaultModel(providers: ProviderConfig[], raw: unknown): Settin
   return { providerId, modelId, ...(contextWindow ? { contextWindow } : {}) }
 }
 
-
-
 function fallbackDefaultModel(providers: ProviderConfig[]): Settings['defaultModel'] {
   const realProviders = providers.filter((provider) => provider.kind !== 'demo')
   if (findModel(realProviders, DEFAULT_MODEL)) return DEFAULT_MODEL
@@ -589,8 +536,6 @@ function fallbackDefaultModel(providers: ProviderConfig[]): Settings['defaultMod
   }
   return DEFAULT_MODEL
 }
-
-
 
 /**
  * 设置与 API Key 存储。
@@ -1226,17 +1171,12 @@ export class SettingsStore {
   }
 }
 
-
-
 function structuredCloneSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-
-
 /** 应用启动后唯一实例 */
 let instance: SettingsStore | null = null
-
 
 export function getSettingsStore(): SettingsStore {
   if (!instance) instance = new SettingsStore()

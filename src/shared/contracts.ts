@@ -1,8 +1,6 @@
 // 应用级契约：模型、订阅、连接器、研究、定时任务、记忆、命令与 IPC。
 import type { ModelInfo, ModelRef, ProviderConfig, ReasoningEffort, Settings, Artifact, ChatMessage, ResearchDepth, ResearchState, ArtifactExportFormat, ArtifactVersionInfo, AskUserAnswer, Attachment, Bootstrap, CloseAction, CreateSessionInput, DemoInfo, FileSearchResult, PermissionDecision, PermissionMode, ProviderTestResult, Result, RuntimeEventListener, SendMessageInput, SendMessageResult, Session, SessionMeta, SessionMode, TokenActivitySummary, WindowState, WorkspaceInfo } from './types'
 
-
-
 /**
  * 内置模型预设。
  * 数据截至 2026-10-26，来源与核对结果见 docs/verification/VERIFICATION.md §4.3；
@@ -36,7 +34,6 @@ const deepseekModels: ModelInfo[] = [
   }
 ]
 
-
 const kimiModels: ModelInfo[] = [
   {
     id: 'kimi-k3.1-pro',
@@ -69,7 +66,6 @@ const kimiModels: ModelInfo[] = [
   }
 ]
 
-
 const qwenModels: ModelInfo[] = [
   {
     id: 'qwen3.8-max',
@@ -90,7 +86,6 @@ const qwenModels: ModelInfo[] = [
     note: '最新高性价比版本，速度快，适合日常任务'
   }
 ]
-
 
 const anthropicModels: ModelInfo[] = [
   {
@@ -139,7 +134,6 @@ const anthropicModels: ModelInfo[] = [
   }
 ]
 
-
 const openaiModels: ModelInfo[] = [
   {
     id: 'gpt-6.1-sol',
@@ -186,7 +180,6 @@ const openaiModels: ModelInfo[] = [
   }
 ]
 
-
 const geminiModels: ModelInfo[] = [
   {
     id: 'gemini-4-argon',
@@ -212,7 +205,6 @@ const geminiModels: ModelInfo[] = [
   }
 ]
 
-
 const glmModels: ModelInfo[] = [
   {
     id: 'glm-5.3',
@@ -236,7 +228,6 @@ const glmModels: ModelInfo[] = [
   }
 ]
 
-
 const miniMaxModels: ModelInfo[] = [
   {
     id: 'MiniMax-M3.1-Flash',
@@ -258,7 +249,6 @@ const miniMaxModels: ModelInfo[] = [
   }
 ]
 
-
 const xiaomiModels: ModelInfo[] = [
   {
     id: 'mimo-v2.6-pro',
@@ -279,7 +269,6 @@ const xiaomiModels: ModelInfo[] = [
     note: '速度与成本优先'
   }
 ]
-
 
 const metaModels: ModelInfo[] = [
   {
@@ -306,7 +295,6 @@ const metaModels: ModelInfo[] = [
   }
 ]
 
-
 const xaiModels: ModelInfo[] = [
   {
     id: 'grok-4.7',
@@ -330,7 +318,6 @@ const xaiModels: ModelInfo[] = [
   }
 ]
 
-
 /**
  * 已从内置目录下线的模型：读取旧设置时一并移除，避免升级后设置页仍显示被替换的型号。
  * 只列内置模型 ID；自定义 Provider 自有模型不受影响。
@@ -340,7 +327,6 @@ export const RETIRED_MODEL_IDS: Record<string, readonly string[]> = {
   kimi: ['kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.7', 'kimi-k2.6-preview'],
   llamacpp: ['Sage-A1.5-Q4_K_M', 'Sage-A1.5', 'local-model']
 }
-
 
 const localModels: ModelInfo[] = [
   {
@@ -352,7 +338,6 @@ const localModels: ModelInfo[] = [
     note: 'Ollama/LM Studio 的模型 ID 以本机加载为准，可在设置里编辑'
   }
 ]
-
 
 /** llama.cpp 的 llama-server 默认监听 8000，模型 ID 与启动参数 --alias 一致。 */
 const llamaCppModels: ModelInfo[] = [
@@ -367,11 +352,9 @@ const llamaCppModels: ModelInfo[] = [
   }
 ]
 
-
 export const DEMO_PROVIDER_ID = 'demo'
 
 export const DEMO_MODEL_ID = 'morrow-demo'
-
 
 /** 参考价（美元 / 百万 tokens），仅用于成本估算；实际以服务商账单为准。 */
 const PRICING_TABLE: Array<[RegExp, { inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number }]> = [
@@ -392,12 +375,10 @@ const PRICING_TABLE: Array<[RegExp, { inputPerMTok: number; outputPerMTok: numbe
   [/minimax/i, { inputPerMTok: 0.3, outputPerMTok: 1.2 }]
 ]
 
-
 export function pricingForModel(modelId: string): ModelInfo['pricing'] {
   const found = PRICING_TABLE.find(([pattern]) => pattern.test(modelId))
   return found ? { ...found[1] } : undefined
 }
-
 
 /**
  * 已知模型族的真实思考档位。只收录有把握的档位；未知家族不猜测，
@@ -428,13 +409,11 @@ const REASONING_EFFORT_PATTERNS: Array<[RegExp, ReasoningEffort[]]> = [
   [/muse/i, ['low', 'medium', 'high', 'xhigh']]
 ]
 
-
 export function reasoningEffortsForModel(modelId: string, supportsReasoning = true): ReasoningEffort[] | undefined {
   if (!supportsReasoning) return undefined
   const found = REASONING_EFFORT_PATTERNS.find(([pattern]) => pattern.test(modelId))
   return found ? [...found[1]] : undefined
 }
-
 
 /** 订阅渠道保存 Provider 前统一补齐真实档位；显式元数据优先。 */
 export function enrichModelCapabilities(models: ModelInfo[]): ModelInfo[] {
@@ -444,7 +423,6 @@ export function enrichModelCapabilities(models: ModelInfo[]): ModelInfo[] {
     return efforts ? { ...model, reasoningEfforts: efforts } : model
   })
 }
-
 
 /** 给内置模型补充推理映射与参考价；未知模型不猜测价格。 */
 function enrichModels(models: ModelInfo[], providerId: string): ModelInfo[] {
@@ -465,7 +443,6 @@ function enrichModels(models: ModelInfo[], providerId: string): ModelInfo[] {
     }
   })
 }
-
 
 export function builtinProviders(): ProviderConfig[] {
   return [
@@ -645,12 +622,9 @@ export function builtinProviders(): ProviderConfig[] {
   ]
 }
 
-
 export const DEFAULT_MODEL: ModelRef = { providerId: 'deepseek', modelId: 'deepseek-flash' }
 
-
 export const DEMO_MODEL: ModelRef = { providerId: DEMO_PROVIDER_ID, modelId: DEMO_MODEL_ID }
-
 
 /**
  * 老版本保存/同步的模型可能只有 supportsReasoning、没有 reasoningStyle。
@@ -662,25 +636,21 @@ export function normalizeReasoningStyle(model: ModelInfo, kind: ProviderConfig['
   return { ...model, reasoningStyle: kind === 'anthropic' ? 'thinking' : 'effort' }
 }
 
-
 export function findModel(providers: ProviderConfig[], ref: ModelRef): ModelInfo | null {
   const provider = providers.find((p) => p.id === ref.providerId)
   const model = provider?.models.find((m) => m.id === ref.modelId) ?? null
   return model && provider ? normalizeReasoningStyle(model, provider.kind) : null
 }
 
-
 /** 统一本机/局域网服务判定：provider 测试、模型同步与设置页共用同一规则。 */
 function normalizeHost(host: string): string {
   return host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
 }
 
-
 export function isLoopbackHost(host: string): boolean {
   const value = normalizeHost(host)
   return value === 'localhost' || value === '::1' || /^127\./.test(value)
 }
-
 
 export function isPrivateNetworkHost(host: string): boolean {
   const value = normalizeHost(host)
@@ -700,7 +670,6 @@ export function isPrivateNetworkHost(host: string): boolean {
   )
 }
 
-
 export function isLocalServiceUrl(value: string, options: { allowPrivate?: boolean } = {}): boolean {
   try {
     const url = new URL(value.trim())
@@ -710,7 +679,6 @@ export function isLocalServiceUrl(value: string, options: { allowPrivate?: boole
     return false
   }
 }
-
 
 export function defaultSettings(): Settings {
   return {
@@ -768,7 +736,6 @@ export function defaultSettings(): Settings {
   }
 }
 
-
 /** 推荐给新手的三个建议任务（空状态） */
 export const SUGGESTIONS = [
   {
@@ -788,23 +755,18 @@ export const SUGGESTIONS = [
   }
 ] as const
 
-
 export const REASONING_EFFORTS = ['auto', 'off', 'low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly ReasoningEffort[]
 
-
 const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS)
-
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && REASONING_EFFORT_SET.has(value)
 }
 
-
 function normalizeEffortList(value: unknown): ReasoningEffort[] {
   if (!Array.isArray(value)) return []
   return [...new Set(value.filter((item): item is ReasoningEffort => isReasoningEffort(item)))]
 }
-
 
 /**
  * 模型实际可选的思考强度：auto 表示“不指定、交给服务端”，显式档位只来自模型元数据。
@@ -816,7 +778,6 @@ export function modelReasoningEfforts(model: ModelInfo | null | undefined): Reas
   return explicit.length > 0 ? ['auto', ...explicit.filter((effort) => effort !== 'auto')] : ['auto']
 }
 
-
 /** 请求前把历史/默认值收敛到模型真实支持的档位；不合法时退回 auto（不发送参数）。 */
 export function normalizeReasoningEffortForModel(
   model: ModelInfo | null | undefined,
@@ -827,7 +788,6 @@ export function normalizeReasoningEffortForModel(
   return modelReasoningEfforts(model).includes(effort) ? effort : 'auto'
 }
 
-
 export function reasoningRequestFor(
   model: ModelInfo | null | undefined,
   effort: ReasoningEffort | undefined
@@ -837,7 +797,6 @@ export function reasoningRequestFor(
   return { effort: normalized, style: model.reasoningStyle }
 }
 
-
 export function modelContextOptions(model: ModelInfo | null | undefined): number[] {
   if (!model?.contextOptions?.length) return []
   const max = model.contextWindow
@@ -845,11 +804,9 @@ export function modelContextOptions(model: ModelInfo | null | undefined): number
     .sort((a, b) => a - b)
 }
 
-
 /** 订阅接入页面的公共契约；不把明文 token 暴露给渲染层。 */
 
 export type SubscriptionProtocol = 'openai-compat' | 'anthropic'
-
 
 export interface SubscriptionQuotaWindow {
   label: string
@@ -860,7 +817,6 @@ export interface SubscriptionQuotaWindow {
   resetAt?: number
 }
 
-
 export interface CodexSubscriptionAccount {
   email?: string
   plan?: string
@@ -869,7 +825,6 @@ export interface CodexSubscriptionAccount {
   expiresAt?: number
   source?: 'codex-cli' | 'oauth'
 }
-
 
 export interface CodexSubscriptionQuota {
   plan?: string
@@ -884,7 +839,6 @@ export interface CodexSubscriptionQuota {
   message?: string
 }
 
-
 export interface CodexSubscriptionState {
   available: boolean
   connected: boolean
@@ -897,7 +851,6 @@ export interface CodexSubscriptionState {
   error?: string
 }
 
-
 export interface CustomSubscriptionRecord {
   id: string
   name: string
@@ -908,15 +861,12 @@ export interface CustomSubscriptionRecord {
   createdAt: number
 }
 
-
 export interface CustomSubscriptionState {
   record: CustomSubscriptionRecord
   provider?: ProviderConfig
   connected: boolean
   error?: string
 }
-
-
 
 export interface QoderQuotaBucket {
   kind: 'personal' | 'add-on' | 'org'
@@ -925,7 +875,6 @@ export interface QoderQuotaBucket {
   remaining?: number
   unit?: string
 }
-
 
 export interface QoderSubscriptionAccount {
   email?: string
@@ -937,14 +886,12 @@ export interface QoderSubscriptionAccount {
   sourcePath?: string
 }
 
-
 export interface QoderSubscriptionQuota {
   buckets: QoderQuotaBucket[]
   expiresAt?: number
   fetchedAt: number
   message?: string
 }
-
 
 export interface QoderSubscriptionState {
   available: boolean
@@ -959,7 +906,6 @@ export interface QoderSubscriptionState {
   error?: string
 }
 
-
 export type AgentSubscriptionId =
   | 'kimi'
   | 'glm'
@@ -969,7 +915,6 @@ export type AgentSubscriptionId =
   | 'cline'
   | 'antigravity'
   | 'opencode'
-
 
 export interface AgentQuotaWindow {
   id: string
@@ -982,7 +927,6 @@ export interface AgentQuotaWindow {
   resetAt?: number
 }
 
-
 export interface AgentSubscriptionAccount {
   email?: string
   name?: string
@@ -994,13 +938,11 @@ export interface AgentSubscriptionAccount {
   sourcePath?: string
 }
 
-
 export interface AgentSubscriptionQuota {
   windows: AgentQuotaWindow[]
   fetchedAt: number
   message?: string
 }
-
 
 export interface AgentSubscriptionState {
   id: AgentSubscriptionId
@@ -1021,7 +963,6 @@ export interface AgentSubscriptionState {
   error?: string
 }
 
-
 export interface SubscriptionStatus {
   codex: CodexSubscriptionState
   qoder?: QoderSubscriptionState
@@ -1029,7 +970,6 @@ export interface SubscriptionStatus {
   custom: CustomSubscriptionState[]
   disclaimer: string
 }
-
 
 export interface CustomSubscriptionInput {
   id?: string
@@ -1039,7 +979,6 @@ export interface CustomSubscriptionInput {
   apiKey: string
   models: string[]
 }
-
 
 export type SubscriptionAction =
   | { action: 'import-codex'; path?: string }
@@ -1069,7 +1008,6 @@ export type SubscriptionAction =
   | { action: 'test-custom'; id: string }
   | { action: 'set-custom-enabled'; id: string; enabled: boolean }
 
-
 export interface SubscriptionTestResult {
   ok: boolean
   latencyMs: number
@@ -1080,7 +1018,6 @@ export interface SubscriptionTestResult {
 export type ConnectorCatalogCategory = 'remote' | 'local'
 
 export type ConnectorCatalogTransport = 'http' | 'stdio'
-
 
 export interface ConnectorCatalogEntry {
   id: string
@@ -1118,14 +1055,12 @@ export interface ConnectorCatalogEntry {
   notes?: string[]
 }
 
-
 export interface ConnectorRuntimeStatus {
   platform: string
   npx: { available: boolean; version?: string }
   /** 检测失败时给用户的可读提示 */
   note?: string
 }
-
 
 export const CONNECTOR_CATALOG: readonly ConnectorCatalogEntry[] = [
   {
@@ -1286,11 +1221,9 @@ export const CONNECTOR_CATALOG: readonly ConnectorCatalogEntry[] = [
   }
 ] as const
 
-
 export function findCatalogEntry(id: string): ConnectorCatalogEntry | null {
   return CONNECTOR_CATALOG.find((entry) => entry.id === id) ?? null
 }
-
 
 /**
  * 目录里本机 MCP 服务的启动命令构造（纯函数，可在单元测试覆盖）。
@@ -1302,12 +1235,10 @@ export interface LocalNpxInvocation {
   args: string[]
 }
 
-
 export function quoteCmdToken(value: string): string {
   if (!/[\s"&|<>^()%!]/.test(value)) return value
   return `"${value.replace(/"/g, '""')}"`
 }
-
 
 export function buildLocalNpxInvocation(
   packageArgs: string[],
@@ -1325,14 +1256,12 @@ export function buildLocalNpxInvocation(
   return { command: 'npx', args: fullArgs }
 }
 
-
 export interface ResearchDepthConfig {
   label: string
   description: string
   maxRounds: number
   minSources: number
 }
-
 
 export const RESEARCH_DEPTHS: Record<ResearchDepth, ResearchDepthConfig> = {
   quick: {
@@ -1355,11 +1284,9 @@ export const RESEARCH_DEPTHS: Record<ResearchDepth, ResearchDepthConfig> = {
   }
 }
 
-
 export function normalizeResearchDepth(value: unknown): ResearchDepth {
   return value === 'quick' || value === 'deep' ? value : 'standard'
 }
-
 
 export function createResearchState(
   topic: string,
@@ -1382,19 +1309,16 @@ export function createResearchState(
   }
 }
 
-
 export interface ResearchSource {
   url: string
   title: string
 }
-
 
 /** 用户确认计划后开始检索的输入。 */
 export interface ResearchStartInput {
   plan: string
   depth?: ResearchDepth
 }
-
 
 /** 独立来源的归一化键：忽略 hash、末尾斜杠、UTM 跟踪参数与主机大小写。 */
 function sourceKey(raw: string): string | null {
@@ -1412,7 +1336,6 @@ function sourceKey(raw: string): string | null {
     return null
   }
 }
-
 
 /** 从消息中的 web_search / web_fetch 成功结果收集独立来源（按归一化 URL 去重）。 */
 export function collectResearchSources(messages: ChatMessage[], since = 0): ResearchSource[] {
@@ -1441,7 +1364,6 @@ export function collectResearchSources(messages: ChatMessage[], since = 0): Rese
   return sources
 }
 
-
 function assistantTextSince(messages: ChatMessage[], since: number): string {
   const chunks: string[] = []
   for (const message of messages) {
@@ -1453,7 +1375,6 @@ function assistantTextSince(messages: ChatMessage[], since: number): string {
   return chunks.join('\n')
 }
 
-
 /** 一条消息/成品是否具备「带来源章节 + 至少两个链接」的报告结构。 */
 function hasSourceEvidence(text: string): boolean {
   if (!text) return false
@@ -1463,7 +1384,6 @@ function hasSourceEvidence(text: string): boolean {
     text
   )
 }
-
 
 /** 最终报告：有研究/报告标题的文本成品，或正文具备来源章节与两个链接的成品/回复。 */
 export function hasResearchReport(
@@ -1483,7 +1403,6 @@ export function hasResearchReport(
   return { present: hasSourceEvidence(assistantTextSince(messages, startedAt)) }
 }
 
-
 export interface ResearchDecision {
   status: 'searching' | 'completed' | 'stopped'
   sourceCount: number
@@ -1491,7 +1410,6 @@ export interface ResearchDecision {
   artifactId?: string
   followUpPrompt?: string
 }
-
 
 /**
  * 每轮结束后的判断：
@@ -1546,7 +1464,6 @@ export function decideResearchNextStep(
   }
 }
 
-
 /** 研究模式系统提示段（运行时状态由主进程注入）。 */
 export function buildResearchPromptSection(state: ResearchState): string {
   const config = RESEARCH_DEPTHS[state.depth]
@@ -1575,7 +1492,6 @@ export function buildResearchPromptSection(state: ResearchState): string {
     .filter((line) => line !== '')
     .join('\n')
 }
-
 
 /** 计划阶段：只生成可审阅的计划，不检索、不写报告。 */
 export function buildResearchPlanPrompt(state: ResearchState): string {
@@ -1607,7 +1523,6 @@ export type ScheduledPermission = 'read-only' | 'auto'
 
 export type ScheduledTaskStatus = 'never' | 'running' | 'success' | 'error' | 'stopped' | 'missed'
 
-
 export interface ScheduleSpec {
   kind: ScheduleKind
   /** 本地时间 HH:mm（24 小时制） */
@@ -1617,7 +1532,6 @@ export interface ScheduleSpec {
   /** weekly：0=周日 … 6=周六 */
   weekday?: number
 }
-
 
 export interface ScheduledTask {
   id: string
@@ -1638,7 +1552,6 @@ export interface ScheduledTask {
   lastSessionId?: string
 }
 
-
 export interface ScheduledTaskInput {
   title: string
   prompt: string
@@ -1647,7 +1560,6 @@ export interface ScheduledTaskInput {
   permissionMode: ScheduledPermission
   enabled: boolean
 }
-
 
 export const SCHEDULE_MAX_TASKS = 50
 
@@ -1661,26 +1573,21 @@ export const SCHEDULE_CATCHUP_MS = 60 * 60 * 1000
 /** 单次自动运行的最长等待（防止提问/挂起占住队列）。 */
 export const SCHEDULE_RUN_TIMEOUT_MS = 30 * 60 * 1000
 
-
 export const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const
-
 
 export function isScheduleKind(value: unknown): value is ScheduleKind {
   return value === 'once' || value === 'daily' || value === 'weekly'
 }
 
-
 export function isScheduledPermission(value: unknown): value is ScheduledPermission {
   return value === 'read-only' || value === 'auto'
 }
-
 
 function parseTime(value: string): { hours: number; minutes: number } | null {
   const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value.trim())
   if (!match) return null
   return { hours: Number(match[1]), minutes: Number(match[2]) }
 }
-
 
 function parseDate(value: string): { year: number; month: number; day: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
@@ -1693,13 +1600,11 @@ function parseDate(value: string): { year: number; month: number; day: number } 
   return { year, month, day }
 }
 
-
 function atTime(base: Date, hours: number, minutes: number): Date {
   const next = new Date(base.getTime())
   next.setHours(hours, minutes, 0, 0)
   return next
 }
-
 
 /**
  * 计算下一次执行时间（本地时区）。
@@ -1737,7 +1642,6 @@ export function computeNextRun(spec: ScheduleSpec, from: number = Date.now()): n
   return null
 }
 
-
 /** 校验并规范化调度规则；不合法时抛出可直接展示给用户的中文错误。 */
 export function validateScheduleSpec(spec: ScheduleSpec, from: number = Date.now()): {
   spec: ScheduleSpec
@@ -1765,7 +1669,6 @@ export function validateScheduleSpec(spec: ScheduleSpec, from: number = Date.now
   return { spec: normalized, nextRunAt: next }
 }
 
-
 /** 「每天 09:00」「每周一 09:00」「10月22日 09:00 · 一次」 */
 export function describeSchedule(spec: ScheduleSpec, options: { withOnceSuffix?: boolean } = {}): string {
   const time = spec.time
@@ -1778,7 +1681,6 @@ export function describeSchedule(spec: ScheduleSpec, options: { withOnceSuffix?:
   const label = date ? `${date.month}月${date.day}日 ${time}` : `一次 ${time}`
   return options.withOnceSuffix === false ? label : `${label} · 一次`
 }
-
 
 /** 下一次执行的简短中文描述；用于列表与状态条。 */
 export function describeNextRun(nextRunAt: number | null, now: number = Date.now()): string {
@@ -1800,7 +1702,6 @@ export function describeNextRun(nextRunAt: number | null, now: number = Date.now
   return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
 
-
 export function describeLastStatus(status: ScheduledTaskStatus): string {
   switch (status) {
     case 'never':
@@ -1819,7 +1720,6 @@ export function describeLastStatus(status: ScheduledTaskStatus): string {
 }
 /** 任务经验（自动记忆）与记忆中心事件的共享契约。 */
 export type EpisodeOutcome = 'completed' | 'failed'
-
 
 export interface TaskEpisode {
   id: string
@@ -1844,7 +1744,6 @@ export interface TaskEpisode {
   enabled: boolean
 }
 
-
 export interface EpisodeStats {
   scope: 'project' | 'global'
   workspace: string | null
@@ -1853,12 +1752,10 @@ export interface EpisodeStats {
   limit: number
 }
 
-
 export interface EpisodeListResult {
   entries: TaskEpisode[]
   stats: EpisodeStats
 }
-
 
 export interface EpisodeInjection {
   text: string
@@ -1868,11 +1765,9 @@ export interface EpisodeInjection {
   included: number
 }
 
-
 export const EPISODE_CHANGED_EVENT = 'feature:memory:episodes-changed'
 
 export const MEMORY_CHANGED_EVENT = 'feature:memory:changed'
-
 
 /**
  * 自进化建议（记忆中心）：任务后复盘产出的可采纳改进。
@@ -1889,7 +1784,6 @@ export type EvolutionKind = 'memory' | 'skill'
 export type EvolutionAction = 'create' | 'update'
 
 export type EvolutionStatus = 'pending' | 'applied' | 'ignored'
-
 
 export interface EvolutionSuggestion {
   id: string
@@ -1925,13 +1819,11 @@ export interface EvolutionSuggestion {
   appliedTarget?: string
 }
 
-
 export interface EvolutionListResult {
   suggestions: EvolutionSuggestion[]
   pending: number
   lastReviewedAt: number | null
 }
-
 
 export type EvolutionSkipReason =
   | 'disabled'
@@ -1948,7 +1840,6 @@ export type EvolutionSkipReason =
   | 'empty'
   | 'timeout'
 
-
 export interface EvolutionReviewResult {
   suggestions: EvolutionSuggestion[]
   /** 本次新写入的候选数量（更新已有候选不计入） */
@@ -1958,7 +1849,6 @@ export interface EvolutionReviewResult {
   message?: string
 }
 
-
 export interface EvolutionAppliedTarget {
   kind: EvolutionKind
   id: string
@@ -1966,12 +1856,10 @@ export interface EvolutionAppliedTarget {
   label: string
 }
 
-
 export interface EvolutionApplyResult {
   suggestion: EvolutionSuggestion
   target: EvolutionAppliedTarget
 }
-
 
 export const EVOLUTION_MIN_CONFIDENCE = 0.7
 
@@ -1994,7 +1882,6 @@ export const EVOLUTION_MAX_RATIONALE_CHARS = 600
 export const EVOLUTION_MAX_STORE_BYTES = 2 * 1024 * 1024
 
 export const EVOLUTION_CHANGED_EVENT = 'feature:evolution:changed'
-
 
 export const EVOLUTION_SKIP_LABEL: Record<EvolutionSkipReason, string> = {
   disabled: '自动检查已关闭',
@@ -2032,7 +1919,6 @@ export const RESERVED_COMMAND_NAMES: ReadonlySet<string> = new Set([
   'research'
 ])
 
-
 /** `/init` 模板：渲染层与主进程共用的提示词，避免两处文案漂移。 */
 export const INIT_RULES_PROMPT = [
   '请先只读分析当前工作区，然后创建或更新项目规则文件 AGENTS.md。',
@@ -2049,7 +1935,6 @@ export const INIT_RULES_PROMPT = [
   '只修改规则文件，不要改动其他文件；写文件会按当前权限模式请求我批准。完成后用几句话说明你写了什么。'
 ].join('\n')
 
-
 /** 自定义斜杠命令模板展开：支持 $ARGUMENTS 与 $1..$9；没有占位符时把参数附在末尾。 */
 export function expandCustomCommand(template: string, rawArgs: string): string {
   const args = rawArgs.trim()
@@ -2062,7 +1947,6 @@ export function expandCustomCommand(template: string, rawArgs: string): string {
   if (!hasPlaceholder && args) return `${expanded.trimEnd()}\n\n${args}`.trim()
   return expanded.trim()
 }
-
 
 /**
  * Morrow 实际支持的键盘快捷键清单。
@@ -2079,14 +1963,12 @@ export interface ShortcutEntry {
   dynamic?: 'sendKey'
 }
 
-
 export interface ShortcutGroup {
   id: string
   label: string
   description?: string
   entries: ShortcutEntry[]
 }
-
 
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
@@ -2180,7 +2062,6 @@ export const ATTACHMENT_TOTAL_TEXT_MAX_CHARS = 80_000
 
 export const ATTACHMENT_MAX_COUNT = 8
 
-
 /** 文本编辑器/预览单次最多读入的字节数；超过时只读展示开头并标记截断。 */
 export const TEXT_PREVIEW_MAX_BYTES = 8 * 1024 * 1024
 
@@ -2194,7 +2075,6 @@ export const OFFICE_PREVIEW_MAX_BYTES = 50 * 1024 * 1024
 /** ZIP/JAR 列表上限（不解压，仅读中央目录） */
 export const ARCHIVE_PREVIEW_MAX_BYTES = 100 * 1024 * 1024
 
-
 export type FilePreviewKind =
   | 'image'
   | 'pdf'
@@ -2206,7 +2086,6 @@ export type FilePreviewKind =
   | 'audio'
   | 'video'
   | 'unsupported'
-
 
 export interface FilePreviewMeta {
   path: string
@@ -2220,13 +2099,11 @@ export interface FilePreviewMeta {
   note?: string
 }
 
-
 export interface XlsxSheetPreview {
   name: string
   rows: string[][]
   truncated: boolean
 }
-
 
 export interface XlsxPreviewResult {
   sheets: XlsxSheetPreview[]
@@ -2235,13 +2112,11 @@ export interface XlsxPreviewResult {
   mtimeMs: number
 }
 
-
 export interface PptxSlidePreview {
   index: number
   title: string
   lines: string[]
 }
-
 
 export interface PptxPreviewResult {
   slides: PptxSlidePreview[]
@@ -2249,7 +2124,6 @@ export interface PptxPreviewResult {
   size: number
   mtimeMs: number
 }
-
 
 export interface DocumentPreviewResult {
   html: string
@@ -2259,7 +2133,6 @@ export interface DocumentPreviewResult {
   mtimeMs: number
 }
 
-
 export interface ArchiveEntryPreview {
   name: string
   dir: boolean
@@ -2267,7 +2140,6 @@ export interface ArchiveEntryPreview {
   compressedSize: number
   date: string | null
 }
-
 
 export interface ArchivePreviewResult {
   entries: ArchiveEntryPreview[]
@@ -2277,10 +2149,8 @@ export interface ArchivePreviewResult {
   mtimeMs: number
 }
 
-
 /** 可作为聊天图片附件（视觉模型 + Canvas 可稳定解码）的格式 */
 const ATTACHMENT_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'])
-
 
 /** 文件预览可尝试渲染的图片格式；解码失败时 UI 会降级为系统应用打开 */
 const PREVIEW_IMAGE_EXTENSIONS = new Set([
@@ -2288,33 +2158,25 @@ const PREVIEW_IMAGE_EXTENSIONS = new Set([
   'jfif', 'apng', 'svg', 'ico', 'avif', 'tif', 'tiff', 'heic', 'heif'
 ])
 
-
 const AUDIO_EXTENSIONS = new Set([
   'mp3', 'wav', 'ogg', 'oga', 'm4a', 'm4b', 'aac', 'flac', 'opus',
   'aif', 'aiff', 'aifc', 'amr', 'wma'
 ])
-
 
 const VIDEO_EXTENSIONS = new Set([
   'mp4', 'm4v', 'webm', 'ogv', 'mov', 'mkv', 'avi',
   'mpg', 'mpeg', '3gp', '3g2', 'wmv', 'flv', 'ts', 'm2ts'
 ])
 
-
 const XLSX_EXTENSIONS = new Set(['xlsx', 'xlsm', 'xltx', 'xltm'])
-
 
 const PPTX_EXTENSIONS = new Set(['pptx', 'pptm', 'ppsx', 'potx'])
 
-
 const DOCUMENT_EXTENSIONS = new Set(['rtf', 'odt', 'ods', 'odp', 'epub'])
-
 
 const ARCHIVE_EXTENSIONS = new Set(['zip', 'jar', 'whl', 'vsix'])
 
-
 const TABLE_EXTENSIONS = new Set(['csv', 'tsv'])
-
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   mp3: 'audio/mpeg',
@@ -2377,17 +2239,14 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   patch: 'text/x-diff'
 }
 
-
 const EXTENSIONLESS_TEXT_NAMES = new Set([
   'readme', 'license', 'licence', 'notice', 'copying', 'authors', 'changelog',
   'dockerfile', 'makefile', 'procfile', 'gemfile', 'rakefile', 'justfile', 'todo'
 ])
 
-
 const DOTFILE_TEXT_NAMES = new Set([
   '.env', '.gitignore', '.npmrc', '.editorconfig', '.dockerignore', '.prettierignore', '.eslintignore'
 ])
-
 
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'mdx', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'xml', 'html', 'htm',
@@ -2398,11 +2257,9 @@ const TEXT_EXTENSIONS = new Set([
   'groovy', 'gradle', 'cmake', 'mk', 'lock', 'editorconfig'
 ])
 
-
 function baseName(nameOrPath: string): string {
   return nameOrPath.replace(/\\/g, '/').split('/').pop() ?? ''
 }
-
 
 export function fileExtension(nameOrPath: string): string {
   const name = baseName(nameOrPath)
@@ -2410,18 +2267,15 @@ export function fileExtension(nameOrPath: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
 }
 
-
 /** 聊天附件可用的图片格式（raster） */
 export function isImageFileName(nameOrPath: string): boolean {
   return ATTACHMENT_IMAGE_EXTENSIONS.has(fileExtension(nameOrPath))
 }
 
-
 /** 文件预览可尝试的图片格式（包含 SVG/TIFF/HEIC 等） */
 export function isPreviewImageFileName(nameOrPath: string): boolean {
   return PREVIEW_IMAGE_EXTENSIONS.has(fileExtension(nameOrPath))
 }
-
 
 export function isTextFileName(nameOrPath: string): boolean {
   const name = baseName(nameOrPath).toLowerCase()
@@ -2431,7 +2285,6 @@ export function isTextFileName(nameOrPath: string): boolean {
   return TEXT_EXTENSIONS.has(fileExtension(name))
 }
 
-
 export function imageMediaTypeFor(nameOrPath: string): string | null {
   const ext = fileExtension(nameOrPath)
   if (!ATTACHMENT_IMAGE_EXTENSIONS.has(ext)) return null
@@ -2439,21 +2292,17 @@ export function imageMediaTypeFor(nameOrPath: string): string | null {
   return `image/${ext}`
 }
 
-
 export function isPdfFileName(nameOrPath: string): boolean {
   return fileExtension(nameOrPath) === 'pdf'
 }
-
 
 export function isDocxFileName(nameOrPath: string): boolean {
   return fileExtension(nameOrPath) === 'docx'
 }
 
-
 export function isAudioFileName(nameOrPath: string): boolean {
   return AUDIO_EXTENSIONS.has(fileExtension(nameOrPath))
 }
-
 
 export function isVideoFileName(nameOrPath: string): boolean {
   const ext = fileExtension(nameOrPath)
@@ -2462,41 +2311,33 @@ export function isVideoFileName(nameOrPath: string): boolean {
   return VIDEO_EXTENSIONS.has(ext)
 }
 
-
 export function isXlsxFileName(nameOrPath: string): boolean {
   return XLSX_EXTENSIONS.has(fileExtension(nameOrPath))
 }
-
 
 export function isPptxFileName(nameOrPath: string): boolean {
   return PPTX_EXTENSIONS.has(fileExtension(nameOrPath))
 }
 
-
 export function isDocumentFileName(nameOrPath: string): boolean {
   return DOCUMENT_EXTENSIONS.has(fileExtension(nameOrPath))
 }
-
 
 export function isArchiveFileName(nameOrPath: string): boolean {
   return ARCHIVE_EXTENSIONS.has(fileExtension(nameOrPath))
 }
 
-
 export function isTableFileName(nameOrPath: string): boolean {
   return TABLE_EXTENSIONS.has(fileExtension(nameOrPath))
 }
-
 
 export function isLegacyOfficeFileName(nameOrPath: string): boolean {
   return /^(?:doc|xls|ppt)$/i.test(fileExtension(nameOrPath))
 }
 
-
 export function mimeTypeForFileName(nameOrPath: string): string | null {
   return imageMediaTypeFor(nameOrPath) ?? MIME_BY_EXTENSION[fileExtension(nameOrPath)] ?? null
 }
-
 
 /** 非文本文档的预览类型；文本文件由调用方先判断，不走这里。 */
 export function binaryPreviewKindForFileName(nameOrPath: string): FilePreviewKind | null {
@@ -2514,12 +2355,10 @@ export function binaryPreviewKindForFileName(nameOrPath: string): FilePreviewKin
   return null
 }
 
-
 export function previewKindForFileName(nameOrPath: string): FilePreviewKind | 'text' {
   if (isTextFileName(nameOrPath)) return 'text'
   return binaryPreviewKindForFileName(nameOrPath) ?? 'unsupported'
 }
-
 
 /** 所有 invoke 通道唯一来源，主进程与 preload 都必须引用这里 */
 export const IPC = {
@@ -2624,7 +2463,6 @@ export const IPC = {
   fileRestoreSnapshot: 'file:restore-snapshot'
 } as const
 
-
 export const EVENT_CHANNEL = 'morrow:event'
 
 export const WINDOW_STATE_CHANNEL = 'morrow:window-state'
@@ -2644,13 +2482,11 @@ export const ISLAND_QUICK_SEND_CHANNEL = 'morrow:island:quick-send'
 /** 灵动岛请求主窗口切到某会话或新建会话（主进程 → 主窗口） */
 export const ISLAND_OPEN_CHANNEL = 'morrow:island:open'
 
-
 export interface IslandQuickSendInput {
   text: string
   /** 指定会话；缺省 = 主窗口当前会话 */
   sessionId?: string | null
 }
-
 
 export interface IslandOpenMainInput {
   sessionId?: string | null
@@ -2659,7 +2495,6 @@ export interface IslandOpenMainInput {
   /** 打开主窗口并切到创作台 */
   studio?: boolean
 }
-
 
 export interface IslandStudioSyncInput {
   active: boolean
@@ -2674,14 +2509,12 @@ export interface IslandStudioSyncInput {
   jobs?: number
 }
 
-
 export interface CompactResult {
   compacted: boolean
   savedTokens: number
   messageCount: number
   reason?: string
 }
-
 
 export interface ProviderTestInput {
   providerId: string
@@ -2690,12 +2523,10 @@ export interface ProviderTestInput {
   modelId?: string
 }
 
-
 export interface SaveProviderInput {
   config: ProviderConfig
   apiKey?: string
 }
-
 
 export interface GoalStartInput {
   sessionId: string
@@ -2707,13 +2538,11 @@ export interface GoalStartInput {
   maxNoProgressRounds?: number
 }
 
-
 export interface GoalActionResult {
   goal: import('./types').Goal | null
   /** 若启动了新一轮运行，返回 runId */
   runId?: string
 }
-
 
 export interface PlanActionResult {
   plan: import('./types').SessionPlan | null
@@ -2721,7 +2550,6 @@ export interface PlanActionResult {
   runId?: string
   meta?: import('./types').SessionMeta
 }
-
 
 export interface SyncModelsResult {
   providerId: string
@@ -2736,7 +2564,6 @@ export interface SyncModelsResult {
   settings?: import('./types').Settings
 }
 
-
 export interface SaveWebSearchInput {
   enabled: boolean
   provider: import('./types').WebSearchProvider
@@ -2744,7 +2571,6 @@ export interface SaveWebSearchInput {
   maxResults: number
   apiKey?: string
 }
-
 
 export interface WebSearchTestResult {
   ok: boolean
@@ -2755,7 +2581,6 @@ export interface WebSearchTestResult {
   sources?: import('./types').WebSearchSource[]
 }
 
-
 export interface CompleteOnboardingInput {
   providerId?: string
   apiKey?: string
@@ -2764,9 +2589,7 @@ export interface CompleteOnboardingInput {
   demo?: boolean
 }
 
-
 export interface UpdateSettingsInput extends Partial<Settings> {}
-
 
 /**
  * preload 通过 contextBridge 暴露给渲染层的窄接口。

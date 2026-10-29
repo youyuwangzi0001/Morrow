@@ -9,8 +9,6 @@ import { startMockLLM } from '../fixtures/mock-llm.mjs'
 import { clearEvents, clickPermissionCard, configureMockProvider, createSession, dismissOnboarding, getEvents, installEventCollector, readStore, sendMessageViaStore, setThemeViaStore, waitForPermission, waitForRunFinished, waitForRunStarted, waitForStoreReady, waitUntil, createUiSession } from './store'
 import { DEFAULT_MODEL, defaultSettings } from '../../src/shared/contracts'
 
-
-
 test.describe("02-chat", () => {
 // ── 原文件：chat-transcript.spec.ts ──────────────────────────────────────────────
 test.describe('chat-transcript.spec.ts', () => {
@@ -1409,7 +1407,6 @@ test('长对话出现右侧轮次导航，点击分段跳到对应轮次', async
 })
 })
 
-
 test.describe("03-context", () => {
 // ── 原文件：context-compaction.spec.ts ──────────────────────────────────────────────
 test.describe('context-compaction.spec.ts', () => {
@@ -2804,7 +2801,6 @@ test('上下文上限可选并真实传给代理', async () => {
 })
 })
 
-
 test.describe("10-rounds", () => {
 // ── 原文件：r12-close.spec.ts ──────────────────────────────────────────────
 test.describe('r12-close.spec.ts', () => {
@@ -3256,8 +3252,9 @@ test('Agent run_command 使用设置里选中的 Shell，且默认是 Git Bash',
     })
     if (profiles.ids.includes('gitbash')) expect(profiles.defaultShell).toBe('gitbash')
     expect(profiles.ids).not.toContain('powershell')
-    // cmd 是受限令牌环境下其它 Shell 起不来时的最后兜底，保留在列表中。
-    expect(profiles.ids).toContain('cmd')
+    // 不再保留 PowerShell 5.1 或 cmd；Git Bash 之后只回退 PowerShell 7。
+    expect(profiles.ids).not.toContain('cmd')
+    expect(profiles.ids).toContain('pwsh')
     await createSession(page, {
       workspace,
       ...provider,

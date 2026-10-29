@@ -37,12 +37,9 @@ import { scheduledInputFromRecord, createSchedule, listSchedules, removeSchedule
 import { getSubscriptionService, runSubscriptionAction, getQoderSubscriptionService } from './subscriptions'
 import { closeLoginWindow } from './workspace'
 
-
-
 const MAX_DIFF_BYTES = 400_000
 
 const MAX_LOG = 80
-
 
 function emptyStatus(isRepo = false, root: string | null = null): GitStatus {
   return {
@@ -61,13 +58,11 @@ function emptyStatus(isRepo = false, root: string | null = null): GitStatus {
   }
 }
 
-
 interface GitRunResult {
   code: number
   stdout: string
   stderr: string
 }
-
 
 /** 外部环境可能带 GIT_DIR/GIT_WORK_TREE 等变量，会把命令重定向到工作区之外的仓库，必须剔除。 */
 function gitEnv(): NodeJS.ProcessEnv {
@@ -88,7 +83,6 @@ function gitEnv(): NodeJS.ProcessEnv {
   }
   return env
 }
-
 
 function execGit(cwd: string, args: string[], timeoutMs: number): Promise<GitRunResult> {
   return new Promise((resolvePromise, reject) => {
@@ -122,9 +116,7 @@ function execGit(cwd: string, args: string[], timeoutMs: number): Promise<GitRun
   })
 }
 
-
 const sleep = (ms: number): Promise<void> => new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
-
 
 /** Windows 上 index.lock 常被并发的状态刷新短暂占用：重试几次再报错。 */
 async function runGit(cwd: string, args: string[], timeoutMs = 30_000): Promise<GitRunResult> {
@@ -135,7 +127,6 @@ async function runGit(cwd: string, args: string[], timeoutMs = 30_000): Promise<
   }
   return result
 }
-
 
 /**
  * 某些 Windows 安全软件会阻止 git 子进程创建/覆盖工作区文件（错误为 Permission denied），
@@ -174,7 +165,6 @@ async function restoreWorktreeFromIndex(root: string, path: string): Promise<boo
   return refresh.code === 0
 }
 
-
 /** 还原文件时可能被安全软件或文件预览短暂占用：先重试，再走 Node 写回兜底。 */
 async function restoreWorktree(root: string, path: string): Promise<GitRunResult> {
   let result = await runGit(root, ['--literal-pathspecs', 'restore', '--worktree', '--', path])
@@ -200,7 +190,6 @@ async function restoreWorktree(root: string, path: string): Promise<GitRunResult
   return result
 }
 
-
 function gitError(result: GitRunResult): Error {
   const detail = `${result.stderr}\n${result.stdout}`
     .split(/\r?\n/)
@@ -212,7 +201,6 @@ function gitError(result: GitRunResult): Error {
     .slice(0, 600)
   return new Error(detail || 'Git 命令执行失败。')
 }
-
 
 function parseStatus(stdout: string): Pick<GitStatus, 'branch' | 'detached' | 'upstream' | 'ahead' | 'behind' | 'files' | 'stagedCount' | 'changedCount'> {
   const fields = stdout.split('\0')
@@ -288,13 +276,11 @@ function parseStatus(stdout: string): Pick<GitStatus, 'branch' | 'detached' | 'u
   }
 }
 
-
 function trimDiff(output: string): { diff: string; truncated: boolean; binary: boolean } {
   const binary = /^Binary files .* differ$/m.test(output) || /^GIT binary patch$/m.test(output)
   if (output.length <= MAX_DIFF_BYTES) return { diff: output, truncated: false, binary }
   return { diff: output.slice(0, MAX_DIFF_BYTES), truncated: true, binary }
 }
-
 
 export class GitService {
   /** 返回仓库根；不是仓库时 null。仓库根在工作区之外时直接拒绝。 */
@@ -654,15 +640,9 @@ export class GitService {
   }
 }
 
-
 export const gitService = new GitService()
 
-
-
-
 export { isPathInside }
-
-
 
 export function knownWorkspaceRoots(): string[] {
   const roots: string[] = []
@@ -680,8 +660,6 @@ export function knownWorkspaceRoots(): string[] {
   }
   return [...new Set(roots.map((root) => resolve(root)))]
 }
-
-
 
 /** 把请求目录解析成已登记工作区内的真实路径；默认取第一个工作区。 */
 export function resolveWorkspaceDir(raw: unknown, outsideMessage: string): string {
@@ -710,8 +688,6 @@ export function resolveWorkspaceDir(raw: unknown, outsideMessage: string): strin
   throw new Error(outsideMessage)
 }
 
-
-
 /** 校验某个仓库根目录仍落在指定工作区内（防止向上发现工作区之外的仓库）。 */
 export function assertInsideWorkspace(workspace: string, target: string): void {
   const realWorkspace = realpathSync(workspace)
@@ -721,22 +697,16 @@ export function assertInsideWorkspace(workspace: string, target: string): void {
   }
 }
 
-
-
 function asRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object') throw new Error('参数格式错误：需要一个对象。')
   return payload as Record<string, unknown>
 }
-
-
 
 function readString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key]
   if (typeof value !== 'string' || !value.trim()) throw new Error(`参数 ${key} 必须是非空字符串。`)
   return value
 }
-
-
 
 /** 自动化 bridge 实现（core 工具只依赖接口，主进程在这里落到 BrowserService） */
 export const browserAutomationBridge: BrowserBridge = {
@@ -752,11 +722,7 @@ export const browserAutomationBridge: BrowserBridge = {
   closeAutomation: () => browserService.closeAutomation()
 }
 
-
-
 let featureInstalled = false
-
-
 
 /**
  * 一次性初始化：注册 IPC、注入 core bridge，并在 app ready 后配置安全 session。
@@ -843,22 +809,15 @@ export function installBrowserFeature(service: BrowserService = browserService):
   log.info('browser feature installed', { channels: 17 })
 }
 
-
-
 // 由 Lead 的 features/index.ts 在 app ready 后调用 registerFeatureModules()，
 // 避免在 Electron app ready 前创建 session。
 export function registerBrowserFeature(): void {
   installBrowserFeature()
 }
 
-
-
 export { browserService }
 
-
 export type { BrowserState } from '../core/util'
-
-
 
 /** 频道清单：Lead 集成/测试/文档共用（避免手写字符串漂移） */
 export const CONNECTOR_CHANNELS = {
@@ -880,11 +839,7 @@ export const CONNECTOR_CHANNELS = {
   oauthRevoke: 'feature:connectors:oauth-revoke'
 } as const
 
-
-
 export type ConnectorChannel = (typeof CONNECTOR_CHANNELS)[keyof typeof CONNECTOR_CHANNELS]
-
-
 
 function connectorsAsRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -893,15 +848,11 @@ function connectorsAsRecord(payload: unknown): Record<string, unknown> {
   return payload as Record<string, unknown>
 }
 
-
-
 function readScope(payload: Record<string, unknown>): ConnectorScope {
   if (payload.scope === 'workspace') return 'workspace'
   if (payload.scope === 'user' || payload.scope === undefined || payload.scope === null) return 'user'
   throw new Error('scope 只能是 "user" 或 "workspace"。')
 }
-
-
 
 function readWorkspace(payload: Record<string, unknown>, scope: ConnectorScope): string | null {
   if (scope !== 'workspace') return null
@@ -910,8 +861,6 @@ function readWorkspace(payload: Record<string, unknown>, scope: ConnectorScope):
   if (workspace.length > 4096) throw new Error('workspace 路径过长。')
   return resolveWorkspaceDir(workspace, '工作区级连接器只能操作已登记的工作区。')
 }
-
-
 
 function connectorsReadString(payload: Record<string, unknown>, key: string, options: { required?: boolean; max?: number } = {}): string | undefined {
   const value = payload[key]
@@ -926,8 +875,6 @@ function connectorsReadString(payload: Record<string, unknown>, key: string, opt
   return trimmed
 }
 
-
-
 function readNumber(payload: Record<string, unknown>, key: string, min: number, max: number): number | undefined {
   const value = payload[key]
   if (value === undefined || value === null || value === '') return undefined
@@ -936,16 +883,12 @@ function readNumber(payload: Record<string, unknown>, key: string, min: number, 
   return value
 }
 
-
-
 function readBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
   const value = payload[key]
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'boolean') throw new Error(`参数「${key}」应该是布尔值。`)
   return value
 }
-
-
 
 function readStringArray(payload: Record<string, unknown>, key: string, maxItems = 64, maxLength = 4096): string[] | undefined {
   const value = payload[key]
@@ -971,8 +914,6 @@ function readStringArray(payload: Record<string, unknown>, key: string, maxItems
   })
 }
 
-
-
 function readSecretFields(payload: Record<string, unknown>, key: 'env' | 'headers'): ConnectorSecretInput[] | undefined {
   const value = payload[key]
   if (value === undefined || value === null) return undefined
@@ -991,8 +932,6 @@ function readSecretFields(payload: Record<string, unknown>, key: 'env' | 'header
   }
   return fields
 }
-
-
 
 function readSaveInput(payload: Record<string, unknown>, scope: ConnectorScope, workspace: string | null): ConnectorSaveInput {
   const transportRaw = payload.transport
@@ -1044,15 +983,11 @@ function readSaveInput(payload: Record<string, unknown>, scope: ConnectorScope, 
   }
 }
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.list, (payload) => {
   const record = connectorsAsRecord(payload)
   const scope = readScope(record)
   return listConnectors(scope, readWorkspace(record, scope))
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.get, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1061,15 +996,11 @@ registerFeatureHandler(CONNECTOR_CHANNELS.get, (payload) => {
   return getConnector(scope, name, readWorkspace(record, scope))
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.save, (payload) => {
   const record = connectorsAsRecord(payload)
   const scope = readScope(record)
   return saveConnector(readSaveInput(record, scope, readWorkspace(record, scope)))
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.delete, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1077,8 +1008,6 @@ registerFeatureHandler(CONNECTOR_CHANNELS.delete, (payload) => {
   const name = connectorsReadString(record, 'name', { required: true, max: 64 }) as string
   return deleteConnector(scope, name, readWorkspace(record, scope))
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.setEnabled, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1088,8 +1017,6 @@ registerFeatureHandler(CONNECTOR_CHANNELS.setEnabled, (payload) => {
   if (enabled === undefined) throw new Error('缺少必填参数「enabled」。')
   return setConnectorEnabled(scope, name, enabled, readWorkspace(record, scope))
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.test, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1109,8 +1036,6 @@ registerFeatureHandler(CONNECTOR_CHANNELS.test, (payload) => {
   })
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.tools, (payload) => {
   const record = connectorsAsRecord(payload)
   const scope = readScope(record)
@@ -1118,11 +1043,7 @@ registerFeatureHandler(CONNECTOR_CHANNELS.tools, (payload) => {
   return listConnectorTools(scope, name, readWorkspace(record, scope))
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.catalog, () => ({ entries: getConnectorCatalog() }))
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.runtime, (payload) => {
   if (payload === undefined || payload === null) return detectConnectorRuntime()
@@ -1130,8 +1051,6 @@ registerFeatureHandler(CONNECTOR_CHANNELS.runtime, (payload) => {
   if (record.force !== undefined && typeof record.force !== 'boolean') throw new Error('force 必须是布尔值。')
   return detectConnectorRuntime(record.force === true)
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.install, async (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1150,8 +1069,6 @@ registerFeatureHandler(CONNECTOR_CHANNELS.install, async (payload) => {
   })
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.paths, (payload) => {
   const record = connectorsAsRecord(payload)
   const requested = typeof record.workspace === 'string' && record.workspace.trim() ? record.workspace.trim() : ''
@@ -1159,22 +1076,16 @@ registerFeatureHandler(CONNECTOR_CHANNELS.paths, (payload) => {
   return getConnectorPaths(workspace)
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.trustWorkspace, (payload) => {
   const record = connectorsAsRecord(payload)
   const workspace = connectorsReadString(record, 'workspace', { required: true, max: 4096 }) as string
   return trustWorkspaceConfig(resolveWorkspaceDir(workspace, '只能信任已登记工作区的连接器配置。'))
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.secretStatus, () => {
   const paths = getConnectorPaths()
   return { mode: paths.secretStorage, secretsPath: paths.secretsPath }
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.oauthStart, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1183,16 +1094,12 @@ registerFeatureHandler(CONNECTOR_CHANNELS.oauthStart, (payload) => {
   return startConnectorOAuth({ scope, name, workspace: readWorkspace(record, scope) })
 })
 
-
-
 registerFeatureHandler(CONNECTOR_CHANNELS.oauthStatus, (payload) => {
   const record = connectorsAsRecord(payload)
   const scope = readScope(record)
   const name = connectorsReadString(record, 'name', { required: true, max: 64 }) as string
   return connectorOAuthStatus(scope, name, readWorkspace(record, scope))
 })
-
-
 
 registerFeatureHandler(CONNECTOR_CHANNELS.oauthRevoke, (payload) => {
   const record = connectorsAsRecord(payload)
@@ -1201,18 +1108,12 @@ registerFeatureHandler(CONNECTOR_CHANNELS.oauthRevoke, (payload) => {
   return { removed: revokeConnectorOAuth(scope, name, readWorkspace(record, scope)) }
 })
 
-
-
 let store: EditorHistoryStore | null = null
-
-
 
 function history(): EditorHistoryStore {
   if (!store) store = new EditorHistoryStore(dataPath('editor-history'))
   return store
 }
-
-
 
 function editorAsRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -1221,31 +1122,21 @@ function editorAsRecord(payload: unknown): Record<string, unknown> {
   return payload as Record<string, unknown>
 }
 
-
-
 function editorRequireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`缺少参数：${field}`)
   return value
 }
-
-
 
 function optionalNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   return undefined
 }
 
-
-
 const SOURCES: HistorySource[] = ['user', 'agent', 'baseline', 'restore']
-
-
 
 function normalizeSource(value: unknown): HistorySource {
   return typeof value === 'string' && (SOURCES as string[]).includes(value) ? (value as HistorySource) : 'user'
 }
-
-
 
 /**
  * 版本历史 IPC 的写盘边界：路径必须落在已登记工作区内（解析 symlink 后判断）。
@@ -1276,8 +1167,6 @@ function workspaceOnlyPath(rawPath: string): string {
   return target
 }
 
-
-
 registerFeatureHandler('feature:history:record', async (payload) => {
   const input = editorAsRecord(payload)
   const filePath = workspaceOnlyPath(editorRequireString(input.path, 'path'))
@@ -1292,14 +1181,10 @@ registerFeatureHandler('feature:history:record', async (payload) => {
   })
 })
 
-
-
 registerFeatureHandler('feature:history:list', async (payload) => {
   const input = editorAsRecord(payload)
   return history().list(workspaceOnlyPath(editorRequireString(input.path, 'path')))
 })
-
-
 
 registerFeatureHandler('feature:history:read', async (payload) => {
   const input = editorAsRecord(payload)
@@ -1309,8 +1194,6 @@ registerFeatureHandler('feature:history:read', async (payload) => {
   if (!result) throw new Error('找不到这个历史版本，可能已经被清理')
   return result
 })
-
-
 
 registerFeatureHandler('feature:history:diff', async (payload) => {
   const input = editorAsRecord(payload)
@@ -1322,8 +1205,6 @@ registerFeatureHandler('feature:history:diff', async (payload) => {
   return result
 })
 
-
-
 registerFeatureHandler('feature:history:restore', async (payload) => {
   const input = editorAsRecord(payload)
   const filePath = workspaceOnlyPath(editorRequireString(input.path, 'path'))
@@ -1331,38 +1212,26 @@ registerFeatureHandler('feature:history:restore', async (payload) => {
   return history().restore(filePath, versionId, { expectedMtimeMs: optionalNumber(input.expectedMtimeMs) })
 })
 
-
-
 registerFeatureHandler('feature:history:clear', async (payload) => {
   const input = editorAsRecord(payload)
   history().clear(workspaceOnlyPath(editorRequireString(input.path, 'path')))
   return { cleared: true }
 })
 
-
-
 const SNAPSHOT_ROOT = () => dataPath('snapshots')
-
-
 
 function payloadOf(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object') return {}
   return payload as Record<string, unknown>
 }
 
-
-
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-
-
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
-
-
 
 function globalReadOnly(): boolean {
   try {
@@ -1371,8 +1240,6 @@ function globalReadOnly(): boolean {
     return false
   }
 }
-
-
 
 function assertWritable(): void {
   if (globalReadOnly()) {
@@ -1383,8 +1250,6 @@ function assertWritable(): void {
     )
   }
 }
-
-
 
 /** 收集候选工作区：设置里的最近工作区 + 会话绑定过的工作区（去重、只保留存在的目录）。 */
 function candidateWorkspaces(): string[] {
@@ -1411,8 +1276,6 @@ function candidateWorkspaces(): string[] {
     }
   })
 }
-
-
 
 /**
  * 兼容编辑器只传 { path } 的契约：没有 workspace 时按以下顺序安全回退：
@@ -1467,13 +1330,9 @@ function resolveWorkspaceFromPayload(payload: Record<string, unknown>): string {
   )
 }
 
-
-
 function workspaceMeta(): { readOnly: boolean } {
   return { readOnly: globalReadOnly() }
 }
-
-
 
 /* ── handlers（顶层注册；被 features/index.ts import 即生效） ── */
 
@@ -1489,8 +1348,6 @@ registerFeatureHandler('feature:files:list', (payload) => {
   return { ...result, ...workspaceMeta() }
 })
 
-
-
 registerFeatureHandler('feature:files:read', (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
@@ -1500,15 +1357,11 @@ registerFeatureHandler('feature:files:read', (payload) => {
   return { ...result, workspace, ...workspaceMeta() }
 })
 
-
-
 registerFeatureHandler('feature:files:preview', (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   return describeFilePreview(workspace, text(input.path))
 })
-
-
 
 registerFeatureHandler('feature:files:docx-html', async (payload) => {
   const input = payloadOf(payload)
@@ -1516,15 +1369,11 @@ registerFeatureHandler('feature:files:docx-html', async (payload) => {
   return convertDocxToHtml(workspace, text(input.path))
 })
 
-
-
 registerFeatureHandler('feature:files:xlsx-preview', async (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   return convertXlsxToPreview(workspace, text(input.path))
 })
-
-
 
 registerFeatureHandler('feature:files:pptx-preview', async (payload) => {
   const input = payloadOf(payload)
@@ -1532,15 +1381,11 @@ registerFeatureHandler('feature:files:pptx-preview', async (payload) => {
   return convertPptxToPreview(workspace, text(input.path))
 })
 
-
-
 registerFeatureHandler('feature:files:document-preview', async (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   return convertDocumentToPreview(workspace, text(input.path))
 })
-
-
 
 registerFeatureHandler('feature:files:archive-list', async (payload) => {
   const input = payloadOf(payload)
@@ -1548,15 +1393,11 @@ registerFeatureHandler('feature:files:archive-list', async (payload) => {
   return listArchive(workspace, text(input.path))
 })
 
-
-
 registerFeatureHandler('feature:files:stat', (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   return { ...statWorkspaceFile(workspace, text(input.path)), workspace, ...workspaceMeta() }
 })
-
-
 
 registerFeatureHandler('feature:files:write', (payload) => {
   const input = payloadOf(payload)
@@ -1577,8 +1418,6 @@ registerFeatureHandler('feature:files:write', (payload) => {
   return { ...result, workspace }
 })
 
-
-
 registerFeatureHandler('feature:files:create', (payload) => {
   const input = payloadOf(payload)
   assertWritable()
@@ -1587,8 +1426,6 @@ registerFeatureHandler('feature:files:create', (payload) => {
   return { ...createWorkspaceEntry(workspace, text(input.path), kind), workspace }
 })
 
-
-
 registerFeatureHandler('feature:files:rename', (payload) => {
   const input = payloadOf(payload)
   assertWritable()
@@ -1596,16 +1433,12 @@ registerFeatureHandler('feature:files:rename', (payload) => {
   return { ...renameWorkspaceEntry(workspace, text(input.from), text(input.to)), workspace }
 })
 
-
-
 registerFeatureHandler('feature:files:move', (payload) => {
   const input = payloadOf(payload)
   assertWritable()
   const workspace = resolveWorkspaceFromPayload(input)
   return { ...moveWorkspaceEntry(workspace, text(input.from), text(input.toDir)), workspace }
 })
-
-
 
 registerFeatureHandler('feature:files:delete', (payload) => {
   const input = payloadOf(payload)
@@ -1620,15 +1453,11 @@ registerFeatureHandler('feature:files:delete', (payload) => {
   }
 })
 
-
-
 registerFeatureHandler('feature:files:inspect', (payload) => {
   const input = payloadOf(payload)
   const workspace = resolveWorkspaceFromPayload(input)
   return { ...inspectWorkspaceEntry(workspace, text(input.path)), workspace }
 })
-
-
 
 registerFeatureHandler('feature:files:reveal', async (payload) => {
   const input = payloadOf(payload)
@@ -1638,8 +1467,6 @@ registerFeatureHandler('feature:files:reveal', async (payload) => {
   if (error) throw new Error(`打开文件夹失败：${error}`)
   return { ok: true, path: stat.path }
 })
-
-
 
 /** 原生拖拽：从文件树把文件拖进 Composer/资源管理器（Composer 已有 files/getPathForFile 处理）。 */
 registerFeatureHandler('feature:files:startDrag', (payload, event: IpcMainInvokeEvent) => {
@@ -1659,11 +1486,7 @@ registerFeatureHandler('feature:files:startDrag', (payload, event: IpcMainInvoke
   return { ok: true, path: stat.path, absolutePath: stat.absolutePath }
 })
 
-
-
 let cachedDragIcon: Electron.NativeImage | null = null
-
-
 
 function dragIcon(): Electron.NativeImage {
   if (cachedDragIcon) return cachedDragIcon
@@ -1687,19 +1510,13 @@ function dragIcon(): Electron.NativeImage {
   return cachedDragIcon
 }
 
-
-
 registerFeatureHandler('feature:media:status', async () => {
   return getMediaService().status()
 })
 
-
-
 registerFeatureHandler('feature:media:start', async () => {
   return getMediaService().startEngine()
 })
-
-
 
 registerFeatureHandler('feature:media:probe', async (payload) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
@@ -1708,8 +1525,6 @@ registerFeatureHandler('feature:media:probe', async (payload) => {
   if (!workspace || !path) throw new Error('缺少工作区或文件路径。')
   return getMediaService().probeMedia({ workspace, path })
 })
-
-
 
 registerFeatureHandler('feature:media:pick', async (payload, event) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
@@ -1727,13 +1542,9 @@ registerFeatureHandler('feature:media:pick', async (payload, event) => {
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
-
-
 registerFeatureHandler('feature:media:catalog', async () => {
   return getMediaCatalog().status()
 })
-
-
 
 registerFeatureHandler('feature:media:catalog-action', async (payload) => {
   const record = payload && typeof payload === 'object' ? (payload as MediaCatalogAction) : null
@@ -1773,8 +1584,6 @@ registerFeatureHandler('feature:media:catalog-action', async (payload) => {
   }
 })
 
-
-
 registerFeatureHandler('feature:media:open-model-dir', async (payload) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
   const engineId = typeof record.engineId === 'string' ? record.engineId : ''
@@ -1785,8 +1594,6 @@ registerFeatureHandler('feature:media:open-model-dir', async (payload) => {
   if (message) throw new Error(message)
   return engine.modelDir
 })
-
-
 
 registerFeatureHandler('feature:media:pick-files', async (payload, event) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
@@ -1799,8 +1606,6 @@ registerFeatureHandler('feature:media:pick-files', async (payload, event) => {
   const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
   return result.canceled ? [] : result.filePaths
 })
-
-
 
 registerFeatureHandler('feature:media:resolve-model-files', async (payload) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
@@ -1857,8 +1662,6 @@ registerFeatureHandler('feature:media:resolve-model-files', async (payload) => {
   return results
 })
 
-
-
 registerFeatureHandler('feature:media:pick-manifest', async (payload, event) => {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
   const kind = record.kind === 'engine' ? 'engine' : 'model'
@@ -1878,15 +1681,11 @@ registerFeatureHandler('feature:media:pick-manifest', async (payload, event) => 
   }
 })
 
-
-
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 兼容；模块不直接依赖 feature-ipc） */
 export type MemoryRegisterChannel = (
   channel: string,
   handler: (payload: unknown, event?: unknown) => unknown | Promise<unknown>
 ) => void
-
-
 
 /** 本模块注册的全部频道，便于集成/测试断言 */
 export const MEMORY_FEATURE_CHANNELS = [
@@ -1905,8 +1704,6 @@ export const MEMORY_FEATURE_CHANNELS = [
   'feature:memory:episodeInjection'
 ] as const
 
-
-
 export interface MemoryFeatureOptions {
   /** 显式数据目录（测试用）；不传时在 app ready 后解析真实 userData */
   dataDir?: string
@@ -1914,22 +1711,16 @@ export interface MemoryFeatureOptions {
   isWorkspaceAllowed?: (workspace: string) => boolean
 }
 
-
-
 function record(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('参数格式不正确')
   return payload as Record<string, unknown>
 }
-
-
 
 function parseScope(payload: Record<string, unknown>): MemoryScope {
   const scope = payload.scope
   if (scope !== 'project' && scope !== 'global') throw new Error('scope 必须是 project 或 global')
   return scope
 }
-
-
 
 function workspaceOf(payload: Record<string, unknown>): string | null {
   const workspace = payload.workspace
@@ -1938,15 +1729,11 @@ function workspaceOf(payload: Record<string, unknown>): string | null {
   return workspace
 }
 
-
-
 function memoryRequireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key]
   if (typeof value !== 'string') throw new Error(`缺少 ${key}`)
   return value
 }
-
-
 
 /** 记忆 IPC 的工作区边界：只接受已登记的、真实存在的工作区目录。 */
 function resolveProjectWorkspace(data: Record<string, unknown>, options: MemoryFeatureOptions): string {
@@ -1959,8 +1746,6 @@ function resolveProjectWorkspace(data: Record<string, unknown>, options: MemoryF
   return resolveWorkspaceDir(raw, '记忆只能读写已登记的工作区。')
 }
 
-
-
 function targetWorkspace(
   data: Record<string, unknown>,
   scope: MemoryScope,
@@ -1969,15 +1754,11 @@ function targetWorkspace(
   return scope === 'global' ? null : resolveProjectWorkspace(data, options)
 }
 
-
-
 function stringTags(value: unknown): string[] | undefined {
   if (value === undefined || value === null) return undefined
   if (!Array.isArray(value)) throw new Error('tags 必须是字符串数组')
   return value.filter((item): item is string => typeof item === 'string')
 }
-
-
 
 /**
  * 注册记忆中心频道。
@@ -2144,15 +1925,11 @@ export function registerMemoryFeature(register: MemoryRegisterChannel, options: 
   })
 }
 
-
-
 function suggestionId(data: Record<string, unknown>): string {
   const id = memoryRequireString(data, 'id').trim()
   if (!id) throw new Error('缺少建议 id')
   return id
 }
-
-
 
 /** 注册自进化建议频道；复盘写回记忆/技能库，仍以用户采纳为前提。 */
 export function registerEvolutionFeature(
@@ -2197,15 +1974,11 @@ export function registerEvolutionFeature(
   })
 }
 
-
-
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 兼容；模块不直接依赖 feature-ipc） */
 export type ProjectsRegisterChannel = (
   channel: string,
   handler: (payload: unknown, event?: unknown) => unknown | Promise<unknown>
 ) => void
-
-
 
 /** 本模块注册的全部频道，便于集成/测试断言 */
 export const PROJECTS_FEATURE_CHANNELS = [
@@ -2221,29 +1994,21 @@ export const PROJECTS_FEATURE_CHANNELS = [
   'feature:projects:context'
 ] as const
 
-
-
 export interface ProjectsFeatureOptions {
   /** 显式数据目录（测试用）；不传时在 app ready 后解析真实 userData */
   dataDir?: string
 }
-
-
 
 function projectsRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('参数格式不正确')
   return payload as Record<string, unknown>
 }
 
-
-
 function projectsRequireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key]
   if (typeof value !== 'string' || !value.trim()) throw new Error(`缺少 ${key}`)
   return value
 }
-
-
 
 function optionalString(payload: Record<string, unknown>, key: string): string | undefined {
   const value = payload[key]
@@ -2252,8 +2017,6 @@ function optionalString(payload: Record<string, unknown>, key: string): string |
   return value
 }
 
-
-
 function optionalBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
   const value = payload[key]
   if (value === undefined || value === null) return undefined
@@ -2261,16 +2024,12 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   return value
 }
 
-
-
 function optionalWorkspace(payload: Record<string, unknown>): string | undefined {
   const value = payload.workspace
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'string' || !value.trim()) throw new Error('workspace 必须是非空字符串')
   return normalizeProjectWorkspace(value)
 }
-
-
 
 function optionalKnowledgePaths(payload: Record<string, unknown>): string[] | undefined {
   const value = payload.knowledgePaths
@@ -2280,8 +2039,6 @@ function optionalKnowledgePaths(payload: Record<string, unknown>): string[] | un
   }
   return value as string[]
 }
-
-
 
 function projectPatchOf(data: Record<string, unknown>): ProjectUpdateInput {
   const knowledgePaths = optionalKnowledgePaths(data)
@@ -2300,8 +2057,6 @@ function projectPatchOf(data: Record<string, unknown>): ProjectUpdateInput {
   }
 }
 
-
-
 function contextOptions(payload: Record<string, unknown>, dataDir: string): ProjectContextOptions {
   return {
     dataDir,
@@ -2310,8 +2065,6 @@ function contextOptions(payload: Record<string, unknown>, dataDir: string): Proj
     ...(payload.ignoreActive === true ? { ignoreActive: true } : {})
   }
 }
-
-
 
 /**
  * 注册 Projects 频道。
@@ -2412,15 +2165,11 @@ export function registerProjectsFeature(register: ProjectsRegisterChannel, optio
   })
 }
 
-
-
 interface QueryPayload {
   q?: unknown
   workspace?: unknown
   limit?: unknown
 }
-
-
 
 interface RefreshPayload {
   workspace?: unknown
@@ -2428,15 +2177,10 @@ interface RefreshPayload {
   full?: unknown
 }
 
-
-
 const MAX_QUERY_CHARS = 200
-
 
 /** 全局搜索不再受侧栏 300 条上限影响；仍设一个上限避免启动索引无限膨胀 */
 const MAX_SEARCH_SESSIONS = 1000
-
-
 
 function knownWorkspaces(meta: SessionMeta[]): string[] {
   const workspaces = new Set<string>()
@@ -2455,8 +2199,6 @@ function knownWorkspaces(meta: SessionMeta[]): string[] {
   return [...workspaces]
 }
 
-
-
 function searchSessionMetas(store: ReturnType<typeof getSessionStore>): SessionMeta[] {
   try {
     const all = store.listAll()
@@ -2466,8 +2208,6 @@ function searchSessionMetas(store: ReturnType<typeof getSessionStore>): SessionM
     return []
   }
 }
-
-
 
 function createService(): WorkspaceSearchService {
   ensureDataDirs()
@@ -2488,21 +2228,14 @@ function createService(): WorkspaceSearchService {
   })
 }
 
-
-
 let service: WorkspaceSearchService | null = null
 
-
 let started: Promise<void> | null = null
-
-
 
 function getService(): WorkspaceSearchService {
   if (!service) service = createService()
   return service
 }
-
-
 
 function ensureStarted(): Promise<void> {
   if (!started) {
@@ -2514,20 +2247,14 @@ function ensureStarted(): Promise<void> {
   return started
 }
 
-
-
 /** 由 Lead 在 app ready 后调用；避免 feature import 时提前初始化 settings/搜索结果 */
 export function warmSearchIndex(): void {
   void ensureStarted()
 }
 
-
-
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
-
-
 
 /**
  * 搜索请求里的 workspace 必须是已登记工作区；否则索引器会扫描任意目录。
@@ -2538,8 +2265,6 @@ function validateSearchWorkspace(raw: string): string {
   return raw
 }
 
-
-
 setSearchInvalidationHandler(async (sessionId) => {
   // 搜索从未打开过（service 未创建）时没有需要清理的索引
   if (!service) return
@@ -2547,14 +2272,10 @@ setSearchInvalidationHandler(async (sessionId) => {
   await service.refreshSession(sessionId)
 })
 
-
-
 setSearchClearHandler(async () => {
   if (!service) return
   await service.rebuild()
 })
-
-
 
 registerFeatureHandler('feature:search:query', async (payload) => {
   const input = (payload ?? {}) as QueryPayload
@@ -2571,14 +2292,10 @@ registerFeatureHandler('feature:search:query', async (payload) => {
   return getService().search(query)
 })
 
-
-
 registerFeatureHandler('feature:search:status', async () => {
   await ensureStarted()
   return getService().status()
 })
-
-
 
 registerFeatureHandler('feature:search:refresh', async (payload) => {
   const input = (payload ?? {}) as RefreshPayload
@@ -2596,8 +2313,6 @@ registerFeatureHandler('feature:search:refresh', async (payload) => {
   return getService().status()
 })
 
-
-
 // Lead 在保存会话/工具完成后可精确通知（也可完全依赖查询前自动刷新）
 registerFeatureHandler('feature:search:session-updated', async (payload) => {
   const input = (payload ?? {}) as RefreshPayload
@@ -2607,8 +2322,6 @@ registerFeatureHandler('feature:search:session-updated', async (payload) => {
   const indexed = await getService().refreshSession(sessionId)
   return { indexed }
 })
-
-
 
 registerFeatureHandler('feature:search:workspace-updated', async (payload) => {
   const input = (payload ?? {}) as RefreshPayload
@@ -2620,15 +2333,9 @@ registerFeatureHandler('feature:search:workspace-updated', async (payload) => {
   return getService().status()
 })
 
-
-
 export const SIDECHAT_EVENT = 'feature:sidechat:event'
 
-
-
 const controllers = new Map<string, AbortController>()
-
-
 
 /** 清除全部对话时中止所有侧聊，避免它们在数据清空后继续写用量。 */
 export function abortAllSideChats(): void {
@@ -2637,28 +2344,19 @@ export function abortAllSideChats(): void {
   sessionRequests.clear()
 }
 
-
 const sessionRequests = new Map<string, string>()
-
 
 const MAX_CONCURRENT = 8
 
-
 const MAX_HISTORY_CHARS = 12_000
-
-
 
 function sidechatPayloadOf(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 }
 
-
-
 function sidechatText(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : ''
 }
-
-
 
 registerFeatureHandler('feature:sidechat:ask', (payload) => {
   const input = sidechatPayloadOf(payload)
@@ -2750,8 +2448,6 @@ registerFeatureHandler('feature:sidechat:ask', (payload) => {
   return { requestId }
 })
 
-
-
 registerFeatureHandler('feature:sidechat:cancel', (payload) => {
   const requestId = sidechatText(sidechatPayloadOf(payload).requestId, 128)
   const controller = controllers.get(requestId)
@@ -2763,12 +2459,8 @@ registerFeatureHandler('feature:sidechat:cancel', (payload) => {
   return { cancelled: true }
 })
 
-
-
 /** 注册函数签名（与 feature-ipc 的 registerFeatureHandler 一致；模块不直接依赖 feature-ipc） */
 export type SkillsRegisterChannel = (channel: string, handler: (payload: unknown) => Promise<unknown>) => void
-
-
 
 const effects: SkillsFeatureEffects = {
   async revealPath(path: string): Promise<void> {
@@ -2800,8 +2492,6 @@ const effects: SkillsFeatureEffects = {
   }
 }
 
-
-
 /**
  * 注册技能库 feature 频道（必须在 app ready 之后、主进程 IPC 挂载之前调用）。
  * 同时把用户技能库路径/状态文件注入 core 环境变量。
@@ -2816,13 +2506,9 @@ export function registerSkillsFeature(register: SkillsRegisterChannel): void {
   }
 }
 
-
-
 function recordOf(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {}
 }
-
-
 
 registerFeatureHandler('feature:studio:action', async (payload) => {
   const request = recordOf(payload)
@@ -2830,8 +2516,6 @@ registerFeatureHandler('feature:studio:action', async (payload) => {
   if (!type) throw new Error('缺少创作台操作类型。')
   return getStudioService().execute(request as { type: string; projectId?: string; [key: string]: unknown })
 })
-
-
 
 registerFeatureHandler('feature:studio:pick-import', async (payload, event) => {
   const input = recordOf(payload)
@@ -2853,8 +2537,6 @@ registerFeatureHandler('feature:studio:pick-import', async (payload, event) => {
   return result.canceled ? [] : result.filePaths
 })
 
-
-
 registerFeatureHandler('feature:studio:pick-package', async (_payload, event) => {
   const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
   const options = {
@@ -2865,8 +2547,6 @@ registerFeatureHandler('feature:studio:pick-package', async (_payload, event) =>
   const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
   return result.canceled ? [] : result.filePaths
 })
-
-
 
 registerFeatureHandler('feature:studio:reveal', async (payload) => {
   const input = recordOf(payload)
@@ -2879,8 +2559,6 @@ registerFeatureHandler('feature:studio:reveal', async (payload) => {
   return true
 })
 
-
-
 registerFeatureHandler('feature:studio:open-path', async (payload) => {
   const input = recordOf(payload)
   const projectId = typeof input.projectId === 'string' ? input.projectId : ''
@@ -2892,15 +2570,11 @@ registerFeatureHandler('feature:studio:open-path', async (payload) => {
   return true
 })
 
-
-
 registerFeatureHandler('feature:studio:open-data-dir', async () => {
   const message = await openPathFromUserShell(getStudioStore().root)
   if (message) throw new Error(message)
   return true
 })
-
-
 
 registerFeatureHandler('feature:studio:open-project-dir', async (payload) => {
   const input = recordOf(payload)
@@ -2911,13 +2585,9 @@ registerFeatureHandler('feature:studio:open-project-dir', async (payload) => {
   return true
 })
 
-
-
 function mainStudioWindow(): BrowserWindow | undefined {
   return BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().includes('#island'))
 }
-
-
 
 function studioJobsRunning(): boolean {
   const store = getStudioStore()
@@ -2930,13 +2600,9 @@ function studioJobsRunning(): boolean {
   })
 }
 
-
-
 function studioDataTestMode(): boolean {
   return process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
 }
-
-
 
 function relaunchStudioSoon(): void {
   if (studioDataTestMode()) {
@@ -2949,11 +2615,7 @@ function relaunchStudioSoon(): void {
   }, 800)
 }
 
-
-
 registerFeatureHandler('feature:studio:data-dir-info', async () => studioDataDirInfo())
-
-
 
 registerFeatureHandler('feature:studio:change-data-dir', async () => {
   if (studioJobsRunning()) throw new Error('还有创作台任务在运行，请等待完成或暂停队列后再更换目录。')
@@ -3022,8 +2684,6 @@ registerFeatureHandler('feature:studio:change-data-dir', async () => {
   return { restarted: !studioDataTestMode(), path: target, files }
 })
 
-
-
 registerFeatureHandler('feature:studio:reset-data-dir', async () => {
   if (studioJobsRunning()) throw new Error('还有创作台任务在运行，请等待完成或暂停队列后再恢复目录。')
   if (!readStudioLocation()) return { restarted: false, canceled: true }
@@ -3078,19 +2738,13 @@ registerFeatureHandler('feature:studio:reset-data-dir', async () => {
   return { restarted: !studioDataTestMode(), path: defaultRoot, files }
 })
 
-
-
 function terminalPayloadOf(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 }
 
-
-
 function terminalText(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
-
-
 
 function isDirectory(path: string): boolean {
   try {
@@ -3099,8 +2753,6 @@ function isDirectory(path: string): boolean {
     return false
   }
 }
-
-
 
 /**
  * 没有工作区（或旧工作区已被移动/删除）时终端仍要能打开。
@@ -3112,8 +2764,6 @@ function fallbackCwd(): string {
   }
   return process.cwd()
 }
-
-
 
 function resolveCwd(raw: unknown): string {
   const requested = terminalText(raw).trim()
@@ -3133,13 +2783,9 @@ function resolveCwd(raw: unknown): string {
   }
 }
 
-
-
 function managerOf(): ReturnType<typeof getTerminalManager> {
   return getTerminalManager()
 }
-
-
 
 function sameCwd(left: string, right: string): boolean {
   const normalize = (value: string): string => {
@@ -3149,8 +2795,6 @@ function sameCwd(left: string, right: string): boolean {
   return normalize(left) === normalize(right)
 }
 
-
-
 registerFeatureHandler('feature:terminal:list', (payload) => {
   const input = terminalPayloadOf(payload)
   const raw = terminalText(input.workspace).trim()
@@ -3158,8 +2802,6 @@ registerFeatureHandler('feature:terminal:list', (payload) => {
   const workspace = resolveWorkspaceDir(raw, '终端只能查看已登记工作区内的进程。')
   return { processes: managerOf().list().filter((process) => sameCwd(process.cwd, workspace)) }
 })
-
-
 
 registerFeatureHandler('feature:terminal:profiles', (payload) => {
   const input = terminalPayloadOf(payload)
@@ -3172,8 +2814,6 @@ registerFeatureHandler('feature:terminal:profiles', (payload) => {
   }
 })
 
-
-
 registerFeatureHandler('feature:terminal:create', (payload) => {
   const input = terminalPayloadOf(payload)
   const cwd = resolveCwd(input.cwd)
@@ -3184,8 +2824,6 @@ registerFeatureHandler('feature:terminal:create', (payload) => {
     requested || undefined
   )
 })
-
-
 
 registerFeatureHandler('feature:terminal:start-task', (payload) => {
   const input = terminalPayloadOf(payload)
@@ -3200,8 +2838,6 @@ registerFeatureHandler('feature:terminal:start-task', (payload) => {
   )
 })
 
-
-
 registerFeatureHandler('feature:terminal:read', (payload) => {
   const input = terminalPayloadOf(payload)
   const id = terminalText(input.id).trim()
@@ -3209,8 +2845,6 @@ registerFeatureHandler('feature:terminal:read', (payload) => {
   const tail = typeof input.tail === 'number' && Number.isFinite(input.tail) ? input.tail : 40_000
   return managerOf().read(id, tail)
 })
-
-
 
 registerFeatureHandler('feature:terminal:write', (payload) => {
   const input = terminalPayloadOf(payload)
@@ -3221,8 +2855,6 @@ registerFeatureHandler('feature:terminal:write', (payload) => {
   return managerOf().write(id, input.data)
 })
 
-
-
 registerFeatureHandler('feature:terminal:input', (payload) => {
   const input = terminalPayloadOf(payload)
   const id = terminalText(input.id).trim()
@@ -3231,8 +2863,6 @@ registerFeatureHandler('feature:terminal:input', (payload) => {
   if (input.data.length > 100_000) throw new Error('单次输入不能超过 100000 字符。')
   return managerOf().write(id, input.data, true)
 })
-
-
 
 registerFeatureHandler('feature:terminal:resize', (payload) => {
   const input = terminalPayloadOf(payload)
@@ -3244,21 +2874,15 @@ registerFeatureHandler('feature:terminal:resize', (payload) => {
   return managerOf().resize(id, cols, rows)
 })
 
-
-
 registerFeatureHandler('feature:terminal:stop', (payload) => {
   const input = terminalPayloadOf(payload)
   return managerOf().stop(terminalText(input.id).trim())
 })
 
-
-
 registerFeatureHandler('feature:terminal:restart', (payload) => {
   const input = terminalPayloadOf(payload)
   return managerOf().restart(terminalText(input.id).trim())
 })
-
-
 
 registerFeatureHandler('feature:terminal:remove', (payload) => {
   const input = terminalPayloadOf(payload)
@@ -3266,27 +2890,19 @@ registerFeatureHandler('feature:terminal:remove', (payload) => {
   return { removed: true }
 })
 
-
-
 function featurePayloadOf(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : {}
 }
 
-
-
 function featureText(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-
-
 function requestedWorkspace(input: Record<string, unknown>): string {
   return typeof input.workspace === 'string' ? input.workspace.trim() : ''
 }
-
-
 
 registerFeatureHandler('feature:agents:list', (payload) => {
   const requested = requestedWorkspace(featurePayloadOf(payload))
@@ -3296,8 +2912,6 @@ registerFeatureHandler('feature:agents:list', (payload) => {
   return summarizeAgentRoles(loadAgentRoles(workspace))
 })
 
-
-
 registerFeatureHandler('feature:commands:list', (payload) => {
   const requested = requestedWorkspace(featurePayloadOf(payload))
   const workspace = requested
@@ -3305,8 +2919,6 @@ registerFeatureHandler('feature:commands:list', (payload) => {
     : null
   return discoverCustomCommands(workspace)
 })
-
-
 
 registerFeatureHandler('feature:rules:list', (payload) => {
   const requested = requestedWorkspace(featurePayloadOf(payload))
@@ -3323,8 +2935,6 @@ registerFeatureHandler('feature:rules:list', (payload) => {
   }
 })
 
-
-
 function permissionWorkspace(input: Record<string, unknown>): string {
   const raw = typeof input.workspace === 'string' ? input.workspace.trim() : ''
   if (!raw) throw new Error('缺少工作区路径。')
@@ -3333,13 +2943,9 @@ function permissionWorkspace(input: Record<string, unknown>): string {
   return real
 }
 
-
-
 registerFeatureHandler('feature:permissions:list-rules', (payload) => {
   return { rules: getPermissionRulesService().list(permissionWorkspace(featurePayloadOf(payload))) }
 })
-
-
 
 registerFeatureHandler('feature:permissions:add-rule', (payload) => {
   const input = featurePayloadOf(payload)
@@ -3351,8 +2957,6 @@ registerFeatureHandler('feature:permissions:add-rule', (payload) => {
   return getPermissionRulesService().add({ workspace, tool, kind, pattern, decision: input.decision })
 })
 
-
-
 registerFeatureHandler('feature:permissions:remove-rule', (payload) => {
   const input = featurePayloadOf(payload)
   const workspace = permissionWorkspace(input)
@@ -3360,8 +2964,6 @@ registerFeatureHandler('feature:permissions:remove-rule', (payload) => {
   if (!id) throw new Error('缺少规则 id。')
   return { removed: getPermissionRulesService().remove(id, workspace) }
 })
-
-
 
 registerFeatureHandler('feature:permissions:list-log', (payload) => {
   const input = featurePayloadOf(payload)
@@ -3377,14 +2979,10 @@ registerFeatureHandler('feature:permissions:list-log', (payload) => {
   return { entries: getPermissionRulesService().listLog(workspace) }
 })
 
-
-
 function gitWorkspace(payload: unknown): string {
   const input = featurePayloadOf(payload)
   return resolveWorkspaceDir(input.workspace ?? input.cwd, 'Git 操作只能在工作区内执行。')
 }
-
-
 
 /** 只有完全省略 path 才表示「全部」；传了非法值必须报错而不是退化成全部。 */
 function gitPath(payload: unknown): unknown {
@@ -3392,86 +2990,56 @@ function gitPath(payload: unknown): unknown {
   return Object.prototype.hasOwnProperty.call(input, 'path') ? input.path : undefined
 }
 
-
-
 registerFeatureHandler('feature:git:status', (payload) => gitService.status(gitWorkspace(payload)))
 
-
-
 registerFeatureHandler('feature:git:init', (payload) => gitService.init(gitWorkspace(payload)))
-
-
 
 registerFeatureHandler('feature:git:diff', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.diff(gitWorkspace(payload), input.path, input.staged === true)
 })
 
-
-
 registerFeatureHandler('feature:git:stage', (payload) => gitService.stage(gitWorkspace(payload), gitPath(payload)))
 
-
-
 registerFeatureHandler('feature:git:unstage', (payload) => gitService.unstage(gitWorkspace(payload), gitPath(payload)))
-
-
 
 registerFeatureHandler('feature:git:discard', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.discard(gitWorkspace(payload), input.path)
 })
 
-
-
 registerFeatureHandler('feature:git:commit', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.commit(gitWorkspace(payload), featureText(input.message), input.stageAll === true)
 })
-
-
 
 registerFeatureHandler('feature:git:set-identity', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.setIdentity(gitWorkspace(payload), input.name, input.email)
 })
 
-
-
 registerFeatureHandler('feature:git:branches', (payload) => gitService.branches(gitWorkspace(payload)))
-
-
 
 registerFeatureHandler('feature:git:checkout', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.switchBranch(gitWorkspace(payload), input.branch)
 })
 
-
-
 registerFeatureHandler('feature:git:create-branch', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.createBranch(gitWorkspace(payload), input.name)
 })
 
-
-
 registerFeatureHandler('feature:git:log', (payload) => gitService.log(gitWorkspace(payload)))
-
-
 
 registerFeatureHandler('feature:git:show', (payload) => {
   const input = featurePayloadOf(payload)
   return gitService.show(gitWorkspace(payload), input.hash)
 })
 
-
-
 registerFeatureHandler('feature:subscriptions:status', async () => {
   return getSubscriptionService().status()
 })
-
-
 
 registerFeatureHandler('feature:subscriptions:login-url', (payload) => {
   const input = featurePayloadOf(payload)
@@ -3481,8 +3049,6 @@ registerFeatureHandler('feature:subscriptions:login-url', (payload) => {
   }
 })
 
-
-
 registerFeatureHandler('feature:subscriptions:action', async (payload) => {
   const input = featurePayloadOf(payload)
   if (typeof input.action !== 'string') throw new Error('缺少订阅操作。')
@@ -3490,8 +3056,6 @@ registerFeatureHandler('feature:subscriptions:action', async (payload) => {
   if (/^(login-|import-)/.test(input.action)) closeLoginWindow()
   return result
 })
-
-
 
 registerFeatureHandler('feature:subscriptions:pick-codex-auth', async (_payload, event) => {
   const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
@@ -3504,14 +3068,10 @@ registerFeatureHandler('feature:subscriptions:pick-codex-auth', async (_payload,
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
-
-
 function scheduleRecord(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('参数格式不正确')
   return payload as Record<string, unknown>
 }
-
-
 
 function scheduleId(payload: unknown): string {
   const id = scheduleRecord(payload).id
@@ -3519,26 +3079,16 @@ function scheduleId(payload: unknown): string {
   return id
 }
 
-
-
 registerFeatureHandler('feature:schedules:list', () => listSchedules())
 
-
-
 registerFeatureHandler('feature:schedules:create', (payload) => createSchedule(scheduledInputFromRecord(payload)))
-
-
 
 registerFeatureHandler('feature:schedules:update', (payload) => {
   const data = scheduleRecord(payload)
   return updateSchedule(scheduleId(data), scheduledInputFromRecord(data))
 })
 
-
-
 registerFeatureHandler('feature:schedules:remove', (payload) => removeSchedule(scheduleId(payload)))
-
-
 
 registerFeatureHandler('feature:schedules:set-enabled', (payload) => {
   const data = scheduleRecord(payload)
@@ -3546,11 +3096,7 @@ registerFeatureHandler('feature:schedules:set-enabled', (payload) => {
   return setScheduleEnabled(scheduleId(data), data.enabled)
 })
 
-
-
 registerFeatureHandler('feature:schedules:run-now', (payload) => runScheduleNow(scheduleId(payload)))
-
-
 
 export function registerFeatureModules(): void {
   registerMemoryFeature(registerFeatureHandler)

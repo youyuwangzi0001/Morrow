@@ -16,6 +16,7 @@ import { installMcpRuntimeEnv } from './memory'
 import { configureMemoryRuntime } from './memory'
 import { configureProjectsRuntime } from './runtime'
 import { getTerminalManager } from './terminal-manager'
+import { stopLocalTts } from './tts-local'
 import { configurePermissionRulesRuntime } from './runtime'
 import { initializeTokenActivity } from './runtime'
 import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './runtime'
@@ -120,6 +121,7 @@ function bootstrap(dataDir: string): void {
   app.on('will-quit', () => {
     disposeScheduleRuntime()
     disposeAgentRuntime()
+    stopLocalTts()
     void getSubscriptionService().dispose()
     void getQoderSubscriptionService().dispose()
     for (const service of allAgentServices()) void service.dispose()
