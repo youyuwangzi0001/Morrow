@@ -32,7 +32,7 @@ describe('剪辑表计算', () => {
     }
   })
 
-  it('按镜头顺序装配画面、对白、音效与字幕', () => {
+  it('@core:studio-timeline 按镜头顺序装配画面、对白、音效与字幕', () => {
     const project = makeDramaProject(store)
     const timeline = buildTimelineFromProject(project)
     expect(timeline.durationSec).toBe(16)
@@ -49,7 +49,7 @@ describe('剪辑表计算', () => {
     expect(subtitles[0].text).toContain('还能修好吗')
   })
 
-  it('重新装配时保留同一镜的逐句字幕', () => {
+  it('@core:studio-timeline 重新装配时保留同一镜的逐句字幕', () => {
     const project = makeDramaProject(store)
     project.shots[0].dialogue = '第一句。第二句。'
     const first = buildTimelineFromProject(project)
@@ -67,7 +67,7 @@ describe('剪辑表计算', () => {
     expect(subtitles.map((clip) => clip.start)).toEqual([0, 2])
   })
 
-  it('重新装配时优先使用正式配乐，而不是更早的草稿或样例配乐', () => {
+  it('@core:studio-timeline 重新装配时优先使用正式配乐，而不是更早的草稿或样例配乐', () => {
     const project = makeDramaProject(store)
     project.assets = project.assets.filter((asset) => !asset.tags.includes('music'))
     const draft = store.addAsset(project, {
@@ -106,7 +106,7 @@ describe('剪辑表计算', () => {
     expect(buildTimelineFromProject(project).clips.find((item) => item.kind === 'music')?.assetId).toBe(draft.id)
   })
 
-  it('SRT 与 ASS 时间码和文本正确', () => {
+  it('@core:studio-timeline SRT 与 ASS 时间码和文本正确', () => {
     const project = makeDramaProject(store)
     const timeline = buildTimelineFromProject(project)
     const srt = toSrt(timeline)
@@ -118,7 +118,7 @@ describe('剪辑表计算', () => {
     expect(ass).toContain('还能修好吗？')
   })
 
-  it('ASS 逐条导出字幕字号、颜色与底板', () => {
+  it('@core:studio-timeline ASS 逐条导出字幕字号、颜色与底板', () => {
     const project = makeDramaProject(store)
     const timeline = buildTimelineFromProject(project)
     const subtitle = timeline.clips.find((clip) => clip.kind === 'subtitle')!
@@ -142,7 +142,7 @@ describe('剪辑表计算', () => {
     expect(sanitized.clips[0].style?.background).toBe(false)
   })
 
-  it('校验时间线：拒绝不存在的轨道和负时长，保留合法片段', () => {
+  it('@core:studio-timeline 校验时间线：拒绝不存在的轨道和负时长，保留合法片段', () => {
     const project = makeDramaProject(store)
     const raw = {
       tracks: project.timeline.tracks.map((track) => ({ ...track })),
@@ -163,7 +163,7 @@ describe('剪辑表计算', () => {
     expect(timeline.snapshots.length).toBeGreaterThan(0)
   })
 
-  it('轨道静音与可见片段保持独立', () => {
+  it('@core:studio-timeline 轨道静音与可见片段保持独立', () => {
     const project = makeDramaProject(store)
     const timeline = buildTimelineFromProject(project)
     const muted = {

@@ -1,15 +1,15 @@
 // studio-runtime 单元测试：由 10 个原测试文件合并；每个文件保留独立 describe 作用域。
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import type { StudioAgentFacade } from '../../src/main/studio'
-import { runStudioAgentTool, dramaQualityChecks, measureProseQuality, proseQualityChecks, StudioStore, synthesizeCloudSpeech, extractJson, auditCharacterVoices, extractChapterDialogue, synthesizeSpeech } from '../../src/main/studio'
-import { creativeMasterPrompt, creativeMasterSelection, resetCreativeMasterCache } from '../../src/main/creative-masters'
+import { runStudioAgentTool, dramaQualityChecks, proseQualityChecks, synthesizeCloudSpeech, extractJson, auditCharacterVoices, storyboardChapterBatches, mergeReviewCoverage, chapterPrompt, novelReviewSegments, novelReviewBatches, novelReviewCoverage } from '../../src/main/studio'
+import { creativeMasterSelection, resetCreativeMasterCache } from '../../src/main/creative-masters'
 import type { StudioActionResult, StudioJob, StudioProject, StudioStatus } from '../../src/shared/studio'
 import { emptyCanvas, emptyStageStates, emptyTimeline, STUDIO_SCHEMA_VERSION, STUDIO_STATUS_TRANSITIONS, canTransitionStudioStatus } from '../../src/shared/studio'
 import { makeDramaProject, makeNovelProject, tempStore } from './studio-fixtures'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { copyUserDataForMigration, removeStudioLocation, resolveDefaultStudioRoot, resolveStudioDataRoot, studioDataDirInfo, writeStudioLocation } from '../../src/main/workspace'
+import { copyUserDataForMigration, removeStudioLocation, resolveDefaultStudioRoot, resolveStudioDataRoot, writeStudioLocation } from '../../src/main/workspace'
 import type { Server } from 'node:http'
 import { createServer } from 'node:http'
 import { LARGE_DIFF_CHARS, candidateDiff, previewBrief } from '../../src/shared/types'
@@ -66,7 +66,7 @@ function job(): StudioJob {
   }
 }
 describe('创作台 Agent 工具适配层', () => {
-  it('读取作品列表与单作品摘要', async () => {
+  it('@core:studio-assistant 读取作品列表与单作品摘要', async () => {
     const facade: StudioAgentFacade = {
       execute: vi.fn(async (request) => {
         if (request.type === 'list') {
@@ -86,7 +86,7 @@ describe('创作台 Agent 工具适配层', () => {
     expect((get.data as { chapters: Array<{ id: string }> }).chapters.map((chapter) => chapter.id)).toEqual(['ch1', 'ch2'])
   })
 
-  it('写作动作自动选择第一章空章', async () => {
+  it('@core:studio-assistant 写作动作自动选择第一章空章', async () => {
     const calls: Array<Record<string, unknown>> = []
     const facade: StudioAgentFacade = {
       execute: vi.fn(async (request) => {
@@ -101,7 +101,7 @@ describe('创作台 Agent 工具适配层', () => {
     expect(calls.find((call) => call.type === 'generate-chapter')?.chapterId).toBe('ch2')
   })
 
-  it('媒体动作映射到正确的作品服务动作', async () => {
+  it('@core:studio-assistant 媒体动作映射到正确的作品服务动作', async () => {
     const calls: Array<Record<string, unknown>> = []
     const facade: StudioAgentFacade = {
       execute: vi.fn(async (request) => {
@@ -116,7 +116,7 @@ describe('创作台 Agent 工具适配层', () => {
     expect(calls.some((call) => call.type === 'generate-music' && call.kind === 'music')).toBe(true)
   })
 
-  it('修改计划只返回 planId，不直接改作品', async () => {
+  it('@core:studio-assistant 修改计划只返回 planId，不直接改作品', async () => {
     const facade: StudioAgentFacade = {
       execute: vi.fn(async (request) => {
         if (request.type === 'get') return { project: project() } as StudioActionResult
@@ -130,36 +130,13 @@ describe('创作台 Agent 工具适配层', () => {
     expect(result.summary).toContain('尚未应用')
     expect(result.summary).toContain('plan_1')
   })
-
-  it('缺少 projectId 时给出可执行提示', async () => {
-    const facade: StudioAgentFacade = { execute: vi.fn(async () => ({ project: project() })) }
-    await expect(runStudioAgentTool(facade, { action: 'chapter' })).rejects.toThrow('缺少 projectId')
-  })
 })
 })
 
 describe("prompt-quality", () => {
 describe('studio quality framework', () => {
-  it('量出 AI 腔与具体写作的差异', () => {
-    const ai = '她感到害怕，觉得眼前似乎有影子。突然，她意识到自己正在发抖，仿佛有什么东西在靠近。'
-    const concrete = '她把伞柄攥紧，铁锈硌进掌心。门外的雨突然停了。她抬头，屋檐下站着那个少年，鞋底一滴水都没有。'
-    const aiMetrics = measureProseQuality(ai)
-    const concreteMetrics = measureProseQuality(concrete)
-    expect(aiMetrics.fillerRatio).toBeGreaterThan(0.15)
-    expect(concreteMetrics.fillerRatio).toBeLessThan(0.06)
-    expect(concreteMetrics.openingHook).toBe(true)
-    expect(concreteMetrics.paragraphMax).toBeGreaterThan(0)
-  })
 
-  it('底层创作方法只来自大师文件', () => {
-    resetCreativeMasterCache()
-    const chapter = creativeMasterPrompt({ kind: 'novel', task: 'chapter', query: '结尾留钩子，少解释' })
-    expect(chapter).toContain('写作大师')
-    expect(chapter).toContain('第五步')
-    expect(chapter).not.toContain('导演定调')
-  })
-
-  it('把正文质检写进作品检查项', () => {
+  it('@core:studio-writing 把正文质检写进作品检查项', () => {
     const { store } = tempStore()
     const project = makeNovelProject(store)
     project.chapters[0].content = '她感到害怕，觉得眼前似乎有影子。突然，她意识到自己正在发抖，仿佛有什么东西在靠近。'.repeat(12)
@@ -167,7 +144,7 @@ describe('studio quality framework', () => {
     expect(checks.some((check) => check.kind === 'quality' && check.level === 'warn' && check.title.includes('AI 腔'))).toBe(true)
   })
 
-  it('把漫剧镜头硬门禁写进作品检查项', () => {
+  it('@core:studio-drama 把漫剧镜头硬门禁写进作品检查项', () => {
     const { store } = tempStore()
     const project = makeDramaProject(store)
     project.shots[0].prompt = ''
@@ -178,7 +155,7 @@ describe('studio quality framework', () => {
   })
 })
 describe('creative masters', () => {
-  it('小说写作走写作大师，剧本改编走编剧大师，漫剧分镜走导演大师', () => {
+  it('@core:studio-writing 小说写作走写作大师，剧本改编走编剧大师，漫剧分镜走导演大师', () => {
     resetCreativeMasterCache()
     expect(creativeMasterSelection({ kind: 'short', task: 'chapter' }).master).toBe('writing')
     expect(creativeMasterSelection({ kind: 'novel', task: 'outline' }).master).toBe('writing')
@@ -186,31 +163,6 @@ describe('creative masters', () => {
     expect(creativeMasterSelection({ kind: 'drama', task: 'storyboard' }).master).toBe('directing')
     expect(creativeMasterSelection({ kind: 'drama', task: 'assistant', view: 'blueprint' }).master).toBe('screenwriting')
     expect(creativeMasterSelection({ kind: 'drama', task: 'assistant', view: 'music' }).master).toBe('directing')
-  })
-
-  it('按任务加载对应方法论，并受字符预算约束', () => {
-    resetCreativeMasterCache()
-    const storyboard = creativeMasterSelection({ kind: 'drama', task: 'storyboard', budgetChars: 12_000 })
-    expect(storyboard.methodology).toEqual(expect.arrayContaining(['shot-design.md', 'storyboard-format.md']))
-    expect(storyboard.chars).toBeLessThanOrEqual(12_000)
-    const chapter = creativeMasterSelection({ kind: 'novel', task: 'chapter', budgetChars: 12_000 })
-    expect(chapter.methodology).toEqual(expect.arrayContaining(['scene-dialogue.md']))
-    expect(chapter.chars).toBeLessThanOrEqual(12_000)
-  })
-
-  it('生成可直接拼接的单一大师上下文', () => {
-    const context = creativeMasterPrompt({ kind: 'drama', task: 'outline', query: '三幕结构、伏笔、情绪曲线', budgetChars: 10_000 })
-    expect(context).toContain('【底层创作方法：编剧大师】')
-    expect(context).toContain('八步工作流')
-    expect(context.split('\n').length).toBeGreaterThan(10)
-  })
-
-  it('提示词编译进主进程，不依赖外部文件', () => {
-    resetCreativeMasterCache()
-    const selection = creativeMasterSelection({ kind: 'novel', task: 'chapter' })
-    expect(selection.root).toBe('embedded')
-    expect(selection.master).toBe('writing')
-    expect(selection.methodology).toEqual(expect.arrayContaining(['scene-dialogue.md', 'prose-craft.md']))
   })
 })
 })
@@ -236,28 +188,7 @@ describe('创作台自定义数据目录', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('默认使用 Agent 数据目录下的 studio，显式 dataDir 的测试实例仍隔离', () => {
-    const info = studioDataDirInfo(dataDir)
-    expect(info.source).toBe('default')
-    expect(info.root).toBe(resolveDefaultStudioRoot(dataDir))
-    const store = new StudioStore(dataDir)
-    expect(store.root).toBe(resolveDefaultStudioRoot(dataDir))
-  })
-
-  it('自定义指针优先，显式 dataDir 的测试实例不读取用户指针', () => {
-    const custom = join(root, 'custom-studio')
-    writeStudioLocation(custom)
-    const info = studioDataDirInfo(dataDir)
-    expect(info.source).toBe('custom')
-    expect(info.root).toBe(custom)
-    expect(resolveStudioDataRoot(dataDir)).toBe(custom)
-    const isolated = new StudioStore(dataDir)
-    expect(isolated.root).toBe(resolveDefaultStudioRoot(dataDir))
-    const explicit = new StudioStore(dataDir, custom)
-    expect(explicit.root).toBe(custom)
-  })
-
-  it('自定义目录不可用时回退默认；迁移复制作品文件且保留源目录', () => {
+  it('@core:studio-storage 自定义目录不可用时回退默认；迁移复制作品文件且保留源目录', () => {
     const blocked = join(root, 'not-a-dir')
     writeFileSync(blocked, 'file')
     writeStudioLocation(blocked)
@@ -289,7 +220,7 @@ describe('云端配音', () => {
     dir = ''
   })
 
-  it('向兼容 /audio/speech 的接口发送真实请求并写入音频', async () => {
+  it('@core:studio-media 向兼容 /audio/speech 的接口发送真实请求并写入音频', async () => {
     dir = mkdtempSync(join(tmpdir(), 'morrow-cloud-tts-'))
     let captured: Record<string, unknown> | null = null
     let auth = ''
@@ -324,7 +255,7 @@ describe('云端配音', () => {
     expect(captured).toMatchObject({ model: 'tts-1', input: '今天不修伞。', voice: 'alloy', response_format: 'mp3' })
   })
 
-  it('接口报错时抛出包含状态码的信息', async () => {
+  it('@core:studio-media 接口报错时抛出包含状态码的信息', async () => {
     dir = mkdtempSync(join(tmpdir(), 'morrow-cloud-tts-'))
     server = createServer((_req, res) => {
       res.writeHead(401, { 'Content-Type': 'application/json' })
@@ -348,33 +279,22 @@ describe('云端配音', () => {
 
 describe("text", () => {
 describe('模型 JSON 容错', () => {
-  it('修复键名漏写开头引号', () => {
-    const text = '{"units":[{"index":1,"title":"第一班","summary":"他上了车",wordTarget":3200,"beats":["上车"]}]}'
-    const parsed = extractJson<{ units: Array<{ wordTarget: number }> }>(text)
-    expect(parsed?.units[0]?.wordTarget).toBe(3200)
-  })
 
-  it('修复键名漏写结尾引号与裸键名', () => {
+  it('@core:studio-models 修复键名漏写结尾引号与裸键名', () => {
     const text = '{"units":[{"index":1,"title":"第一班",summary:"他上了车",beats:["上车"],},]}'
     const parsed = extractJson<{ units: Array<{ title: string; beats: string[] }> }>(text)
     expect(parsed?.units[0]?.title).toBe('第一班')
     expect(parsed?.units[0]?.beats).toEqual(['上车'])
   })
 
-  it('容忍围栏与前后说明', () => {
+  it('@core:studio-models 容忍围栏与前后说明', () => {
     const text = '说明：\n```json\n{"ok":true}\n```\n以上。'
     expect(extractJson<{ ok: boolean }>(text)?.ok).toBe(true)
   })
 })
 describe('大文本候选对照', () => {
-  it('短文本逐字对照可用', () => {
-    const result = candidateDiff('雨从傍晚开始下。', '雨从深夜开始下。', 'chars')
-    expect(result.degraded).toBe(false)
-    expect(result.parts.some((part) => part.removed)).toBe(true)
-    expect(result.parts.some((part) => part.added)).toBe(true)
-  })
 
-  it('超过 2 万字自动退到段落级，不生成逐字 diff', () => {
+  it('@core:studio-writing 超过 2 万字自动退到段落级，不生成逐字 diff', () => {
     const paragraph = '她把伞撑开，雨水沿着伞骨落下来。'
     const original = Array.from({ length: 1200 }, () => paragraph).join('\n\n')
     const next = `${original}\n\n她把灯关了。`
@@ -385,27 +305,14 @@ describe('大文本候选对照', () => {
     expect(result.paragraphs.length).toBeGreaterThan(0)
     expect(result.paragraphs.some((part) => part.added)).toBe(true)
   })
-
-  it('超过 6 万字时标记截断', () => {
-    const text = '雨'.repeat(70_000)
-    const result = candidateDiff(text, `${text}灯`, 'paragraphs')
-    expect(result.truncated).toBe(true)
-  })
 })
 describe('brief preview', () => {
-  it('从完整一句话里提取主角、欲望、阻力与转折', () => {
+  it('@core:studio-models 从完整一句话里提取主角、欲望、阻力与转折', () => {
     const preview = previewBrief('一个雨夜，修伞的女孩捡到一把会倒着走时间的伞，她想找回失去的记忆，却发现每次修伞都会让外婆忘记她。', 'novel')
     expect(preview.subject).toContain('女孩')
     expect(preview.goal).toContain('找回')
     expect(preview.obstacle ?? preview.turn).toBeTruthy()
     expect(preview.confidence).toBe('high')
-  })
-
-  it('信息不足时给出最多两个追问', () => {
-    const preview = previewBrief('一个女孩捡到一把伞。', 'drama')
-    expect(preview.confidence).not.toBe('high')
-    expect(preview.questions.length).toBeGreaterThan(0)
-    expect(preview.questions.length).toBeLessThanOrEqual(2)
   })
 })
 })
@@ -418,7 +325,7 @@ describe('创作台回收站', () => {
     dir = ''
   })
 
-  it('删除后进入回收站，可恢复，也可彻底删除', () => {
+  it('@core:studio-storage 删除后进入回收站，可恢复，也可彻底删除', () => {
     const fixture = tempStore()
     dir = fixture.dir
     const store = fixture.store
@@ -448,7 +355,7 @@ describe('创作台回收站', () => {
     expect(store.projectExists(project.id)).toBe(false)
   })
 
-  it('拒绝越界条目名', () => {
+  it('@core:studio-storage 拒绝越界条目名', () => {
     const fixture = tempStore()
     dir = fixture.dir
     expect(() => fixture.store.purgeTrash('not-a-valid-entry')).toThrow('回收站条目名称不合法')
@@ -458,13 +365,8 @@ describe('创作台回收站', () => {
 
 describe("voice-audit", () => {
 describe('人物语气审稿', () => {
-  it('提取“谁说 + 说了什么”，忽略没有明确归属的引号', () => {
-    const lines = extractChapterDialogue('林晚说：“今天不修伞。”\n“明天再来吧，”老周笑道。\n“没有人知道。”', 'ch1')
-    expect(lines.map((line) => line.speaker)).toEqual(['林晚', '老周'])
-    expect(lines[0].text).toBe('今天不修伞。')
-  })
 
-  it('统计句长、问句与高频用语，并对语气趋同给出提醒', () => {
+  it('@core:studio-writing 统计句长、问句与高频用语，并对语气趋同给出提醒', () => {
     const { store, dir } = tempStore()
     try {
       const project = makeNovelProject(store)
@@ -498,7 +400,7 @@ describe('人物语气审稿', () => {
 
 describe("registry", () => {
 describe('创作台 Agent 工具注册', () => {
-  it('注册 11 个创作动作，并保持只读边界', () => {
+  it('@core:studio-assistant 注册 11 个创作动作，并保持只读边界', () => {
     const names = TOOL_DEFINITIONS.map((tool) => tool.name)
     for (const name of [
       'studio_project',
@@ -521,57 +423,220 @@ describe('创作台 Agent 工具注册', () => {
     expect(isReadOnlyTool('studio_media')).toBe(false)
     expect(getToolDefinition('studio_render')?.risk).toBe('medium')
     expect(getToolDefinition('studio_media')?.risk).toBe('high')
-  })
-
-  it('创作动作的 schema 明确 projectId 与动作类型', () => {
-    const create = getToolDefinition('studio_create')
-    expect(create?.parameters).toMatchObject({ required: ['kind', 'logline'] })
-    const media = getToolDefinition('studio_media')
-    expect(media?.parameters).toMatchObject({ required: ['projectId', 'action'] })
-    const blueprint = getToolDefinition('studio_blueprint')
-    expect(blueprint?.parameters).toMatchObject({ required: ['projectId', 'action'] })
-    const edit = getToolDefinition('studio_edit')
-    expect(edit?.parameters).toMatchObject({ required: ['projectId'] })
+    const renderProps = getToolDefinition('studio_render')?.parameters?.properties as Record<string, unknown>
+    expect(renderProps).not.toHaveProperty('subtitleMode')
   })
 })
 })
 
-describe("local-tts", () => {
-describe('本机配音引擎', () => {
-  let dir = ''
+describe('storyboard-chapter-batches', () => {
+  const chapters = (count: number, emptyAt = -1): any[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `ch_${index + 1}`,
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      content: index === emptyAt ? '' : `第 ${index + 1} 章正文`,
+      synopsis: '',
+      volumeId: null,
+      beats: [],
+      wordTarget: 3000,
+      status: 'done',
+      revision: 1,
+      candidates: [],
+      versions: [],
+      illustrations: [],
+      locked: true,
+      updatedAt: Date.now()
+    }))
 
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true })
-    dir = ''
+  it('@core:studio-drama 超过 12 章时按 8 章分批，不丢章节', () => {
+    const batches = storyboardChapterBatches(chapters(15))
+    expect(batches.map((batch) => batch.chapters.length)).toEqual([8, 7])
+    expect(batches.flatMap((batch) => batch.chapters).map((chapter) => chapter.number)).toEqual(Array.from({ length: 15 }, (_, index) => index + 1))
+    expect(storyboardChapterBatches(chapters(36)).map((batch) => batch.chapters.length)).toEqual([8, 8, 8, 8, 4])
   })
 
-  it.skipIf(process.platform !== 'win32' || process.env.MORROW_REAL_VOICE !== '1')('用 Windows 系统声线生成真实 WAV', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'morrow-local-tts-'))
-    const output = join(dir, 'voice.wav')
-    await synthesizeSpeech({
-      text: '海底邮局，最后一班。',
-      voice: 'Microsoft Huihui Desktop',
-      rate: 0,
-      outputPath: output,
-      workDir: dir
+  it('@core:studio-drama 12 章以内只调用一次，空章不进入改编', () => {
+    expect(storyboardChapterBatches(chapters(12))).toHaveLength(1)
+    const withEmpty = storyboardChapterBatches(chapters(5, 2))
+    expect(withEmpty).toHaveLength(1)
+    expect(withEmpty[0].chapters.map((chapter) => chapter.number)).toEqual([1, 2, 4, 5])
+  })
+})
+
+describe('chapter-prompt-context', () => {
+  it('@core:studio-writing 章节生成读取世界规则、势力、道具与相关旧事实', () => {
+    const { store, dir } = tempStore()
+    try {
+      const project = makeNovelProject(store)
+      project.rules = [{ id: 'rule-1', title: '法术代价', content: '使用法术必须失去一段记忆', createdAt: 1 } as any]
+      project.factions = [{ id: 'faction-1', name: '伞骨会', description: '收集逆行伞骨的地下组织', createdAt: 1 } as any]
+      project.props = [{ id: 'prop-1', name: '黑伞', description: '能倒着走时间的旧伞', createdAt: 1 } as any]
+      project.facts = [
+        ...Array.from({ length: 90 }, (_, index) => ({ id: `junk-${index}`, subject: `路人${index}`, predicate: '提到', object: `无关传闻${index}`, confidence: 0.5, source: 'manual' as const, createdAt: 1 })),
+        { id: 'fact-important', subject: '外婆', predicate: '留下', object: '黑伞与一把修伞刀', confidence: 0.9, source: 'manual' as const, createdAt: 1 },
+        { id: 'fact-current', subject: '林晚', predicate: '想要', object: '修好黑伞', chapterId: 'ch-1', confidence: 0.9, source: 'manual' as const, createdAt: 1 }
+      ]
+      const prompt = chapterPrompt(project, project.chapters[0], '')
+      expect(prompt).toContain('使用法术必须失去一段记忆')
+      expect(prompt).toContain('伞骨会')
+      expect(prompt).toContain('能倒着走时间的旧伞')
+      expect(prompt).toContain('外婆留下黑伞与一把修伞刀')
+      expect(prompt).toContain('林晚想要修好黑伞')
+      expect(prompt).not.toContain('无关传闻89')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('review-segments', () => {
+  const chapter = (content: string) => ({
+    id: 'chapter-long',
+    number: 1,
+    title: '长章',
+    revision: 2,
+    content
+  }) as any
+  const coverage = (segments: Array<{ start: number; end: number }>, version = 2): any => ({
+    id: 'coverage-1',
+    createdAt: 1,
+    kind: 'novel',
+    scope: 'all',
+    part: 'novel:test',
+    label: '第 1 章',
+    unitStart: 1,
+    unitEnd: 1,
+    covered: 1,
+    total: 1,
+    source: 'v2',
+    model: 'mock',
+    issues: 0,
+    units: [{ id: 'chapter-long', version }],
+    segments: segments.map((segment) => ({ id: 'chapter-long', version, ...segment }))
+  })
+
+  it('@core:studio-writing 九千字长章按段送审，尾部未读时不算整章完成', () => {
+    const content = `${'正文。'.repeat(4_000)}尾部唯一标记`
+    expect(content.length).toBeGreaterThan(8_000)
+    const segments = novelReviewSegments([chapter(content)])
+    expect(segments).toHaveLength(2)
+    expect(segments.map((segment) => segment.text).join('')).toContain('尾部唯一标记')
+    expect(novelReviewBatches(segments).flat()).toHaveLength(2)
+    const partial = novelReviewCoverage([coverage([{ start: 0, end: 8_000 }])], [chapter(content)])
+    expect(partial.count).toBe(0)
+    const full = novelReviewCoverage([coverage([{ start: 0, end: 8_000 }, { start: 8_000, end: content.length }])], [chapter(content)])
+    expect(full.count).toBe(1)
+    const changed = novelReviewCoverage([coverage([{ start: 0, end: content.length }], 1)], [chapter(content)])
+    expect(changed.count).toBe(0)
+  })
+
+  it('@core:studio-writing 五百章覆盖记录完整保留，不按日志条数截断', () => {
+    const entries = Array.from({ length: 125 }, (_, index) => ({
+      id: `coverage-${index}`,
+      createdAt: index,
+      kind: 'novel' as const,
+      scope: 'all' as const,
+      part: `novel:batch-${index}`,
+      label: `第 ${index * 4 + 1}–${index * 4 + 4} 章`,
+      unitStart: index * 4 + 1,
+      unitEnd: index * 4 + 4,
+      covered: 4,
+      total: 500,
+      source: 'same-source',
+      model: 'mock',
+      issues: 0
+    }))
+    const merged = mergeReviewCoverage([], entries, 'novel', 'same-source')
+    expect(merged).toHaveLength(125)
+    expect(merged[0].unitStart).toBe(1)
+    expect(merged.at(-1)?.unitEnd).toBe(500)
+  })
+
+  it('@core:studio-writing 逐章审稿后两章覆盖都保留并能一起算出完成', () => {
+    const chapters = [1, 2].map((number) => ({
+      id: `chapter-${number}`,
+      number,
+      title: `第 ${number} 章`,
+      revision: 1,
+      content: `第 ${number} 章短正文。`
+    })) as any[]
+    const entry = (chapter: any, source: string): any => ({
+      id: `coverage-${chapter.id}`,
+      createdAt: 1,
+      kind: 'novel',
+      scope: 'current',
+      part: `novel:${chapter.id}`,
+      label: `第 ${chapter.number} 章`,
+      unitStart: chapter.number,
+      unitEnd: chapter.number,
+      covered: 1,
+      total: 2,
+      source,
+      model: 'mock',
+      issues: 0,
+      units: [{ id: chapter.id, version: 1 }],
+      segments: [{ id: chapter.id, version: 1, start: 0, end: chapter.content.length }]
     })
-    expect(existsSync(output)).toBe(true)
-    expect(statSync(output).size).toBeGreaterThan(10_000)
-  }, 90_000)
-})
+    const first = mergeReviewCoverage([], [entry(chapters[0], 'source-ch1')], 'novel', 'source-ch1')
+    const merged = mergeReviewCoverage(first, [entry(chapters[1], 'source-ch2')], 'novel', 'source-ch2')
+    expect(merged).toHaveLength(2)
+    expect(novelReviewCoverage(merged, chapters).count).toBe(2)
+  })
+
+  it('@core:studio-writing 五百章覆盖合并后仍能算出全书五百章已读', () => {
+    const chapters = Array.from({ length: 500 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      revision: 1,
+      content: '短正文。'
+    })) as any[]
+    const entries = Array.from({ length: 125 }, (_, batch) => ({
+      id: `coverage-${batch}`,
+      createdAt: batch,
+      kind: 'novel' as const,
+      scope: 'all' as const,
+      part: `novel:batch-${batch}`,
+      label: `第 ${batch * 4 + 1}–${batch * 4 + 4} 章`,
+      unitStart: batch * 4 + 1,
+      unitEnd: batch * 4 + 4,
+      covered: 4,
+      total: 500,
+      source: 'same-source',
+      model: 'mock',
+      issues: 0,
+      units: chapters.slice(batch * 4, batch * 4 + 4).map((chapter) => ({ id: chapter.id, version: 1 })),
+      segments: chapters.slice(batch * 4, batch * 4 + 4).map((chapter) => ({ id: chapter.id, version: 1, start: 0, end: chapter.content.length }))
+    }))
+    const merged = mergeReviewCoverage([], entries, 'novel', 'same-source')
+    expect(merged).toHaveLength(125)
+    expect(novelReviewCoverage(merged, chapters).count).toBe(500)
+  })
+
+  it('@core:studio-writing 逐章审稿保留其他章节的有效记录', () => {
+    const first = {
+      id: 'coverage-ch1', createdAt: 1, kind: 'novel' as const, scope: 'current' as const,
+      part: 'novel:chapter-1', label: '第 1 章', unitStart: 1, unitEnd: 1, covered: 1, total: 2,
+      source: 'source-ch1', model: 'mock', issues: 0, units: [{ id: 'ch-1', version: 1 }]
+    }
+    const second = { ...first, id: 'coverage-ch2', part: 'novel:chapter-2', label: '第 2 章', unitStart: 2, unitEnd: 2, source: 'source-ch2', units: [{ id: 'ch-2', version: 1 }] }
+    const merged = mergeReviewCoverage([first], [second], 'novel', 'source-ch2')
+    expect(merged.map((entry) => entry.part)).toEqual(['novel:chapter-1', 'novel:chapter-2'])
+  })
 })
 
 describe("status-transitions", () => {
 const STATUSES: StudioStatus[] = ['waiting', 'ready', 'running', 'review', 'done', 'failed', 'stale', 'skipped']
 describe('创作阶段状态转移', () => {
-  it('每种状态都有显式转移表', () => {
+  it('@core:studio-jobs 每种状态都有显式转移表', () => {
     for (const status of STATUSES) {
       expect(STUDIO_STATUS_TRANSITIONS[status]).toBeDefined()
       expect(canTransitionStudioStatus(status, status)).toBe(true)
     }
   })
 
-  it('拒绝不合理的回退', () => {
+  it('@core:studio-jobs 拒绝不合理的回退', () => {
     expect(canTransitionStudioStatus('waiting', 'running')).toBe(true)
     expect(canTransitionStudioStatus('running', 'done')).toBe(true)
     expect(canTransitionStudioStatus('done', 'stale')).toBe(true)

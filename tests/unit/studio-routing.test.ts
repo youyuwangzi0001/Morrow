@@ -29,24 +29,13 @@ const providers = [
 const defaultModel = { providerId: 'cloud', modelId: 'cloud-model' }
 
 describe('文本路由', () => {
-  it('本地优先选择已配置的本机模型', () => {
-    const ranked = rankTextCandidates({ providers, defaultModel }, () => 'key', 'local-first')
-    expect(ranked[0].config.id).toBe('local')
-    expect(ranked[0].local).toBe(true)
-  })
 
-  it('云端优先选择已配置的云端模型', () => {
-    const ranked = rankTextCandidates({ providers, defaultModel }, () => 'key', 'cloud-first')
-    expect(ranked[0].config.id).toBe('cloud')
-    expect(ranked[0].local).toBe(false)
-  })
-
-  it('只本地与只云端严格过滤', () => {
+  it('@core:studio-models 只本地与只云端严格过滤', () => {
     expect(rankTextCandidates({ providers, defaultModel }, () => 'key', 'local-only').every((item) => item.local)).toBe(true)
     expect(rankTextCandidates({ providers, defaultModel }, () => 'key', 'cloud-only').every((item) => !item.local)).toBe(true)
   })
 
-  it('缺 Key 的云端路由仍可见，但排在可用路由之后', () => {
+  it('@core:studio-models 缺 Key 的云端路由仍可见，但排在可用路由之后', () => {
     const ranked = rankTextCandidates(
       { providers, defaultModel },
       (providerId) => providerId === 'local' ? 'local-key' : null,

@@ -1,0 +1,688 @@
+{
+  "capturedAt": "2026-10-30T04:27:59.747Z",
+  "task": "Keep only the core test suite and delete all other suites",
+  "originalInventory": {
+    "unit": 1069,
+    "e2e": 245,
+    "fixtureSelfTests": 13,
+    "total": 1327
+  },
+  "removedCases": {
+    "unit": 706,
+    "e2e": 200,
+    "fixtureSelfTests": 13,
+    "total": 919
+  },
+  "concurrentCoreAdditions": {
+    "unit": 1,
+    "e2e": 1,
+    "total": 2
+  },
+  "finalInventory": {
+    "unit": 364,
+    "e2e": 46,
+    "fixtureSelfTests": 0,
+    "total": 410,
+    "domains": 38
+  },
+  "testSource": {
+    "beforeFiles": 33,
+    "afterFiles": 29,
+    "beforeBytes": 2174699,
+    "afterBytes": 881773,
+    "beforeLines": 46476,
+    "afterLines": 19262
+  },
+  "removedFiles": [
+    "tests/e2e/guide-extra.spec.ts",
+    "tests/e2e/packaged-terminal-gitbash.spec.ts",
+    "tests/e2e/packaged.spec.ts",
+    "tests/e2e/real.spec.ts",
+    "tests/fixtures/mock-llm.test.mjs",
+    "tests/e2e/packaged-runtime.ts",
+    "tests/fixtures/qoder/body-codec.json",
+    "tests/fixtures/media/sample-32k.mp4",
+    "tests/fixtures/media/code-shot.html",
+    "tests/fixtures/documents/make_evidence.ts",
+    "tests/fixtures/documents/verify_evidence.py",
+    "tests/fixtures/documents/input.xlsx",
+    "tests/fixtures/documents/scanned-zh.pdf",
+    "scripts/probe-live.mjs",
+    "scripts/packaged-demo-smoke.mjs"
+  ],
+  "trimmedFiles": [
+    "tests/e2e/chat.spec.ts",
+    "tests/e2e/journey.spec.ts",
+    "tests/e2e/studio.spec.ts",
+    "tests/e2e/ui.spec.ts",
+    "tests/e2e/workspace.spec.ts",
+    "tests/unit/core-runtime.test.ts",
+    "tests/unit/core-tools.test.ts",
+    "tests/unit/main-external-open.test.ts",
+    "tests/unit/main-media.test.ts",
+    "tests/unit/main-memory.test.ts",
+    "tests/unit/main-reveal.test.ts",
+    "tests/unit/main-runtime.test.ts",
+    "tests/unit/main-settings.test.ts",
+    "tests/unit/shared.test.ts",
+    "tests/unit/studio-intent.test.ts",
+    "tests/unit/studio-routing.test.ts",
+    "tests/unit/studio-runtime.test.ts"
+  ],
+  "packageScripts": {
+    "dev": "electron-vite dev",
+    "preview": "electron-vite preview",
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "build": "npm run typecheck && electron-vite build",
+    "test": "npm run test:unit",
+    "test:suite": "node scripts/check-test-suite.mjs",
+    "test:unit": "vitest run",
+    "pretest:e2e": "node scripts/build-for-tests.mjs",
+    "test:e2e": "playwright test",
+    "dist": "npm run build && node scripts/dist-portable.mjs --portable",
+    "dist:all": "npm run build && node scripts/dist-portable.mjs",
+    "dist:final": "npm run build && node scripts/dist-portable.mjs --two-files",
+    "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "pack:source": "node scripts/pack-source.mjs",
+    "verify": "npm run typecheck && npm run audit:ui && npm run test:suite && npm run test:unit && npm run test:e2e",
+    "audit:ui": "node scripts/ui-token-audit.mjs"
+  },
+  "coreGuardSha256": "04635c50dae174dc00d2d0ce04f451df4215b020c851ee0b77efb0d8233ae259",
+  "originalCoreCasesRetained": 408,
+  "originalCoreBodiesUnchanged": 406,
+  "preservedConcurrentChanges": [
+    {
+      "file": "tests/unit/studio-store.test.ts",
+      "title": "@core:studio-storage 旧内置漫剧升级为动态镜头与 1080p 成片，时间线仍可编辑",
+      "sha256": "07ebf01e0b0ece913ef46757a565693412869d2fd8bf2b4a9f4822a1a2818931",
+      "beforeSha256": null,
+      "editedByThisPruning": false
+    },
+    {
+      "file": "tests/e2e/demo-film.spec.ts",
+      "title": "@core:studio-drama 内置漫剧是 12 镜可编辑动态镜头与 1080p 成片，而不是 12 张静图",
+      "sha256": "f5f3b3c5d899cd4f8115d89edd5c05cca2996b9b91410544965a4fb83f9030cc",
+      "beforeSha256": null,
+      "editedByThisPruning": false
+    },
+    {
+      "file": "tests/e2e/studio.spec.ts",
+      "title": "@core:studio-timeline 入口、作品库、写作、分镜、时间线与交付的真实走查",
+      "sha256": "caa891a2334b51405fe85e344fa61f21c1efd98ebc17dfe9997a28b216d3a0b9",
+      "beforeSha256": "506eea1192ae417e7d61f8ddcb6eccc8a10c43885a5b2ac124abf1e28b0b50aa",
+      "editedByThisPruning": false
+    }
+  ],
+  "coreFixtureChanges": [
+    {
+      "file": "tests/e2e/terminal-gitbash.spec.ts",
+      "beforeSha256": "61e0e9c9f575ec6a52ceb7dc058a6b47aa6579428cd63f8ed39abbee0a683471",
+      "afterSha256": "654dcf886a0d5e4ec34b63165ea77427d64ae6ec5930dd60a864e3a6c34c490a",
+      "changedAt": "2026-10-30T04:24:55.465Z",
+      "reason": "Pin MSYSTEM=MINGW64 for the existing Git Bash prompt expectation; retain all original assertions."
+    }
+  ],
+  "verificationSnapshot": {
+    "capturedAt": "2026-10-30T04:16:22.209Z",
+    "path": "C:\\交付成品\\Morrow\\tmp\\core-only-2026-10-30\\validation-workspace",
+    "sourceAndTestFileCount": 168,
+    "currentWorkspaceMatchesSnapshot": true,
+    "sha256": {
+      "src/core/agent.ts": "785e9ffe11071ad121a8e5a9afa2980ba67f36affe529faf26f5aff31520b980",
+      "src/core/index.ts": "52e5b1b4280aac166d42827ee40ba2d37e9de2b1580898cdd8466008b65c88fe",
+      "src/core/providers.ts": "bd58eb1e81bfc789c14f757d3aa0ab6ccb50e11a018cbc84bcff5e6f83091b1a",
+      "src/core/tool-extra.ts": "20f9f856025479079749275f1f0cbe0ce9c7424356f70b2bd77bf9d837ec2b0f",
+      "src/core/tool-files.ts": "df2a1a5184125b98708540eda31437ae6899365e5be339f75dee001ccea6a321",
+      "src/core/tool-kit.ts": "26211c415a30fe5730720d91453c54b31fd6b5ae21962e52cb5fa42c79ad15d1",
+      "src/core/tool-media.ts": "b9fae061a3e62253b6e2a45c99f00bdcb155fad3015123017041421fd48b76c3",
+      "src/core/tool-vendor-declarations.d.ts": "b4cf5a6cecd39c892f9a67d0937cd1b777f6e70c277986b057343d7a719ae996",
+      "src/core/tools.ts": "21bb14d19599f34cb9b44cd0d292fa098d03872ac160a5601d1f730a08a04f97",
+      "src/core/types.ts": "91c2e5f0d335bdcf9ce4b2fd5ab66d591974e166d1bb7e83b605543334062de8",
+      "src/core/util.ts": "7f25f3cd56ee57984068b05abb5f3322a2dfaa1b7dcfcc2a7ea6fc33f6ccc7c1",
+      "src/main/agent.ts": "cccfbe6e6d08dfb29b8a8f97d5adb5d8098d6c0d244ece4dccdbc5989f140c15",
+      "src/main/artifacts.ts": "c68814d20a9df256a8970800aa47b9c9fd09d211c05e5b82e2b31d79c9c9d39f",
+      "src/main/creative-masters.ts": "49df21e14c3d4fcc43dca381c42ae269ca439955356398feaa519e061b01a5c5",
+      "src/main/creative-prompts.generated.ts": "a61665c0ab06172ac096cd667d30bac7c4ab228e7551de54d08fe1bf839e47b4",
+      "src/main/feature-ipc.ts": "edb899eb8c871d832ed3221e0e09659ce07627a19f0ec7e72820c061473c7f91",
+      "src/main/features.ts": "1a4c7032a7a3a539658cad51b5fe31fb19452740a10f45b86ed16749430b8f49",
+      "src/main/index.ts": "8fc6bce53f6ace8472fb60ca7ac7baea27c16c0da1046a82f4583550cfae0817",
+      "src/main/ipc.ts": "8f1f6d9917414491c0142cf4b828ad405fc8974601b7534f3961033494831720",
+      "src/main/logger.ts": "15f9439271ccaf59c7254f5ff36302eb67ec86eaee6c4c41865c39e2fbc0154b",
+      "src/main/media.ts": "a136f0bf75748bc231c6bb601355424c9cf0ca212f6a04fd6ce696990cb1c381",
+      "src/main/memory.ts": "888e65d48fca5f6af6ba02b404e067324427c7509cc99ac9f27f292fe2788395",
+      "src/main/runtime.ts": "608653a1888b0fb6fe041bf3b647353debd72287b1506d74796b2f9890504106",
+      "src/main/schedules.ts": "224e15ad8bc1cc0eec9acbe72cb17ba192c7e04a517ee20e70d47f810c13e954",
+      "src/main/session.ts": "df28e0939f07638876e95c26cbc5dff5c785c8ae2726a5c17bb48b534c32ebd4",
+      "src/main/settings.ts": "30ca07dafd743f24b16d4973ab8cfd4e1b9f4f9ee1c8bc27952f5ab7f8dd8935",
+      "src/main/studio-demo-fixtures.json": "4b3b475356148a5c434a7602a3c32c2f0b21a28facdd1829e52376c6d2817dce",
+      "src/main/studio.ts": "9f62e72e61295c10440e403ae484472f7db16a22a016e5ab6e29609be8703b92",
+      "src/main/subscriptions.ts": "3f2fb54d5d6375f34154984de98475b742c48129d58a70b47984979e7929cadc",
+      "src/main/terminal-manager.ts": "8779f9572442010f19fbbab47d24b53709d92abc4a13e68ea4541d20e80ebdad",
+      "src/main/tts-local.ts": "127d72aa49e3ac91e567b3f5828bab1b83d05a56f54aed9faecdc6005b29b002",
+      "src/main/workspace.ts": "683b6d01baa016a4e6f4c8a373aefc9d35a8df077f66595a5793f3cf3899a46e",
+      "src/preload/index.ts": "f0d48bc4f5d0b7d90da59f6d9f2bd3b8dbc0e0d34021074ba9b1e786e8dfada8",
+      "src/renderer/App.tsx": "ea7b658881655aae56f03b0304f9ab4fd55e8e53c5176ec0dd79825857ff8cbc",
+      "src/renderer/assets/brand-mark-dark.png": "d17bd5af77e478dc039edd169b96f328d4cf659f66658ef792c27fc01b5fd7e8",
+      "src/renderer/assets/brand-mark-light.png": "bbe7d0b3510eaa33f8424e8d920087756a5942f84df047cc0a8c89a80ea330e4",
+      "src/renderer/components.css": "7e506772147007235a5c14cdc14f4db81ce21bf41fbbbd0b7cb4417e297dbece",
+      "src/renderer/components.tsx": "60caabef30a88b4924d3a7d49c9f90dc8f888a184cbc575436f9e68f4f071170",
+      "src/renderer/env.d.ts": "6b468a28afe78323d07e8502d9f4cfbc8f0260eaf83b235dfd490a03fe930f2f",
+      "src/renderer/features/activity-core.ts": "5c7d65cae84ea079e6f9559843db7f095e4af7b70fafeea87e8583c623f044db",
+      "src/renderer/features/activity.css": "81b1995f47108843f4a5b08221adbdcb1cf30d4385766bb62df4a3fc0d55261d",
+      "src/renderer/features/activity.tsx": "4c6355131284365d5ae4d28a2e9964acff95d240ac3e510791faedb10f658fe9",
+      "src/renderer/features/artifacts-core.ts": "ceeb974733bce0ca4f599e4f34d1be74316c92931153fe87e63126034db60ded",
+      "src/renderer/features/artifacts.css": "3b8dd272db692ba9aac15b756c6df05c7695328b9b6c81805301fa0392ed2040",
+      "src/renderer/features/artifacts.tsx": "2436670eadf01d5bfbefd890f107c6cfaeda73863210dda2f1c0fa2a363a8b52",
+      "src/renderer/features/browser.css": "83770671bbcb36632c48dc13e2c7d4fa8c1556a49e605ccbfcd2902ebcc04d45",
+      "src/renderer/features/browser.tsx": "4d1e39f8fa6b2c7029270b1c73cc782291ae806ba3c8669bcf0103a9bf796b54",
+      "src/renderer/features/chat.css": "9842e2eb105006488f4fc89736b8dca6d65e104828ca1dbe1d2c72548a6ed064",
+      "src/renderer/features/chat.tsx": "2cf3965f0d877390f00c6a9a07d4e98ea05b98b8dbffd5af156f9fd7d9ef7935",
+      "src/renderer/features/checkpoints.css": "d58d9b2cb9093e27c36c89bb515806ef92f9ceeb41f554449b4f3a7d6a7f28d9",
+      "src/renderer/features/checkpoints.tsx": "625d8d37ae5c8aa58fde0865ba6e33368e8b062b2bcf270abadc66dc771a8100",
+      "src/renderer/features/composer.css": "516428fab4f6d64a42ed830c00749ad51acd85f82e536f0deeea34016e8fa713",
+      "src/renderer/features/composer.tsx": "078c0b8280710755664ed9c43c8d6afc7888a2640e5d84e959647955b51dd1c5",
+      "src/renderer/features/connectors-core.ts": "2801fd791213812c5a2dca02fe999a079e78b080a5d90c03e21929d764fecf16",
+      "src/renderer/features/connectors.css": "895f9b8b0259acef013869af1946385cab9aa61418dcb20606f6f7b052fb1a90",
+      "src/renderer/features/connectors.tsx": "dac75d36f29a7c62d89ca40f99cfb5e90d5272f5c216e5103a368c69f3852614",
+      "src/renderer/features/demo.css": "367369c895315ad8aa729edc03349c05ebb5d212ee9044ab476cef4d7ee1df41",
+      "src/renderer/features/demo.tsx": "ac37d6bfbad9e245da3b40bbd7fd390ca8474c226b3cf050a943f334b76b68f6",
+      "src/renderer/features/files-core.ts": "8c8ba7ff7369aaf767f7041725ad89bbe0b0eb14d7833d235e235e2e7d9d0e4d",
+      "src/renderer/features/files.css": "5dc99da20497fb933f5ddfbacabb695f16e21f98529f8cd4aff0440566019f57",
+      "src/renderer/features/files.tsx": "9cab732769292c91cbc406a33819802d4ca5397ea2cdba57c4df4e252f6a8f43",
+      "src/renderer/features/git.css": "7caffbf6a03beb04a9f1314b1a62e42ecd9bbc456a0bdaa6c5b1b42cbe0c1176",
+      "src/renderer/features/git.tsx": "4fa0a2011ff22b558a5d6b0320146b5f756b497f512f98e519ff6356cc51e99b",
+      "src/renderer/features/goal-core.ts": "76a390e60e43905c91844a0c957d49a3bc34942b3f03f09e0e35d462cf47dfaf",
+      "src/renderer/features/goal.css": "982a4556822322d7ba9778dca27e271d07ca7c28118e9564a8a8751e58bd56ff",
+      "src/renderer/features/goal.tsx": "6ba536eae58ae82eba3ab8c061b618c4bfbf10e94bdd534468f60a38afaa03b2",
+      "src/renderer/features/island.css": "26c61e5ef861743b3bdddf492198a07dccc69426c40226d5f35a368236dce25b",
+      "src/renderer/features/island.tsx": "c4b769a8a8bda0859596cd8d4312dff9578579b3fc08ea6a78d2b173f8ba8d5c",
+      "src/renderer/features/memory-core.ts": "c554d1a893b131168391258d920a070e2d01120fb6ad174741742a835155ef23",
+      "src/renderer/features/memory.css": "bd281ecd9092cced85f46ecaf65130220abc552f38ee49becc076db241b5ce4f",
+      "src/renderer/features/memory.tsx": "b3a31a3f5e2c1106a363310a2156bcee4297e771fe607b20f36f29ea4c263f7a",
+      "src/renderer/features/onboarding.css": "00e1077ed74ea97bcfe88db37206910249ecaba75924404dbb746b52ad699bac",
+      "src/renderer/features/onboarding.tsx": "ab3205ecfdf5ab2dbdd3b88f9a5e8a385fe6ea301a81f2f6ade26a1139a3fbbd",
+      "src/renderer/features/palette.css": "38eb4995b84ceb8c024e87a921c31a8c3d5b7cb88cc2f2142707c9c7fec2be16",
+      "src/renderer/features/palette.tsx": "56740907e36d45ac0bcc152aef848fa2e334b65d8615b3bb2f3e829bd2f98a33",
+      "src/renderer/features/projects-core.ts": "92ed2adb0b5910729097b6cd0174c5e4cd31f35365aba3117b907cf7f4443334",
+      "src/renderer/features/projects.css": "dc2536aa644beada7c29f2c0438d06c6e9a5b23dabdb3a70851e824fbedbbf15",
+      "src/renderer/features/projects.tsx": "3bda66fc58d4eacba3378c09204ee8d07e870a8adcd0f770ee9881320742be7e",
+      "src/renderer/features/research.css": "2cc8ae7808a2ef0ef260540f8964ac42adf0de3e4037cae556ea179889671f11",
+      "src/renderer/features/research.tsx": "1ea0a7272a0c3fc4942d6b3a09a1f6dabf28a7f5e3d3129d5eb8123ae38c2c12",
+      "src/renderer/features/schedules.css": "f0a28336b65d31610928aca89239e54fef3c01c2d71e5c82355441e463fe0112",
+      "src/renderer/features/schedules.tsx": "05979d760194106c8348c415a08f39e44060f1d73e6d1fceff10a53bcba1beb2",
+      "src/renderer/features/search.css": "3a91def4e399394d2c58dd56e48a976294010d32e5668555cdb15ad400fb632d",
+      "src/renderer/features/search.tsx": "7e5c3f6c6e204185266bdb6f44c82175f764a1e54c2d650214e1fad903ff5158",
+      "src/renderer/features/settings-core.ts": "6e5e2797e81a3fd24b50913cbe0bc2e92f8581c72eb1c2f66486ecfa4c8cb158",
+      "src/renderer/features/settings.css": "b538d79dc781aa5e92abf7f1f499f880bed18f1516a9063e2c24f13860e4e364",
+      "src/renderer/features/settings.tsx": "0c3c679e35d70718d74e8422b2a92cb5926f528cedd0abed659173bf81f2bf50",
+      "src/renderer/features/shell.css": "8d1d702786ec16feadb2c1b53789c8af34470a3936a4f42fff67c441389314ce",
+      "src/renderer/features/shell.tsx": "f55da9f3e87fb3cdb23c33baccd3e624adaafc75da9bd50f891c55c964cae923",
+      "src/renderer/features/sidechat.css": "2b3ef353a89e4ea4d2c8448f0f7f8eea1ee53dae5d12570dc93ac46c8e3ac3e2",
+      "src/renderer/features/sidechat.tsx": "3ad12a6bd2a161820108fcd39c7439e5213b2b9933fab2b780c06f77820bf5a9",
+      "src/renderer/features/skills-core.ts": "d4f27d22b0a24f616b94b8ef395cc61690ce6e5ee29a96cf5c95b99c9a94753f",
+      "src/renderer/features/skills.css": "b8d9952fea51246c92869c5409ae13b619550260b6d1b63350a064ccf68430a0",
+      "src/renderer/features/skills.tsx": "d86f179b64267c29c78ba00d68f2cffd7aa89b190556ab56b4a4d2bdbe29c6f4",
+      "src/renderer/features/studio-core.ts": "3bb3deada0ba2cb48903db2347fef6b04a5e3b34ea9e7577eea68664d5dd52c8",
+      "src/renderer/features/studio.css": "969633f5a2ebce6cc7dd28ec26b9b5ed40c1d941f6639ea7d59352400f5ae555",
+      "src/renderer/features/studio.tsx": "c846a1a3039cfa9d9ad1f5f1ecf117ec7408611fb115e7551988d57b9d85779f",
+      "src/renderer/features/terminal.css": "bc5ed41aa42149d9988eb66b353944b69ed4d52511f5c9cb24edd00d60b28ce6",
+      "src/renderer/features/terminal.tsx": "0aad7a7ed6bf46f22e75d04cb316eb04baed3e8a85e2efeb7bad3bc0f91dd1a4",
+      "src/renderer/features/workbench-core.ts": "6589046b317ec6920b033919ab73b017a78887278774cf985b6744a996f92384",
+      "src/renderer/features/workbench.css": "475033e111afdf55abe49f4fca3a9af54a59e571a54f45de4a7cc8eb20f3641a",
+      "src/renderer/features/workbench.tsx": "182f1fdd6628724b848c56e16fab10cb2d43517386b282cbad22dc6ae1608d58",
+      "src/renderer/index.html": "49a29a06e88d86af0abd602f46d77d40ca4e5227541b1eefd7b019aa669e6d14",
+      "src/renderer/main.tsx": "3cd4706644a753b009812a4404a4dc0a914c9c30a69ad76c9d31243c4816514c",
+      "src/renderer/store.ts": "02e638903528faa6fc08787d040e1268b2212b7bdc3791363ef9f329015da3e3",
+      "src/renderer/styles.css": "dc0d4a1c824126d1c0bb7eff9e1b5aa9a58cbad0fd3ce0c5d59704e60977ff14",
+      "src/shared/contracts.ts": "2c669d04c46016cdcf0a5574503bfb1f03720936f7ee313c09bb2bbc3d4ae3bb",
+      "src/shared/diff.d.ts": "f652c287f1d72b859318672b925b0440390c309523450c17986dffa7e9947470",
+      "src/shared/studio-assistant.ts": "b7c823409c5f5793f8840898643f9217912d838bb82af639efbb7eddd7728fb6",
+      "src/shared/studio.ts": "e28d2ef5cb4e51cdeaeb95a884ffaaf578b434edd103ebbc24b4cffd14bf0c56",
+      "src/shared/types.ts": "51ad7f4589630a5a26faf363f1cfa2a5f8f95cd25c894309feac29cb22fe38af",
+      "tests/core-coverage.json": "1635bf4b55817d7b67bf7e44063b8e663b69ae5528bb2c4f396d31cf6f123cb1",
+      "tests/e2e/adaptation-all-chapters.spec.ts": "b07ac7b6f20f8db078b040502a9a1707f07f07ce8ae6f7c92ba1d5f226883d22",
+      "tests/e2e/blueprint-resume.spec.ts": "5cd6d35cc08db6555d5b65f382757efc99ae9c1d1c8951465d7a60496bed17dc",
+      "tests/e2e/chat.spec.ts": "f7fca1de28f57823fe7c8d52dd3a1bfa088d63d824c3f805f794131816b130e5",
+      "tests/e2e/demo-film.spec.ts": "2a0fb2e35df1035d6d8606c6ebac38652cbec855ae639deefc8ec363c6aae387",
+      "tests/e2e/journey.spec.ts": "4f5425e0646eaaf3a0a3d9248b3e612064db092261b982464fbd9ca072ebf5bd",
+      "tests/e2e/launch.ts": "dac79a9c7b7731944d65ddd1ef1a9e078664b9e12c54dee597302051c965f908",
+      "tests/e2e/review-coverage.spec.ts": "8539575d46dad8a08b01206570b2539d47675d411a72e58fa729fb8a73709219",
+      "tests/e2e/store.ts": "852b6d614080ee81211b8b7f282635e7aba52a816afd8b0c3b46a246ee0269b4",
+      "tests/e2e/storyboard-conflict.spec.ts": "f8c8dfc222d23d62e3012905521670c77519863d6b96aa8d89afaba2ddbcb759",
+      "tests/e2e/storyboard-resume.spec.ts": "e00fdb8579afe8c4339b218786332f9ad037339ce83c755a0948a6e000014432",
+      "tests/e2e/studio-novel-core.spec.ts": "a8d4b0534b1345fabd501aca83eb0bcaca0e896b120a5913f5876a5034a85624",
+      "tests/e2e/studio.spec.ts": "ea8f56ba7e5e769039341eed5374bedd1a127115056c54f85ae4d35b227383c1",
+      "tests/e2e/terminal-gitbash.spec.ts": "654dcf886a0d5e4ec34b63165ea77427d64ae6ec5930dd60a864e3a6c34c490a",
+      "tests/e2e/ui.spec.ts": "a972362082f52f424f792844c436d5fe6f2060ea0e4c290d1ce2ede8f9194f35",
+      "tests/e2e/workspace.spec.ts": "8fcd6f30a030efbbbebcea101169aada8267e51c584d608ba85fc7d260c32721",
+      "tests/fixtures/documents/blank.pdf": "f3ad70f7e0a37cb46618cca077aa72f554c1a5216a590fc97bd36902a019ae94",
+      "tests/fixtures/documents/invoice-zh.docx": "a0832c6d8eb93961b5fc6a9bb7858b71baac101d42f8ecb4c37230eadc2d539b",
+      "tests/fixtures/documents/invoice-zh.pdf": "1b62061dcf603d3b28cd14d9db7eff0adb6522c05ff1eefa85d516fb7ff9137d",
+      "tests/fixtures/documents/invoice.docx": "4cc224c84901b43161188c28ca0e2eff0a2839295b5831e042edc7558445632e",
+      "tests/fixtures/documents/invoice.pdf": "a9114d37d83a272b30c6056db223a3d625e218a7cfd1500b942329445a47f77d",
+      "tests/fixtures/documents/make_fixtures.py": "9723949c96107ec076f4e65d0c07e34ac4c1b4b9e85aaf09efa2bb1ac3cc5ecf",
+      "tests/fixtures/documents/manifest.json": "07e7f6e0ec864993ca650852166e2bd76c0c1fbe5616acff86ee6fd5298377cc",
+      "tests/fixtures/documents/split-run.docx": "985f6067e300fae761c6b615675d7c7150eef5f47ee5ff4309dc54ade7a0d17a",
+      "tests/fixtures/documents/template.docx": "61cc9e1181cd1c9b38b78238aaa3d395d3b08de375cd6908d783c9a4df6c6605",
+      "tests/fixtures/media/sample.mp3": "1e742bbf584b96e2cabe38b2a81bf7faeb0997acf1e5c34f3b8bc40ee596fc2d",
+      "tests/fixtures/media/sample.mp4": "6f65db913343bd9d1e1131eb3de87fd7d12b8b402311fb3176254c7dc3536f46",
+      "tests/fixtures/media/sample.png": "886a87d1e9705f3f9e94a35b6a225382a8a52be35f0c2281b7cf7146229255c0",
+      "tests/fixtures/media/sample.wav": "307f56203bdcca65f77ad9a0483269dcd4c8e1e1973fcac5f3907ab3abf8e2b1",
+      "tests/fixtures/media/sample.webm": "7dd95688826e3e7668269e5adccec363a98f81c342021fcba90785875fe675c3",
+      "tests/fixtures/mock-comfyui.d.mts": "5437c277170d0f74a33dddb094cb410b2a02142dd6b28e4df6af305af62d6dcd",
+      "tests/fixtures/mock-comfyui.mjs": "a966ca297e9932ea492e944bed9fe8466922dc377a4bd8952bcb779dc9fe49d7",
+      "tests/fixtures/mock-llm.d.mts": "2c8759f98cac8666e6aaccfa7498f1e9b6d94362c652b0e27a9e5302956b7687",
+      "tests/fixtures/mock-llm.mjs": "962a69bfa5ebc609dbf06ec1dfee27f17d778b63a3b4815c70688608606425c6",
+      "tests/unit/core-runtime.test.ts": "3d639097570ba0c3cb7181f7aabf2d6f78c93519b5cbc39dd1722be0d996511f",
+      "tests/unit/core-tools.test.ts": "563b3c52bc91d24d06a2f7a96024bddb9bd01ceccf147c48e90497211d4f3ec1",
+      "tests/unit/helpers/compaction-validators.ts": "27b5748417f61e9ea4c0575328b5553bd5f61e10088da5c1745fbe1c868a221f",
+      "tests/unit/helpers/env.ts": "31fd5dd5446e152dd86bfea038818a796a8e6cfe5201e0a078c335bd9125d9c3",
+      "tests/unit/helpers/mock-llm.ts": "31e7d891b44b76a1badf359ee388b87ea7ac8124a2e6d61cef648b7f7260311f",
+      "tests/unit/helpers/scripted-provider.ts": "394142ffc5b8eef5b588b2763a4a4173695bed017eb75f548995ac710bffea8c",
+      "tests/unit/helpers/tool-context.ts": "615b8774e3e986aab257fbf585c2baa970fecd5d468ef2161c7c523986cba7b5",
+      "tests/unit/helpers/workspace.ts": "e41be7814981daeef3678954e680f3e47cbbc64bbe2f3ffe6ffee5dba3231d8f",
+      "tests/unit/main-external-open.test.ts": "a7ce61f9d3bc339367ad27db4b9344d3111dc586b906f6ca2d3c8c40466af953",
+      "tests/unit/main-media.test.ts": "55c95f19ad32c847483abe8c87e16fd8280c9bfc15dcb1ac7eef377703b09637",
+      "tests/unit/main-memory.test.ts": "3035dd204f72bdc483ec3c868d797ac9ad1122be82296bf33db4ec45c7cf744e",
+      "tests/unit/main-reveal.test.ts": "93bbc0680ba2bae8a929ccd0eff8a8b8c802fbe39525e89717bca3eaee3e6d40",
+      "tests/unit/main-runtime.test.ts": "22d0b53f24716a5aa149ced516a1f448507ef8eff9e82a183e3b18874ebf0daf",
+      "tests/unit/main-settings.test.ts": "d8b7ff8c75419acfd2be2a2399b897b19f22b4c76a9550780d9207e0bfe634fc",
+      "tests/unit/shared.test.ts": "75b6321cb6add5aa28b06abd7b816f37a791e6568cbf12266233f7eb1339cf9d",
+      "tests/unit/studio-fixtures.ts": "e0967252cb39b963ed27f876408ad2b3fb85a48a667b1c3f6796f253c2eb911d",
+      "tests/unit/studio-intent.test.ts": "c22d664b4c88d2f140de5cc041dc75064c08f827bcba458124857f5a26bf31bc",
+      "tests/unit/studio-model-budget.test.ts": "45d2aa9109f5642b6fc6d5ae6f97c0a9be0e3c247b464c4029abc5004706398e",
+      "tests/unit/studio-routing.test.ts": "ada75468345e8dcbaeab34eada4a44217f97496dd1e18b2083d5dc684deda471",
+      "tests/unit/studio-runtime.test.ts": "0f36a08714ecdf4fd4028cd12f07e16201660ed373f07001e46c8cf993baf2b7",
+      "tests/unit/studio-store.test.ts": "c8110c806b3daf58221ceae7169ffad040e7edf1c20874604853ca4333820427",
+      "tests/unit/studio-timeline.test.ts": "25d35389a9ca603bd457af09e2d7cafd21ad8fc01649a081e6387901ce29d7f4",
+      "tests/unit/studio-writing-safety.test.ts": "3b5b66ad29dc364bcd559409397556b62ec885e833aa0f0200df632ee9558d1f"
+    }
+  },
+  "checks": {
+    "typecheck": {
+      "exitCode": 0
+    },
+    "uiTokens": {
+      "exitCode": 0,
+      "css": 27,
+      "tsx": 29,
+      "violations": 0
+    },
+    "registry": {
+      "exitCode": 0,
+      "totals": {
+        "unit": 364,
+        "e2e": 46
+      },
+      "domains": 38
+    },
+    "coreOnlyGuard": [
+      {
+        "name": "existing core suite accepted",
+        "passed": true,
+        "rejected": false,
+        "errors": []
+      },
+      {
+        "name": "unmarked case rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "tests\\unit\\guard-probe.test.ts:1: 只保留核心用例；独立 it/test 必须使用已登记的 @core:功能域 标题"
+        ]
+      },
+      {
+        "name": "unmarked todo rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "tests\\unit\\guard-probe.test.ts:1: 只保留核心用例；独立 it/test 必须使用已登记的 @core:功能域 标题"
+        ]
+      },
+      {
+        "name": "unknown domain rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "guard-probe.test.ts: 未登记的核心功能标记 @core:unknown-domain extra"
+        ]
+      },
+      {
+        "name": "only case rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "tests\\unit\\guard-probe.test.ts: 不允许提交 .only，否则会漏跑回归",
+          "guard-probe.test.ts: 核心标记应直接放在独立 it/test 上，不能用整组标记或 skip/each 隐藏数量"
+        ]
+      },
+      {
+        "name": "parameterized group rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "guard-probe.test.ts: 核心标记应直接放在独立 it/test 上，不能用整组标记或 skip/each 隐藏数量"
+        ]
+      },
+      {
+        "name": "separate fixture test entry rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "tests/fixtures\\non-core.test.mjs: 只保留 unit/e2e 中登记的核心套组，不另设扩展测试入口"
+        ]
+      },
+      {
+        "name": "budget overflow rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "e2e 核心用例 46 项超过 45 项维护预算，请先去重或说明新增覆盖"
+        ]
+      },
+      {
+        "name": "missing required domain rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "Required domain: 缺少 unit 核心用例",
+          "Required domain: 缺少 e2e 核心用例"
+        ]
+      },
+      {
+        "name": "restored obsolete script rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "test:mock: 非核心套组已删除，请勿恢复旧入口；当前规则见 docs/TESTING.md"
+        ]
+      },
+      {
+        "name": "default title filter rejected",
+        "passed": true,
+        "rejected": true,
+        "errors": [
+          "test:unit: 当前仅保留核心用例，默认入口应直接运行全部现存用例，不再按标题筛选"
+        ]
+      }
+    ],
+    "unit": {
+      "collected": 364,
+      "passed": 364,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 9.362050537109376,
+      "raw": "tmp/core-only-2026-10-30/final-unit.json"
+    },
+    "e2e": {
+      "collected": 46,
+      "passed": 46,
+      "unresolvedFailures": 0,
+      "skipped": 0,
+      "fullRun": {
+        "startTime": "2026-10-30T04:16:59.965Z",
+        "duration": 375149.64800000004,
+        "expected": 45,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0,
+        "durationSeconds": 375.14964800000007,
+        "raw": "tmp/core-only-2026-10-30/final-e2e.json"
+      },
+      "correctedTerminalFixture": {
+        "startTime": "2026-10-30T04:24:57.007Z",
+        "duration": 2718.2239999999997,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "raw": "tmp/core-only-2026-10-30/final-terminal.json",
+        "reason": "Explicit MSYSTEM=MINGW64; all original assertions retained."
+      }
+    }
+  },
+  "initialSharedDirectoryRun": {
+    "startTime": "2026-10-30T04:10:42.502Z",
+    "duration": 258545.394,
+    "expected": 41,
+    "skipped": 0,
+    "unexpected": 4,
+    "flaky": 0,
+    "explanation": "Four launch failures because another concurrent build temporarily removed out/main/index.js. Replaced by a complete clean run from an isolated copy of current source/tests/resources.",
+    "raw": "tmp/core-only-2026-10-30/e2e.json"
+  },
+  "productionCodeEditedByThisPruning": false,
+  "releaseArtifactsRebuiltByThisPruning": false,
+  "coverage": [
+    {
+      "id": "agent",
+      "title": "主对话、工具循环、错误与中断",
+      "unit": 11,
+      "e2e": 1
+    },
+    {
+      "id": "context",
+      "title": "上下文压缩、连续长任务与任务约束",
+      "unit": 9,
+      "e2e": 1
+    },
+    {
+      "id": "swarm",
+      "title": "集群派发、权限继承与汇总",
+      "unit": 6,
+      "e2e": 1
+    },
+    {
+      "id": "goals",
+      "title": "目标推进、暂停恢复与完成证据",
+      "unit": 5,
+      "e2e": 2
+    },
+    {
+      "id": "modes",
+      "title": "聊天、工作与计划模式",
+      "unit": 5,
+      "e2e": 2
+    },
+    {
+      "id": "interface",
+      "title": "通用交互、提示词契约与离线演示",
+      "unit": 9,
+      "e2e": 1
+    },
+    {
+      "id": "providers",
+      "title": "模型协议、流式响应、思考与用量",
+      "unit": 24,
+      "e2e": 0
+    },
+    {
+      "id": "permissions",
+      "title": "权限档位、越界审批与授权签名",
+      "unit": 15,
+      "e2e": 3
+    },
+    {
+      "id": "terminal",
+      "title": "命令执行、终端选择、真实 PTY 与超时",
+      "unit": 6,
+      "e2e": 1
+    },
+    {
+      "id": "web",
+      "title": "联网搜索、网页读取与 SSRF 防护",
+      "unit": 12,
+      "e2e": 0
+    },
+    {
+      "id": "tools",
+      "title": "文件读写、搜索、改动与快照",
+      "unit": 12,
+      "e2e": 0
+    },
+    {
+      "id": "documents",
+      "title": "PDF、Word、Excel、PPT 与文件预览",
+      "unit": 17,
+      "e2e": 1
+    },
+    {
+      "id": "computer",
+      "title": "桌面操作、截图与敏感窗口",
+      "unit": 3,
+      "e2e": 0
+    },
+    {
+      "id": "artifacts",
+      "title": "成品、版本、撤销与受控预览",
+      "unit": 16,
+      "e2e": 0
+    },
+    {
+      "id": "skills",
+      "title": "规则、技能安装、启停与自定义命令",
+      "unit": 12,
+      "e2e": 1
+    },
+    {
+      "id": "connectors",
+      "title": "MCP 传输、配置、密钥与 OAuth",
+      "unit": 14,
+      "e2e": 1
+    },
+    {
+      "id": "media",
+      "title": "图片、视频、剪辑、引擎目录与视觉路由",
+      "unit": 14,
+      "e2e": 1
+    },
+    {
+      "id": "browser",
+      "title": "内置浏览器导航与自动化",
+      "unit": 7,
+      "e2e": 1
+    },
+    {
+      "id": "workspace",
+      "title": "文件树、搜索、编辑保存与工作区隔离",
+      "unit": 8,
+      "e2e": 3
+    },
+    {
+      "id": "schedules",
+      "title": "定时规则、执行、暂停与恢复",
+      "unit": 7,
+      "e2e": 1
+    },
+    {
+      "id": "settings",
+      "title": "模型配置、密钥、数据目录与用量",
+      "unit": 13,
+      "e2e": 1
+    },
+    {
+      "id": "git",
+      "title": "Git 暂存、提交、历史与仓库边界",
+      "unit": 3,
+      "e2e": 1
+    },
+    {
+      "id": "privacy",
+      "title": "隐私脱敏与敏感信息保护",
+      "unit": 2,
+      "e2e": 0
+    },
+    {
+      "id": "attachments",
+      "title": "文本与图片附件、编码与输入边界",
+      "unit": 5,
+      "e2e": 1
+    },
+    {
+      "id": "sessions",
+      "title": "会话持久化、分支、临时对话与检查点",
+      "unit": 10,
+      "e2e": 3
+    },
+    {
+      "id": "subscriptions",
+      "title": "各订阅协议、回环代理与鉴权",
+      "unit": 15,
+      "e2e": 0
+    },
+    {
+      "id": "memory",
+      "title": "结构化记忆、复盘采纳与任务经验",
+      "unit": 10,
+      "e2e": 1
+    },
+    {
+      "id": "projects",
+      "title": "项目资料、上下文与失效资料",
+      "unit": 4,
+      "e2e": 1
+    },
+    {
+      "id": "hooks",
+      "title": "运行钩子与阻断语义",
+      "unit": 2,
+      "e2e": 0
+    },
+    {
+      "id": "research",
+      "title": "深度研究、来源收集与完成门槛",
+      "unit": 3,
+      "e2e": 1
+    },
+    {
+      "id": "studio-assistant",
+      "title": "创作协作者、局部修改、顺序与下游更新",
+      "unit": 30,
+      "e2e": 1
+    },
+    {
+      "id": "studio-writing",
+      "title": "小说生成、候选对照、质检与 Word/EPUB 导出",
+      "unit": 10,
+      "e2e": 6
+    },
+    {
+      "id": "studio-drama",
+      "title": "漫剧分镜、补镜与超过 12 章改编",
+      "unit": 4,
+      "e2e": 5
+    },
+    {
+      "id": "studio-storage",
+      "title": "作品保存、分片、版本、恢复、回收站与画布",
+      "unit": 18,
+      "e2e": 2
+    },
+    {
+      "id": "studio-media",
+      "title": "创作台配音接口与视觉审看",
+      "unit": 2,
+      "e2e": 1
+    },
+    {
+      "id": "studio-models",
+      "title": "创作模型路由、JSON 容错、输出预算与续写",
+      "unit": 9,
+      "e2e": 0
+    },
+    {
+      "id": "studio-jobs",
+      "title": "创作任务阶段与状态转移",
+      "unit": 4,
+      "e2e": 0
+    },
+    {
+      "id": "studio-timeline",
+      "title": "时间线装配、字幕、混音参数与计划撤销",
+      "unit": 8,
+      "e2e": 1
+    }
+  ]
+}

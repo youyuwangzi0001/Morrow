@@ -248,9 +248,10 @@ export const generateVideoTool: ToolImpl = {
   definition: {
     name: 'generate_video',
     description:
-      '用本机 MiniMax-H3（Ref2VA）生成带同步环境声的视频。默认 5 秒、960×544；生成可能需要几分钟，期间要告诉用户在等。' +
+      '用本机 MiniMax-H3（Ref2VA）生成画面与同步纯器乐配乐的视频。默认 5 秒、960×544；生成可能需要几分钟，期间要告诉用户在等。' +
+      '视频模型不生成人物配音、旁白、歌声或字幕；人物配音另行调用音频模型，字幕一律外挂 SRT/ASS，不烧进画面。' +
       '提供 reference_path 时以它为视觉锚点；不提供时会先用本机图片模型生成首帧，再让首帧动起来（多花约半分钟）。' +
-      'prompt 要写清：主体动作、镜头运动、场景变化、光线、声音/环境声；reference_path 对应提示词里的 <Picture 1>，第二张对应 <Picture 2>。' +
+      'prompt 要写清：主体动作、镜头运动、场景变化、光线、纯器乐/环境声方向；reference_path 对应提示词里的 <Picture 1>，第二张对应 <Picture 2>。' +
       '产出会自动保存到工作区 media/ 并放入画布。',
     parameters: {
       type: 'object',
@@ -613,6 +614,7 @@ export const generateFilmTool: ToolImpl = {
     name: 'generate_film',
     description:
       '把 Qwen 生图与 MiniMax 生视频串成连贯短片：逐镜生成首帧 → 生成视频 → 抽取尾帧 → 作为下一镜首帧继续，最后用 ffmpeg 拼成一条完整视频。' +
+      '成片只含画面与纯器乐配乐；视频模型不生成人物配音、旁白或字幕；人物配音另行调用音频模型，字幕一律外挂。' +
       '适合用户要「一段连贯短片 / 分镜 / 多镜头故事」；单张图或单条视频用 generate_image / generate_video 即可。' +
       'shots 至少 2 个、最多 6 个；style 写全片统一的角色、场景、光线和画风，否则各镜会漂移。' +
       '每个分镜的 prompt 写这一镜的動作与镜头运动；image_prompt 可单独写首帧画面；last_frame_path 可指定末帧做转场（需 FL2VA）。' +
@@ -632,7 +634,7 @@ export const generateFilmTool: ToolImpl = {
           items: {
             type: 'object',
             properties: {
-              prompt: { type: 'string', description: '这一镜的动作、镜头运动与环境声' },
+              prompt: { type: 'string', description: '这一镜的动作、镜头运动与纯器乐/环境声方向' },
               image_prompt: { type: 'string', description: '这一镜首帧的画面描述（可选；默认复用 prompt）' },
               seconds: { type: 'number', description: '这一镜时长（5–10 秒，默认 5）' },
               last_frame_path: { type: 'string', description: '这一镜的末帧图片（可选；提供时用首尾帧转场）' },

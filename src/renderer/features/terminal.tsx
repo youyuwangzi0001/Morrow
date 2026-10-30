@@ -1,4 +1,5 @@
 // terminal 功能域组件：由 1 个 TSX 文件扁平合并。
+import '@xterm/xterm/css/xterm.css'
 import './terminal.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Plus, RotateCcw, Square, Terminal as TerminalIcon, X } from 'lucide-react'

@@ -3,9 +3,9 @@ import './studio.css'
 import type { ReactNode, CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { AudioLines, BookOpen, Check, CheckCircle2, Clapperboard, Film, Image as ImageIcon, Loader2, Mic2, Music2, Package, PenLine, Sparkles, Volume2, ArrowUp, Settings2, WandSparkles, X, ArrowRight, ChevronDown, Pencil, PencilLine, SquarePen, RefreshCw, SlidersHorizontal, Users, ArrowDownToLine, ArrowUpToLine, Boxes, Copy, Download, ExternalLink, GitBranch, ImagePlus, LayoutGrid, Maximize2, Plus, Redo2, Search, Trash2, Type, Undo2, Ungroup, Video, ZoomIn, ZoomOut, AlertTriangle, FileArchive, FileCode2, FileSearch, FileText, FileType, FolderOpen, Play, ShieldCheck, Subtitles, ArrowUpRight, BookMarked, Library, CircleAlert, Clock3, Info, Wrench, ArrowDown, Captions, ChevronRight, GalleryHorizontalEnd, Images, Lock, LockOpen, Mic, Upload, Wand2, Eye, Flag, FileClock, Globe2, FolderPlus, Layers, Network, PackagePlus, PlusCircle, Minimize2, FileDown, Hash, ScrollText, AudioWaveform, Disc3, Pause, Save, Scissors, Shuffle, SkipBack, SkipForward, Square, VolumeX, RotateCcw, ArchiveRestore, FolderCog, FilePlus2, Minus, PanelRight, Sun, Moon } from 'lucide-react'
+import { AudioLines, BookOpen, Check, CheckCircle2, Clapperboard, Film, Image as ImageIcon, Loader2, Mic2, Music2, Package, PenLine, Sparkles, Volume2, ArrowUp, Settings2, WandSparkles, X, ArrowRight, ChevronDown, Pencil, PencilLine, SquarePen, RefreshCw, SlidersHorizontal, Users, ArrowDownToLine, ArrowUpToLine, Boxes, Copy, Download, ExternalLink, GitBranch, ImagePlus, LayoutGrid, Maximize2, Plus, Redo2, Replace, Search, Trash2, Type, Undo2, Ungroup, Video, ZoomIn, ZoomOut, AlertTriangle, FileArchive, FileCode2, FileSearch, FileText, FileType, FolderOpen, Play, ShieldCheck, Subtitles, ArrowUpRight, BookMarked, Library, CircleAlert, Clock3, Info, Wrench, ArrowDown, Captions, ChevronRight, GalleryHorizontalEnd, Images, Lock, LockOpen, Mic, Upload, Wand2, Eye, Flag, FileClock, Globe2, FolderPlus, Layers, Network, PackagePlus, PlusCircle, Minimize2, FileDown, Hash, ScrollText, AudioWaveform, Disc3, Pause, Save, Scissors, Shuffle, SkipBack, SkipForward, Square, VolumeX, RotateCcw, ArchiveRestore, FolderCog, FilePlus2, Minus, PanelRight, Sun, Moon } from 'lucide-react'
 import type { StudioAsset, StudioJob, StudioKind, StudioProject, StudioStageId, StudioStatus, StudioChatMessage, StudioEditPlan, StudioMessageSource, StudioCharacter, StudioCanvasConnection, StudioCanvasGroup, StudioCanvasNode, StudioCanvasNodeKind, StudioCanvasViewport, StudioShot, StudioDelivery, StudioExportPreflight, StudioProjectSummary, StudioChapter, StudioCandidate, StudioChapterVersion, StudioFact, StudioFaction, StudioProp, StudioRule, StudioVolume, StudioClip, StudioTimeline, StudioTrack, StudioTrashItem, StudioDataDirInfo, StudioEngineStatus } from '@shared/studio'
-import { formatDuration, studioKindLabel, studioStages, studioStatusLabel, formatWordCount, isStudioVideoDelivery, studioKindScale, studioJobStatusLabel, formatTimecode, countWords, STUDIO_AUDIO_DRAFT_LICENSE, STUDIO_AUDIO_LIBRARY, STUDIO_AUDIO_LICENSE, emptyTimeline, timelineDuration, resolveMusicAsset } from '@shared/studio'
+import { formatDuration, studioKindLabel, studioStages, studioStatusLabel, formatWordCount, isStudioVideoDelivery, studioKindScale, studioJobStatusLabel, formatTimecode, countWords, STUDIO_AUDIO_DRAFT_LICENSE, STUDIO_AUDIO_LIBRARY, STUDIO_AUDIO_LICENSE, emptyTimeline, timelineDuration, resolveMusicAsset, hasEmbeddedVideoScore } from '@shared/studio'
 import { useStudioStore, STUDIO_LEFT_MAX, STUDIO_LEFT_MIN, STUDIO_RIGHT_MAX, STUDIO_RIGHT_MIN } from './studio-core'
 import { useAppStore } from '../store'
 import dark32 from '../../../build/studio-icon-dark-32.png'
@@ -1372,17 +1372,26 @@ export function CanvasView(): React.JSX.Element {
     setSelectedIds(shotNodes[0] ? [shotNodes[0].id] : [])
   }, [active, initialized])
 
+  const canvasProjectRef = useRef(active?.id ?? '')
+  const canvasActiveIdRef = useRef(active?.id ?? '')
+  canvasActiveIdRef.current = active?.id ?? ''
+  useEffect(() => {
+    if (dirty) canvasProjectRef.current = useStudioStore.getState().active?.id ?? canvasProjectRef.current
+  }, [dirty])
+
   const persist = async (): Promise<void> => {
     if (!active) return
     if (savingRef.current) {
       pendingSaveRef.current = true
       return
     }
+    const projectId = canvasProjectRef.current
     savingRef.current = true
-    setSaveState('saving')
+    if (canvasActiveIdRef.current === projectId) setSaveState('saving')
     const version = changeRef.current
     try {
       await run('save-canvas', {
+        projectId,
         canvas: {
           version: 1,
           initialized: true,
@@ -1392,12 +1401,12 @@ export function CanvasView(): React.JSX.Element {
           viewport: viewportRef.current
         }
       })
-      if (changeRef.current === version) {
+      if (canvasActiveIdRef.current === projectId && changeRef.current === version) {
         setDirty(false)
         setSaveState('saved')
       }
     } catch {
-      setSaveState('error')
+      if (canvasActiveIdRef.current === projectId) setSaveState('error')
     } finally {
       savingRef.current = false
     }
@@ -1406,6 +1415,18 @@ export function CanvasView(): React.JSX.Element {
       void persist()
     }
   }
+
+  const persistRef = useRef(persist)
+  persistRef.current = persist
+  const canvasDirtyRef = useRef(dirty)
+  canvasDirtyRef.current = dirty
+
+  // 离开画布、切换作品或关闭视图时补存 700ms 防抖窗口里的最后一次修改。
+  useEffect(() => {
+    return () => {
+      if (canvasDirtyRef.current) void persistRef.current()
+    }
+  }, [])
 
   useEffect(() => {
     if (!active || dirty) return
@@ -1873,7 +1894,7 @@ export function CanvasView(): React.JSX.Element {
         shots: active.shots,
         waveforms: peaks
       })
-      const result = await run('save-canvas-snapshot', { dataUrl: image.dataUrl })
+      const result = await run('save-canvas-snapshot', { projectId: active.id, dataUrl: image.dataUrl })
       notify('success', result.message ?? '画布快照已导出到交付记录。')
     } catch (err) {
       notify('error', err instanceof Error ? err.message : String(err))
@@ -2091,8 +2112,7 @@ export function CanvasView(): React.JSX.Element {
     <div className="studio-canvas-view">
       <header className="studio-canvas-bar">
         <div className="studio-canvas-heading">
-          <span className="studio-eyebrow">漫剧画布</span>
-          <h1>{active.title}<em>画布</em></h1>
+          <h1>{active.title}</h1>
           <p>{nodes.length} 个节点 · {connections.length} 条连线 · {groups.length} 个分组{selectedIds.length > 1 ? ` · 已选 ${selectedIds.length}` : ''} · 拖拽排布，右侧拉线</p>
         </div>
         <div className="studio-canvas-actions">
@@ -2115,7 +2135,7 @@ export function CanvasView(): React.JSX.Element {
         {paletteOpen ? (
           <aside className="studio-canvas-palette" aria-label="画布素材">
             <header>
-              <div><span className="studio-eyebrow">素材</span><b>素材与镜头</b></div>
+              <div><b>素材与镜头</b></div>
               <button type="button" onClick={() => setPaletteOpen(false)} aria-label="收起素材"><X size={14} /></button>
             </header>
             <div className="studio-canvas-tabs" role="tablist" aria-label="画布素材类型">
@@ -2299,7 +2319,6 @@ export function CanvasView(): React.JSX.Element {
 
         <aside className="studio-canvas-inspector" aria-label="画布节点详情">
           <header>
-            <span className="studio-eyebrow">{selectedEdge ? '连线' : selectedIds.length > 1 ? '已选' : selectedGroup ? '分组' : selectedNode ? '节点' : '画布'}</span>
             <b>{selectedEdge ? '连线' : selectedIds.length > 1 ? `${selectedIds.length} 个节点` : selectedGroup ? selectedGroup.title : selectedNode?.kind === 'shot' ? '镜头节点' : selectedNode ? '节点详情' : '画布'}</b>
             {selectedNode || selectedEdge || selectedIds.length || selectedGroup ? <button type="button" onClick={() => { setSelectedId(null); setSelectedIds([]); setSelectedGroupId(null); setSelectedEdgeId(null) }} aria-label="取消选择"><X size={13} /></button> : null}
           </header>
@@ -2459,7 +2478,6 @@ export function DeliveryView(): React.JSX.Element {
   const [audioExporting, setAudioExporting] = useState<string | null>(null)
   const [comicExporting, setComicExporting] = useState(false)
   const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1'>(active?.timeline.aspect ?? active?.brief.aspect ?? '16:9')
-  const [subtitleMode, setSubtitleMode] = useState<'burn' | 'soft'>('burn')
   const [format, setFormat] = useState<'mp4' | 'mov' | 'mkv' | 'webm'>('mp4')
   const [resolution, setResolution] = useState<'1080p' | '2160p'>('1080p')
   const [exporting, setExporting] = useState<string | null>(null)
@@ -2475,6 +2493,7 @@ export function DeliveryView(): React.JSX.Element {
   const deliveries = [...active.deliveries].sort((a, b) => b.createdAt - a.createdAt)
   const latestVideo = deliveries.find((delivery) => isStudioVideoDelivery(delivery.kind))
   const coverDelivery = deliveries.find((delivery) => delivery.kind === 'cover')
+  const coverAsset = active.assets.find((asset) => asset.id === active.coverAssetId)
   const words = active.chapters.reduce((sum, chapter) => sum + chapter.content.replace(/\s+/g, '').length, 0)
   const shots = active.shots.filter((shot) => shot.imageAssetId || shot.videoAssetId).length
   const voicesNeeded = active.shots.filter((shot) => shot.dialogue.trim())
@@ -2500,12 +2519,11 @@ export function DeliveryView(): React.JSX.Element {
         { label: active.stages.review.status === 'stale' ? '检查已过期，需重新检查' : '没有必须修的问题', ok: unresolved === 0 && active.stages.review.status !== 'stale' }
       ], [active, shots, voices, voicesNeeded.length, subtitles, unresolved, engine, words])
   const readyCount = checks.filter((check) => check.ok).length
-  const renderHint = `${quality === 'draft' ? '草稿用 540p 快速合成，先看节奏。' : `成片按 ${resolution === '2160p' ? '4K' : '1080p'} 输出。`} ${FORMAT_HINTS[format]}${subtitleMode === 'burn' ? '字幕会压在画面里。' : '字幕会单独给一份文件。'}`
+  const renderHint = `${quality === 'draft' ? '草稿用 540p 快速合成，先看节奏。' : `成片按 ${resolution === '2160p' ? '4K' : '1080p'} 输出。`} ${FORMAT_HINTS[format]}字幕只做外挂 SRT，不压进画面。`
 
   const useRecommended = (): void => {
     setQuality('final')
     setFormat('mp4')
-    setSubtitleMode('burn')
     setResolution('1080p')
     setAspect(active.timeline.aspect)
   }
@@ -2568,7 +2586,7 @@ export function DeliveryView(): React.JSX.Element {
     if (rendering || activeRenderJob) return
     setRendering(true)
     try {
-      await run('render', { quality, subtitleMode, aspect, format, resolution })
+      await run('render', { quality, aspect, format, resolution })
       notify('info', quality === 'draft' ? '动态分镜草稿已排队合成。' : `成片已排队合成（${resolution === '2160p' ? '4K' : '1080p'} · ${format.toUpperCase()}）。`)
     } finally {
       setRendering(false)
@@ -2627,9 +2645,9 @@ export function DeliveryView(): React.JSX.Element {
         <section className="studio-delivery-hero">
           <div className="studio-delivery-poster" style={{ aspectRatio: active.timeline.aspect === '9:16' ? '9 / 16' : active.timeline.aspect === '1:1' ? '1 / 1' : '16 / 9' }}>
             {latestVideo?.url ? (
-              <video src={latestVideo.url} controls playsInline poster={coverDelivery?.url} />
-            ) : coverDelivery?.url ? (
-              <img src={coverDelivery.url} alt="" />
+              <video src={latestVideo.url} controls playsInline poster={coverDelivery?.url ?? coverAsset?.url} />
+            ) : coverDelivery?.url ?? coverAsset?.url ? (
+              <img src={coverDelivery?.url ?? coverAsset?.url} alt="" />
             ) : (
               <CoverThumb project={active} size="lg" />
             )}
@@ -2660,17 +2678,17 @@ export function DeliveryView(): React.JSX.Element {
               </SectionTitle>
               <div className="studio-render-recommend">
                 <button type="button" onClick={useRecommended}>不知道怎么选？用推荐设置</button>
-                <span>成片 · 1080p · MP4 · 画面内字幕</span>
+                <span>成片 · 1080p · MP4 · 外挂字幕</span>
               </div>
               <div className="studio-render-options">
                 <div className="studio-render-option"><span>质量</span>
-                  <Segmented value={quality} options={[{ value: 'draft', label: '草稿', description: '540p 快速预览，只看节奏' }, { value: 'final', label: '成片', description: '按你选的清晰度导出' }]} onChange={(value) => { setQuality(value); if (value === 'draft') setSubtitleMode('burn') }} ariaLabel="合成档位" />
+                  <Segmented value={quality} options={[{ value: 'draft', label: '草稿', description: '540p 快速预览，只看节奏' }, { value: 'final', label: '成片', description: '按你选的清晰度导出' }]} onChange={(value) => setQuality(value)} ariaLabel="合成档位" />
                 </div>
                 <div className="studio-render-option"><span>画面比例</span>
                   <Segmented value={aspect} options={[{ value: '16:9', label: '16:9' }, { value: '9:16', label: '9:16' }, { value: '1:1', label: '1:1' }]} onChange={setAspect} ariaLabel="成片画幅" />
                 </div>
                 <div className="studio-render-option"><span>字幕</span>
-                  <Segmented value={subtitleMode} options={[{ value: 'burn', label: '画面内字幕', description: '观众不用另找字幕文件' }, { value: 'soft', label: '单独字幕', description: '播放器里可以开关' }]} onChange={setSubtitleMode} ariaLabel="字幕方式" />
+                  <span>外挂 SRT · 自动随成片生成</span>
                 </div>
                 <div className="studio-render-option"><span>格式</span>
                   <Segmented value={format} options={[{ value: 'mp4', label: 'MP4' }, { value: 'mov', label: 'MOV' }, { value: 'mkv', label: 'MKV' }, { value: 'webm', label: 'WebM' }]} onChange={(value) => setFormat(value as typeof format)} ariaLabel="成片格式" />
@@ -3111,6 +3129,7 @@ export function HomeView(): React.JSX.Element {
               onChange={(value) => setAspect(value)}
               ariaLabel="画面比例"
             />
+            <p className="studio-hint">制作精细度是创作取向，不等于分辨率或成片质量保证；草稿/成片与清晰度在交付页另选。</p>
             <button type="button" className="studio-more-toggle" onClick={() => setAdvanced((value) => !value)}>
               {advanced ? '收起要求' : '补充要求'}
             </button>
@@ -3402,6 +3421,8 @@ export function ReviewView(): React.JSX.Element {
   const setView = useStudioStore((state) => state.setView)
   const selectShot = useStudioStore((state) => state.selectShot)
   const selectChapter = useStudioStore((state) => state.selectChapter)
+  const selectedChapterId = useStudioStore((state) => state.selectedChapterId)
+  const selectedShotId = useStudioStore((state) => state.selectedShotId)
   const setSettingsOpen = useStudioStore((state) => state.setSettingsOpen)
   const navigateStage = useStudioStore((state) => state.navigateStage)
   const cancelJob = useStudioStore((state) => state.cancelJob)
@@ -3412,6 +3433,7 @@ export function ReviewView(): React.JSX.Element {
   const [voiceBusy, setVoiceBusy] = useState(false)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [reconciling, setReconciling] = useState<string | null>(null)
+  const [reviewScope, setReviewScope] = useState<'auto' | 'current' | 'all'>('auto')
   if (!active) return <div />
   const checks = active.checks
   const errors = checks.filter((check) => check.level === 'error')
@@ -3425,7 +3447,7 @@ export function ReviewView(): React.JSX.Element {
   const words = active.chapters.reduce((sum, chapter) => sum + chapter.content.replace(/\s+/g, '').length, 0)
   const missingImages = active.shots.filter((shot) => !shot.imageAssetId && !shot.videoAssetId).length
   const missingVoices = active.shots.filter((shot) => shot.dialogue.trim() && !shot.voiceAssetId).length
-  const hasMusic = Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo)
+  const hasMusic = Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo || hasEmbeddedVideoScore(active))
   const emptyChapters = active.chapters.filter((chapter) => !chapter.content.trim()).length
   const autoSteps = active.kind === 'drama'
     ? [
@@ -3461,13 +3483,62 @@ export function ReviewView(): React.JSX.Element {
   const jobCost = jobs.reduce((sum, job) => sum + (typeof job.cost === 'number' ? job.cost : 0), 0)
   const unknownCost = jobs.some((job) => job.cost === null)
   const reviewRan = active.stages.review.status === 'done' || active.stages.review.status === 'review'
+  const coverageUnitLabel = active.kind === 'drama' ? '镜' : '章'
+  const totalReviewUnits = active.kind === 'drama'
+    ? active.shots.length
+    : active.chapters.filter((chapter) => chapter.content.trim()).length
+  const reviewUnitVersion = (id: string): number => active.kind === 'drama'
+    ? active.shots.find((shot) => shot.id === id)?.updatedAt ?? -1
+    : active.chapters.find((chapter) => chapter.id === id)?.revision ?? -1
+  const coverageRows = [...(active.reviewCoverage ?? [])]
+    .sort((left, right) => left.unitStart - right.unitStart)
+    .map((entry) => ({
+      ...entry,
+      stale: (entry.units ?? []).some((unit) => reviewUnitVersion(unit.id) !== unit.version)
+    }))
+  const freshCoveredIds = new Set<string>()
+  if (active.kind === 'drama') {
+    for (const row of coverageRows) {
+      if (row.stale) continue
+      for (const unit of row.units ?? []) freshCoveredIds.add(unit.id)
+    }
+  } else {
+    const ranges = new Map<string, Array<{ start: number; end: number }>>()
+    for (const row of coverageRows) {
+      if (row.stale) continue
+      for (const segment of row.segments ?? []) {
+        const chapter = active.chapters.find((item) => item.id === segment.id)
+        if (!chapter || chapter.revision !== segment.version) continue
+        const list = ranges.get(segment.id) ?? []
+        list.push({ start: segment.start, end: segment.end })
+        ranges.set(segment.id, list)
+      }
+    }
+    for (const chapter of active.chapters) {
+      if (!chapter.content.trim()) continue
+      const legacyFull = chapter.content.length <= 8_000 && coverageRows.some((row) => !row.stale && !row.segments?.length && row.units?.some((unit) => unit.id === chapter.id))
+      if (legacyFull) {
+        freshCoveredIds.add(chapter.id)
+        continue
+      }
+      const list = (ranges.get(chapter.id) ?? []).sort((left, right) => left.start - right.start)
+      let cursor = 0
+      for (const range of list) {
+        if (range.start > cursor) break
+        cursor = Math.max(cursor, range.end)
+      }
+      if (cursor >= chapter.content.length) freshCoveredIds.add(chapter.id)
+    }
+  }
+  const remainingReviewUnits = (active.kind === 'drama' ? active.shots : active.chapters.filter((chapter) => chapter.content.trim()))
+    .filter((item) => !freshCoveredIds.has(item.id))
   const readiness = useMemo(() => {
     const rows = active.kind === 'drama'
       ? [
           { label: `${visuals}/${active.shots.length} 镜有画面`, ok: visuals === active.shots.length && active.shots.length > 0 },
           { label: `${voices}/${voicesNeeded.length} 段台词有配音`, ok: voices === voicesNeeded.length },
           { label: `${subtitles} 条字幕`, ok: subtitles > 0 },
-          { label: '配乐已就位', ok: Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo) },
+          { label: '配乐已就位', ok: Boolean(resolveMusicAsset(active)?.formal || resolveMusicAsset(active)?.demo || hasEmbeddedVideoScore(active)) },
           { label: '时间线已排好', ok: active.timeline.clips.length > 0 },
           { label: '已合成成片', ok: active.deliveries.some((delivery) => isStudioVideoDelivery(delivery.kind)) },
           { label: reviewRan ? '检查已运行' : '尚未运行检查', ok: reviewRan }
@@ -3494,9 +3565,13 @@ export function ReviewView(): React.JSX.Element {
   }
   const modelReview = async (): Promise<void> => {
     if (modelBusy) return
+    if (reviewScope === 'current' && (active.kind === 'drama' ? !selectedShotId : !selectedChapterId)) {
+      notify('error', active.kind === 'drama' ? '先选中一个镜头，再运行当前镜审稿。' : '先选中一个章节，再运行当前章审稿。')
+      return
+    }
     setModelBusy(true)
     try {
-      const result = await run('model-review', { requestId: `model-review-${Date.now()}` })
+      const result = await run('model-review', { scope: reviewScope, requestId: `model-review-${Date.now()}`, ...(selectedChapterId ? { chapterId: selectedChapterId } : {}), ...(selectedShotId ? { shotId: selectedShotId } : {}) })
       notify('info', result.message ?? '模型审稿已排队。')
     } catch (err) {
       notify('error', err instanceof Error ? err.message : String(err))
@@ -3585,9 +3660,9 @@ export function ReviewView(): React.JSX.Element {
           <h1>制作检查</h1>
           <p>每一项都能核对、能重做、能说明原因。</p>
           <div className="studio-review-meta">
-            <span>{checks.length ? `${errors.length} 个错误` : '尚未检查'}</span>
+            <span>{checks.length ? `${errors.length} 个错误` : coverageRows.length ? `已审 ${freshCoveredIds.size}/${totalReviewUnits} ${coverageUnitLabel}` : '尚未检查'}</span>
             <i />
-            <span>{checks.length ? `${warns.length} 条提醒` : '运行后写入记录'}</span>
+            <span>{checks.length ? `${warns.length} 条提醒` : coverageRows.length ? (remainingReviewUnits.length ? `还有 ${remainingReviewUnits.length} ${coverageUnitLabel}未审` : '全部在审稿范围内') : '运行后写入记录'}</span>
             <i />
             <span>{readyCount}/{readiness.length} 项就绪</span>
             <i />
@@ -3604,6 +3679,16 @@ export function ReviewView(): React.JSX.Element {
             </Button>
           ) : null}
           {(active.kind === 'drama' ? Boolean(active.blueprint && visuals > 0) : active.chapters.some((chapter) => chapter.content.trim())) ? (
+            <label className="studio-select-field studio-review-scope">
+              <span>范围</span>
+              <select aria-label="审稿范围" value={reviewScope} onChange={(event) => setReviewScope(event.target.value as 'auto' | 'current' | 'all')}>
+                <option value="auto">自动抽样</option>
+                <option value="current" disabled={active.kind === 'drama' ? !selectedShotId : !selectedChapterId}>{active.kind === 'drama' ? (selectedShotId ? '当前镜' : '当前镜（先选镜头）') : (selectedChapterId ? '当前章' : '当前章（先选章节）')}</option>
+                <option value="all">{active.kind === 'drama' ? '全片分批' : '全书分批'}</option>
+              </select>
+            </label>
+          ) : null}
+          {(active.kind === 'drama' ? Boolean(active.blueprint && visuals > 0) : active.chapters.some((chapter) => chapter.content.trim())) ? (
             <Button variant="secondary" icon={modelBusy ? <Loader2 size={13} className="studio-spin" /> : <Sparkles size={13} />} onClick={() => void modelReview()} disabled={modelBusy}>
               {active.kind === 'drama' ? '剧情审稿' : '模型审稿'}
             </Button>
@@ -3612,18 +3697,51 @@ export function ReviewView(): React.JSX.Element {
         </div>
       </header>
 
+      {coverageRows.length ? (
+        <section className="studio-review-coverage">
+          <div className="studio-review-coverage-head">
+            <span>已审范围</span>
+            <b className="mono">{freshCoveredIds.size}/{totalReviewUnits} {coverageUnitLabel}</b>
+          </div>
+          <div className="studio-review-coverage-list">
+            {coverageRows.map((row) => (
+              <span key={row.id} className={row.stale ? 'is-stale' : ''} title={`${row.model} · ${timeAgo(row.createdAt)}`}>
+                {row.label} · {row.covered}{coverageUnitLabel}
+                {row.stale ? ' · 有改动，需重审' : row.issues ? ` · ${row.issues} 项` : ' · 通过'}
+              </span>
+            ))}
+          </div>
+          {remainingReviewUnits.length ? (
+            <p className="studio-hint">
+              还有 {remainingReviewUnits.length} {coverageUnitLabel}没有覆盖：{remainingReviewUnits.slice(0, 20).map((item) => `第 ${item.number} ${coverageUnitLabel}`).join('、')}{remainingReviewUnits.length > 20 ? '…' : ''}。选择“{active.kind === 'drama' ? '全片分批' : '全书分批'}”后再审一次即可覆盖。
+            </p>
+          ) : (
+            <p className="studio-hint">当前版本的全部{coverageUnitLabel}都已有审稿记录。</p>
+          )}
+        </section>
+      ) : null}
+
       <div className="studio-review-grid">
         <section className="studio-review-checks">
-          <SectionTitle eyebrow="发现的问题" title={errors.length ? `${errors.length} 个问题需要处理` : warns.length ? `${warns.length} 条提醒需要你判断` : checks.length ? '检查通过，没有发现问题' : '还没有检查记录'}>
+          <SectionTitle eyebrow="发现的问题" title={errors.length ? `${errors.length} 个问题需要处理` : warns.length ? `${warns.length} 条提醒需要你判断` : checks.length ? '检查通过，没有发现问题' : coverageRows.length ? (freshCoveredIds.size >= totalReviewUnits ? '模型审稿完成，没有发现问题' : '已审部分没有发现问题') : '还没有检查记录'}>
             {checks.length ? '错误会阻止导出；提醒不一定错，但需要你确认；信息项只是当前状态。' : '会检查缺失素材、配音时长、时间线引用、设定冲突和预算。'}
           </SectionTitle>
           {checks.length === 0 ? (
-            <div className="studio-review-empty">
-              <ShieldCheck size={26} strokeWidth={1.2} />
-              <h3>先跑一次检查</h3>
-              <p>检查只读作品，不会改动正文或镜头。</p>
-              <Button variant="gold" onClick={() => void rerun()} icon={<RefreshCw size={13} />}>运行检查</Button>
-            </div>
+            coverageRows.length ? (
+              <div className="studio-review-empty">
+                <ShieldCheck size={26} strokeWidth={1.2} />
+                <h3>{freshCoveredIds.size >= totalReviewUnits ? '模型审稿完成，没有发现问题' : '已审部分没有发现问题'}</h3>
+                <p>{freshCoveredIds.size >= totalReviewUnits ? `当前版本的 ${totalReviewUnits} ${coverageUnitLabel}都已在审稿范围内。` : `已覆盖 ${freshCoveredIds.size}/${totalReviewUnits} ${coverageUnitLabel}；未覆盖部分仍需审稿。`}还可以运行本地检查，核对素材、配音与时间线。</p>
+                <Button variant="gold" onClick={() => void rerun()} icon={<RefreshCw size={13} />}>运行本地检查</Button>
+              </div>
+            ) : (
+              <div className="studio-review-empty">
+                <ShieldCheck size={26} strokeWidth={1.2} />
+                <h3>先跑一次检查</h3>
+                <p>检查只读作品，不会改动正文或镜头。</p>
+                <Button variant="gold" onClick={() => void rerun()} icon={<RefreshCw size={13} />}>运行检查</Button>
+              </div>
+            )
           ) : (
             <div className="studio-finding-list">
               {[...errors, ...warns, ...infos].map((check, index) => (
@@ -4051,6 +4169,30 @@ function ShotInspector({ shot, onClose }: { shot: StudioShot; onClose: () => voi
         <button type="button" onClick={onClose} aria-label="关闭镜头详情"><X size={14} /></button>
       </header>
       <div className="studio-inspector-scroll">
+        {shot.rewriteCandidate ? (
+          <section className="studio-rewrite-compare">
+            <header>
+              <b>AI 新稿待比较</b>
+              <span>生成期间你改过这一镜，当前内容没有被覆盖。</span>
+            </header>
+            <dl>
+              <dt>标题</dt>
+              <dd>{shot.rewriteCandidate.title}</dd>
+              <dt>动作</dt>
+              <dd>{shot.rewriteCandidate.action}</dd>
+              {shot.rewriteCandidate.dialogue ? (
+                <>
+                  <dt>台词</dt>
+                  <dd>{shot.rewriteCandidate.speaker || '旁白'}：{shot.rewriteCandidate.dialogue}</dd>
+                </>
+              ) : null}
+            </dl>
+            <div>
+              <Button variant="gold" size="sm" onClick={() => void run('adopt-shot-rewrite', { shotId: shot.id }).then(() => notify('success', '已采用 AI 新稿。'))}>采用 AI 新稿</Button>
+              <Button variant="ghost" size="sm" onClick={() => void run('discard-shot-rewrite', { shotId: shot.id }).then(() => notify('info', '已丢弃 AI 新稿，当前镜头保持不变。'))}>丢弃</Button>
+            </div>
+          </section>
+        ) : null}
         <div className="studio-shot-preview">
           {video?.url ? (
             <video src={video.url} controls playsInline poster={image?.thumbUrl ?? image?.url} />
@@ -4339,14 +4481,22 @@ export function StoryboardView(): React.JSX.Element {
   const [subtitleBusy, setSubtitleBusy] = useState(false)
   const [storyboardBusy, setStoryboardBusy] = useState(false)
   const [outlineBusy, setOutlineBusy] = useState(false)
+  const [boardScopeOpen, setBoardScopeOpen] = useState(false)
+  const [boardScope, setBoardScope] = useState<'shot' | 'chapter' | 'all'>('all')
+  const [boardChapterId, setBoardChapterId] = useState('')
+  const [boardAllowCountChange, setBoardAllowCountChange] = useState(false)
   if (!active) return <div />
   const shot = active.shots.find((item) => item.id === selectedShotId) ?? null
+  const shotScene = shot ? active.scenes.find((item) => item.id === shot.sceneId) : undefined
+  const shotChapter = shotScene?.sourceChapterId ? active.chapters.find((item) => item.id === shotScene.sourceChapterId) : undefined
+  const boardChapter = active.chapters.find((item) => item.id === boardChapterId) ?? shotChapter
   const shots = [...active.shots].sort((a, b) => a.number - b.number)
   const visuals = shots.filter((item) => item.imageAssetId || item.videoAssetId).length
   const missing = shots.filter((item) => !item.imageAssetId && !item.videoAssetId)
   const voicesNeeded = shots.filter((item) => item.dialogue.trim())
   const voicesDone = voicesNeeded.filter((item) => item.voiceAssetId).length
   const score = resolveMusicAsset(active)
+  const embeddedScore = hasEmbeddedVideoScore(active)
   const music = score && (score.formal || score.demo) ? [score.asset] : []
   const musicDraft = Boolean(score && !score.formal && !score.demo)
   const sfx = active.assets.filter((asset) => asset.kind === 'audio' && asset.tags.includes('sfx'))
@@ -4409,16 +4559,38 @@ export function StoryboardView(): React.JSX.Element {
       setOutlineBusy(false)
     }
   }
-  const generateStoryboard = async (): Promise<void> => {
+  const generateStoryboard = async (scope: 'shot' | 'chapter' | 'all' = 'all'): Promise<void> => {
     setStoryboardBusy(true)
     try {
-      await run('generate-storyboard', { requestId: `storyboard-${Date.now()}` })
-      notify('info', active.blueprint?.storyboardModel
-        ? '已排队重排分镜；完成后会按模型结果更新镜头，已有素材不会被打乱。'
-        : '已排队生成分镜；完成后会按模型结果建立场景、镜头与台词。')
+      const chapterId = boardChapterId || shotChapter?.id || ''
+      await run('generate-storyboard', {
+        requestId: `storyboard-${Date.now()}`,
+        scope,
+        ...(scope === 'shot' && shot ? { shotId: shot.id } : {}),
+        ...(scope === 'chapter' && chapterId ? { chapterId } : {}),
+        confirmShotCountChange: boardAllowCountChange
+      })
+      setBoardScopeOpen(false)
+      notify('info', scope === 'shot'
+        ? `已排队重写第 ${shot?.number ?? 1} 镜；其他镜头与素材不受影响。`
+        : scope === 'chapter'
+          ? `已排队重做第 ${boardChapter?.number ?? 1} 章的分镜；其他章节与素材不受影响。`
+          : shots.length
+            ? '已排队按章节分批更新分镜；已有素材镜头会保留，完成后可逐镜检查。'
+            : '已排队生成分镜；完成后会按模型结果建立场景、镜头与台词。')
     } finally {
       setStoryboardBusy(false)
     }
+  }
+  const openStoryboardScope = (): void => {
+    if (!shots.length) {
+      void generateStoryboard('all')
+      return
+    }
+    setBoardScope(shot ? 'shot' : shotChapter ? 'chapter' : 'all')
+    setBoardChapterId(shotChapter?.id ?? active.chapters[0]?.id ?? '')
+    setBoardAllowCountChange(false)
+    setBoardScopeOpen(true)
   }
   const makeMusic = async (kind: 'music' | 'rain' | 'umbrella' | 'heartbeat' = 'music'): Promise<void> => {
     setMusicBusy(true)
@@ -4455,7 +4627,7 @@ export function StoryboardView(): React.JSX.Element {
             <i />
             <span>{voicesDone}/{voicesNeeded.length} 配音</span>
             <i />
-            <span>{music.length ? (score?.demo ? '样例配乐' : '配乐就绪') : musicDraft ? '配乐草稿' : '还没有配乐'}</span>
+            <span>{music.length ? (score?.demo ? '样例配乐' : '配乐就绪') : musicDraft ? '配乐草稿' : embeddedScore ? '配乐随画面生成' : '还没有配乐'}</span>
           </div>
         </div>
         <div className="studio-storyboard-actions">
@@ -4465,8 +4637,8 @@ export function StoryboardView(): React.JSX.Element {
             <button type="button" className={storyboardTab === 'board' ? 'is-active' : ''} onClick={() => setStoryboardTab('board')}><Images size={12} /> 分镜板</button>
           </div>
           {!active.blueprint?.storyboardModel ? (
-            <Button variant="gold" size="sm" icon={storyboardBusy || storyboardJob ? <Loader2 size={12} className="studio-spin" /> : <Clapperboard size={12} />} onClick={() => void generateStoryboard()} disabled={storyboardBusy || Boolean(job) || Boolean(storyboardJob)}>
-              {storyboardJob ? '正在生成分镜' : '生成分镜'}
+            <Button variant="gold" size="sm" icon={storyboardBusy || storyboardJob ? <Loader2 size={12} className="studio-spin" /> : <Clapperboard size={12} />} onClick={() => openStoryboardScope()} disabled={storyboardBusy || Boolean(job) || Boolean(storyboardJob)}>
+              {storyboardJob ? '正在生成分镜' : shots.length ? '重新生成分镜…' : '生成分镜'}
             </Button>
           ) : null}
           {active.blueprint?.storyboardModel || visuals > 0 ? (
@@ -4516,7 +4688,7 @@ export function StoryboardView(): React.JSX.Element {
               <Button variant={active.blueprint?.outlineModel ? 'ghost' : 'gold'} size="sm" icon={outlineBusy || outlineJob ? <Loader2 size={12} className="studio-spin" /> : <Clapperboard size={12} />} onClick={() => void generateOutline()} disabled={outlineBusy || Boolean(job) || Boolean(outlineJob)}>
                 {outlineJob ? '正在生成大纲' : active.blueprint?.outlineModel ? '重新生成大纲' : '生成大纲'}
               </Button>
-              <Button variant="ghost" size="sm" icon={storyboardBusy ? <Loader2 size={12} className="studio-spin" /> : <RefreshCw size={12} />} onClick={() => void generateStoryboard()} disabled={storyboardBusy || Boolean(job)}>用模型重排</Button>
+              <Button variant="ghost" size="sm" icon={storyboardBusy ? <Loader2 size={12} className="studio-spin" /> : <RefreshCw size={12} />} onClick={() => openStoryboardScope()} disabled={storyboardBusy || Boolean(job)}>用模型重排…</Button>
               <Button variant="ghost" size="sm" icon={<RefreshCw size={12} />} onClick={() => void run('sync-storyboard').then(() => notify('info', '已按蓝图同步镜头字段；已有画面不受影响。'))}>按蓝图同步</Button>
               <Button variant="ghost" size="sm" icon={voiceBusy ? <Loader2 size={12} className="studio-spin" /> : <AudioLines size={12} />} onClick={() => void voices()} disabled={voiceBusy || Boolean(job)}>补齐配音</Button>
             </div>
@@ -4540,7 +4712,7 @@ export function StoryboardView(): React.JSX.Element {
               <Button variant="ghost" size="sm" icon={<Music2 size={12} />} onClick={() => void makeLocalMusic()} disabled={musicBusy || Boolean(job)} title="没有配乐模型时，可先生成可试听的本地器乐草稿">本地草稿</Button>
             </div>
             <div className="studio-board-toolbar-right">
-              {music[0] ? <AudioPill asset={music[0]} compact /> : <span className="studio-audio is-missing"><Music2 size={12} /> 暂无配乐</span>}
+              {music[0] ? <AudioPill asset={music[0]} compact /> : embeddedScore ? <span className="studio-audio"><Music2 size={12} /> 配乐随 H3 画面生成</span> : <span className="studio-audio is-missing"><Music2 size={12} /> 暂无配乐</span>}
               <span className="mono">{formatTimecode(total, 30)}</span>
             </div>
           </div>
@@ -4599,6 +4771,61 @@ export function StoryboardView(): React.JSX.Element {
       )}
       {shot && storyboardTab === 'board' ? <ShotInspector shot={shot} onClose={() => selectShot(null)} /> : null}
       {bulkOpen ? <BulkShotDialog sceneId={shot?.sceneId ?? null} onClose={() => setBulkOpen(false)} /> : null}
+      {boardScopeOpen ? (
+        <Modal
+          open
+          onClose={() => setBoardScopeOpen(false)}
+          title="重新生成分镜"
+          description="先选范围：默认只更新选中的镜头或章节，其他镜头、画面与配音保持不变。"
+          width={560}
+          layer="overlay"
+          footer={
+            <div className="studio-modal-footer">
+              <span>{boardScope === 'all' ? '全书会按章分批调用模型，已有素材镜头保留。' : '只提交所选范围，其他内容不进入请求。'}</span>
+              <div>
+                <Button variant="ghost" onClick={() => setBoardScopeOpen(false)}>取消</Button>
+                <Button variant="gold" loading={storyboardBusy} onClick={() => void generateStoryboard(boardScope)}>开始重做</Button>
+              </div>
+            </div>
+          }
+        >
+          <div className="studio-board-scope" role="radiogroup" aria-label="重新生成范围">
+            <button type="button" role="radio" aria-checked={boardScope === 'shot'} className={boardScope === 'shot' ? 'is-active' : ''} disabled={!shot} onClick={() => setBoardScope('shot')}>
+              <b>当前镜头</b>
+              <span>{shot ? `第 ${shot.number} 镜《${shot.title}》` : '先在分镜板选中一个镜头'}</span>
+            </button>
+            <div className={`studio-board-scope-chapter ${boardScope === 'chapter' ? 'is-active' : ''}`}>
+              <button type="button" role="radio" aria-checked={boardScope === 'chapter'} disabled={!active.chapters.length} onClick={() => setBoardScope('chapter')}>
+                <b>指定章节</b>
+                <span>{boardChapter ? `第 ${boardChapter.number} 章《${boardChapter.title}》${boardChapter.content.trim() ? '' : ' · 未写正文'}` : '这部漫剧还没有原著章节'}</span>
+              </button>
+              {active.chapters.length ? (
+                <select
+                  value={boardChapterId}
+                  aria-label="选择要重做的章节"
+                  onChange={(event) => {
+                    setBoardChapterId(event.target.value)
+                    setBoardScope('chapter')
+                  }}
+                >
+                  {active.chapters.map((chapter) => (
+                    <option key={chapter.id} value={chapter.id}>第 {chapter.number} 章《{chapter.title}》</option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            <button type="button" role="radio" aria-checked={boardScope === 'all'} className={boardScope === 'all' ? 'is-active' : ''} onClick={() => setBoardScope('all')}>
+              <b>全书分批</b>
+              <span>{active.chapters.length ? `${active.chapters.filter((chapter) => chapter.content.trim()).length || active.chapters.length} 章 · 每 8 章一批` : `${shots.length} 镜 · 按现有分镜更新`}</span>
+            </button>
+          </div>
+          <label className="studio-board-scope-confirm">
+            <input type="checkbox" checked={boardAllowCountChange} onChange={(event) => setBoardAllowCountChange(event.target.checked)} />
+            <span>允许模型增删本范围的镜头（默认关闭；关闭时保留原镜头数）</span>
+          </label>
+          <p className="studio-hint">保护规则：已有画面、配音的镜头按编号对应更新；某一批失败时，已完成的批次会保存，重试从下一批继续。</p>
+        </Modal>
+      ) : null}
     </div>
   )
 }
@@ -4610,6 +4837,21 @@ type PaperSize = 'sm' | 'md' | 'lg'
 type PaperLine = 'tight' | 'normal' | 'loose'
 
 type PaperWidth = 'narrow' | 'normal' | 'wide'
+
+function findTextRanges(text: string, needle: string): Array<{ from: number; to: number }> {
+  if (!needle) return []
+  const haystack = text.toLocaleLowerCase()
+  const target = needle.toLocaleLowerCase()
+  const matches: Array<{ from: number; to: number }> = []
+  let cursor = 0
+  while (cursor <= haystack.length - target.length) {
+    const at = haystack.indexOf(target, cursor)
+    if (at < 0) break
+    matches.push({ from: at, to: at + target.length })
+    cursor = at + Math.max(1, target.length)
+  }
+  return matches
+}
 
 const PAPER_SIZES: readonly PaperSize[] = ['sm', 'md', 'lg']
 
@@ -4635,7 +4877,7 @@ function CandidateDiff({
   chapter: StudioChapter
   candidate: StudioCandidate
   onClose: () => void
-  onBefore?: () => Promise<void>
+  onBefore?: () => Promise<boolean | void>
 }): React.JSX.Element {
   const run = useStudioStore((state) => state.run)
   const notify = useStudioStore((state) => state.notify)
@@ -4649,7 +4891,10 @@ function CandidateDiff({
   const adopt = async (): Promise<void> => {
     setAdopting(true)
     try {
-      await onBefore?.()
+      if ((await onBefore?.()) === false) {
+        notify('error', '当前正文保存失败，草稿仍保留；请恢复保存后再采用候选。')
+        return
+      }
       await run('adopt-candidate', { chapterId: chapter.id, candidateId: active.id, expectedRevision: chapter.revision })
       notify('success', '已用这一版替换；上一版自动留档，可随时恢复。')
       onClose()
@@ -4745,7 +4990,7 @@ function VersionDialog({
 }: {
   chapter: StudioChapter
   onClose: () => void
-  onBefore?: () => Promise<void>
+  onBefore?: () => Promise<boolean | void>
 }): React.JSX.Element {
   const run = useStudioStore((state) => state.run)
   const notify = useStudioStore((state) => state.notify)
@@ -4753,7 +4998,10 @@ function VersionDialog({
   const restore = async (version: StudioChapterVersion): Promise<void> => {
     setRestoring(version.id)
     try {
-      await onBefore?.()
+      if ((await onBefore?.()) === false) {
+        notify('error', '当前正文保存失败，草稿仍保留；请恢复保存后再恢复版本。')
+        return
+      }
       await run('restore-chapter-version', { chapterId: chapter.id, versionId: version.id, expectedRevision: chapter.revision })
       notify('success', '已恢复到这个版本；恢复前的正文也留档了。')
       onClose()
@@ -5229,6 +5477,7 @@ export function WritingView(): React.JSX.Element {
   const [paperWidth, setPaperWidth] = useState<PaperWidth>(() => storedChoice('morrow.studio.paper.width', 'normal', PAPER_WIDTHS))
   const [docMenu, setDocMenu] = useState<'type' | 'count' | null>(null)
   const [findOpen, setFindOpen] = useState(false)
+  const [findMode, setFindMode] = useState<'find' | 'replace'>('find')
   const [findText, setFindText] = useState('')
   const [replaceText, setReplaceText] = useState('')
   const [matchIndex, setMatchIndex] = useState(0)
@@ -5248,11 +5497,13 @@ export function WritingView(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<EditorView | null>(null)
   const findInputRef = useRef<HTMLInputElement | null>(null)
+  const replaceInputRef = useRef<HTMLInputElement | null>(null)
   const contentRef = useRef(content)
   const dirtyRef = useRef(false)
   const titleRef = useRef(title)
   const synopsisRef = useRef(synopsis)
   const chapterRef = useRef<StudioChapter | null>(chapter)
+  const draftChapterIdRef = useRef<string | null>(chapter?.id ?? null)
   const savingRef = useRef(false)
   const queuedSaveRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
@@ -5284,24 +5535,12 @@ export function WritingView(): React.JSX.Element {
 
   useEffect(() => {
     if (!findOpen) return
-    const timer = window.setTimeout(() => findInputRef.current?.focus(), 30)
+    const target = findMode === 'replace' ? replaceInputRef : findInputRef
+    const timer = window.setTimeout(() => target.current?.focus(), 30)
     return () => window.clearTimeout(timer)
-  }, [findOpen])
+  }, [findOpen, findMode])
 
-  const findMatches = useMemo(() => {
-    if (!findText) return [] as Array<{ from: number; to: number }>
-    const haystack = content.toLocaleLowerCase()
-    const needle = findText.toLocaleLowerCase()
-    const matches: Array<{ from: number; to: number }> = []
-    let cursor = 0
-    while (cursor <= haystack.length - needle.length) {
-      const at = haystack.indexOf(needle, cursor)
-      if (at < 0) break
-      matches.push({ from: at, to: at + needle.length })
-      cursor = at + Math.max(1, needle.length)
-    }
-    return matches
-  }, [content, findText])
+  const findMatches = useMemo(() => findTextRanges(content, findText), [content, findText])
 
   useEffect(() => {
     setMatchIndex(0)
@@ -5312,26 +5551,26 @@ export function WritingView(): React.JSX.Element {
   const generatingJob = active?.jobs.find((job) => job.stage === 'writing' && (job.status === 'running' || job.status === 'queued'))
   const outlineJob = active?.jobs.find((job) => job.stage === 'outline' && (job.status === 'running' || job.status === 'queued'))
 
-  const saveNow = useCallback(async (): Promise<void> => {
-    const currentChapter = chapterRef.current
+  const saveNow = useCallback(async (): Promise<boolean> => {
     const project = activeRef.current
-    if (!currentChapter || !project) return
+    const draftChapterId = draftChapterIdRef.current
+    const currentChapter = project?.chapters.find((item) => item.id === draftChapterId)
+    if (!currentChapter || !project) return false
     if (savingRef.current) {
       queuedSaveRef.current = true
-      return
+      return false
     }
     savingRef.current = true
     setSaveState('saving')
     const snapshot = contentRef.current
     try {
-      const result = await run('save-chapter', {
+      await run('save-chapter', {
         chapterId: currentChapter.id,
         content: snapshot,
         title: titleRef.current,
         synopsis: synopsisRef.current,
         wordTarget: currentChapter.wordTarget
       })
-      void result
       if (contentRef.current === snapshot) {
         setDirty(false)
         setEditorDirty(false)
@@ -5339,22 +5578,26 @@ export function WritingView(): React.JSX.Element {
       } else {
         queuedSaveRef.current = true
       }
+      return true
     } catch {
       setSaveState('error')
+      return false
     } finally {
       savingRef.current = false
       if (queuedSaveRef.current) {
         queuedSaveRef.current = false
-        window.setTimeout(() => void saveNow(), 240)
+        window.setTimeout(() => void saveRef.current(), 240)
       }
     }
   }, [run, setEditorDirty, setSaveState])
   const saveRef = useRef(saveNow)
   saveRef.current = saveNow
 
-  // 章节切换：载入当前章到编辑器和本地状态。
+  // 章节切换：草稿始终属于它被输入的那一章；保存失败时阻止静默切章。
   useEffect(() => {
+    const view = editorRef.current
     if (!chapter) {
+      draftChapterIdRef.current = null
       setContent('')
       setTitle('')
       setSynopsis('')
@@ -5362,10 +5605,23 @@ export function WritingView(): React.JSX.Element {
       setEditorDirty(false)
       return
     }
-    if (chapterRef.current?.id === chapter.id && dirtyRef.current) return
+    if (chapter.id === draftChapterIdRef.current) {
+      if (dirtyRef.current) return
+      return
+    }
+    if (dirtyRef.current) {
+      const previousId = draftChapterIdRef.current
+      if (previousId) selectChapter(previousId)
+      notify('error', '当前章还有未保存的修改，已保留在原章节；请先保存成功再切换。')
+      return
+    }
+    draftChapterIdRef.current = chapter.id
     setContent(chapter.content)
     setTitle(chapter.title)
     setSynopsis(chapter.synopsis)
+    if (view && view.state.doc.toString() !== chapter.content) {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: chapter.content } })
+    }
     setDirty(false)
     setEditorDirty(false)
     setSaveState('saved')
@@ -5375,6 +5631,7 @@ export function WritingView(): React.JSX.Element {
   // 外部内容变化（AI 初稿、采用候选、恢复版本）在未手改时同步到编辑器。
   useEffect(() => {
     if (!chapter) return
+    if (draftChapterIdRef.current !== chapter.id) return
     if (dirtyRef.current) return
     if (chapter.content !== contentRef.current) {
       setContent(chapter.content)
@@ -5424,7 +5681,13 @@ export function WritingView(): React.JSX.Element {
         void saveRef.current()
       } else if (key === 'f' || key === 'h') {
         event.preventDefault()
+        const selection = view.state.selection.main
+        if (!selection.empty) {
+          const selected = view.state.sliceDoc(selection.from, selection.to)
+          if (selected && selected.length <= 200) setFindText(selected)
+        }
         setDocMenu(null)
+        setFindMode(key === 'h' ? 'replace' : 'find')
         setFindOpen(true)
       }
     }
@@ -5466,7 +5729,14 @@ export function WritingView(): React.JSX.Element {
 
   const switchChapter = async (id: string): Promise<void> => {
     if (id === selectedChapterId) return
-    if (dirty) await saveNow()
+    if (savingRef.current) {
+      notify('info', '正在保存当前章，请稍候再切换。')
+      return
+    }
+    if (dirty && !(await saveNow())) {
+      notify('error', '当前章保存失败，草稿仍保留；请恢复保存后再切换章节。')
+      return
+    }
     selectChapter(id)
   }
 
@@ -5568,8 +5838,16 @@ export function WritingView(): React.JSX.Element {
     const view = editorRef.current
     const match = findMatches[Math.min(matchIndex, Math.max(0, findMatches.length - 1))]
     if (!view || !match) return
-    view.dispatch({ changes: { from: match.from, to: match.to, insert: replaceText } })
-    findNext(1)
+    const current = view.state.doc.toString()
+    const next = `${current.slice(0, match.from)}${replaceText}${current.slice(match.to)}`
+    const nextMatches = findTextRanges(next, findText)
+    const cursor = match.from + replaceText.length
+    const nextMatch = nextMatches.find((item) => item.from >= cursor) ?? nextMatches[0]
+    view.dispatch({
+      changes: { from: match.from, to: match.to, insert: replaceText },
+      selection: nextMatch ? { anchor: nextMatch.from, head: nextMatch.to } : { anchor: cursor }
+    })
+    if (nextMatch) setMatchIndex(nextMatches.indexOf(nextMatch))
   }
 
   const replaceAll = (): void => {
@@ -5583,6 +5861,19 @@ export function WritingView(): React.JSX.Element {
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } })
     setFindOpen(false)
     notify('success', `已替换 ${findMatches.length} 处。`)
+  }
+
+  const openFind = (mode: 'find' | 'replace'): void => {
+    if (!findOpen) {
+      const view = editorRef.current
+      const selection = view?.state.selection.main
+      if (view && selection && !selection.empty) {
+        const selected = view.state.sliceDoc(selection.from, selection.to)
+        if (selected && selected.length <= 200) setFindText(selected)
+      }
+    }
+    setFindMode(mode)
+    setFindOpen(true)
   }
 
   const exportWord = async (): Promise<void> => {
@@ -5689,7 +5980,8 @@ export function WritingView(): React.JSX.Element {
             <button type="button" className="studio-doc-btn" title="重做（Ctrl+Shift+Z）" aria-label="重做" onClick={redoEdit} disabled={!chapter}><Redo2 size={14} /></button>
           </div>
           <span className="studio-doc-sep" />
-          <button type="button" className={['studio-doc-btn', findOpen ? 'is-active' : ''].filter(Boolean).join(' ')} title="查找与替换（Ctrl+F）" aria-label="查找与替换" onClick={() => setFindOpen((open) => !open)} disabled={!chapter}><Search size={14} /><span>查找</span></button>
+          <button type="button" className={['studio-doc-btn', findOpen && findMode === 'find' ? 'is-active' : ''].filter(Boolean).join(' ')} title="查找（Ctrl+F）" aria-label="查找" onClick={() => { if (findOpen && findMode === 'find') setFindOpen(false); else openFind('find') }} disabled={!chapter}><Search size={14} /><span>查找</span></button>
+          <button type="button" className={['studio-doc-btn', findOpen && findMode === 'replace' ? 'is-active' : ''].filter(Boolean).join(' ')} title="替换（Ctrl+H）" aria-label="文本替换" onClick={() => { if (findOpen && findMode === 'replace') setFindOpen(false); else openFind('replace') }} disabled={!chapter}><Replace size={14} /><span>替换</span></button>
           <span className="studio-doc-sep" />
           <div className="studio-doc-menu-wrap" ref={docMenuRef}>
             <div className="studio-doc-group">
@@ -5725,7 +6017,7 @@ export function WritingView(): React.JSX.Element {
             <button type="button" title="上一个（Shift+Enter）" aria-label="上一个" onClick={() => findNext(-1)} disabled={!findMatches.length}><ArrowUp size={12} /></button>
             <button type="button" title="下一个（Enter）" aria-label="下一个" onClick={() => findNext(1)} disabled={!findMatches.length}><ArrowDown size={12} /></button>
             <span className="studio-doc-sep" />
-            <input value={replaceText} onChange={(event) => setReplaceText(event.target.value)} placeholder="替换为" aria-label="替换为" />
+            <input ref={replaceInputRef} value={replaceText} onChange={(event) => setReplaceText(event.target.value)} placeholder="替换为" aria-label="替换为" />
             <button type="button" onClick={replaceOne} disabled={!findMatches.length}>替换</button>
             <button type="button" onClick={replaceAll} disabled={!findMatches.length}>全部替换</button>
             <button type="button" className="studio-find-close" title="关闭查找" aria-label="关闭查找" onClick={() => setFindOpen(false)}><X size={13} /></button>
@@ -6261,6 +6553,13 @@ function Monitor({
   }, [visualAsset, visualClip, time, playing, monitorVideoUrl])
 
   const aspect = timeline.aspect
+  const duration = Math.max(0.001, timelineDuration(timeline))
+  const progress = Math.min(1, Math.max(0, time / duration))
+  const seekAt = (clientX: number, element: HTMLElement): void => {
+    const rect = element.getBoundingClientRect()
+    if (rect.width <= 0) return
+    onSeek(((clientX - rect.left) / rect.width) * duration)
+  }
   return (
     <section className="studio-monitor">
       <header className="studio-monitor-head">
@@ -6290,7 +6589,7 @@ function Monitor({
         <div className="studio-monitor-screen">
           {visualAsset ? (
             visualAsset.kind === 'video' ? (
-              <video ref={videoRef} className="studio-monitor-video" muted playsInline preload="auto" />
+              <video ref={videoRef} className="studio-monitor-video" muted playsInline preload="auto" poster={visualAsset.thumbUrl} />
             ) : (
               <img
                 className="studio-monitor-image"
@@ -6333,8 +6632,43 @@ function Monitor({
         <button type="button" className="is-play" onClick={onToggle} title={playing ? '暂停' : '播放'} aria-label={playing ? '暂停' : '播放'}>
           {playing ? <Pause size={17} /> : <Play size={17} />}
         </button>
-        <button type="button" onClick={() => onSeek(Math.min(timelineDuration(timeline), time + 1))} title="前进 1 秒" aria-label="前进 1 秒"><SkipForward size={15} /></button>
-        <span className="studio-transport-time mono">{clock(time)} <i>/</i> {clock(timelineDuration(timeline))}</span>
+        <button type="button" onClick={() => onSeek(Math.min(duration, time + 1))} title="前进 1 秒" aria-label="前进 1 秒"><SkipForward size={15} /></button>
+        <span className="studio-transport-time mono">{clock(time)} <i>/</i> {clock(duration)}</span>
+        <div
+          className="studio-scrub"
+          role="slider"
+          aria-label="播放进度"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(duration * 10) / 10}
+          aria-valuenow={Math.round(time * 10) / 10}
+          tabIndex={0}
+          title="点击或拖动定位"
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId)
+            seekAt(event.clientX, event.currentTarget)
+          }}
+          onPointerMove={(event) => {
+            if (event.buttons === 1) seekAt(event.clientX, event.currentTarget)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault()
+              onSeek(Math.max(0, time - (event.shiftKey ? 5 : 1)))
+            } else if (event.key === 'ArrowRight') {
+              event.preventDefault()
+              onSeek(Math.min(duration, time + (event.shiftKey ? 5 : 1)))
+            } else if (event.key === 'Home') {
+              event.preventDefault()
+              onSeek(0)
+            } else if (event.key === 'End') {
+              event.preventDefault()
+              onSeek(duration)
+            }
+          }}
+        >
+          <i style={{ width: `${progress * 100}%` }} />
+          <b style={{ left: `${progress * 100}%` }} />
+        </div>
         <span className="studio-transport-spacer" />
         {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
         <span className="studio-transport-meta">{timeline.width}×{timeline.height} · {timeline.fps}fps</span>
@@ -6551,11 +6885,14 @@ export function TimelineView(): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
   const savingRef = useRef(false)
+  const pendingSaveRef = useRef(false)
+  const draftSeqRef = useRef(0)
   const activeRef = useRef(active)
   activeRef.current = active
   const draftDirtyRef = useRef(dirty)
   draftDirtyRef.current = dirty
   const lastProjectRef = useRef(active?.id ?? '')
+  const timelineProjectRef = useRef(active?.id ?? '')
 
   const duration = Math.max(5, timelineDuration(draft))
   const contentWidth = Math.max(720, Math.ceil((duration + 2) * pxPerSec))
@@ -6572,7 +6909,9 @@ export function TimelineView(): React.JSX.Element {
 
   const commitDraft = useCallback((next: StudioTimeline, history = false) => {
     if (history) pushHistory()
+    timelineProjectRef.current = useStudioStore.getState().active?.id ?? timelineProjectRef.current
     const normalized = { ...next, durationSec: timelineDuration(next), updatedAt: Date.now() }
+    draftSeqRef.current += 1
     draftRef.current = normalized
     setDraft(normalized)
     setDirty(true)
@@ -6605,27 +6944,44 @@ export function TimelineView(): React.JSX.Element {
   const saveTimeline = useCallback(async (): Promise<boolean> => {
     const project = activeRef.current
     if (!project) return false
-    if (savingRef.current) return false
+    if (savingRef.current) {
+      pendingSaveRef.current = true
+      return false
+    }
+    const projectId = timelineProjectRef.current || project.id
     savingRef.current = true
-    setSaving(true)
+    if (activeRef.current?.id === projectId) setSaving(true)
+    const submittedSeq = draftSeqRef.current
+    const submitted = draftRef.current
     try {
       const result = await run('save-timeline', {
+        projectId,
         timeline: {
-          tracks: draftRef.current.tracks,
-          clips: draftRef.current.clips,
-          aspect: draftRef.current.aspect,
-          fps: draftRef.current.fps
+          tracks: submitted.tracks,
+          clips: submitted.clips,
+          aspect: submitted.aspect,
+          fps: submitted.fps
         }
       })
-      if (result.project.timeline) setDraft(result.project.timeline)
-      setDirty(false)
-      setSaving(false)
-      savingRef.current = false
+      if (activeRef.current?.id === projectId) {
+        if (draftSeqRef.current === submittedSeq) {
+          if (result.project.timeline) setDraft(result.project.timeline)
+          setDirty(false)
+        } else {
+          // 保存期间继续拖动/修改：保留最新草稿，完成后再补存。
+          pendingSaveRef.current = true
+        }
+      }
       return true
     } catch {
-      setSaving(false)
-      savingRef.current = false
       return false
+    } finally {
+      if (activeRef.current?.id === projectId) setSaving(false)
+      savingRef.current = false
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false
+        window.setTimeout(() => void saveRef.current(), 60)
+      }
     }
   }, [run])
   const saveRef = useRef(saveTimeline)
@@ -6636,6 +6992,7 @@ export function TimelineView(): React.JSX.Element {
     if (!active) return
     if (lastProjectRef.current !== active.id) {
       lastProjectRef.current = active.id
+      timelineProjectRef.current = active.id
       setDraft(active.timeline)
       setTime(0)
       setDirty(false)
@@ -6869,7 +7226,7 @@ export function TimelineView(): React.JSX.Element {
   const render = async (quality: 'draft' | 'final'): Promise<void> => {
     if (dirty && !(await saveTimeline())) return
     try {
-      await run('render', { quality, subtitleMode: quality === 'draft' ? 'burn' : 'soft', aspect: draft.aspect })
+      await run('render', { quality, aspect: draft.aspect })
       notify('info', quality === 'draft' ? '动态分镜草稿已排队合成；进度可在交付页查看。' : '成片已排队合成。')
       setView('delivery')
     } catch {
@@ -7854,14 +8211,6 @@ export function StudioSettingsDialog({
                   <Button variant="secondary" size="sm" icon={<SlidersHorizontal size={12} />} onClick={() => { openAppSettings(); onClose() }}>打开 Agent 设置</Button>
                 </div>
                 <p className="studio-settings-hint">只迁移创作台作品、素材、历史版本与任务记录；Agent 对话、设置和密钥不移动。更换后应用会自动重启。</p>
-              </section>
-              <section className="studio-settings-security">
-                <ShieldCheck size={16} />
-                <div>
-                  <b>密钥只保存在本机</b>
-                  <p>作品、素材与任务记录都在本地；导出的文件不包含密钥、账号或旧应用数据。删除作品会先放进回收站。</p>
-                </div>
-                <span className="mono">只在本机</span>
               </section>
             </div>
           ) : null}
@@ -9187,7 +9536,7 @@ export function StudioDemo(): React.JSX.Element | null {
 
       <main className="sd-stage" aria-live="polite">
         {status !== 'ready' || !reel ? (
-          <LoadingAct label={`正在打开《逆行的伞》`} />
+          <LoadingAct label={`正在准备制作演示`} />
         ) : (
           <div className="sd-scene" key={`${runId}-${act}`}>
             {act === 0 ? <BriefAct reel={reel} playing={playing} /> : null}
@@ -9201,11 +9550,11 @@ export function StudioDemo(): React.JSX.Element | null {
         {ended ? (
           <div className="sd-end">
             <span className="sd-eyebrow">演示结束 · 这不是一段视频</span>
-            <b>《{reel?.title ?? '逆行的伞'}》已经躺在创作台里</b>
-            <p>可以直接播放、拖片段，或者对助手说“镜 07 重做，雨向统一”。</p>
+            <b>{projectId ? `《${reel?.title ?? '逆行的伞'}》已经躺在创作台里` : '下一步，从你的一句话开始'}</b>
+            <p>{projectId ? '可以直接播放、拖片段，或者对助手说“镜 07 重做，雨向统一”。' : '写下你想拍的故事，创作台会带你走完蓝图、分镜、声音与交付。'}</p>
             <div className="sd-end-actions">
-              <button type="button" className="sd-cta sd-open-sample" onClick={openSample} disabled={!projectId}>
-                在创作台打开样例 <ArrowRight size={14} aria-hidden />
+              <button type="button" className="sd-cta sd-open-sample" onClick={openSample}>
+                {projectId ? '在创作台打开样例' : '开始创作'} <ArrowRight size={14} aria-hidden />
               </button>
               <button type="button" className="sd-ghost" onClick={restart}>
                 再看一遍
@@ -9413,6 +9762,8 @@ export function StudioApp(): React.JSX.Element | null {
   const setSettingsOpen = useStudioStore((state) => state.setSettingsOpen)
   const [settingsTab, setSettingsTab] = useState<StudioSettingsTab>('models')
   const [settingsFocus, setSettingsFocus] = useState<'budget' | undefined>(undefined)
+  const [adaptOpen, setAdaptOpen] = useState(false)
+  const [adapting, setAdapting] = useState(false)
   const selectedShotId = useStudioStore((state) => state.selectedShotId)
   const selectShot = useStudioStore((state) => state.selectShot)
   const timelineInspectorOpen = useStudioStore((state) => state.timelineInspectorOpen)
@@ -9551,6 +9902,20 @@ export function StudioApp(): React.JSX.Element | null {
     setAssistantOpen(!assistantOpen)
   }
 
+  const adaptChapterCount = active ? active.chapters.filter((chapter) => chapter.content.trim()).length : 0
+  const startAdapt = async (): Promise<void> => {
+    if (adapting) return
+    setAdapting(true)
+    try {
+      const result = await run<{ message?: string }>('adapt-to-drama', {})
+      notify('success', result.message ?? '已改编为漫剧。')
+      setAdaptOpen(false)
+      setView('storyboard')
+    } finally {
+      setAdapting(false)
+    }
+  }
+
   return (
     <div className={`studio-root ${focusMode ? 'is-focus-mode' : ''} ${demoOpen ? 'is-demo' : ''}`} ref={containerRef}>
       <div className="studio-ambient" aria-hidden>
@@ -9575,18 +9940,14 @@ export function StudioApp(): React.JSX.Element | null {
           <button
             type="button"
             className="studio-canvas-link"
-            title="把已写正文改编为漫剧镜头计划"
-            onClick={() => {
-              void (async () => {
-                const result = await run<{ message?: string }>('adapt-to-drama', {})
-                notify('success', result.message ?? '已改编为漫剧。')
-                setView('storyboard')
-              })()
-            }}
+            title="把全部已写章节改编为漫剧镜头计划"
+            onClick={() => setAdaptOpen(true)}
+            disabled={adapting}
           >
             改成漫剧
           </button>
         ) : null}
+        <span className="studio-brand" aria-label="Morrow">Morrow</span>
         <div className="studio-topbar-spacer" />
         {active && !isHome ? (
           <div className="studio-budget" title="项目预算：已记录 / 上限">
@@ -9680,6 +10041,22 @@ export function StudioApp(): React.JSX.Element | null {
       <StudioSettingsDialog open={settingsOpen} onClose={() => { setSettingsOpen(false); setSettingsFocus(undefined) }} initialTab={settingsTab} initialFocus={settingsFocus} />
       <StudioGuide />
       <StudioDemo />
+      <Modal
+        open={adaptOpen}
+        onClose={() => { if (!adapting) setAdaptOpen(false) }}
+        title="改编为漫剧"
+        description={`将把全部 ${adaptChapterCount} 章已写正文交给模型，生成一部独立的单集漫剧分镜。原著后续修改不会自动同步。`}
+        width={520}
+        layer="overlay"
+        footer={
+          <div className="studio-modal-footer">
+            <Button variant="ghost" onClick={() => setAdaptOpen(false)} disabled={adapting}>取消</Button>
+            <Button variant="gold" loading={adapting} onClick={() => void startAdapt()}>开始改编</Button>
+          </div>
+        }
+      >
+        <p className="studio-hint">当前版本按单集改编，目标时长按章节数估算（约 {Math.max(24, adaptChapterCount * 8)} 秒）。改编后再在时间线与场次里组织节奏；需要分集时可拆成多个漫剧作品。</p>
+      </Modal>
       {open && loading ? <div className="studio-busy-line" aria-hidden /> : null}
     </div>
   )

@@ -46,19 +46,22 @@ npm run dev
 ```powershell
 npm run typecheck
 npm run audit:ui
+npm run test:suite
 npm run test:unit
 ```
 
-涉及 UI/真实链路的改动再跑受影响的 E2E：
+仓库只保留核心回归，`test:unit` 直接运行全部现存单元用例。改动模块可单独运行对应文件；涉及 UI/真实链路时跑受影响的 E2E：
 
 ```powershell
+npx vitest run tests/unit/studio-intent.test.ts
+npm run build
 npx playwright test tests/e2e/studio.spec.ts -g "35-studio-collaborator"
 ```
 
-发布门禁再跑完整 E2E 与打包冒烟：
+发布前运行全部核心检查与打包冒烟：
 
 ```powershell
-npm run test:e2e
+npm run verify
 npm run dist:final
 npm run smoke:packaged
 ```
@@ -66,6 +69,7 @@ npm run smoke:packaged
 - `typecheck` 必须 0 错误。
 - `audit:ui` 必须 0 裸排版值。
 - 单元测试必须全绿；失败的测试先查根因，不要跳过。
+- 核心功能用例使用 `@core:功能域` 标记，并登记到 `tests/core-coverage.json`。只保留这一套用例，登记检查会拒绝无标记用例及额外测试入口；数量预算与覆盖矩阵见 [测试说明](docs/TESTING.md)。
 - 打包后的便携 exe 必须能启动、渲染、截图；安装包用 electron-builder 的完整性检查。
 
 ## 5. 代码风格

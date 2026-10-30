@@ -2,8 +2,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, cpSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, relative, resolve, dirname } from 'node:path'
-import type { StudioAsset, StudioChapter, StudioDelivery, StudioJob, StudioKind, StudioProject, StudioProjectSummary, StudioStageId, StudioTimeline, StudioTrack, StudioTrashItem, StudioBlueprint, StudioBlueprintSceneSeed, StudioEngineStatus, StudioClip, StudioCheck, StudioVoice, StudioCharacter, StudioVoiceAudit, StudioVoiceProfile, StudioBlueprintUnit, StudioEpisode, StudioFact, StudioScene, StudioShot, StudioShotSeed, StudioStyleBible, StudioVolume, StudioChatMessage, StudioEditAction, StudioEditPlan, StudioMessageSource, StudioActionResult, StudioListResult, StudioCreateInput, StudioExportInput, StudioExportPreflight, StudioJobKind, StudioJobStatus, StudioRenderInput, StudioBlueprintPatch, StudioOutlinePatch, StudioChapterPatch, StudioShotPatch, StudioCharacterPatch, StudioPlacePatch, StudioRenameRequest } from '../shared/studio'
-import { STUDIO_SCHEMA_VERSION, computeProjectProgress, countWords, defaultStageStatuses, emptyStageStates, emptyCanvas, emptyTimeline, projectWordCount, timelineDuration, formatDuration, isStudioVideoDelivery, studioKindLabel, canTransitionStudioStatus, resolveMusicAsset, isFormalMusicAsset } from '../shared/studio'
+import type { StudioAsset, StudioChapter, StudioDelivery, StudioJob, StudioKind, StudioProject, StudioProjectSummary, StudioStageId, StudioTimeline, StudioTrack, StudioTrashItem, StudioBlueprint, StudioBlueprintSceneSeed, StudioEngineStatus, StudioClip, StudioCheck, StudioVoice, StudioCharacter, StudioVoiceAudit, StudioVoiceProfile, StudioBlueprintUnit, StudioEpisode, StudioFact, StudioScene, StudioShot, StudioShotSeed, StudioStyleBible, StudioVolume, StudioChatMessage, StudioEditAction, StudioEditPlan, StudioMessageSource, StudioActionResult, StudioListResult, StudioCreateInput, StudioExportInput, StudioExportPreflight, StudioJobKind, StudioJobStatus, StudioRenderInput, StudioBlueprintPatch, StudioOutlinePatch, StudioChapterPatch, StudioShotPatch, StudioCharacterPatch, StudioPlacePatch, StudioRenameRequest, StudioReviewCoverage } from '../shared/studio'
+import { STUDIO_SCHEMA_VERSION, computeProjectProgress, countWords, defaultStageStatuses, emptyStageStates, emptyCanvas, emptyTimeline, projectWordCount, timelineDuration, formatDuration, isStudioVideoDelivery, studioKindLabel, canTransitionStudioStatus, resolveMusicAsset, isFormalMusicAsset, hasEmbeddedVideoScore } from '../shared/studio'
 import { resolveDataDir, resolveStudioDataRoot, createPreviewUrl, studioDataDirInfo } from './workspace'
 import fixtures from './studio-demo-fixtures.json'
 import type { ChatMessage, ModelInfo, ProviderConfig, Settings, Usage } from '../shared/types'
@@ -24,9 +24,11 @@ import { sendFeatureEvent } from './feature-ipc'
 
 const PROJECT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{3,63}$/
 
-const MAX_PROJECT_BYTES = 64 * 1024 * 1024
+const MAX_PROJECT_BYTES = 512 * 1024 * 1024
 
 const MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024
+
+const MAX_PACKAGE_BYTES = 300 * 1024 * 1024
 
 const MAX_VERSIONS = 60
 
@@ -414,66 +416,184 @@ export class StudioStore {
     } catch {
       const backup = this.latestVersionFile(id)
       if (backup) {
-        parsed = JSON.parse(readFileSync(backup, 'utf8')) as StudioProject
-        this.save(parsed, '从最近版本恢复损坏的作品文件', { snapshot: false })
-        return this.normalizeProject(parsed)
+        const quarantine = join(this.projectDir(id), `corrupt-${new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)}`)
+        try {
+          mkdirSync(quarantine, { recursive: true })
+          copyFileSync(this.projectFile(id), join(quarantine, 'project.json'))
+          if (existsSync(this.chunksDir(id))) cpSync(this.chunksDir(id), join(quarantine, 'chunks'), { recursive: true })
+        } catch (err) {
+          throw new Error(`作品文件已损坏，但原工程无法隔离（${err instanceof Error ? err.message : String(err)}）；已停止自动恢复，避免覆盖原数据。`)
+        }
+        let backupParsed: StudioProject
+        try {
+          backupParsed = JSON.parse(readFileSync(backup, 'utf8')) as StudioProject
+        } catch {
+          throw new Error('作品文件已损坏，最近的历史版本也无法解析；原工程已隔离，请人工恢复。')
+        }
+        for (const chapter of backupParsed.chapters ?? []) {
+          if (chapter.content?.trim()) chapter.contentRef = undefined
+        }
+        this.save(backupParsed, '从最近版本恢复损坏的作品文件', { snapshot: false })
+        return this.normalizeProject(backupParsed)
       }
       throw new Error('作品文件已损坏，且没有可用的历史版本。')
     }
     if (!parsed || typeof parsed !== 'object' || !parsed.id) throw new Error('作品文件格式不正确。')
-    this.hydrateChapters(id, parsed)
-    return this.normalizeProject(parsed)
+    const chunkErrors = this.hydrateChapters(id, parsed)
+    if (!chunkErrors.length) return this.normalizeProject(parsed)
+    const backup = this.latestVersionFile(id)
+    const reason = chunkErrors.map((error) => error.message).join('；')
+    if (!backup) throw new Error(`${reason}，且没有可用的历史版本。`)
+    const quarantine = join(this.projectDir(id), `corrupt-${new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)}`)
+    try {
+      mkdirSync(quarantine, { recursive: true })
+      copyFileSync(this.projectFile(id), join(quarantine, 'project.json'))
+      if (existsSync(this.chunksDir(id))) cpSync(this.chunksDir(id), join(quarantine, 'chunks'), { recursive: true })
+    } catch (err) {
+      throw new Error(`${reason}；原工程与分片无法完整隔离（${err instanceof Error ? err.message : String(err)}），已停止自动恢复，避免覆盖原数据。`)
+    }
+    let restoredRaw: StudioProject
+    try {
+      restoredRaw = JSON.parse(readFileSync(backup, 'utf8')) as StudioProject
+    } catch {
+      throw new Error(`${reason}；最近的历史版本也无法解析。原工程与分片已隔离在 ${relative(this.projectDir(id), quarantine) || quarantine}，请人工恢复。`)
+    }
+    const restored = this.normalizeProject(restoredRaw)
+    const backupById = new Map(restored.chapters.map((chapter) => [chapter.id, chapter]))
+    const corruptIds = new Set(chunkErrors.map((error) => error.chapterId))
+    const lost: string[] = []
+    const restoredTitles: string[] = []
+    const chapters = parsed.chapters.map((chapter) => {
+      if (!corruptIds.has(chapter.id)) return chapter
+      const fromBackup = backupById.get(chapter.id)
+      const content = fromBackup?.content?.trim() ? fromBackup.content : chapter.content ?? ''
+      if (!fromBackup || !content.trim()) {
+        lost.push(chapter.title)
+        return chapter
+      }
+      restoredTitles.push(chapter.title)
+      return {
+        ...chapter,
+        content,
+        contentRef: undefined,
+        summary: fromBackup.summary ?? chapter.summary,
+        revision: Math.max(1, fromBackup.revision ?? chapter.revision),
+        updatedAt: fromBackup.updatedAt ?? chapter.updatedAt
+      }
+    })
+    if (lost.length) {
+      throw new Error(`${reason}；历史版本里也没有这些章节的完整正文（${lost.join('、')}）。原工程与分片已隔离在 ${relative(this.projectDir(id), quarantine) || quarantine}，未覆盖原数据，请人工核对。`)
+    }
+    const merged = this.normalizeProject({
+      ...restored,
+      ...parsed,
+      chapters,
+      revision: Math.max(restored.revision ?? 0, parsed.revision ?? 0) + 1
+    })
+    merged.checks = [
+      ...(merged.checks ?? []),
+      {
+        id: studioId('check'),
+        kind: 'missing',
+        level: 'warn',
+        title: '部分章节正文分片不完整，已只恢复这些章节',
+        detail: `${reason}。已恢复：${restoredTitles.join('、') || '无'}；其余 ${Math.max(0, parsed.chapters.length - restoredTitles.length)} 章保持当前版本（含最近保存的修改）。原工程与分片已隔离在 ${relative(this.projectDir(id), quarantine) || quarantine}，可人工核对。`,
+        createdAt: nowMs()
+      }
+    ]
+    this.save(merged, '仅恢复损坏章节', { snapshot: false })
+    return this.normalizeProject(merged)
   }
 
-  /** 超长章节按固定字符数分片；短章节仍内联在 project.json。 */
+  /**
+   * 超长章节按固定字符数分片。新内容写入按哈希命名的独立目录，只有 project.json 成功落盘后
+   * 才会在 pruneChunks 中清理旧目录；JSON 写入失败时旧 JSON 仍指向完整旧分片。
+   */
   private syncChapterChunks(projectId: string, chapter: StudioChapter): void {
     const safeId = chapter.id.replace(/[^a-zA-Z0-9_-]/g, '')
     if (!safeId) return
-    const dir = join(this.chunksDir(projectId), safeId)
+    const projectDir = this.projectDir(projectId)
     if (chapter.content.length < CHUNK_THRESHOLD) {
-      if (chapter.contentRef) {
-        rmSync(dir, { recursive: true, force: true })
-        delete chapter.contentRef
-      }
+      if (chapter.contentRef) delete chapter.contentRef
       return
     }
     const hash = createHash('sha256').update(chapter.content).digest('hex')
-    if (chapter.contentRef?.hash === hash && existsSync(dir)) return
-    mkdirSync(dir, { recursive: true })
+    const currentRef = chapter.contentRef
+    if (currentRef?.hash === hash && currentRef.path) {
+      const currentDir = resolve(projectDir, currentRef.path)
+      const rel = relative(projectDir, currentDir)
+      if (!rel.startsWith('..') && !isAbsolute(rel) && existsSync(currentDir)) return
+    }
+    const dir = join(this.chunksDir(projectId), safeId, hash.slice(0, 16))
+    const temp = `${dir}.tmp-${randomUUID()}`
+    rmSync(temp, { recursive: true, force: true })
+    mkdirSync(temp, { recursive: true })
     const chunks = Math.ceil(chapter.content.length / CHUNK_SIZE)
     for (let index = 0; index < chunks; index += 1) {
       const part = chapter.content.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE)
-      writeFileSync(join(dir, `part-${String(index + 1).padStart(4, '0')}.txt`), part, 'utf8')
+      writeFileSync(join(temp, `part-${String(index + 1).padStart(4, '0')}.txt`), part, 'utf8')
     }
-    for (const name of readdirSync(dir)) {
-      const match = /^part-(\d+)\.txt$/.exec(name)
-      if (!match || Number(match[1]) > chunks) rmSync(join(dir, name), { force: true })
-    }
+    rmSync(dir, { recursive: true, force: true })
+    renameSync(temp, dir)
     chapter.contentRef = {
-      path: `chunks/${safeId}`,
+      path: relative(projectDir, dir).replace(/\\/g, '/'),
       chunkSize: CHUNK_SIZE,
       chunks,
       hash
     }
   }
 
-  private hydrateChapters(projectId: string, project: StudioProject): void {
-    if (!Array.isArray(project.chapters)) return
+  private hydrateChapters(projectId: string, project: StudioProject): Array<{ chapterId: string; title: string; message: string }> {
+    const errors: Array<{ chapterId: string; title: string; message: string }> = []
+    if (!Array.isArray(project.chapters)) return errors
+    const projectDir = this.projectDir(projectId)
     for (const chapter of project.chapters) {
       if (!chapter.contentRef?.path) continue
       const safeId = chapter.id.replace(/[^a-zA-Z0-9_-]/g, '')
-      const dir = join(this.chunksDir(projectId), safeId)
-      if (!existsSync(dir)) {
-        if (chapter.content?.trim()) continue
-        throw new Error(`章节「${chapter.title}」的分片文件丢失，请从版本历史恢复。`)
+      const candidates = [chapter.contentRef.path, `chunks/${safeId}`]
+      let dir = ''
+      for (const candidate of candidates) {
+        if (!candidate) continue
+        const absolute = resolve(projectDir, candidate)
+        const rel = relative(projectDir, absolute)
+        if (rel.startsWith('..') || isAbsolute(rel)) continue
+        if (existsSync(absolute)) {
+          dir = absolute
+          break
+        }
       }
-      const files = readdirSync(dir).filter((name) => /^part-\d+\.txt$/.test(name)).sort()
-      if (!files.length) {
+      if (!dir) {
         if (chapter.content?.trim()) continue
-        throw new Error(`章节「${chapter.title}」的分片为空，请从版本历史恢复。`)
+        errors.push({ chapterId: chapter.id, title: chapter.title, message: `章节「${chapter.title}」的分片文件丢失` })
+        continue
       }
-      chapter.content = files.map((name) => readFileSync(join(dir, name), 'utf8')).join('')
+      try {
+        const files = readdirSync(dir).filter((name) => /^part-\d+\.txt$/.test(name)).sort()
+        if (!files.length) {
+          if (chapter.content?.trim()) continue
+          throw new Error(`章节「${chapter.title}」的正文分片为空`)
+        }
+        const expectedChunks = Number(chapter.contentRef.chunks)
+        const indices = files.map((name) => Number(/^part-(\d+)\.txt$/.exec(name)?.[1] ?? 0))
+        const contiguous = indices.every((value, index) => value === index + 1)
+        if ((Number.isFinite(expectedChunks) && expectedChunks > 0 && files.length !== expectedChunks) || !contiguous) {
+          throw new Error(
+            `章节「${chapter.title}」的正文分片不完整（应有 ${Number.isFinite(expectedChunks) && expectedChunks > 0 ? expectedChunks : '若干'} 块，实际 ${files.length} 块，且编号需连续）`
+          )
+        }
+        const content = files.map((name) => readFileSync(join(dir, name), 'utf8')).join('')
+        if (chapter.contentRef.hash) {
+          const actualHash = createHash('sha256').update(content).digest('hex')
+          if (actualHash !== chapter.contentRef.hash) {
+            throw new Error(`章节「${chapter.title}」的正文分片校验失败，内容与保存时不一致`)
+          }
+        }
+        chapter.content = content
+      } catch (err) {
+        errors.push({ chapterId: chapter.id, title: chapter.title, message: err instanceof Error ? err.message : String(err) })
+      }
     }
+    return errors
   }
 
   private serializedProject(project: StudioProject): StudioProject {
@@ -486,11 +606,38 @@ export class StudioStore {
   }
 
   private pruneChunks(projectId: string, project: StudioProject): void {
-    const dir = this.chunksDir(projectId)
-    if (!existsSync(dir)) return
-    const ids = new Set(project.chapters.filter((chapter) => chapter.contentRef).map((chapter) => chapter.id.replace(/[^a-zA-Z0-9_-]/g, '')))
-    for (const name of readdirSync(dir)) {
-      if (!ids.has(name)) rmSync(join(dir, name), { recursive: true, force: true })
+    const root = this.chunksDir(projectId)
+    if (!existsSync(root)) return
+    const projectDir = this.projectDir(projectId)
+    const referenced = new Set(
+      project.chapters
+        .filter((chapter) => chapter.contentRef?.path)
+        .map((chapter) => resolve(projectDir, chapter.contentRef!.path))
+    )
+    try {
+      for (const safeId of readdirSync(root)) {
+        const chapterDir = join(root, safeId)
+        let stat
+        try {
+          stat = statSync(chapterDir)
+        } catch {
+          continue
+        }
+        if (!stat.isDirectory()) continue
+        if (referenced.has(resolve(chapterDir))) continue
+        let kept = false
+        for (const name of readdirSync(chapterDir)) {
+          const child = join(chapterDir, name)
+          if (referenced.has(resolve(child))) {
+            kept = true
+            continue
+          }
+          rmSync(child, { recursive: true, force: true })
+        }
+        if (!kept) rmSync(chapterDir, { recursive: true, force: true })
+      }
+    } catch {
+      // 清理失败只留下无用分片，不影响已经落盘的正文
     }
   }
 
@@ -504,8 +651,12 @@ export class StudioStore {
     project.timeline.durationSec = timelineDuration(project.timeline)
     for (const chapter of project.chapters) this.syncChapterChunks(project.id, chapter)
     if (options.snapshot) this.writeVersion(project, reason)
-    this.pruneChunks(project.id, project)
-    atomicWrite(this.projectFile(project.id), `${JSON.stringify(this.serializedProject(project), null, 2)}\n`)
+    this.writeProjectPayload(project)
+    try {
+      this.pruneChunks(project.id, project)
+    } catch {
+      // 清理旧分片失败不影响已经提交的保存
+    }
     this.writeIndex(project)
     return project
   }
@@ -514,9 +665,21 @@ export class StudioStore {
   savePassive(project: StudioProject): void {
     project.updatedAt = nowMs()
     for (const chapter of project.chapters) this.syncChapterChunks(project.id, chapter)
-    this.pruneChunks(project.id, project)
-    atomicWrite(this.projectFile(project.id), `${JSON.stringify(this.serializedProject(project), null, 2)}\n`)
+    this.writeProjectPayload(project)
+    try {
+      this.pruneChunks(project.id, project)
+    } catch {
+      // 清理旧分片失败不影响已经提交的保存
+    }
     this.writeIndex(project)
+  }
+
+  private writeProjectPayload(project: StudioProject): void {
+    const payload = `${JSON.stringify(this.serializedProject(project), null, 2)}\n`
+    if (Buffer.byteLength(payload, 'utf8') > MAX_PROJECT_BYTES) {
+      throw new Error(`作品数据已超过 ${Math.round(MAX_PROJECT_BYTES / 1024 / 1024)}MB 的打开上限；本次保存没有覆盖原稿。请先清理旧候选/历史版本或拆分作品，避免保存后无法打开。`)
+    }
+    atomicWrite(this.projectFile(project.id), payload)
   }
 
   writeVersion(project: StudioProject, reason: string): string {
@@ -524,7 +687,11 @@ export class StudioStore {
     mkdirSync(dir, { recursive: true })
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
     const file = join(dir, `${String(project.revision + 1).padStart(6, '0')}-${stamp}-${studioId('v').slice(2, 8)}.json`)
-    atomicWrite(file, `${JSON.stringify(project, null, 2)}\n`)
+    const payload = `${JSON.stringify(project, null, 2)}\n`
+    if (Buffer.byteLength(payload, 'utf8') > MAX_PROJECT_BYTES) {
+      throw new Error(`这次历史版本超过 ${Math.round(MAX_PROJECT_BYTES / 1024 / 1024)}MB，无法安全保存；当前作品未受影响。请先清理历史或拆分作品。`)
+    }
+    atomicWrite(file, payload)
     try {
       writeFileSync(join(dir, 'index.jsonl'), `${JSON.stringify({ file: basename(file), reason, at: nowMs(), revision: project.revision })}\n`, { flag: 'a' })
     } catch {
@@ -1468,7 +1635,7 @@ export function buildTimelineFromProject(project: StudioProject): StudioTimeline
         duration,
         srcIn: 0,
         speed: 1,
-        volume: 1,
+        volume: 0.55,
         transition: shot.number === 1 || shot.number === shots.length ? 'fade-both' : 'cut'
       })
     }
@@ -1916,7 +2083,11 @@ function runsOf(values: string[]): Array<{ value: string; count: number }> {
 const DEMO_LOG_LINE = '一个雨夜，修伞的女孩捡到一把会让时间倒流的伞。她每修好一把伞，就会失去一段记忆。'
 
 function demoAssetDir(): string | null {
-  const candidates = [join(process.resourcesPath, 'studio-demo'), join(app.getAppPath(), 'resources', 'studio-demo')]
+  const candidates = [
+    ...(typeof process.resourcesPath === 'string' ? [join(process.resourcesPath, 'studio-demo')] : []),
+    join(app.getAppPath(), 'tests', 'fixtures', 'studio-demo'),
+    join(app.getAppPath(), 'resources', 'studio-demo')
+  ]
   return candidates.find((dir) => existsSync(dir)) ?? null
 }
 
@@ -1962,22 +2133,24 @@ function addDemoAsset(
   dir: string,
   file: string,
   title: string,
-  tags: string[]
+  tags: string[],
+  thumbFile?: string
 ): StudioAsset | null {
   const path = join(dir, file)
   if (!existsSync(path)) return null
   try {
     const ext = file.split('.').pop() ?? ''
     const kind = ['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? 'image' : ['mp4', 'webm', 'mov'].includes(ext) ? 'video' : ['wav', 'mp3'].includes(ext) ? 'audio' : 'other'
-    const bytes = require('node:fs').readFileSync(path) as Buffer
-    const thumb = kind === 'image' || kind === 'video' ? thumbFor(path, project.id, store) : null
+    const bytes = readFileSync(path)
+    const presetThumb = thumbFile && existsSync(join(dir, thumbFile)) ? readFileSync(join(dir, thumbFile)) : null
+    const thumb = kind === 'image' || kind === 'video' ? presetThumb ?? thumbFor(path, project.id, store) : null
     return store.addAsset(project, {
       bytes,
       title,
       kindHint: kind,
       tags,
       mime: ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'mp4' ? 'video/mp4' : ext === 'wav' ? 'audio/wav' : ext === 'mp3' ? 'audio/mpeg' : 'application/octet-stream',
-      origin: { source: 'demo' },
+      origin: { source: 'demo', ...(kind === 'video' ? { model: 'MiniMax-H3 随包样例' } : {}) },
       metadata: kind === 'audio' ? { durationSec: probeDuration(path) } : {},
       ...(thumb ? { thumbBytes: thumb } : {})
     })
@@ -1986,7 +2159,15 @@ function addDemoAsset(
   }
 }
 
-function attachDeliveryFromFile(store: StudioStore, project: StudioProject, dir: string, file: string, label: string, kind: StudioDelivery['kind']): void {
+function attachDeliveryFromFile(
+  store: StudioStore,
+  project: StudioProject,
+  dir: string,
+  file: string,
+  label: string,
+  kind: StudioDelivery['kind'],
+  meta: StudioDelivery['meta'] = {}
+): void {
   const source = join(dir, file)
   if (!existsSync(source)) return
   const exportsDir = store.exportsDir(project.id)
@@ -2003,7 +2184,7 @@ function attachDeliveryFromFile(store: StudioStore, project: StudioProject, dir:
     bytes: statSync(target).size,
     sha256: sha256File(target),
     createdAt: nowMs(),
-    meta: { demo: true }
+    meta: { demo: true, ...meta }
   }
   project.deliveries.unshift(delivery)
 }
@@ -2059,6 +2240,7 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
   project.demo = true
   project.title = '逆行的伞'
   const images: StudioAsset[] = []
+  const videos: StudioAsset[] = []
   if (dir) {
     const files = readdirSync(dir)
       .filter((file) => /^drama-\d+\.(png|jpg|jpeg)$/i.test(file))
@@ -2066,6 +2248,19 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
     for (const [index, file] of files.entries()) {
       const asset = addDemoAsset(store, project, dir, file, `样例分镜 ${String(index + 1).padStart(2, '0')}`, ['image', 'storyboard', 'demo'])
       if (asset) images.push(asset)
+    }
+    for (let index = 1; index <= project.shots.length; index += 1) {
+      const number = String(index).padStart(2, '0')
+      const video = addDemoAsset(
+        store,
+        project,
+        dir,
+        `video-${number}.mp4`,
+        `样例真实镜头 ${number}`,
+        ['video', 'storyboard', 'demo', 'real'],
+        `drama-${number}.jpg`
+      )
+      if (video) videos.push(video)
     }
   }
   for (const [index, shot] of project.shots.entries()) {
@@ -2080,6 +2275,20 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
         createdAt: nowMs(),
         adopted: true
       })
+    }
+    const video = videos[index]
+    if (video) {
+      shot.videoAssetId = video.id
+      shot.videoCandidates.unshift({
+        id: studioId('cand'),
+        assetId: video.id,
+        label: '样例真实镜头',
+        source: 'import',
+        createdAt: nowMs(),
+        adopted: true
+      })
+      shot.status = 'done'
+    } else if (asset) {
       shot.status = 'done'
     }
   }
@@ -2097,15 +2306,18 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
     if (refs.grandma) project.characters[2].refAssetIds = [refs.grandma.id]
   }
 
+  const localVoices = localTtsStatus().modelReady ? localTtsVoices() : []
+  const localVoice = (id: string): string => localVoices.find((voice) => voice.id === `qwen:${id}`)?.id ?? ''
   const voiceNames = listSystemVoices().voices
   const zhVoice = voiceNames.find((voice) => voice.culture.startsWith('zh'))?.name
   const pickVoice = (needle: string): string => voiceNames.find((voice) => voice.name.toLowerCase().includes(needle))?.name ?? zhVoice ?? ''
-  const linVoice = pickVoice('huihui')
-  const boyVoice = pickVoice('kangkang')
-  const grandmaVoice = pickVoice('yaoyao')
+  const linVoice = localVoice('vivian') || pickVoice('huihui')
+  const boyVoice = localVoice('dylan') || pickVoice('kangkang')
+  const grandmaVoice = localVoice('serena') || pickVoice('yaoyao')
   if (project.characters[0]) project.characters[0].voiceId = linVoice
   if (project.characters[1]) project.characters[1].voiceId = boyVoice
   if (project.characters[2]) project.characters[2].voiceId = grandmaVoice
+  project.runtime.tts = { mode: 'system', model: localVoices.length ? 'qwen3-tts' : 'system', voice: linVoice }
   if (dir) {
     for (const shot of project.shots) {
       if (!shot.dialogue.trim()) continue
@@ -2113,13 +2325,10 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
       const voice = addDemoAsset(store, project, dir, file, `样例配音 · 第 ${shot.number} 镜`, ['voice', 'demo', `shot:${shot.id}`])
       if (voice) {
         shot.voiceAssetId = voice.id
-        shot.voiceId = project.characters.find((character) => character.name === shot.speaker)?.voiceId ?? zhVoice ?? ''
+        shot.voiceId = project.characters.find((character) => character.name === shot.speaker)?.voiceId ?? linVoice ?? ''
       }
     }
-    const music = addDemoAsset(store, project, dir, 'music-rain.wav', '配乐 · 雨幕下的钢琴', ['music', 'demo'])
-    if (music) {
-      project.stages.music = { status: 'done', updatedAt: nowMs(), message: '样例配乐已就位', progress: 100 }
-    }
+    project.stages.music = { status: 'done', updatedAt: nowMs(), message: '配乐由 MiniMax-H3 随画面生成（无人声）', progress: 100 }
     for (const [file, title, tag] of [
       ['sfx-rain.wav', '音效 · 雨声', 'rain'],
       ['sfx-umbrella.wav', '音效 · 伞骨', 'umbrella'],
@@ -2129,30 +2338,63 @@ function seedDrama(store: StudioStore, dir: string | null): StudioProject {
     }
   }
   project.timeline = buildTimelineFromProject(project)
-  project.timeline.version = 4
+  project.timeline.version = 5
   project.stage = 'timeline'
+  if (project.episodes[0]) {
+    project.episodes[0].title = '第一集 · 雨夜的伞'
+    project.episodes[0].synopsis = '雨夜，林晚捡到一把会让时间倒流的黑伞；修好它的人，会失去一段记忆。清晨纸鹤飞来，第二集从这里接续。'
+    project.episodes[0].durationSec = project.timeline.durationSec
+    project.episodes[0].updatedAt = nowMs()
+  }
   markStage(project, 'blueprint', 'done', '蓝图已确认', 100)
   markStage(project, 'outline', 'done', '12 镜剧本与节拍', 100)
   markStage(project, 'storyboard', 'done', '12 镜已就位', 100)
-  markStage(project, 'visuals', images.length ? 'done' : 'ready', images.length ? '12 镜全部有画面' : '等待生成画面', images.length ? 100 : 0)
-  markStage(project, 'voice', 'done', '7 段对白已配音', 100)
-  markStage(project, 'music', 'done', '配乐与音效已就位', 100)
-  markStage(project, 'timeline', 'done', '时间线 v4 · 96 秒', 100)
-  markStage(project, 'review', 'ready', '可以运行检查', 0)
+  markStage(project, 'visuals', videos.length ? 'done' : images.length ? 'done' : 'ready', videos.length ? '12 镜真实视频（MiniMax-H3）' : images.length ? '12 镜全部有画面' : '等待生成画面', videos.length || images.length ? 100 : 0)
+  markStage(project, 'voice', 'done', '7 段对白 · 本地 Qwen3-TTS', 100)
+  markStage(project, 'music', 'done', '配乐由 MiniMax-H3 随画面生成', 100)
+  markStage(project, 'timeline', 'done', '时间线 v5 · 96 秒 · 12 段真实镜头', 100)
+  markStage(project, 'review', 'done', '样例成片发布检查通过', 100)
+  project.checks = [{
+    id: studioId('check'),
+    kind: 'quality',
+    level: 'info',
+    title: '样例成片发布检查',
+    detail: '12 镜 MiniMax-H3 画面与配乐、7 段 Qwen3-TTS 配音、外挂 SRT 字幕和 1080p 成片均已就绪；逐镜画面与时间线仍可继续编辑。',
+    resolved: true,
+    createdAt: nowMs()
+  }]
   if (dir) {
-    attachDeliveryFromFile(store, project, dir, 'demo-draft.mp4', '样例动态分镜草稿 · 96 秒', 'mp4')
-    if (project.deliveries.length) markStage(project, 'delivery', 'done', '样例草稿已就绪', 100)
+    attachDeliveryFromFile(
+      store,
+      project,
+      dir,
+      'demo-final.mp4',
+      '《逆行的伞》1080p 成片 · 96 秒',
+      'mp4',
+      {
+        quality: 'final',
+        resolution: '1080p',
+        width: 1920,
+        height: 1080,
+        durationSec: 96,
+        subtitles: 'external',
+        timelineVersion: project.timeline.version,
+        renderKey: timelineRenderKey(project)
+      }
+    )
+    attachDeliveryFromFile(store, project, dir, 'demo-final.srt', '《逆行的伞》外挂字幕 · 简体中文', 'srt')
+    if (!project.deliveries.length) attachDeliveryFromFile(store, project, dir, 'demo-draft.mp4', '样例动态分镜草稿 · 96 秒', 'mp4')
+    if (project.deliveries.length) markStage(project, 'delivery', 'done', '1080p 成片已就绪', 100)
     else markStage(project, 'delivery', 'ready', '可以合成草稿', 0)
   }
-  if (dir) attachDeliveryFromFile(store, project, dir, 'demo-draft-poster.jpg', '成片预览帧', 'cover')
   project.runtime.imageModelNote = dir ? '样例画面（随包）' : '未配置'
-  project.runtime.videoModelNote = dir ? '可按镜升级为视频' : '未配置'
+  project.runtime.videoModelNote = dir ? '随包真实视频（MiniMax-H3）' : '未配置'
   project.runtime.textModelNote = '示例蓝图'
   project.messages.push(
     {
       id: studioId('msg'),
       role: 'assistant',
-      text: '这是《逆行的伞》的完整样例：蓝图、12 镜、配音、配乐和时间线都已经就位。你可以直接播放、拖动片段，或说“镜 03 慢 20%，雨声压低一点”试试大白话改片。',
+      text: '这是《逆行的伞》的完整真实漫剧样例：12 镜 MiniMax-H3 画面与配乐（无人声、无字幕）、7 段本地 Qwen3-TTS 配音、外挂 SRT 字幕和 1080p 成片都已就绪。你可以直接播放交付页成片、在时间线拖动片段，或说“镜 03 慢 20%，雨声压低一点”继续改片；结尾纸鹤是第二集钩子。',
       createdAt: nowMs()
     },
     {
@@ -2345,21 +2587,257 @@ function seedShort(store: StudioStore, dir: string | null): StudioProject {
 /** 同步播种：素材只从随包目录复制，不访问网络。 */
 export function ensureDemoProjects(store: StudioStore): void {
   const marker = join(store.root, '.demo-seeded-v1')
+  if (!existsSync(marker)) {
+    const dir = demoAssetDir()
+    try {
+      seedDrama(store, dir)
+      seedNovel(store, dir)
+      seedShort(store, dir)
+      writeFileSync(marker, `${JSON.stringify({ seededAt: new Date().toISOString(), assets: Boolean(dir) })}\n`, 'utf8')
+    } catch {
+      // 单个样例失败不阻断创作台；下次打开会重试
+    }
+  }
+  upgradeDemoFilm(store)
+  upgradeDemoRealFilm(store)
+}
+
+/** 已安装用户的内置样例升级：把 12 张静图换成随包动态镜头，未改过时间线时补 1080p 成片。 */
+function upgradeDemoFilm(store: StudioStore): void {
+  const marker = join(store.root, '.demo-film-v2')
   if (existsSync(marker)) return
   const dir = demoAssetDir()
+  if (!dir) return
+  const summary = store.summaries().find((item) => item.kind === 'drama' && item.title === '逆行的伞')
+  if (!summary) {
+    writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), reason: 'no-demo' })}\n`, 'utf8')
+    return
+  }
   try {
-    seedDrama(store, dir)
-    seedNovel(store, dir)
-    seedShort(store, dir)
-    writeFileSync(marker, `${JSON.stringify({ seededAt: new Date().toISOString(), assets: Boolean(dir) })}\n`, 'utf8')
+    const project = store.readProject(summary.id)
+    if (!project.demo || project.kind !== 'drama' || project.title !== '逆行的伞') {
+      writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), reason: 'not-demo' })}\n`, 'utf8')
+      return
+    }
+    let changed = false
+    for (const shot of project.shots) {
+      const number = String(shot.number).padStart(2, '0')
+      const video = addDemoAsset(
+        store,
+        project,
+        dir,
+        `video-${number}.mp4`,
+        `样例真实镜头 ${number}`,
+        ['video', 'storyboard', 'demo', 'real'],
+        `drama-${number}.jpg`
+      )
+      if (!video) continue
+      if (shot.videoAssetId !== video.id) {
+        shot.videoAssetId = video.id
+        if (!shot.videoCandidates.some((candidate) => candidate.assetId === video.id)) {
+          shot.videoCandidates.unshift({ id: studioId('cand'), assetId: video.id, label: '样例真实镜头', source: 'import', createdAt: nowMs(), adopted: true })
+        }
+        shot.status = 'done'
+        changed = true
+      }
+    }
+    const untouchedTimeline = project.timeline.version === 4 && Math.abs(project.timeline.durationSec - 96) < 0.1
+    for (const clip of project.timeline.clips) {
+      if (!clip.shotId || clip.kind !== 'video') continue
+      const shot = project.shots.find((item) => item.id === clip.shotId)
+      if (shot?.videoAssetId && clip.assetId !== shot.videoAssetId) {
+        clip.assetId = shot.videoAssetId
+        changed = true
+      }
+    }
+    if (project.episodes[0] && !project.episodes[0].title.startsWith('第一集')) {
+      project.episodes[0].title = '第一集 · 雨夜的伞'
+      project.episodes[0].synopsis = '雨夜，林晚捡到一把会让时间倒流的黑伞；修好它的人，会失去一段记忆。清晨纸鹤飞来，第二集从这里接续。'
+      changed = true
+    }
+    if (untouchedTimeline) {
+      project.timeline.version = Math.max(project.timeline.version, 5)
+      if (!project.deliveries.some((delivery) => delivery.label.includes('1080p'))) {
+        attachDeliveryFromFile(
+          store,
+          project,
+          dir,
+          'demo-final.mp4',
+          '《逆行的伞》1080p 成片 · 96 秒',
+          'mp4',
+          {
+            quality: 'final',
+            resolution: '1080p',
+            width: 1920,
+            height: 1080,
+            durationSec: 96,
+            subtitles: 'external',
+            timelineVersion: 5,
+            renderKey: timelineRenderKey(project)
+          }
+        )
+      }
+      markStage(project, 'visuals', 'done', '12 镜动态漫画面（随包）', 100)
+      markStage(project, 'timeline', 'done', '时间线 v5 · 96 秒 · 12 段动态镜头', 100)
+      markStage(project, 'review', 'done', '样例成片发布检查通过', 100)
+      markStage(project, 'delivery', 'done', '1080p 成片已就绪', 100)
+      if (!project.checks.some((check) => check.title === '样例成片发布检查')) {
+        project.checks.push({
+          id: studioId('check'),
+          kind: 'quality',
+          level: 'info',
+          title: '样例成片发布检查',
+          detail: '12 镜动态漫画面、7 段配音、配乐与音效、外挂字幕和 1080p 成片均已就绪；逐镜画面与时间线仍可继续编辑。',
+          resolved: true,
+          createdAt: nowMs()
+        })
+      }
+      changed = true
+    }
+    if (!project.messages.some((message) => message.text.includes('1080p 成片都已就绪'))) {
+      project.messages.push(assistantMessage('assistant', '内置样例已升级为动态漫：12 镜动态镜头、7 段配音、配乐/音效、外挂字幕和 1080p 成片都已就绪；逐镜画面与时间线仍可继续编辑。'))
+      changed = true
+    }
+    project.runtime.videoModelNote = '随包动态漫（12 镜）'
+    if (changed) store.save(project, '升级内置样例为动态漫成片', { snapshot: true })
+    writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), changed })}\n`, 'utf8')
   } catch {
-    // 单个样例失败不阻断创作台；下次打开会重试
+    // 升级失败不阻断作品打开；下次启动再试
+  }
+}
+
+/** r058：把旧样例的运镜静图/合成成片替换为本地 MiniMax-H3 真实镜头与成片；保留用户自己替换过的镜头。 */
+function upgradeDemoRealFilm(store: StudioStore): void {
+  const marker = join(store.root, '.demo-real-film-v2')
+  if (existsSync(marker)) return
+  const dir = demoAssetDir()
+  if (!dir) return
+  const summary = store.summaries().find((item) => item.kind === 'drama' && item.title === '逆行的伞')
+  if (!summary) {
+    writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), reason: 'no-demo' })}
+`, 'utf8')
+    return
+  }
+  try {
+    const project = store.readProject(summary.id)
+    if (!project.demo || project.kind !== 'drama' || project.title !== '逆行的伞') {
+      writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), reason: 'not-demo' })}
+`, 'utf8')
+      return
+    }
+    let changed = false
+    const oldFinalIds = new Set(project.deliveries.filter((delivery) => (delivery.kind === 'mp4' || delivery.kind === 'srt') && (delivery.meta?.demo === true || delivery.label.includes('1080p') || delivery.label.includes('字幕'))).map((delivery) => delivery.id))
+    for (const shot of project.shots) {
+      const number = String(shot.number).padStart(2, '0')
+      const previous = shot.videoAssetId ? project.assets.find((asset) => asset.id === shot.videoAssetId) : undefined
+      if (previous && previous.origin?.source !== 'demo') continue
+      const video = addDemoAsset(
+        store,
+        project,
+        dir,
+        `video-${number}.mp4`,
+        `样例真实镜头 ${number}`,
+        ['video', 'storyboard', 'demo', 'real'],
+        `drama-${number}.jpg`
+      )
+      if (!video) continue
+      if (shot.videoAssetId !== video.id) {
+        shot.videoAssetId = video.id
+        if (!shot.videoCandidates.some((candidate) => candidate.assetId === video.id)) {
+          shot.videoCandidates.unshift({ id: studioId('cand'), assetId: video.id, label: '真实视频镜头', source: 'import', createdAt: nowMs(), adopted: true })
+        }
+        shot.status = 'done'
+        changed = true
+      }
+    }
+    const allReal = project.shots.every((shot) => {
+      const asset = project.assets.find((item) => item.id === shot.videoAssetId)
+      return asset?.origin?.source === 'demo' && asset.tags.includes('real')
+    })
+    const untouched = allReal && project.timeline.version === 5 && project.shots.length === 12 && Math.abs(project.timeline.durationSec - 96) < 0.1 && project.timeline.clips.filter((clip) => clip.kind === 'video').length === 12
+    if (untouched) {
+      // 默认样例：把旧示范配音/配乐也换成随包真实生成音频，再整体重建时间线。
+      for (const shot of project.shots) {
+        if (!shot.dialogue.trim()) continue
+        const number = String(shot.number).padStart(2, '0')
+        const voice = addDemoAsset(store, project, dir, `voice-${number}.wav`, `样例配音 · 第 ${shot.number} 镜`, ['voice', 'demo', 'real', `shot:${shot.id}`])
+        const currentVoice = project.assets.find((asset) => asset.id === shot.voiceAssetId)
+        if (voice && (!currentVoice || currentVoice.origin?.source === 'demo')) {
+          if (shot.voiceAssetId !== voice.id) changed = true
+          shot.voiceAssetId = voice.id
+        }
+      }
+      const localVoices = localTtsStatus().modelReady ? localTtsVoices() : []
+      if (localVoices.length) {
+        const pick = (id: string): string => localVoices.find((voice) => voice.id === `qwen:${id}`)?.id ?? ''
+        const [lead, boy, grandma] = project.characters
+        if (lead && !(lead.voiceId ?? '').startsWith('qwen:')) lead.voiceId = pick('vivian') || lead.voiceId || ''
+        if (boy && !(boy.voiceId ?? '').startsWith('qwen:')) boy.voiceId = pick('dylan') || boy.voiceId || ''
+        if (grandma && !(grandma.voiceId ?? '').startsWith('qwen:')) grandma.voiceId = pick('serena') || grandma.voiceId || ''
+        project.runtime.tts = { mode: 'system', model: 'qwen3-tts', voice: pick('vivian') || project.runtime.tts?.voice || '' }
+      }
+      project.assets = project.assets.filter((asset) => !(asset.kind === 'audio' && asset.tags?.includes('music') && asset.origin?.source === 'demo'))
+      project.musicAssetId = null
+      project.timeline = buildTimelineFromProject(project)
+      project.timeline.version = 6
+      markStage(project, 'timeline', 'done', '时间线 v6 · 96 秒 · 12 段真实镜头', 100)
+    } else {
+      for (const clip of project.timeline.clips) {
+        if (!clip.shotId || clip.kind !== 'video') continue
+        const shot = project.shots.find((item) => item.id === clip.shotId)
+        const current = project.assets.find((asset) => asset.id === clip.assetId)
+        if (shot?.videoAssetId && current?.origin?.source === 'demo' && clip.assetId !== shot.videoAssetId) {
+          clip.assetId = shot.videoAssetId
+          changed = true
+        }
+      }
+    }
+    project.deliveries = project.deliveries.filter((delivery) => !oldFinalIds.has(delivery.id))
+    if (oldFinalIds.size) changed = true
+    if (untouched) {
+      attachDeliveryFromFile(
+        store,
+        project,
+        dir,
+        'demo-final.mp4',
+        '《逆行的伞》1080p 成片 · 96 秒',
+        'mp4',
+        {
+          quality: 'final',
+          resolution: '1080p',
+          width: 1920,
+          height: 1080,
+          durationSec: 96,
+          subtitles: 'external',
+          timelineVersion: project.timeline.version,
+          renderKey: timelineRenderKey(project)
+        }
+      )
+      attachDeliveryFromFile(store, project, dir, 'demo-final.srt', '《逆行的伞》外挂字幕 · 简体中文', 'srt')
+      markStage(project, 'visuals', 'done', '12 镜真实视频（MiniMax-H3）', 100)
+      markStage(project, 'voice', 'done', '7 段对白 · 本地 Qwen3-TTS', 100)
+      markStage(project, 'music', 'done', '配乐由 MiniMax-H3 随画面生成', 100)
+      markStage(project, 'review', 'done', '样例成片发布检查通过', 100)
+      markStage(project, 'delivery', 'done', '1080p 成片与外挂字幕已就绪', 100)
+      changed = true
+    } else if (oldFinalIds.size) {
+      markStage(project, 'delivery', 'ready', '旧样例成片已移除；请按当前时间线重新合成', 0)
+    }
+    project.runtime.videoModelNote = '随包真实视频（MiniMax-H3）'
+    if (!project.messages.some((message) => message.text.includes('真实视频镜头'))) {
+      project.messages.push(assistantMessage('assistant', '内置样例已替换为本地 MiniMax-H3 生成的真实镜头：画面与纯器乐配乐由 H3 生成，人物配音由本地 Qwen3-TTS 合成，字幕以 SRT 外挂、不压画面。可直接播放交付页成片，也可逐镜替换、重做或在原剧本上继续开发下一集。'))
+      changed = true
+    }
+    if (changed) store.save(project, '替换内置样例为真实视频', { snapshot: true })
+    writeFileSync(marker, `${JSON.stringify({ upgradedAt: new Date().toISOString(), changed })}
+`, 'utf8')
+  } catch {
+    // 升级失败不阻断作品打开；下次启动再试
   }
 }
 
 export interface RenderOptions {
   quality: 'draft' | 'final'
-  subtitleMode: 'soft' | 'burn'
   aspect?: '16:9' | '9:16' | '1:1'
   allowMissing?: boolean
   format?: 'mp4' | 'mov' | 'mkv' | 'webm'
@@ -2377,7 +2855,7 @@ export interface RenderResult {
   bytes: number
   missingShots: number[]
   placeholders: number
-  burnedSubtitles: boolean
+  subtitlePath?: string
   audioFailures: Array<{ label: string; detail: string }>
   message: string
 }
@@ -2645,7 +3123,7 @@ async function renderAudioClip(input: {
 }): Promise<string | null> {
   const { ffmpeg, project, clip, track } = input
   const asset = clip.assetId ? project.assets.find((item) => item.id === clip.assetId) : undefined
-  if (!asset || asset.kind !== 'audio') return null
+  if (!asset || (asset.kind !== 'audio' && asset.kind !== 'video')) return null
   const absolute = getStudioStore().assetAbsolute(project, asset)
   if (!existsSync(absolute)) return null
   if (track?.muted) return null
@@ -2750,7 +3228,7 @@ export async function renderProject(project: StudioProject, options: RenderOptio
     options.onProgress?.('混音', 64)
     const audioTracks = new Map(timeline.tracks.map((track) => [track.id, track]))
     const audioClips = timeline.clips
-      .filter((clip) => clip.kind === 'dialogue' || clip.kind === 'music' || clip.kind === 'sfx')
+      .filter((clip) => clip.kind === 'dialogue' || clip.kind === 'music' || clip.kind === 'sfx' || clip.kind === 'video')
       .sort((a, b) => a.start - b.start)
     const audioFiles: string[] = []
     const audioFailures: Array<{ label: string; detail: string }> = []
@@ -2790,17 +3268,8 @@ export async function renderProject(project: StudioProject, options: RenderOptio
       const filter = `${labels}amix=inputs=${audioFiles.length}:duration=longest:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[out]`
       await runFfmpeg(ffmpegPaths.ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', ...inputs, '-filter_complex', filter, '-map', '[out]', '-t', String(totalDuration), mixedAudio], { signal: options.signal })
     }
-    // 字幕
+    // 字幕只做外挂文件：画面里不烧字，成片旁落一份同名 SRT。
     const subtitles = timeline.clips.filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim())
-    const burn = options.subtitleMode === 'burn'
-    let assFile = ''
-    let srtFile = ''
-    if (subtitles.length) {
-      assFile = join(tempDir, 'subs.ass')
-      srtFile = join(tempDir, 'subs.srt')
-      writeFileSync(assFile, toAss(timeline), 'utf8')
-      writeFileSync(srtFile, toSrt(timeline), 'utf8')
-    }
     options.onProgress?.('封装成片', 90)
     const videoArgs =
       format === 'webm'
@@ -2808,93 +3277,36 @@ export async function renderProject(project: StudioProject, options: RenderOptio
         : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', options.quality === 'draft' ? '23' : '20', '-pix_fmt', 'yuv420p']
     const audioArgs = format === 'webm' ? ['-c:a', 'libopus', '-b:a', '128k'] : ['-c:a', 'aac', '-b:a', '192k']
     const containerArgs = format === 'mp4' || format === 'mov' ? ['-movflags', '+faststart'] : []
-    const subtitleArgs = format === 'mkv' ? ['-c:s', 'srt'] : format === 'webm' ? ['-c:s', 'webvtt'] : ['-c:s', 'mov_text']
-    if (burn && subtitles.length) {
-      await runFfmpeg(
-        ffmpegPaths.ffmpeg,
-        [
-          '-y',
-          '-hide_banner',
-          '-loglevel',
-          'error',
-          '-i',
-          silentVideo,
-          '-i',
-          mixedAudio,
-          '-vf',
-          'subtitles=subs.ass',
-          '-map',
-          '0:v:0',
-          '-map',
-          '1:a:0',
-          ...videoArgs,
-          ...audioArgs,
-          '-t',
-          String(totalDuration),
-          ...containerArgs,
-          output
-        ],
-        { cwd: tempDir, signal: options.signal, timeoutMs: 30 * 60_000 }
-      )
-    } else if (subtitles.length) {
-      await runFfmpeg(
-        ffmpegPaths.ffmpeg,
-        [
-          '-y',
-          '-hide_banner',
-          '-loglevel',
-          'error',
-          '-i',
-          silentVideo,
-          '-i',
-          mixedAudio,
-          '-i',
-          srtFile,
-          '-map',
-          '0:v:0',
-          '-map',
-          '1:a:0',
-          '-map',
-          '2:s:0',
-          ...videoArgs,
-          ...audioArgs,
-          ...subtitleArgs,
-          '-metadata:s:s:0',
-          'language=chi',
-          '-t',
-          String(totalDuration),
-          ...containerArgs,
-          output
-        ],
-        { signal: options.signal, timeoutMs: 20 * 60_000 }
-      )
-    } else {
-      await runFfmpeg(
-        ffmpegPaths.ffmpeg,
-        [
-          '-y',
-          '-hide_banner',
-          '-loglevel',
-          'error',
-          '-i',
-          silentVideo,
-          '-i',
-          mixedAudio,
-          '-map',
-          '0:v:0',
-          '-map',
-          '1:a:0',
-          ...videoArgs,
-          ...audioArgs,
-          '-t',
-          String(totalDuration),
-          ...containerArgs,
-          output
-        ],
-        { signal: options.signal, timeoutMs: 20 * 60_000 }
-      )
-    }
+    await runFfmpeg(
+      ffmpegPaths.ffmpeg,
+      [
+        '-y',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        silentVideo,
+        '-i',
+        mixedAudio,
+        '-map',
+        '0:v:0',
+        '-map',
+        '1:a:0',
+        ...videoArgs,
+        ...audioArgs,
+        '-t',
+        String(totalDuration),
+        ...containerArgs,
+        output
+      ],
+      { signal: options.signal, timeoutMs: 20 * 60_000 }
+    )
     if (!existsSync(output)) throw new Error('合成结束但没有找到输出文件。')
+    let subtitlePath: string | undefined
+    if (subtitles.length) {
+      subtitlePath = output.replace(/\.[^.\\/]+$/, '.srt')
+      writeFileSync(subtitlePath, toSrt(timeline).replace(/\n{3,}/g, '\n\n').trimEnd() + '\n', 'utf8')
+    }
     const bytes = statSync(output).size
     options.onProgress?.('完成', 100)
     const elapsed = Math.round((Date.now() - started) / 1000)
@@ -2907,9 +3319,9 @@ export async function renderProject(project: StudioProject, options: RenderOptio
       bytes,
       missingShots,
       placeholders,
-      burnedSubtitles: burn && subtitles.length > 0,
+      ...(subtitlePath ? { subtitlePath } : {}),
       audioFailures,
-      message: `已合成 ${formatDuration(totalDuration)} · ${width}×${height} · ${(bytes / 1024 / 1024).toFixed(1)}MB · 用时 ${elapsed}s${missingShots.length ? ` · ${missingShots.length} 镜缺画面` : ''}${audioFailures.length ? ` · ${audioFailures.length} 段音频未合成` : ''}`
+      message: `已合成 ${formatDuration(totalDuration)} · ${width}×${height} · ${(bytes / 1024 / 1024).toFixed(1)}MB · 用时 ${elapsed}s${subtitles.length ? ' · 外挂字幕已附' : ''}${missingShots.length ? ` · ${missingShots.length} 镜缺画面` : ''}${audioFailures.length ? ` · ${audioFailures.length} 段音频未合成` : ''}`
     }
   } finally {
     if (process.env.MORROW_KEEP_RENDER_TEMP !== '1') {
@@ -3054,6 +3466,48 @@ function saveDelivery(project: StudioProject, input: Omit<StudioDelivery, 'id' |
   if (existing >= 0) project.deliveries.splice(existing, 1)
   project.deliveries.unshift(delivery)
   return delivery
+}
+
+/** 渲染依据：时间线版本、轨道和片段参数；任一变化都让旧成片不再是当前成片。 */
+function timelineRenderKey(project: StudioProject): string {
+  return sha256Buffer(Buffer.from(JSON.stringify({
+    version: project.timeline.version,
+    fps: project.timeline.fps,
+    width: project.timeline.width,
+    height: project.timeline.height,
+    tracks: project.timeline.tracks.map((track) => [track.id, track.kind, track.muted, track.volume]),
+    clips: project.timeline.clips.map((clip) => [
+      clip.id,
+      clip.trackId,
+      clip.kind,
+      clip.assetId ?? '',
+      clip.shotId ?? '',
+      clip.start,
+      clip.duration,
+      clip.srcIn,
+      clip.speed,
+      clip.volume,
+      clip.label,
+      clip.text ?? ''
+    ])
+  }))).slice(0, 32)
+}
+
+/** 当前时间线版本对应的最新成片；旧版、上游失效或渲染依据变化的交付不能冒充当前成片。 */
+export function currentTimelineVideo(project: StudioProject, store: StudioStore): StudioDelivery | undefined {
+  const upstreamStale = (['visuals', 'voice', 'timeline', 'delivery'] as const)
+    .some((stage) => project.stages[stage]?.status === 'stale')
+  return project.deliveries.find((delivery) => {
+    if (!isStudioVideoDelivery(delivery.kind)) return false
+    if (!existsSync(store.deliveryAbsolute(project.id, delivery))) return false
+    if (upstreamStale) return false
+    const version = delivery.meta?.timelineVersion
+    if (version === undefined) return true
+    if (Number(version) !== project.timeline.version) return false
+    const renderKey = delivery.meta?.renderKey
+    if (typeof renderKey === 'string' && renderKey) return renderKey === timelineRenderKey(project)
+    return true
+  })
 }
 
 export function writeDeliveryFile(projectId: string, fileName: string, content: string | Buffer, label: string, kind: StudioDelivery['kind'], meta?: StudioDelivery['meta']): StudioDelivery {
@@ -3513,6 +3967,9 @@ export async function exportPackage(project: StudioProject): Promise<StudioDeliv
   add('README.txt', Buffer.from(`Morrow 创作台工程包\n\n作品：${project.title}\n类型：${studioKindLabel(project.kind)}\n导出时间：${new Date().toLocaleString('zh-CN')}\n\nproject.json 是可继续编辑的作品文件；assets/ 为按指纹存储的素材；timeline.json 为剪辑表。\n此包不包含模型密钥、账号信息或旧应用数据。\n`, 'utf8'))
   add('manifest.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'))
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  if (buffer.byteLength > MAX_PACKAGE_BYTES) {
+    throw new Error(`工程包约 ${Math.round(buffer.byteLength / 1024 / 1024)}MB，超过导入上限 ${Math.round(MAX_PACKAGE_BYTES / 1024 / 1024)}MB。请先移除大素材，或分别备份素材文件夹；本次没有生成无法再导入的工程包。`)
+  }
   return writeDeliveryFile(project.id, `${cleanFileName(project.title)}.morrowcraft`, buffer, '创作工程包', 'package', { files: manifest.files.length, schema: project.schemaVersion })
 }
 
@@ -3532,12 +3989,10 @@ export function exportAss(project: StudioProject): StudioDelivery {
 /** 发布套组：成书 + 封面 + 字幕 + 工程包一起放进一个目录。 */
 export async function exportFolder(project: StudioProject): Promise<StudioDelivery> {
   const store = getStudioStore()
-  const latestVideo = project.deliveries.find((item) => isStudioVideoDelivery(item.kind))
+  const latestVideo = project.kind === 'drama' ? currentTimelineVideo(project, store) : undefined
   if (project.kind === 'drama') {
-    if (!latestVideo) throw new Error('还没有合成成片；发布套组需要先有一版成片。')
     if (project.stages.timeline.status === 'stale') throw new Error('时间线已过期；先重新装配并合成最新成片，再导出发布套组。')
-    const videoPath = store.deliveryAbsolute(project.id, latestVideo)
-    if (!existsSync(videoPath)) throw new Error(`成片文件不在本机：${latestVideo.label}。请重新合成后再导出发布套组。`)
+    if (!latestVideo) throw new Error('当前时间线还没有对应的最新成片；请先重新合成，再导出发布套组。')
   }
   if (project.kind !== 'drama' && !project.chapters.some((chapter) => chapter.content.trim())) throw new Error('还没有正文；先写作再导出发布套组。')
   const stamp = new Date().toISOString().slice(0, 10)
@@ -3843,13 +4298,15 @@ export function listSystemVoices(force = false): { voices: StudioVoice[]; error?
   }
 }
 
-function localVoiceInstruction(shot: StudioShot): string {
+function localVoiceInstruction(shot: StudioShot, character?: StudioCharacter): string {
   const hints = ['用自然的中文口语说出来，像真人对话，不要播音腔', '句间保留呼吸和自然停顿']
   if (/[？?]/.test(shot.dialogue)) hints.push('带一点疑问和不确定，不要夸张上扬')
   if (/[！!]/.test(shot.dialogue)) hints.push('情绪更强烈，但不要喊叫')
   if (/[……]|\.\.\./.test(shot.dialogue)) hints.push('尾音放轻，留一点迟疑')
   if (/外婆|母亲|父亲|爷爷|奶奶/.test(shot.speaker)) hints.push('年长角色，语速稍慢，声音温和')
   if (/少年|少女|孩子|小[^一-龥]?/.test(shot.speaker)) hints.push('年轻角色，声音轻一点')
+  if (character?.role) hints.push(`角色身份：${character.role.slice(0, 40)}`)
+  if (shot.action) hints.push(`这场戏正在发生：${shot.action.slice(0, 120)}；按这个情境说，不要解释剧情`)
   return hints.join('；')
 }
 
@@ -3907,6 +4364,8 @@ export interface CloudSpeechInput {
   apiKey: string
   model: string
   voice: string
+  /** 给支持 instructions 的语音模型：角色、情境、停顿与情绪。 */
+  instructions?: string
   outputPath: string
   workDir: string
   speed?: number
@@ -3943,6 +4402,7 @@ export async function synthesizeCloudSpeech(input: CloudSpeechInput): Promise<vo
         model: input.model,
         input: input.text,
         voice: input.voice,
+        ...(input.instructions ? { instructions: input.instructions } : {}),
         response_format: 'mp3',
         ...(input.speed && input.speed !== 1 ? { speed: input.speed } : {})
       }),
@@ -4302,15 +4762,62 @@ export function synthesizeSfx(kind: 'rain' | 'umbrella' | 'heartbeat' | 'street'
 }
 
 /** 真实音频峰值：FFmpeg 解码为单声道 PCM，再按桶取绝对值峰值。 */
-export function audioWaveform(file: string, buckets = 96): number[] {
+/** 异步运行外部媒体程序；长音视频不阻塞主进程的 IPC/取消/界面。 */
+function captureProcess(
+  file: string,
+  args: string[],
+  options: { timeoutMs?: number; maxBytes?: number } = {}
+): Promise<{ status: number | null; stdout: Buffer; stderr: string; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    const child = spawn(file, args, { windowsHide: true })
+    const chunks: Buffer[] = []
+    let stderr = ''
+    let size = 0
+    let settled = false
+    let timedOut = false
+    const finish = (status: number | null): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve({ status, stdout: Buffer.concat(chunks), stderr, timedOut })
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      try { child.kill() } catch { /* ignore */ }
+      finish(null)
+    }, options.timeoutMs ?? 120_000)
+    timer.unref?.()
+    child.stdout?.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (options.maxBytes && size > options.maxBytes) {
+        timedOut = true
+        try { child.kill() } catch { /* ignore */ }
+        finish(null)
+        return
+      }
+      chunks.push(chunk)
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length < 4000) stderr += chunk.toString()
+    })
+    child.on('error', (err) => {
+      stderr = `${stderr}
+${err.message}`
+      finish(null)
+    })
+    child.on('close', (code) => finish(code))
+  })
+}
+
+export async function audioWaveform(file: string, buckets = 96): Promise<number[]> {
   const ffmpeg = resolveFfmpegPaths()?.ffmpeg
   if (!ffmpeg || !existsSync(file)) return []
-  const result = spawnSync(
+  const result = await captureProcess(
     ffmpeg,
     ['-v', 'error', '-i', file, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
-    { maxBuffer: 96 * 1024 * 1024, windowsHide: true }
+    { timeoutMs: 120_000, maxBytes: 96 * 1024 * 1024 }
   )
-  if (result.status !== 0 || !result.stdout?.length) return []
+  if (result.status !== 0 || !result.stdout.length) return []
   const samples = Math.floor(result.stdout.length / 2)
   const bucketSize = Math.max(1, Math.floor(samples / buckets))
   const peaks: number[] = []
@@ -4346,12 +4853,12 @@ export function writeWaveformCache(cacheFile: string, peaks: number[]): void {
 }
 
 /** 生成 540p 低清代理；已存在且比源文件新时直接复用。 */
-export function ensureVideoProxy(source: string, target: string): boolean {
+export async function ensureVideoProxy(source: string, target: string): Promise<boolean> {
   const ffmpeg = resolveFfmpegPaths()?.ffmpeg
   if (!ffmpeg || !existsSync(source)) return false
   if (existsSync(target) && statSync(target).mtimeMs >= statSync(source).mtimeMs) return true
   mkdirSync(dirname(target), { recursive: true })
-  const result = spawnSync(
+  const result = await captureProcess(
     ffmpeg,
     [
       '-y', '-hide_banner', '-loglevel', 'error',
@@ -4362,7 +4869,7 @@ export function ensureVideoProxy(source: string, target: string): boolean {
       '-movflags', '+faststart',
       target
     ],
-    { maxBuffer: 8 * 1024 * 1024, windowsHide: true }
+    { timeoutMs: 180_000, maxBytes: 8 * 1024 * 1024 }
   )
   return result.status === 0 && existsSync(target)
 }
@@ -4727,7 +5234,7 @@ export function applyNovelOutline(project: StudioProject, blueprint: StudioBluep
       synopsis: unit.summary,
       beats: unit.beats?.length ? [...unit.beats] : [unit.summary],
       content: '',
-      wordTarget: Math.max(2000, Math.min(5000, unit.wordTarget ?? 3000)),
+      wordTarget: Math.max(800, Math.min(10000, unit.wordTarget ?? 3000)),
       status: 'ready',
       revision: 1,
       candidates: [],
@@ -6514,19 +7021,19 @@ export async function runStudioAgentTool(facade: StudioAgentFacade, input: { act
   }
 
   if (action === 'review') {
+    // studio_review 是只读工具：只读取最近一次检查结果，不重跑检查、不写阶段/修订号，也不调用视觉模型。
     const project = await getProject()
-    const result = (await facade.execute({ type: 'review', projectId: project.id })) as StudioActionResult
-    const errors = result.project.checks.filter((check) => check.level === 'error')
-    const warns = result.project.checks.filter((check) => check.level === 'warn')
+    const checks = project.checks
+    const errors = checks.filter((check) => check.level === 'error')
+    const warns = checks.filter((check) => check.level === 'warn')
     return {
-      summary:
-        errors.length || warns.length
-          ? `检查完成：${errors.length} 个错误、${warns.length} 条提醒。\n${[...errors, ...warns]
-              .slice(0, 8)
-              .map((check) => `· ${check.title}：${check.detail}`)
-              .join('\n')}`
-          : `检查完成：没有发现硬问题；${result.project.checks.length} 条信息已记录。`,
-      data: { checks: result.project.checks }
+      summary: checks.length
+        ? `最近一次检查：${errors.length} 个错误、${warns.length} 条提醒。\n${[...errors, ...warns]
+            .slice(0, 8)
+            .map((check) => `· ${check.title}：${check.detail}`)
+            .join('\n')}\n需要重新检查时，请在创作台检查页点击「重新检查」。`
+        : '还没有保存过检查结果。需要运行检查时，请在创作台检查页点击「重新检查」。',
+      data: { checks, stale: checks.length === 0 }
     }
   }
 
@@ -6536,7 +7043,6 @@ export async function runStudioAgentTool(facade: StudioAgentFacade, input: { act
       type: 'render',
       projectId: project.id,
       quality: input.quality === 'final' ? 'final' : 'draft',
-      subtitleMode: input.subtitleMode === 'soft' ? 'soft' : 'burn',
       ...(input.aspect === '16:9' || input.aspect === '9:16' || input.aspect === '1:1' ? { aspect: input.aspect } : {}),
       ...(input.format === 'mov' || input.format === 'mkv' || input.format === 'webm' ? { format: input.format } : { format: 'mp4' }),
       ...(input.resolution === '2160p' ? { resolution: '2160p' } : { resolution: '1080p' })
@@ -6625,7 +7131,7 @@ export class StudioService {
   private readonly locks = new Map<string, Promise<unknown>>()
   private readonly controllers = new Map<string, AbortController>()
   private readonly cancelled = new Set<string>()
-  private jobChain: Promise<unknown> = Promise.resolve()
+  private jobChains = new Map<string, Promise<unknown>>()
   private externalResumeScheduled = false
   private initialized = false
   private statusCache: { at: number; value: StudioEngineStatus } | null = null
@@ -6637,7 +7143,7 @@ export class StudioService {
   private ensureInitialized(): void {
     if (this.initialized) return
     this.initialized = true
-    if (!DEMO_DISABLED) {
+    if (!DEMO_DISABLED && process.env.MORROW_TEST === '1') {
       try {
         ensureDemoProjects(this.store)
       } catch {
@@ -6665,6 +7171,14 @@ export class StudioService {
               : '应用上次退出时任务被中断；已完成内容保留，请核对后再重试。'
             job.error = job.remoteId ? undefined : '任务中断（结果未确认）'
             job.updatedAt = nowMs()
+            if (job.stage !== 'asset') {
+              const stage = project.stages[job.stage]
+              if (stage && stage.status === 'running') {
+                stage.status = 'review'
+                stage.updatedAt = nowMs()
+                stage.message = '上次退出时中断；已完成内容保留，请核对或重试'
+              }
+            }
             changed = true
           }
         }
@@ -6799,11 +7313,21 @@ export class StudioService {
     }
   }
 
-  private assertBudget(project: StudioProject, estimate: number | null | undefined): void {
+  private committedBudget(project: StudioProject, excludeJobId?: string): number {
+    return project.jobs
+      .filter((job) => (job.status === 'queued' || job.status === 'running') && job.id !== excludeJobId)
+      .reduce((sum, job) => sum + (typeof job.cost === 'number' && Number.isFinite(job.cost) ? Math.max(0, job.cost) : 0), 0)
+  }
+
+  private assertBudget(project: StudioProject, estimate: number | null | undefined, excludeJobId?: string): void {
     const limit = project.runtime.budget.limit
     if (!limit || limit <= 0) return
-    if (typeof estimate === 'number' && project.runtime.budget.spent + estimate > limit) {
-      throw new Error(`这一步预计花费 ¥${estimate.toFixed(2)}，会超过项目预算 ¥${limit}。请先在“模型与预算”里提高预算，或改用本地能力。`)
+    if (typeof estimate !== 'number' || !Number.isFinite(estimate)) return
+    const committed = this.committedBudget(project, excludeJobId)
+    if (project.runtime.budget.spent + committed + estimate > limit) {
+      throw new Error(
+        `这一步预计花费 ¥${estimate.toFixed(2)}，加上排队任务已承诺的 ¥${committed.toFixed(2)} 和已花费的 ¥${project.runtime.budget.spent.toFixed(2)}，会超过项目预算 ¥${limit}。请先等排队任务结束、提高预算，或改用本地能力。`
+      )
     }
   }
 
@@ -6881,7 +7405,12 @@ export class StudioService {
     this.store.appendJobLog(project.id, job)
     this.emitJob(job)
     this.emitProject(project)
-    this.jobChain = this.jobChain.then(() => this.runJob(project.id, job.id, options.run)).catch(() => undefined)
+    const previous = this.jobChains.get(project.id) ?? Promise.resolve()
+    const next = previous.then(() => this.runJob(project.id, job.id, options.run)).catch(() => undefined)
+    this.jobChains.set(project.id, next)
+    void next.finally(() => {
+      if (this.jobChains.get(project.id) === next) this.jobChains.delete(project.id)
+    })
     return job
   }
 
@@ -6911,6 +7440,28 @@ export class StudioService {
           this.emitJob(target)
           throw new Error('__cancelled__')
         }
+        try {
+          this.assertBudget(project, typeof target.cost === 'number' ? target.cost : null, target.id)
+        } catch (budgetError) {
+          target.status = 'failed'
+          target.error = budgetError instanceof Error ? budgetError.message : String(budgetError)
+          target.message = target.error
+          target.finishedAt = nowMs()
+          target.updatedAt = nowMs()
+          appendJobEvent(target, 'failed', target.message, target.progress)
+          if (target.stage !== 'asset') {
+            project.stages[target.stage] = {
+              ...project.stages[target.stage],
+              status: 'failed',
+              updatedAt: nowMs(),
+              message: target.message
+            }
+          }
+          this.store.save(project, `预算不足：${target.label}`, { snapshot: false })
+          this.emitJob(target)
+          this.emitProject(project)
+          throw new Error('__budget__')
+        }
         target.status = 'running'
         target.startedAt = nowMs()
         target.updatedAt = nowMs()
@@ -6933,7 +7484,7 @@ export class StudioService {
         return target
       })
     } catch (err) {
-      if (err instanceof Error && err.message === '__cancelled__') return
+      if (err instanceof Error && (err.message === '__cancelled__' || err.message === '__budget__')) return
       return
     }
     controller = new AbortController()
@@ -7021,6 +7572,29 @@ export class StudioService {
       const project = this.store.readProject(projectId)
       const job = project.jobs.find((item) => item.id === jobId)
       if (!job) return
+      const cancelledLate = this.cancelled.has(jobId) || Boolean(controller?.signal.aborted) || job.status === 'cancelled'
+      if (cancelledLate) {
+        job.status = 'cancelled'
+        job.message = outcome?.plannedStatus === 'cancelled' ? '已取消；已完成的内容保留。' : '已取消；任务迟到返回的结果未写入作品。'
+        job.updatedAt = nowMs()
+        job.finishedAt = nowMs()
+        appendJobEvent(job, 'cancelled', job.message, job.progress)
+        if (typeof outcome?.costCny === 'number') {
+          job.cost = outcome.costCny
+          this.charge(project, outcome.costCny)
+        }
+        if (job.stage !== 'asset') {
+          const stage = project.stages[job.stage]
+          stage.status = 'review'
+          stage.message = '已取消，已完成内容保留；迟到结果未应用'
+          stage.updatedAt = nowMs()
+        }
+        this.store.save(project, `任务取消：${job.label}`, { snapshot: false })
+        this.store.appendJobLog(project.id, job)
+        this.emitJob(job)
+        this.emitProject(project)
+        return
+      }
       try {
         if (outcome?.apply) outcome.apply(project)
       } catch (err) {
@@ -7059,6 +7633,14 @@ export class StudioService {
           stage.progress = job.status === 'done' ? 100 : stage.progress
         }
         stage.updatedAt = nowMs()
+      }
+      for (const message of project.messages) {
+        if (message.plan?.status === 'applied' && message.plan.jobIds?.includes(jobId)) {
+          // 只有作品仍停在“计划自身造成的修订”上才继续跟随；用户中途编辑后不再覆盖，保证撤销能发现冲突。
+          if (message.plan.appliedRevision == null || project.revision === message.plan.appliedRevision) {
+            message.plan.appliedRevision = project.revision + 1
+          }
+        }
       }
       this.store.save(project, `任务完成：${job.label}`, { snapshot: false })
       this.store.appendJobLog(project.id, job)
@@ -7166,6 +7748,10 @@ export class StudioService {
         return this.saveScene(request)
       case 'save-shot':
         return this.saveShot(request)
+      case 'adopt-shot-rewrite':
+        return this.adoptShotRewrite(request)
+      case 'discard-shot-rewrite':
+        return this.discardShotRewrite(request)
       case 'move-shot':
         return this.moveShot(request)
       case 'update-shots':
@@ -7261,7 +7847,7 @@ export class StudioService {
   private async importPackage(request: { [key: string]: unknown }): Promise<StudioActionResult> {
     const file = str(request.path)
     if (!file || !existsSync(file)) throw new Error('找不到要导入的工程包。')
-    if (statSync(file).size > 300 * 1024 * 1024) throw new Error('工程包超过 300MB，请先确认来源。')
+    if (statSync(file).size > MAX_PACKAGE_BYTES) throw new Error(`工程包超过 ${Math.round(MAX_PACKAGE_BYTES / 1024 / 1024)}MB，请先确认来源。`)
     const zip = await JSZip.loadAsync(readFileSync(file))
     const entry = Object.keys(zip.files).find((name) => /(^|\/)project\.json$/.test(name) && !name.includes('node_modules'))
     if (!entry) throw new Error('工程包里没有 project.json。')
@@ -7473,7 +8059,7 @@ export class StudioService {
       if (Array.isArray(request.beats)) chapter.beats = arrayOfStrings(request.beats).slice(0, 30)
       if (Number.isFinite(Number(request.wordTarget)) && Number(request.wordTarget) > 0) {
         const requested = Math.round(Number(request.wordTarget))
-        chapter.wordTarget = project.kind === 'novel' ? Math.max(2000, Math.min(5000, requested)) : requested
+        chapter.wordTarget = project.kind === 'novel' ? Math.max(800, Math.min(10000, requested)) : requested
       }
       if (typeof request.content === 'string') {
         const content = request.content.slice(0, 2_000_000)
@@ -7508,7 +8094,7 @@ export class StudioService {
       const chapter = this.store.addChapter(project, {
         title: str(request.title),
         synopsis: str(request.synopsis),
-        wordTarget: project.kind === 'novel' ? Math.max(2000, Math.min(5000, num(request.wordTarget, 3000))) : num(request.wordTarget, 2500),
+        wordTarget: project.kind === 'novel' ? Math.max(800, Math.min(10000, num(request.wordTarget, 3000))) : num(request.wordTarget, 2500),
         content: str(request.content),
         ...(hasVolume ? { volumeId } : {})
       })
@@ -7701,7 +8287,7 @@ export class StudioService {
             title: str(next.title, unit.title).trim() || unit.title,
             summary: str(next.summary, unit.summary),
             ...(typeof next.seconds === 'number' ? { seconds: Math.max(1, Math.min(600, next.seconds)) } : {}),
-            ...(typeof next.wordTarget === 'number' ? { wordTarget: project.kind === 'novel' ? Math.max(2000, Math.min(5000, next.wordTarget)) : Math.max(100, Math.min(20_000, next.wordTarget)) } : {})
+            ...(typeof next.wordTarget === 'number' ? { wordTarget: project.kind === 'novel' ? Math.max(800, Math.min(10000, next.wordTarget)) : Math.max(100, Math.min(20_000, next.wordTarget)) } : {})
           }
         })
       }
@@ -7931,7 +8517,7 @@ export class StudioService {
     const sourceId = safeProjectId(str(request.projectId) || str(request.sourceProjectId))
     const source = this.store.readProject(sourceId)
     if (source.kind === 'drama') throw new Error('这部作品已经是漫剧。')
-    const chapters = [...source.chapters].sort((a, b) => a.number - b.number).filter((chapter) => chapter.content.trim()).slice(0, 12)
+    const chapters = [...source.chapters].sort((a, b) => a.number - b.number).filter((chapter) => chapter.content.trim())
     if (!chapters.length) throw new Error('至少需要一章已写正文才能改编为漫剧。')
     const runtime = studioTextRuntime(source.runtime.strategy)
     if (!runtime.configured) throw new Error(`改编为漫剧需要可用的文本模型。${runtime.message} 请先在创作台设置 → 模型里连接模型。`)
@@ -8035,129 +8621,209 @@ export class StudioService {
     ctx: JobRunContext
   ): Promise<{ blueprint: StudioBlueprint; cost: number | null; costNote: string }> {
     const targetWords = snapshot.brief.targetWords ?? 300_000
-    const plannedUnits = Math.max(36, Math.min(240, Math.ceil(targetWords / 4000)))
+    const plannedUnits = Math.max(6, Math.min(500, Math.ceil(targetWords / 4000)))
     const placeholderUnits: StudioBlueprint['units'] = Array.from({ length: plannedUnits }, (_, index) => ({
       index: index + 1,
       title: `第 ${index + 1} 章`,
       summary: '待展开',
-      wordTarget: Math.max(2000, Math.min(5000, Math.round(targetWords / plannedUnits)))
+      wordTarget: Math.max(800, Math.min(10000, Math.round(targetWords / plannedUnits)))
     }))
     const costs: Array<number | null> = []
-    ctx.progress('调用模型写长篇骨架', 10)
-    const top = await completeCreativeText({
-      system: `${LONG_BLUEPRINT_TOP_SYSTEM}${masterPromptContext('novel', 'blueprint', `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观 分卷`, 'blueprint', snapshot.runtime.strategy)}`,
-      prompt: longBlueprintTopPrompt(snapshot, plannedUnits),
-      structured: true,
-      temperature: 0.72,
-      signal: ctx.signal,
-      strategy: snapshot.runtime.strategy
-    })
-    costs.push(top.costCny)
-    const topRaw = extractJson<Record<string, unknown>>(top.text)
-    if (!topRaw) {
-      log.warn('long blueprint top parse failed', { length: top.text.length, preview: top.text.slice(0, 1200) })
-      throw new Error('模型返回的长篇骨架不是可解析的 JSON。请重试，或换一个支持长 JSON 输出的模型。')
+    const partialFile = join(this.store.projectDir(snapshot.id), 'derived', 'blueprint-partial.json')
+    const sourceKey = sha256Buffer(Buffer.from(JSON.stringify({
+      id: snapshot.id,
+      title: snapshot.title,
+      logline: snapshot.logline,
+      targetWords,
+      genre: snapshot.brief.genre,
+      tone: snapshot.brief.tone,
+      audience: snapshot.brief.audience,
+      constraints: snapshot.brief.constraints,
+      style: snapshot.brief.style,
+      model: studioTextRuntime(snapshot.runtime.strategy).model?.id ?? ''
+    })))
+    let blueprint: StudioBlueprint | null = null
+    let volumeUnits: StudioBlueprint['units'][] = []
+    let completedBatches: number[] = []
+    let castDone = false
+    try {
+      const partial = JSON.parse(readFileSync(partialFile, 'utf8')) as {
+        key?: string
+        blueprint?: StudioBlueprint
+        volumeUnits?: StudioBlueprint['units'][]
+        completedBatches?: number[]
+        castDone?: boolean
+        cost?: number | null
+      }
+      if (partial.key === sourceKey && partial.blueprint && Array.isArray(partial.volumeUnits)) {
+        blueprint = partial.blueprint
+        volumeUnits = partial.volumeUnits
+        completedBatches = Array.isArray(partial.completedBatches) ? partial.completedBatches : []
+        castDone = partial.castDone === true || (partial.castDone === undefined && ((blueprint.characters?.length ?? 0) > 0 || (blueprint.places?.length ?? 0) > 0))
+        if (typeof partial.cost === 'number' || partial.cost === null) costs.push(partial.cost)
+        const done = completedBatches.reduce((sum, value) => sum + Math.max(0, Math.round(value)), 0)
+        ctx.progress(`已找到长篇蓝图草稿：${castDone ? '人物已就位' : '人物与地点待补'}；已完成 ${done} 批章节；从断点继续`, 40)
+      }
+    } catch {
+      // 没有可续作的蓝图草稿
+    }
+    const totalCost = (): number | null => costs.every((value): value is number => typeof value === 'number')
+      ? costs.reduce((sum, value) => sum + value, 0)
+      : null
+    const persistPartial = (): void => {
+      if (!blueprint) return
+      try {
+        mkdirSync(dirname(partialFile), { recursive: true })
+        writeFileSync(partialFile, `${JSON.stringify({ key: sourceKey, blueprint, volumeUnits, completedBatches, castDone, cost: totalCost(), updatedAt: nowMs() })}\n`, 'utf8')
+      } catch {
+        // 草稿落盘失败不阻断当前批次
+      }
     }
     const neutral = neutralBlueprint(snapshot)
-    const blueprint = normalizeModelBlueprint(snapshot, {
-      ...topRaw,
-      characters: [],
-      places: [],
-      units: placeholderUnits
-    }, top.model, neutral)
-    blueprint.units = []
-    const rawVolumeSeeds = blueprint.volumes?.length ? blueprint.volumes : normalizeModelVolumes(undefined, placeholderUnits, 'novel')
-    const volumeSeeds = alignVolumeSeeds(rawVolumeSeeds, plannedUnits)
-
-    ctx.progress('调用模型写人物与地点', 32)
-    const cast = await completeCreativeText({
-      system: `${LONG_BLUEPRINT_CAST_SYSTEM}${masterPromptContext('novel', 'blueprint', `${blueprint.storyCore} ${blueprint.volumes?.map((volume) => volume.title).join(' ')} 人物 角色 关系 世界观`, 'blueprint', snapshot.runtime.strategy)}`,
-      prompt: longBlueprintCastPrompt(snapshot, blueprint),
-      structured: true,
-      temperature: 0.72,
-      signal: ctx.signal,
-      strategy: snapshot.runtime.strategy
-    })
-    costs.push(cast.costCny)
-    const castRaw = extractJson<Record<string, unknown>>(cast.text)
-    if (!castRaw) {
-      log.warn('long blueprint cast parse failed', { length: cast.text.length, preview: cast.text.slice(0, 1200) })
-      throw new Error('模型返回的人物与地点不是可解析的 JSON。请重试，或换一个支持长 JSON 输出的模型。')
-    }
-    const castBlueprint = normalizeModelBlueprint(
-      { ...snapshot, titleSource: 'user' as const },
-      { ...castRaw, units: placeholderUnits, volumes: [], facts: [], styleBible: blueprint.styleBible },
-      cast.model,
-      neutral
-    )
-    blueprint.characters = castBlueprint.characters
-    blueprint.places = castBlueprint.places
-
-    const volumeUnits: StudioBlueprint['units'][] = []
-    for (let volumeIndex = 0; volumeIndex < volumeSeeds.length; volumeIndex += 1) {
-      const seed = volumeSeeds[volumeIndex]
-      const planned = Math.max(3, seed.unitEnd - seed.unitStart + 1)
-      const batchSize = 4
-      const batches = Math.max(1, Math.ceil(planned / batchSize))
-      const merged: StudioBlueprint['units'] = []
-      for (let batch = 0; batch < batches; batch += 1) {
-        const count = Math.min(batchSize, planned - batch * batchSize)
-        ctx.progress(`调用模型写第 ${volumeIndex + 1} 卷章节（${batch + 1}/${batches}）`, 42 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 35))
-        const unitsResult = await completeCreativeText({
-          system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}`,
-          prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count),
+    try {
+      if (!blueprint) {
+        ctx.progress('调用模型写长篇骨架', 10)
+        const top = await completeCreativeText({
+          system: `${LONG_BLUEPRINT_TOP_SYSTEM}${masterPromptContext('novel', 'blueprint', `${snapshot.logline} ${snapshot.brief.genre} ${snapshot.brief.tone} 故事 人物 世界观 分卷`, 'blueprint', snapshot.runtime.strategy)}`,
+          prompt: longBlueprintTopPrompt(snapshot, plannedUnits),
           structured: true,
-          temperature: 0.75,
+          temperature: 0.72,
           signal: ctx.signal,
           strategy: snapshot.runtime.strategy
         })
-        costs.push(unitsResult.costCny)
-        let units = normalizeUnits('novel', extractJson<Record<string, unknown>>(unitsResult.text)?.units, [], blueprint.styleBible)
-        if (!units.length) {
-          log.warn('long blueprint units parse failed; retrying once', { volume: volumeIndex + 1, batch: batch + 1, length: unitsResult.text.length, preview: unitsResult.text.slice(0, 1200) })
-          ctx.progress(`第 ${volumeIndex + 1} 卷本批 JSON 不完整，正在重试`, 45 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 32))
-          const retry = await completeCreativeText({
-            system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}\n\n上一次输出 JSON 语法不完整。这次只写 ${count} 章，确保每个键名都有双引号，先保证 JSON 完整。`,
-            prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count),
+        costs.push(top.costCny)
+        const topRaw = extractJson<Record<string, unknown>>(top.text)
+        if (!topRaw) {
+          log.warn('long blueprint top parse failed', { length: top.text.length, preview: top.text.slice(0, 1200) })
+          throw new Error('模型返回的长篇骨架不是可解析的 JSON。请重试，或换一个支持长 JSON 输出的模型。')
+        }
+        blueprint = normalizeModelBlueprint(snapshot, {
+          ...topRaw,
+          characters: [],
+          places: [],
+          units: placeholderUnits
+        }, top.model, neutral)
+        blueprint.units = []
+        castDone = false
+        persistPartial()
+      }
+      if (!castDone) {
+        ctx.progress('调用模型写人物与地点', 32)
+        const cast = await completeCreativeText({
+          system: `${LONG_BLUEPRINT_CAST_SYSTEM}${masterPromptContext('novel', 'blueprint', `${blueprint.storyCore} ${blueprint.volumes?.map((volume) => volume.title).join(' ')} 人物 角色 关系 世界观`, 'blueprint', snapshot.runtime.strategy)}`,
+          prompt: longBlueprintCastPrompt(snapshot, blueprint),
+          structured: true,
+          temperature: 0.72,
+          signal: ctx.signal,
+          strategy: snapshot.runtime.strategy
+        })
+        costs.push(cast.costCny)
+        const castRaw = extractJson<Record<string, unknown>>(cast.text)
+        if (!castRaw) {
+          log.warn('long blueprint cast parse failed', { length: cast.text.length, preview: cast.text.slice(0, 1200) })
+          throw new Error('模型返回的人物与地点不是可解析的 JSON。请重试，或换一个支持长 JSON 输出的模型。')
+        }
+        const castBlueprint = normalizeModelBlueprint(
+          { ...snapshot, titleSource: 'user' as const },
+          { ...castRaw, units: placeholderUnits, volumes: [], facts: [], styleBible: blueprint.styleBible },
+          cast.model,
+          neutral
+        )
+        blueprint.characters = castBlueprint.characters
+        blueprint.places = castBlueprint.places
+        castDone = true
+        persistPartial()
+      }
+
+      const volumeSeeds = alignVolumeSeeds(blueprint.volumes?.length ? blueprint.volumes : normalizeModelVolumes(undefined, placeholderUnits, 'novel'), plannedUnits)
+      for (let volumeIndex = 0; volumeIndex < volumeSeeds.length; volumeIndex += 1) {
+        const seed = volumeSeeds[volumeIndex]
+        const planned = Math.max(3, seed.unitEnd - seed.unitStart + 1)
+        const batchSize = 4
+        const batches = Math.max(1, Math.ceil(planned / batchSize))
+        const merged = volumeUnits[volumeIndex] ?? (volumeUnits[volumeIndex] = [])
+        const startBatch = Math.min(batches, Math.max(0, Math.round(completedBatches[volumeIndex] ?? 0)))
+        for (let batch = startBatch; batch < batches; batch += 1) {
+          const count = Math.min(batchSize, planned - batch * batchSize)
+          ctx.progress(`调用模型写第 ${volumeIndex + 1} 卷章节（${batch + 1}/${batches}）`, 42 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 35))
+          const unitsResult = await completeCreativeText({
+            system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}`,
+            prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count, {
+              start: seed.unitStart + batch * batchSize,
+              end: seed.unitStart + batch * batchSize + count - 1,
+              previous: merged.slice(-2)
+            }),
             structured: true,
-            temperature: 0.4,
+            temperature: 0.75,
             signal: ctx.signal,
             strategy: snapshot.runtime.strategy
           })
-          costs.push(retry.costCny)
-          units = normalizeUnits('novel', extractJson<Record<string, unknown>>(retry.text)?.units, [], blueprint.styleBible)
+          costs.push(unitsResult.costCny)
+          let units = normalizeUnits('novel', extractJson<Record<string, unknown>>(unitsResult.text)?.units, [], blueprint.styleBible)
+          if (!units.length) {
+            log.warn('long blueprint units parse failed; retrying once', { volume: volumeIndex + 1, batch: batch + 1, length: unitsResult.text.length, preview: unitsResult.text.slice(0, 1200) })
+            ctx.progress(`第 ${volumeIndex + 1} 卷本批 JSON 不完整，正在重试`, 45 + Math.round(((volumeIndex + batch / batches) / Math.max(1, volumeSeeds.length)) * 32))
+            const retry = await completeCreativeText({
+              system: `${LONG_BLUEPRINT_UNITS_SYSTEM}${masterPromptContext('novel', 'outline', `${seed.title} ${seed.summary} 大纲 结构 节奏 伏笔`, 'outline', snapshot.runtime.strategy)}\n\n上一次输出 JSON 语法不完整。这次只写 ${count} 章，确保每个键名都有双引号，先保证 JSON 完整。`,
+              prompt: longVolumeUnitsPrompt(snapshot, blueprint, seed, count, {
+                start: seed.unitStart + batch * batchSize,
+                end: seed.unitStart + batch * batchSize + count - 1,
+                previous: merged.slice(-2)
+              }),
+              structured: true,
+              temperature: 0.4,
+              signal: ctx.signal,
+              strategy: snapshot.runtime.strategy
+            })
+            costs.push(retry.costCny)
+            units = normalizeUnits('novel', extractJson<Record<string, unknown>>(retry.text)?.units, [], blueprint.styleBible)
+          }
+          if (units.length < count) {
+            throw new Error(`模型只返回第 ${volumeIndex + 1} 卷第 ${batch + 1} 批的 ${units.length}/${count} 章，数量不足。请重试，或换一个支持长 JSON 输出的模型。`)
+          }
+          merged.push(...units.slice(0, count))
+          completedBatches[volumeIndex] = batch + 1
+          persistPartial()
         }
-        if (units.length < count) {
-          throw new Error(`模型只返回第 ${volumeIndex + 1} 卷第 ${batch + 1} 批的 ${units.length}/${count} 章，数量不足。请重试，或换一个支持长 JSON 输出的模型。`)
-        }
-        merged.push(...units.slice(0, count))
       }
-      volumeUnits.push(merged)
-    }
 
-    let cursor = 1
-    const units: StudioBlueprint['units'] = []
-    const volumes: NonNullable<StudioBlueprint['volumes']> = []
-    volumeSeeds.forEach((seed, index) => {
-      const list = volumeUnits[index] ?? []
-      const unitStart = cursor
-      for (const unit of list) {
-        units.push({ ...unit, index: cursor })
-        cursor += 1
+      let cursor = 1
+      const units: StudioBlueprint['units'] = []
+      const volumes: NonNullable<StudioBlueprint['volumes']> = []
+      volumeSeeds.forEach((seed, index) => {
+        const list = volumeUnits[index] ?? []
+        const unitStart = cursor
+        for (const unit of list) {
+          units.push({ ...unit, index: cursor })
+          cursor += 1
+        }
+        volumes.push({ ...seed, unitStart, unitEnd: Math.max(unitStart, cursor - 1) })
+      })
+      const perChapter = Math.max(800, Math.min(10000, Math.round(targetWords / Math.max(1, plannedUnits))))
+      for (const unit of units) unit.wordTarget = perChapter
+      blueprint.units = units
+      blueprint.volumes = volumes
+      blueprint.estimate = blueprintEstimate(snapshot, units)
+      assertModelBlueprint(blueprint, 'novel', snapshot.brief.targetWords)
+      try {
+        rmSync(partialFile, { force: true })
+      } catch {
+        // 草稿清理失败不影响已成功的结果
       }
-      volumes.push({ ...seed, unitStart, unitEnd: Math.max(unitStart, cursor - 1) })
-    })
-    const perChapter = Math.max(2000, Math.min(5000, Math.round(targetWords / Math.max(1, plannedUnits))))
-    for (const unit of units) unit.wordTarget = perChapter
-    blueprint.units = units
-    blueprint.volumes = volumes
-    blueprint.estimate = blueprintEstimate(snapshot, units)
-    assertModelBlueprint(blueprint, 'novel', snapshot.brief.targetWords)
-    const known = costs.every((value): value is number => typeof value === 'number')
-    return {
-      blueprint,
-      cost: known ? costs.reduce((sum, value) => sum + value, 0) : null,
-      costNote: '长篇分卷调用模型，按实际 token 记录'
+      const known = costs.every((value): value is number => typeof value === 'number')
+      return {
+        blueprint,
+        cost: known ? costs.reduce((sum, value) => sum + value, 0) : null,
+        costNote: '长篇分卷调用模型，按实际 token 记录'
+      }
+    } catch (err) {
+      persistPartial()
+      const done = completedBatches.reduce((sum, value) => sum + Math.max(0, Math.round(value)), 0)
+      if (done > 0) {
+        const detail = err instanceof Error ? err.message : String(err)
+        throw new Error(`${detail} 已完成 ${done} 批章节，蓝图草稿已保存；重试会从下一批继续。`)
+      }
+      throw err
     }
   }
 
@@ -8504,9 +9170,9 @@ export class StudioService {
               wordCount
             })
             targetChapter.candidates = targetChapter.candidates.slice(0, 6)
-            targetChapter.summary = summarizeChapterText(content)
             if (!targetChapter.content.trim()) {
               targetChapter.content = content
+              targetChapter.summary = summarizeChapterText(content)
               targetChapter.revision += 1
               targetChapter.status = 'done'
               targetChapter.updatedAt = nowMs()
@@ -8540,6 +9206,8 @@ export class StudioService {
     if (!runtime.configured) throw new Error('润色需要可用的文本模型；请先在创作台设置 → 模型里连接模型。')
     const instruction = str(request.instruction).slice(0, 1200)
     const replaceContent = request.replaceContent === true
+    const baseRevision = chapter.revision
+    const baseContent = chapter.content
     const estimated = estimateTextCostCny(chapter.content.length + instruction.length, chapter.content.length, project.runtime.strategy) ?? 0
     const job = await this.launchJob(project, {
       kind: 'text',
@@ -8580,7 +9248,7 @@ export class StudioService {
         const content = stripProseDecorations(result.text)
         if (!content.trim()) throw new Error('模型没有返回可用正文。')
         return {
-          message: replaceContent ? `第 ${current.number} 章已按计划重写，${countWords(content)} 字。` : `润色稿已生成，${countWords(content)} 字；采用前不会覆盖正文。`,
+          message: replaceContent ? `第 ${current.number} 章重写稿已生成，${countWords(content)} 字；若正文在此期间有变化，会保留为候选。` : `润色稿已生成，${countWords(content)} 字；采用前不会覆盖正文。`,
           costCny: result.costCny,
           costNote: result.costNote ?? '按实际 token 记录',
           outputs: [{ label: `第 ${current.number} 章${replaceContent ? '重写稿' : '润色候选'}`, path: undefined }],
@@ -8588,6 +9256,23 @@ export class StudioService {
             const target = fresh.chapters.find((item) => item.id === chapterId)
             if (!target) return
             if (replaceContent) {
+              const changedDuringRewrite = target.revision !== baseRevision || target.content !== baseContent
+              if (changedDuringRewrite) {
+                target.candidates.unshift({
+                  id: studioId('cand'),
+                  content,
+                  label: `重写稿 · ${result.model}（正文已更新）`,
+                  source: 'model',
+                  model: result.model,
+                  note: '生成期间正文被修改，未覆盖当前正文；请对照后决定是否采用。',
+                  createdAt: nowMs(),
+                  wordCount: countWords(content)
+                })
+                target.candidates = target.candidates.slice(0, 6)
+                target.updatedAt = nowMs()
+                fresh.stages.writing = { status: 'review', updatedAt: nowMs(), message: '重写期间正文有变化，重写稿已保留为候选', progress: 60 }
+                return
+              }
               if (target.content.trim()) {
                 target.versions.unshift({ id: studioId('cv'), content: target.content, createdAt: nowMs(), reason: '协作者重写前自动留档', wordCount: countWords(target.content) })
                 target.versions = target.versions.slice(0, 30)
@@ -8992,41 +9677,177 @@ export class StudioService {
     if (!runtime.configured) throw new Error(`还没有可用的文本模型。${runtime.message} 请在创作台设置 → 模型里连接模型。`)
     const existing = [...project.shots].sort((left, right) => left.number - right.number)
     const locked = existing.some((shot) => shot.imageAssetId || shot.videoAssetId || shot.voiceAssetId)
+    const scoped = existing.length > 0
     const instruction = str(request.instruction).slice(0, 2000)
-    const estimated = estimateTextCostCny(project.blueprint.storyCore.length + 3000, 6000, project.runtime.strategy)
+    const askedScope = str(request.scope)
+    const scope: 'all' | 'chapter' | 'shot' = askedScope === 'shot' ? 'shot' : askedScope === 'chapter' ? 'chapter' : 'all'
+    const focusShotId = str(request.shotId)
+    const focusChapterId = str(request.chapterId)
+    const allowCountChange = bool(request.confirmShotCountChange)
+    if (scope === 'shot' && !focusShotId) throw new Error('请先选中要重写的镜头。')
+    if (scope === 'chapter' && !focusChapterId) throw new Error('请先选中要重做的章节。')
+    const chapterBatches = storyboardChapterBatches(project.chapters, existing, {
+      chapterOfShot: storyboardChapterResolver(project),
+      scope,
+      focusShotId,
+      focusChapterId
+    })
+    const focusShotNumber = existing.find((shot) => shot.id === focusShotId)?.number ?? 1
+    const focusChapterNumber = project.chapters.find((chapter) => chapter.id === focusChapterId)?.number ?? 1
+    const scopeLabel = scope === 'shot' ? `第 ${focusShotNumber} 镜` : scope === 'chapter' ? `第 ${focusChapterNumber} 章` : '全书'
+    const estimatedOne = estimateTextCostCny(project.blueprint.storyCore.length + 3000, 6000, project.runtime.strategy)
+    const estimated = estimatedOne === null ? null : estimatedOne * Math.max(1, chapterBatches.length)
+    const baseShotVersions = Object.fromEntries(existing.map((shot) => [shot.id, shot.updatedAt]))
     const job = await this.launchJob(project, {
       kind: 'text',
-      label: '生成分镜与台词',
+      label: scope === 'shot' ? `重写第 ${focusShotNumber} 镜` : scoped ? '按范围更新分镜' : '生成分镜与台词',
       stage: 'storyboard',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`storyboard:${project.id}:${project.revision}:${locked}:${instruction}:model`)),
+      inputHash: sha256Buffer(Buffer.from(`storyboard:${project.id}:${project.revision}:${locked}:${scope}:${focusShotId}:${focusChapterId}:${allowCountChange}:${instruction}:model`)),
       estimatedCostCny: estimated,
-      costNote: '按当前文本模型参考价估算',
-      retry: { action: 'generate-storyboard', payload: { useModel, instruction } },
+      costNote: chapterBatches.length > 1 ? `按 ${chapterBatches.length} 批分别调用当前文本模型估算` : '按当前文本模型参考价估算',
+      retry: { action: 'generate-storyboard', payload: { useModel, instruction, scope, shotId: focusShotId, chapterId: focusChapterId, confirmShotCountChange: allowCountChange } },
       run: async (snapshot, ctx) => {
         const current = snapshot.blueprint as StudioBlueprint
-        ctx.progress('正在拆分场景与镜头', 15)
-        const result = await completeCreativeText({
-          system: `${STORYBOARD_SYSTEM}${masterPromptContext('drama', 'storyboard', `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 分镜 运镜 台词 连续性`, 'storyboard', snapshot.runtime.strategy)}`,
-          prompt: storyboardPrompt(snapshot, current, locked, instruction),
-          structured: true,
-          temperature: 0.8,
-          signal: ctx.signal,
-          strategy: snapshot.runtime.strategy
-        })
-        const parsed = extractJson<Record<string, unknown>>(result.text)
-        if (!parsed || !Array.isArray(parsed.shots)) {
-          log.warn('storyboard parse failed', { length: result.text.length, head: result.text.slice(0, 600), tail: result.text.slice(-300) })
-          throw new Error('模型没有返回可解析的分镜。请重试，或换一个支持长 JSON 输出的模型。')
+        const totalBatches = chapterBatches.length
+        const mergedScenes: StudioBlueprintSceneSeed[] = []
+        const mergedShots: StoryboardShotSeed[] = []
+        const scopedResults: ScopedStoryboardBatchResult[] = []
+        let effectiveBaseVersions = baseShotVersions
+        let cost: number | null = 0
+        let modelLabel = ''
+        let previousSummary = ''
+        const partialFile = join(this.store.projectDir(projectId), 'derived', 'storyboard-partial.json')
+        const sourceKey = sha256Buffer(Buffer.from(`${snapshot.chapters.map((chapter) => `${chapter.id}:${chapter.revision}:${sha256Buffer(Buffer.from(chapter.content))}`).join('|')}:${instruction}:${locked}:${scope}:${focusShotId}:${focusChapterId}:${allowCountChange}:${existing.map((shot) => `${shot.id}:${shot.number}:${shot.updatedAt}`).join(',')}`))
+        let completedBatches = 0
+        try {
+          const partial = JSON.parse(readFileSync(partialFile, 'utf8')) as {
+            sourceKey?: string
+            completedBatches?: number
+            scenes?: StudioBlueprintSceneSeed[]
+            shots?: StoryboardShotSeed[]
+            scoped?: ScopedStoryboardBatchResult[]
+            baseVersions?: Record<string, number>
+          }
+          if (partial.sourceKey === sourceKey) {
+            completedBatches = Math.min(totalBatches, Math.max(0, Math.round(partial.completedBatches ?? 0)))
+            if (partial.baseVersions && typeof partial.baseVersions === 'object') effectiveBaseVersions = partial.baseVersions
+            if (scoped && Array.isArray(partial.scoped)) {
+              scopedResults.push(...partial.scoped.slice(0, completedBatches))
+              const last = scopedResults.at(-1)?.shots.at(-1)
+              if (last) previousSummary = `第 ${last.number} 镜《${last.title}》：${last.action.slice(0, 120)}`
+            } else if (!scoped && Array.isArray(partial.scenes) && Array.isArray(partial.shots)) {
+              mergedScenes.push(...partial.scenes)
+              mergedShots.push(...partial.shots)
+              const last = mergedShots.at(-1)
+              if (last) previousSummary = `第 ${last.number} 镜《${last.title}》：${last.action.slice(0, 120)}`
+            }
+          }
+        } catch {
+          // 没有可续作的草稿
+        }
+        const persistPartial = (): void => {
+          try {
+            mkdirSync(dirname(partialFile), { recursive: true })
+            writeFileSync(partialFile, `${JSON.stringify({ sourceKey, completedBatches, scenes: mergedScenes, shots: mergedShots, scoped: scopedResults, baseVersions: effectiveBaseVersions, updatedAt: nowMs() })}\n`, 'utf8')
+          } catch {
+            // 草稿落盘失败不阻断当前批次
+          }
+        }
+        const batchLabel = (batch: StoryboardGenerationBatch): string => batch.shotOnly
+          ? `第 ${batch.existing[0]?.number ?? 1} 镜`
+          : batch.chapters.length
+            ? `第 ${batch.chapters[0]?.number ?? 1}–${batch.chapters.at(-1)?.number ?? batch.chapters[0]?.number ?? 0} 章`
+            : '其余镜头'
+        ctx.progress(completedBatches > 0 ? `已找到已完成 ${completedBatches}/${totalBatches} 批的分镜草稿；从中断处继续` : totalBatches > 1 ? `正在分批拆分 ${snapshot.chapters.filter((chapter) => chapter.content.trim()).length} 章原著` : scoped ? `正在按${scopeLabel}更新镜头` : '正在拆分场景与镜头', completedBatches > 0 ? 15 + Math.round(62 * (completedBatches / totalBatches)) : 15)
+        try {
+          for (let batchIndex = completedBatches; batchIndex < totalBatches; batchIndex += 1) {
+            const batch = chapterBatches[batchIndex]
+            const label = batchLabel(batch)
+            if (totalBatches > 1) {
+              ctx.progress(`正在处理${label}（${batchIndex + 1}/${totalBatches}）`, 15 + Math.round(62 * (batchIndex / totalBatches)))
+            }
+            const result = await completeCreativeText({
+              system: `${STORYBOARD_SYSTEM}${masterPromptContext('drama', 'storyboard', `${current.storyCore} ${current.structure} ${current.units.map((unit) => unit.title).join(' ')} 分镜 运镜 台词 连续性`, 'storyboard', snapshot.runtime.strategy)}`,
+              prompt: storyboardPrompt(
+                snapshot,
+                current,
+                locked,
+                instruction,
+                scoped || totalBatches > 1
+                  ? { chapters: batch.chapters, index: batchIndex, total: totalBatches, existing: batch.existing, shotOnly: batch.shotOnly, ...(previousSummary ? { previous: previousSummary } : {}) }
+                  : undefined
+              ),
+              structured: true,
+              temperature: 0.8,
+              signal: ctx.signal,
+              strategy: snapshot.runtime.strategy
+            })
+            const parsed = extractJson<Record<string, unknown>>(result.text)
+            if (!parsed || !Array.isArray(parsed.shots)) {
+              log.warn('storyboard parse failed', { batch: label, length: result.text.length, head: result.text.slice(0, 600), tail: result.text.slice(-300) })
+              throw new Error(totalBatches > 1
+                ? `${label}的分镜不是可解析的 JSON。请重试，或换一个支持长 JSON 输出的模型。`
+                : '模型没有返回可解析的分镜。请重试，或换一个支持长 JSON 输出的模型。')
+            }
+            const local = normalizeModelStoryboard(parsed, snapshot, current, { locked, scoped, expectedShotCount: batch.existing.length, allowCountChange })
+            if (scoped) {
+              scopedResults.push({ existingIds: batch.existing.map((shot) => shot.id), shots: local.shots, shotOnly: batch.shotOnly })
+              const last = local.shots.at(-1)
+              if (last) previousSummary = `第 ${batch.existing.at(-1)?.number ?? local.shots.length} 镜《${last.title}》：${last.action.slice(0, 120)}`
+            } else {
+              const sceneOffset = mergedScenes.length
+              const shotOffset = mergedShots.length
+              local.shots.forEach((shot, index) => {
+                mergedShots.push({
+                  ...shot,
+                  number: shotOffset + index + 1,
+                  sceneIndex: shot.sceneIndex + sceneOffset,
+                  ...(index === 0 && previousSummary ? { continuity: `承接前批：${previousSummary}` } : {})
+                })
+              })
+              mergedScenes.push(...local.scenes)
+              previousSummary = local.shots.at(-1)
+                ? `第 ${shotOffset + local.shots.length} 镜《${local.shots.at(-1)!.title}》：${local.shots.at(-1)!.action.slice(0, 120)}`
+                : previousSummary
+            }
+            cost = cost === null || result.costCny === null ? null : cost + result.costCny
+            modelLabel = result.model
+            completedBatches = batchIndex + 1
+            persistPartial()
+          }
+        } catch (err) {
+          persistPartial()
+          const detail = err instanceof Error ? err.message : String(err)
+          if (totalBatches > 1 && completedBatches > 0) {
+            throw new Error(`${detail} 已完成 ${completedBatches}/${totalBatches} 批，分镜草稿已保存；重试会从下一批继续。`)
+          }
+          throw err
+        }
+        try {
+          rmSync(partialFile, { force: true })
+        } catch {
+          // 草稿清理失败不影响已成功的结果
         }
         ctx.progress('整理镜头与场景', 82)
-        const storyboard = normalizeModelStoryboard(parsed, snapshot, current, locked)
+        if (scoped) {
+          const shotCount = scopedResults.reduce((sum, item) => sum + item.shots.length, 0)
+          return {
+            message: `分镜已按${scopeLabel}更新：${shotCount} 镜（${modelLabel}${totalBatches > 1 ? `，${totalBatches} 批` : ''}）；其他镜头和已有素材保持不变。`,
+            costCny: cost,
+            costNote: totalBatches > 1 ? `按 ${totalBatches} 批实际 token 记录` : '按实际 token 记录',
+            apply: (fresh) => {
+              applyScopedStoryboard(fresh, scopedResults, modelLabel || '模型', { allowCountChange, baseVersions: effectiveBaseVersions })
+            }
+          }
+        }
+        const storyboard: ModelStoryboard = { scenes: mergedScenes, shots: mergedShots }
         return {
-          message: `分镜已生成：${storyboard.scenes.length} 场 / ${storyboard.shots.length} 镜（${result.model}）。`,
-          costCny: result.costCny,
-          costNote: result.costNote ?? '按实际 token 记录',
+          message: `分镜已生成：${storyboard.scenes.length} 场 / ${storyboard.shots.length} 镜（${modelLabel}${totalBatches > 1 ? `，${totalBatches} 批` : ''}）。`,
+          costCny: cost,
+          costNote: totalBatches > 1 ? `按 ${totalBatches} 批实际 token 记录` : '按实际 token 记录',
           apply: (fresh) => {
-            applyModelStoryboard(fresh, storyboard, result.model)
+            applyModelStoryboard(fresh, storyboard, modelLabel || '模型')
           }
         }
       }
@@ -9094,12 +9915,15 @@ export class StudioService {
       const previousDialogue = shot.dialogue
       const previousDuration = shot.durationSec
       const fields = ['title', 'action', 'camera', 'shotSize', 'dialogue', 'speaker', 'prompt', 'negative', 'continuity', 'voiceId'] as const
+      let textChanged = false
       for (const field of fields) {
         if (typeof request[field] === 'string') {
           const value = (request[field] as string).slice(0, field === 'prompt' || field === 'action' || field === 'negative' ? 4000 : 500)
+          if (shot[field] !== value) textChanged = true
           shot[field] = value
         }
       }
+      if (textChanged) delete shot.rewriteCandidate
       if (Number.isFinite(Number(request.durationSec))) shot.durationSec = Math.max(1, Math.min(60, Number(request.durationSec)))
       if (typeof request.lockedReference === 'boolean') shot.lockedReference = request.lockedReference
       if (Array.isArray(request.referenceCharacterIds)) shot.referenceCharacterIds = arrayOfStrings(request.referenceCharacterIds)
@@ -9123,6 +9947,64 @@ export class StudioService {
         project.timeline.updatedAt = nowMs()
       }
       this.store.save(project, `保存第 ${shot.number} 镜`, { snapshot: false })
+      return project
+    })
+  }
+
+  private adoptShotRewrite(request: { [key: string]: unknown }): StudioActionResult {
+    const projectId = safeProjectId(str(request.projectId))
+    return this.resultSync(projectId, (project) => {
+      const shot = project.shots.find((item) => item.id === str(request.shotId))
+      if (!shot) throw new Error('找不到这个镜头。')
+      const candidate = shot.rewriteCandidate
+      if (!candidate) throw new Error('这一镜没有待比较的 AI 新稿。')
+      const previousDialogue = shot.dialogue
+      const previousSpeaker = shot.speaker
+      const previousDuration = shot.durationSec
+      shot.title = candidate.title
+      shot.action = candidate.action
+      shot.camera = candidate.camera
+      shot.shotSize = candidate.shotSize
+      shot.durationSec = candidate.durationSec
+      shot.dialogue = candidate.dialogue
+      shot.speaker = candidate.speaker
+      shot.continuity = candidate.continuity
+      shot.prompt = candidate.prompt
+      shot.negative = candidate.negative
+      const speaker = project.characters.find((character) => character.name === candidate.speaker)
+      if (speaker?.voiceId) shot.voiceId = speaker.voiceId
+      const dialogueChanged = previousDialogue !== shot.dialogue || previousSpeaker !== shot.speaker
+      if (dialogueChanged && shot.voiceAssetId) {
+        shot.voiceAssetId = null
+        shot.status = 'stale'
+      }
+      delete shot.rewriteCandidate
+      shot.updatedAt = nowMs()
+      this.staleAfterShotChange(project, dialogueChanged)
+      const subtitle = project.timeline.clips.find((clip) => clip.shotId === shot.id && clip.kind === 'subtitle')
+      if (subtitle) subtitle.text = shot.dialogue
+      if (shot.durationSec !== previousDuration) {
+        for (const clip of project.timeline.clips.filter((item) => item.shotId === shot.id && item.kind === 'video')) {
+          clip.duration = shot.durationSec
+        }
+        project.timeline.durationSec = Math.max(project.timeline.durationSec, ...project.timeline.clips.map((clip) => clip.start + clip.duration))
+        project.timeline.version += 1
+        project.timeline.updatedAt = nowMs()
+      }
+      this.store.save(project, `采用第 ${shot.number} 镜 AI 新稿`, { snapshot: true })
+      return project
+    })
+  }
+
+  private discardShotRewrite(request: { [key: string]: unknown }): StudioActionResult {
+    const projectId = safeProjectId(str(request.projectId))
+    return this.resultSync(projectId, (project) => {
+      const shot = project.shots.find((item) => item.id === str(request.shotId))
+      if (!shot) throw new Error('找不到这个镜头。')
+      if (!shot.rewriteCandidate) throw new Error('这一镜没有待比较的 AI 新稿。')
+      delete shot.rewriteCandidate
+      shot.updatedAt = nowMs()
+      this.store.save(project, `丢弃第 ${shot.number} 镜 AI 新稿`, { snapshot: false })
       return project
     })
   }
@@ -9404,33 +10286,45 @@ export class StudioService {
     const readiness = await this.mediaReady('video')
     if (!readiness.ok) throw new Error(`${readiness.message}。草稿模式不需要视频，可以先用分镜图合成。`)
     const instruction = str(request.instruction).slice(0, 1200)
+    const requestedMode = str(request.mode) === 'first-only' ? 'first-only' : 'reference'
     const job = await this.launchJob(project, {
       kind: 'video',
       label: `升级第 ${shot.number} 镜为视频`,
       stage: 'visuals',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`video:${instruction}:${shot.id}:${image.sha256}:${shot.prompt}:${shot.continuity}`)),
+      inputHash: sha256Buffer(Buffer.from(`video:${instruction}:${requestedMode}:${shot.id}:${image.sha256}:${shot.prompt}:${shot.continuity}`)),
       estimatedCostCny: 0,
       costNote: '本机 ComfyUI 引擎，不计边际费用',
-      retry: { action: 'generate-shot-video', payload: { shotId: shot.id, instruction } },
+      retry: { action: 'generate-shot-video', payload: { shotId: shot.id, instruction, mode: requestedMode } },
       run: async (snapshot, ctx) => {
         const currentShot = snapshot.shots.find((item) => item.id === shot.id)
         const currentImage = snapshot.assets.find((asset) => asset.id === currentShot?.imageAssetId)
         if (!currentShot || !currentImage) throw new Error('镜头或画面素材在排队期间被修改，请重试。')
         const prompt = [
-          `首帧与参考图一致；主体动作：${currentShot.action}`,
-          `镜头：${currentShot.camera}；单一连续运动，不切镜。`,
+          'Picture 1 是这一镜的身份、构图、服装和光线参考；只让画面中已有的人物与道具完成动作，不要换场景、不要新增人物、不要切镜。',
+          `主体动作：${currentShot.action}`,
+          `镜头：${currentShot.camera}；单一连续运动，保持首帧人物脸、发型、服装、伞与店铺陈设一致。`,
           `环境运动：${currentShot.continuity || '保持人物外观、光线与道具位置一致'}。`,
           instruction ? `这次修改要求：${instruction}。` : '',
           snapshot.styleBible.look ? `风格与光线：${snapshot.styleBible.look}。` : '',
-          '保持人物面部与服装一致，不要文字、水印、换脸或多余人物。'
+          '只生成画面与纯器乐配乐：配乐是无人声、无歌词、无对白的情绪音乐；不要生成人物配音、旁白或任何字幕；不要出现文字、水印、标志、换脸或多余人物；不要让镜头离开首帧的场景。'
         ].filter(Boolean).join(' ')
+        const characterRef = requestedMode === 'reference'
+          ? snapshot.characters
+              .filter((character) => currentShot.referenceCharacterIds.includes(character.id))
+              .flatMap((character) => character.refAssetIds ?? [])
+              .map((assetId) => snapshot.assets.find((asset) => asset.id === assetId))
+              .find((asset) => asset?.kind === 'image')
+          : undefined
         ctx.progress('上传首帧', 6)
         const result = await getMediaService().generateVideo({
           workspace: this.store.projectDir(snapshot.id),
           prompt,
-          referencePaths: [this.store.assetAbsolute(snapshot, currentImage)],
-          mode: 'first-only',
+          referencePaths: [
+            this.store.assetAbsolute(snapshot, currentImage),
+            ...(characterRef ? [this.store.assetAbsolute(snapshot, characterRef)] : [])
+          ],
+          mode: requestedMode,
           width: snapshot.brief.aspect === '9:16' ? 544 : 960,
           height: snapshot.brief.aspect === '9:16' ? 960 : 544,
           seconds: Math.max(5, Math.min(15, Math.round(currentShot.durationSec))),
@@ -9476,6 +10370,9 @@ export class StudioService {
             })
             target.updatedAt = nowMs()
             finishVisualStage(fresh)
+            if (!resolveMusicAsset(fresh)?.formal) {
+              fresh.stages.music = { status: 'done', updatedAt: nowMs(), message: '配乐随 H3 画面生成（无人声）', progress: 100 }
+            }
             this.staleAfterMediaChange(fresh, '有视频更新，需要重新装配时间线')
           }
         }
@@ -9588,13 +10485,18 @@ export class StudioService {
     if (!targets.length) throw new Error('没有需要配音的台词。')
     const voiceNote = cloudMode
       ? `云端配音 · ${tts.model || 'tts-1'}`
-      : 'Windows 系统声线，本机生成'
+      : localReady
+        ? '本地 Qwen3-TTS 声线，本机生成'
+        : 'Windows 系统声线，本机生成'
     const job = await this.launchJob(project, {
       kind: 'voice',
       label: targets.length > 1 ? `生成 ${targets.length} 段配音` : `第 ${targets[0].number} 镜配音`,
       stage: 'voice',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`voice:${tts.mode}:${tts.model}:${preferred}:${instruction}:${targets.map((shot) => `${shot.id}:${shot.dialogue}`).join('|')}`)),
+      inputHash: sha256Buffer(Buffer.from(`voice:${tts.mode}:${tts.model}:${preferred}:${instruction}:${targets.map((shot) => {
+        const voice = project.characters.find((character) => character.name === shot.speaker)?.voiceId || shot.voiceId || ''
+        return `${shot.id}:${shot.dialogue}:${voice}`
+      }).join('|')}`)),
       ...(cloudMode ? {} : { estimatedCostCny: 0 }),
       costNote: voiceNote,
       retry: { action: 'generate-voice', payload: { shotIds: targets.map((shot) => shot.id), voiceId: preferred, ...(instruction ? { instruction } : {}) } },
@@ -9607,19 +10509,22 @@ export class StudioService {
           const workDir = join(this.store.tempDir(snapshot.id), `tts-${shot.id}`)
           const character = snapshot.characters.find((item) => item.name === shot.speaker)
           const storedVoice = character?.voiceId || shot.voiceId || ''
-          const requestedLocal = isLocalTtsVoice(str(request.voiceId)) ? str(request.voiceId) : isLocalTtsVoice(tts.voice) ? tts.voice : ''
+          const requestedLocal = isLocalTtsVoice(str(request.voiceId)) ? str(request.voiceId) : ''
           const voice = cloudMode
             ? (storedVoice || preferred)
             : requestedLocal
               ? requestedLocal
-              : isLocalTtsVoice(storedVoice)
+              : storedVoice
                 ? storedVoice
-                : localReady
-                  ? QWEN_DEFAULT_VOICE
-                  : (storedVoice || preferred)
+                : isLocalTtsVoice(tts.voice)
+                  ? tts.voice
+                  : localReady
+                    ? QWEN_DEFAULT_VOICE
+                    : preferred
           const useLocalVoice = !cloudMode && isLocalTtsVoice(voice)
           const extension = cloudMode ? 'mp3' : 'wav'
           const output = join(workDir, `voice-${Date.now().toString(36)}.${extension}`)
+          const voiceDirection = [instruction, localVoiceInstruction(shot, character)].filter(Boolean).join('；')
           if (useLocalVoice) ctx.progress(`第 ${index + 1}/${targets.length} 段 · 本地 AI 声线合成`, 4 + Math.round((index / targets.length) * 86))
           try {
             if (cloudMode && cloudRoute?.config) {
@@ -9629,6 +10534,7 @@ export class StudioService {
                 apiKey: cloudRoute.apiKey ?? '',
                 model: tts.model || 'tts-1',
                 voice: voice || tts.voice || 'alloy',
+                instructions: voiceDirection,
                 outputPath: output,
                 workDir,
                 signal: ctx.signal
@@ -9638,7 +10544,7 @@ export class StudioService {
                 await synthesizeLocalSpeech({
                   text: shot.dialogue,
                   voice,
-                  instruct: [instruction, localVoiceInstruction(shot)].filter(Boolean).join('；'),
+                  instruct: voiceDirection,
                   outputPath: output
                 })
               } catch (localError) {
@@ -9688,7 +10594,7 @@ export class StudioService {
         return {
           message: `已生成 ${generated.length}/${targets.length} 段配音${errors.length ? `；${errors.length} 段失败` : ''}`,
           costCny: cloudMode ? null : 0,
-          costNote: cloudMode ? '云端配音按服务商账单计费，单价未知' : 'Windows 系统声线，本机生成',
+          costNote: cloudMode ? '云端配音按服务商账单计费，单价未知' : localReady ? '本地 Qwen3-TTS，本机生成' : 'Windows 系统声线，本机生成',
           outputs: generated.map((item) => ({ label: '配音', assetId: item.asset.id })),
           apply: (fresh) => {
             for (const item of generated) {
@@ -9869,7 +10775,6 @@ export class StudioService {
     if (project.kind !== 'drama') throw new Error('只有漫剧需要合成视频。')
     const requestId = str((input as unknown as Record<string, unknown>).requestId) || undefined
     const quality = input.quality === 'final' ? 'final' : 'draft'
-    const subtitleMode = input.subtitleMode === 'soft' ? 'soft' : 'burn'
     const format = input.format === 'mov' || input.format === 'mkv' || input.format === 'webm' ? input.format : 'mp4'
     const resolution = input.resolution === '2160p' ? '2160p' : '1080p'
     if (!project.timeline.clips.length) throw new Error('时间线还没有装配；先排好时间线，再合成。')
@@ -9888,17 +10793,16 @@ export class StudioService {
       label: quality === 'draft' ? `合成动态分镜草稿 · ${format.toUpperCase()}` : `合成成片 · ${resolution === '2160p' ? '4K' : '1080p'} ${format.toUpperCase()}`,
       stage: 'delivery',
       ...(requestId ? { requestId } : {}),
-      inputHash: sha256Buffer(Buffer.from(`render:${project.id}:${project.timeline.version}:${quality}:${subtitleMode}:${format}:${resolution}`)),
+      inputHash: sha256Buffer(Buffer.from(`render:${project.id}:${project.timeline.version}:${quality}:${format}:${resolution}`)),
       estimatedCostCny: 0,
       costNote: 'FFmpeg 本机计算，不计模型费用',
-      retry: { action: 'render', payload: { quality, aspect: input.aspect, subtitleMode, format, resolution } },
+      retry: { action: 'render', payload: { quality, aspect: input.aspect, format, resolution } },
       run: async (snapshot, ctx) => {
         ctx.progress('检查素材', 2)
         let result: Awaited<ReturnType<typeof renderProject>>
         try {
           result = await renderProject(snapshot, {
             quality,
-            subtitleMode,
             format,
             resolution,
             ...(input.aspect ? { aspect: input.aspect } : {}),
@@ -9927,9 +10831,11 @@ export class StudioService {
             width: result.width,
             height: result.height,
             durationSec: Math.round(result.durationSec * 10) / 10,
-            subtitles: result.burnedSubtitles ? 'burned' : 'soft',
+            subtitles: 'external',
             missingShots: result.missingShots.length,
-            placeholders: result.placeholders
+            placeholders: result.placeholders,
+            timelineVersion: snapshot.timeline.version,
+            renderKey: timelineRenderKey(snapshot)
           }
         }
         let posterDelivery: StudioDelivery | null = null
@@ -9951,13 +10857,29 @@ export class StudioService {
         } catch {
           // 抽帧失败不影响成片
         }
+        let subtitleDelivery: StudioDelivery | null = null
+        if (result.subtitlePath && existsSync(result.subtitlePath)) {
+          const cues = snapshot.timeline.clips.filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim()).length
+          subtitleDelivery = {
+            id: studioId('delivery'),
+            kind: 'srt',
+            label: `外挂字幕 · SRT · ${cues} 条`,
+            path: result.subtitlePath.slice(this.store.projectDir(snapshot.id).length + 1).replace(/\\/g, '/'),
+            bytes: statSync(result.subtitlePath).size,
+            sha256: sha256File(result.subtitlePath),
+            createdAt: nowMs(),
+            meta: { clips: cues, timelineVersion: snapshot.timeline.version }
+          }
+        }
         return {
           message: result.message,
           costCny: 0,
           costNote: 'FFmpeg 本机计算，不计模型费用',
-          outputs: [{ label: delivery.label, path: result.path }],
+          outputs: [{ label: delivery.label, path: result.path }, ...(subtitleDelivery ? [{ label: subtitleDelivery.label, path: result.subtitlePath! }] : [])],
           apply: (fresh) => {
+            fresh.deliveries = fresh.deliveries.filter((item) => !(subtitleDelivery && item.kind === 'srt' && item.path === subtitleDelivery.path))
             fresh.deliveries.unshift(delivery)
+            if (subtitleDelivery) fresh.deliveries.unshift(subtitleDelivery)
             if (posterDelivery) fresh.deliveries.unshift(posterDelivery)
             fresh.deliveries = fresh.deliveries.slice(0, 30)
             const degraded = result.missingShots.length > 0 || result.audioFailures.length > 0 || result.placeholders > 0 || missingVoiceLines.length > 0
@@ -10212,91 +11134,412 @@ export class StudioService {
     const runtime = studioTextRuntime(project.runtime.strategy)
     if (!runtime.configured) throw new Error(`剧情审稿需要可用的文本模型。${runtime.message}`)
     if (!project.blueprint?.approved || !project.shots.length) throw new Error('还没有可审的镜头计划；先生成并确认蓝图与分镜。')
+    const projectId = project.id
     const shots = [...project.shots].sort((left, right) => left.number - right.number)
-    const shotText = shots.slice(0, 40).map((shot) => ({
-      number: shot.number,
-      scene: project.scenes.find((scene) => scene.id === shot.sceneId)?.title ?? '',
-      title: shot.title,
-      action: shot.action,
-      dialogue: shot.dialogue,
-      speaker: shot.speaker
-    }))
-    const scenesText = project.scenes.map((scene) => ({ number: scene.number, title: scene.title, synopsis: scene.synopsis, location: scene.location }))
-    const estimated = estimateTextCostCny(shotText.length * 120 + 1500, 4000, project.runtime.strategy) ?? 0
+    const scope: 'auto' | 'current' | 'all' = str(request.scope) === 'current' ? 'current' : str(request.scope) === 'all' ? 'all' : 'auto'
+    const selected = scope === 'current' ? shots.find((shot) => shot.id === str(request.shotId)) : undefined
+    if (scope === 'current' && !selected) throw new Error('找不到要审的当前镜；请重新选择镜头后再审。')
+    const targets = scope === 'all' ? shots : selected ? [selected] : shots.slice(0, 40)
+    const batches: StudioShot[][] = []
+    for (let start = 0; start < targets.length; start += 20) batches.push(targets.slice(start, start + 20))
+    const sampled = targets.length < shots.length
+    const source = reviewSourceKey(targets.map((shot) => `${shot.id}:${shot.updatedAt}:${shot.title}:${shot.action}:${shot.dialogue}`))
+    const estimated = estimateTextCostCny(targets.length * 120 + 1500, 4000 * batches.length, project.runtime.strategy) ?? 0
     const job = await this.launchJob(project, {
       kind: 'text',
-      label: `剧情审稿 · ${shots.length} 镜`,
+      label: scope === 'all' ? `剧情审稿 · 全片分批 · ${shots.length} 镜` : `剧情审稿 · ${targets.length}/${shots.length} 镜`,
       stage: 'review',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`drama-review:${project.id}:${shots.map((shot) => `${shot.id}:${shot.action}:${shot.dialogue}`).join('|')}:${runtime.model?.id ?? ''}`)),
+      inputHash: sha256Buffer(Buffer.from(`drama-review:${project.id}:${source}:${runtime.model?.id ?? ''}`)),
       estimatedCostCny: estimated,
-      costNote: '按当前文本模型参考价估算',
-      retry: { action: 'model-review', payload: {} },
+      costNote: batches.length > 1 ? `按 ${batches.length} 批分别调用当前文本模型估算` : '按当前文本模型参考价估算',
+      retry: { action: 'model-review', payload: { scope, shotId: selected?.id } },
       run: async (snapshot, ctx) => {
-        ctx.progress('整理剧情与分镜', 15)
-        const result = await completeCreativeText({
-          system: [
-            '你是漫剧剧情审稿编辑，只检查剧情逻辑，不改稿。',
-            '检查人物动机、因果链、时间线、场景转换、伏笔兑现、镜头是否覆盖关键动作、台词是否推进剧情。',
-            '每个问题必须引用镜号或场号；不要编造画面里看不到的细节，不要评价画面美感。',
-            '严格输出 JSON，不要 Markdown：{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"shotNumber":number,"sceneNumber":number}]}',
-            '没有证据的判断不要写；最多 12 条。',
-            masterPromptContext('drama', 'review', '剧情逻辑 人物动机 因果 时间线 伏笔 分镜覆盖', 'review', snapshot.runtime.strategy)
-          ].join('\n'),
-          prompt: [
-            `作品：${snapshot.title}`,
-            `一句话：${snapshot.logline}`,
-            `故事核：${snapshot.blueprint?.storyCore ?? ''}`,
-            `人物：${snapshot.characters.map((character) => `${character.name}（${character.role}）`).join('；')}`,
-            `场景：${JSON.stringify(scenesText)}`,
-            `分镜：${JSON.stringify(shotText)}`,
-            '请按导演大师的检查方法核对剧情逻辑与分镜覆盖，引用具体镜号。只输出 JSON。'
-          ].join('\n\n'),
-          structured: true,
-          temperature: 0.3,
-          signal: ctx.signal,
-          strategy: snapshot.runtime.strategy
-        })
-        const parsed = extractJson<Record<string, unknown>>(result.text)
-        if (!parsed || !Array.isArray(parsed.issues)) throw new Error('模型没有返回可解析的剧情审稿结果。')
-        const allowedLevels = new Set(['error', 'warn', 'info'])
-        const checks: StudioProject['checks'] = (parsed.issues as Array<Record<string, unknown>>)
-          .filter((item) => item && typeof item === 'object')
-          .slice(0, 12)
-          .map((item) => {
-            const level = allowedLevels.has(str(item.level)) ? str(item.level) as 'error' | 'warn' | 'info' : 'info'
-            const shotNumber = Math.round(num(item.shotNumber, 0))
-            const target = snapshot.shots.find((shot) => shot.number === shotNumber)
-            const sceneNumber = Math.round(num(item.sceneNumber, 0))
-            const scene = snapshot.scenes.find((itemScene) => itemScene.number === sceneNumber)
-            return {
-              id: studioId('check'),
-              kind: 'continuity' as const,
-              level,
-              title: `剧情 · ${str(item.title).slice(0, 100) || '需要核对'}`,
-              detail: str(item.detail).slice(0, 1200),
-              ...(target?.id ? { targetId: target.id } : scene?.id ? { targetId: scene.id } : {}),
-              createdAt: nowMs()
-            }
-          })
-        const summary = str(parsed.summary).slice(0, 300)
+        const partialFile = join(this.store.projectDir(projectId), 'derived', 'review-partial.json')
+        const partialKey = sha256Buffer(Buffer.from(`drama-review:${source}:${runtime.model?.id ?? ''}`))
+        const checks: StudioProject['checks'] = []
+        const coverage: StudioReviewCoverage[] = []
+        let cost: number | null = 0
+        let modelLabel = ''
+        let summary = ''
+        let completed = 0
+        try {
+          const partial = JSON.parse(readFileSync(partialFile, 'utf8')) as {
+            key?: string
+            completed?: number
+            checks?: StudioProject['checks']
+            coverage?: StudioReviewCoverage[]
+            cost?: number | null
+            model?: string
+            summary?: string
+          }
+          if (partial.key === partialKey) {
+            completed = Math.min(batches.length, Math.max(0, Math.round(partial.completed ?? 0)))
+            if (Array.isArray(partial.checks)) checks.push(...partial.checks)
+            if (Array.isArray(partial.coverage)) coverage.push(...partial.coverage.slice(0, completed))
+            cost = typeof partial.cost === 'number' || partial.cost === null ? partial.cost : 0
+            modelLabel = partial.model ?? ''
+            summary = partial.summary ?? ''
+          }
+        } catch {
+          // 没有可续作的审稿草稿
+        }
+        const persistPartial = (): void => {
+          try {
+            mkdirSync(dirname(partialFile), { recursive: true })
+            writeFileSync(partialFile, `${JSON.stringify({ key: partialKey, completed, checks, coverage, cost, model: modelLabel, summary, updatedAt: nowMs() })}\n`, 'utf8')
+          } catch {
+            // 草稿落盘失败不阻断当前批次
+          }
+        }
+        const scenesText = snapshot.scenes.map((scene) => ({ number: scene.number, title: scene.title, synopsis: scene.synopsis, location: scene.location }))
+        ctx.progress(completed > 0 ? `已找到已完成 ${completed}/${batches.length} 批的剧情审稿记录；从中断处继续` : '整理剧情与分镜', completed > 0 ? 15 : 8)
+        try {
+          for (let index = completed; index < batches.length; index += 1) {
+            const batch = batches[index]
+            const first = batch[0]?.number ?? 1
+            const last = batch.at(-1)?.number ?? first
+            ctx.progress(`剧情审稿：第 ${first}–${last} 镜（${index + 1}/${batches.length}）`, 12 + Math.round(70 * (index / batches.length)))
+            const shotText = batch.map((shot) => ({
+              number: shot.number,
+              scene: snapshot.scenes.find((scene) => scene.id === shot.sceneId)?.title ?? '',
+              title: shot.title,
+              action: shot.action,
+              dialogue: shot.dialogue,
+              speaker: shot.speaker
+            }))
+            const result = await completeCreativeText({
+              system: [
+                '你是漫剧剧情审稿编辑，只检查剧情逻辑，不改稿。',
+                '检查人物动机、因果链、时间线、场景转换、伏笔兑现、镜头是否覆盖关键动作、台词是否推进剧情。',
+                '每个问题必须引用镜号或场号；不要编造画面里看不到的细节，不要评价画面美感。',
+                '严格输出 JSON，不要 Markdown：{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"shotNumber":number,"sceneNumber":number}]}',
+                '没有证据的判断不要写；最多 12 条。',
+                masterPromptContext('drama', 'review', '剧情逻辑 人物动机 因果 时间线 伏笔 分镜覆盖', 'review', snapshot.runtime.strategy)
+              ].join('\n'),
+              prompt: [
+                `作品：${snapshot.title}`,
+                `一句话：${snapshot.logline}`,
+                `故事核：${snapshot.blueprint?.storyCore ?? ''}`,
+                `人物：${snapshot.characters.map((character) => `${character.name}（${character.role}）`).join('；')}`,
+                `场景：${JSON.stringify(scenesText)}`,
+                `本次审第 ${first}–${last} 镜（${index + 1}/${batches.length} 批）：${JSON.stringify(shotText)}`,
+                '请按导演大师的检查方法核对剧情逻辑与分镜覆盖，引用具体镜号。只输出 JSON。'
+              ].join('\n\n'),
+              structured: true,
+              temperature: 0.3,
+              signal: ctx.signal,
+              strategy: snapshot.runtime.strategy
+            })
+            const parsed = extractJson<Record<string, unknown>>(result.text)
+            if (!parsed || !Array.isArray(parsed.issues)) throw new Error('模型没有返回可解析的剧情审稿结果。')
+            const allowedLevels = new Set(['error', 'warn', 'info'])
+            const batchChecks: StudioProject['checks'] = (parsed.issues as Array<Record<string, unknown>>)
+              .filter((item) => item && typeof item === 'object')
+              .slice(0, 12)
+              .map((item) => {
+                const level = allowedLevels.has(str(item.level)) ? str(item.level) as 'error' | 'warn' | 'info' : 'info'
+                const shotNumber = Math.round(num(item.shotNumber, 0))
+                const target = snapshot.shots.find((shot) => shot.number === shotNumber)
+                const sceneNumber = Math.round(num(item.sceneNumber, 0))
+                const scene = snapshot.scenes.find((itemScene) => itemScene.number === sceneNumber)
+                return {
+                  id: studioId('check'),
+                  kind: 'continuity' as const,
+                  level,
+                  title: `剧情 · ${str(item.title).slice(0, 100) || '需要核对'}`,
+                  detail: str(item.detail).slice(0, 1200),
+                  ...(target?.id ? { targetId: target.id } : scene?.id ? { targetId: scene.id } : {}),
+                  createdAt: nowMs()
+                }
+              })
+            checks.push(...batchChecks)
+            const batchSummary = str(parsed.summary).slice(0, 300)
+            if (batchSummary) summary = summary ? `${summary} ${batchSummary}` : batchSummary
+            cost = cost === null || result.costCny === null ? null : cost + result.costCny
+            modelLabel = result.model
+            coverage.push({
+              id: studioId('coverage'),
+              createdAt: nowMs(),
+              kind: 'drama',
+              scope,
+              part: `drama:${first}-${last}`,
+              label: `第 ${first}–${last} 镜`,
+              unitStart: first,
+              unitEnd: last,
+              covered: batch.length,
+              total: shots.length,
+              source,
+              model: modelLabel,
+              issues: batchChecks.length,
+              units: batch.map((shot) => ({ id: shot.id, version: shot.updatedAt }))
+            })
+            completed = index + 1
+            persistPartial()
+          }
+        } catch (err) {
+          persistPartial()
+          const detail = err instanceof Error ? err.message : String(err)
+          if (batches.length > 1 && completed > 0) {
+            throw new Error(`${detail} 已完成 ${completed}/${batches.length} 批，审稿记录已保存；重试会从下一批继续。`)
+          }
+          throw err
+        }
+        try {
+          rmSync(partialFile, { force: true })
+        } catch {
+          // 草稿清理失败不影响已成功的结果
+        }
+        ctx.progress('整理审稿结果', 90)
         const errors = checks.filter((check) => check.level === 'error').length
         const warns = checks.filter((check) => check.level === 'warn').length
+        const coveredCount = coverage.reduce((sum, item) => sum + item.covered, 0)
+        const completeCoverage = coveredCount >= shots.length
         return {
-          message: `剧情审稿完成：${errors} 个问题、${warns} 条提醒${summary ? `。${summary}` : ''}`,
-          costCny: result.costCny,
-          costNote: result.costNote ?? '按实际 token 记录',
-          outputs: [{ label: `${shots.length} 镜剧情审稿`, path: undefined }],
+          message: `剧情审稿完成：${errors} 个问题、${warns} 条提醒；覆盖 ${coveredCount}/${shots.length} 镜${batches.length > 1 ? `（${batches.length} 批）` : ''}${!completeCoverage ? '（未覆盖镜头仍需审稿）' : ''}${summary ? `。${summary}` : ''}`,
+          costCny: cost,
+          costNote: batches.length > 1 ? `按 ${batches.length} 批实际 token 记录` : '按实际 token 记录',
+          outputs: [{ label: `${coveredCount} 镜剧情审稿`, path: undefined }],
           apply: (fresh) => {
-            fresh.checks = [...fresh.checks.filter((check) => !check.title.startsWith('剧情 · ')), ...checks]
+            const coveredIds = new Set(targets.map((shot) => shot.id))
+            fresh.checks = [...fresh.checks.filter((check) => !(check.title.startsWith('剧情 · ') && (!check.targetId || coveredIds.has(check.targetId)))), ...checks]
+            if (!completeCoverage) {
+              const remaining = fresh.shots.filter((shot) => !coveredIds.has(shot.id)).map((shot) => `第 ${shot.number} 镜`)
+              fresh.checks.push({
+                id: studioId('check'),
+                kind: 'continuity',
+                level: 'info',
+                title: `剧情审稿覆盖 ${coveredCount}/${shots.length} 镜`,
+                detail: remaining.length ? `未审：${remaining.slice(0, 30).join('、')}${remaining.length > 30 ? '…' : ''}。可选择全片分批审稿。` : '本次只审了当前范围。',
+                createdAt: nowMs()
+              })
+            }
+            fresh.reviewCoverage = mergeReviewCoverage(fresh.reviewCoverage, coverage, 'drama', source)
             fresh.stages.review = {
-              status: errors || warns ? 'review' : 'done',
+              status: errors || warns || !completeCoverage ? 'review' : 'done',
               updatedAt: nowMs(),
-              message: errors ? `${errors} 个剧情问题` : warns ? `${warns} 条剧情提醒` : '剧情审稿通过',
-              progress: errors || warns ? 60 : 100
+              message: errors ? `${errors} 个剧情问题` : warns ? `${warns} 条剧情提醒` : !completeCoverage ? `剧情审稿通过；覆盖 ${coveredCount}/${shots.length} 镜` : '剧情审稿通过（全片）',
+              progress: errors || warns || !completeCoverage ? 60 : 100
             }
             fresh.stage = 'review'
             fresh.messages.push(assistantMessage('assistant', [`剧情审稿：${summary || '已完成。'}`, ...checks.slice(0, 5).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
+            fresh.messages = fresh.messages.slice(-80)
+          }
+        }
+      }
+    })
+    return this.result(project, { job })
+  }
+
+  private async reviewNovelBatch(
+    snapshot: StudioProject,
+    segments: NovelReviewSegment[],
+    ctx: JobRunContext
+  ): Promise<{ checks: StudioProject['checks']; cost: number | null; model: string; summary: string }> {
+    const written = snapshot.chapters.filter((chapter) => chapter.content.trim())
+    const chapterLength = new Map(snapshot.chapters.map((chapter) => [chapter.id, chapter.content.length]))
+    const segmentsText = segments
+      .map((segment) => {
+        const total = chapterLength.get(segment.chapterId) ?? segment.end
+        const range = segment.start === 0 && segment.end >= total ? '' : `（第 ${segment.start + 1}–${segment.end} 字 / 共 ${total} 字）`
+        return `【第 ${segment.chapterNumber} 章 · ${segment.chapterTitle}${range}】\n${segment.text}`
+      })
+      .join('\n\n')
+    const labels = [...new Map(segments.map((segment) => {
+      const total = chapterLength.get(segment.chapterId) ?? segment.end
+      const range = segment.start === 0 && segment.end >= total ? '' : `（第 ${segment.start + 1}–${segment.end} 字）`
+      return [`${segment.chapterId}:${segment.start}-${segment.end}`, `第 ${segment.chapterNumber} 章${range}`]
+    })).values()]
+    const result = await completeCreativeText({
+      system: [
+        '你是 Morrow 创作台的审稿编辑，只做审稿，不改稿。',
+        '按写作大师的检查方法核对结构与人物、场景与对话、语言与 AI 腔、连续性与交付完整度。',
+        '每个问题必须引用章节号、原文短句或具体缺失项，不许凭感觉。',
+        '严格输出 JSON，不要 Markdown：',
+        '{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"chapterNumber":number}]}',
+        '低于交付标准必须给可执行的改法；没有证据的判断不要写。',
+        masterPromptContext(snapshot.kind, 'review', '结构 人物 场景 对话 语言 AI 腔 连续性 交付', 'review', snapshot.runtime.strategy)
+      ].join('\n'),
+      prompt: [
+        `作品：${snapshot.title}`,
+        `故事核：${snapshot.blueprint?.storyCore ?? snapshot.logline}`,
+        `人物：${snapshot.characters.map((character) => `${character.name}（${character.role ?? ''}）`).join('、') || '未建立'}`,
+        `已写 ${written.length}/${snapshot.chapters.length} 章；本次审 ${labels.join('、')}。必须只根据下面给出的原文区间判断，不要假设未给出的内容。`,
+        '',
+        segmentsText
+      ].join('\n'),
+      structured: true,
+      temperature: 0.3,
+      signal: ctx.signal,
+      strategy: snapshot.runtime.strategy
+    })
+    const parsed = extractJson<Record<string, unknown>>(result.text)
+    if (!parsed || !Array.isArray(parsed.issues)) throw new Error('模型没有返回可解析的审稿结果。请重试。')
+    const allowedLevels = new Set(['error', 'warn', 'info'])
+    const checks: StudioProject['checks'] = (parsed.issues as Array<Record<string, unknown>>)
+      .filter((item) => item && typeof item === 'object')
+      .slice(0, 20)
+      .map((item) => {
+        const level = allowedLevels.has(str(item.level)) ? str(item.level) as 'error' | 'warn' | 'info' : 'info'
+        const chapterNumber = Math.round(num(item.chapterNumber, 0))
+        const target = snapshot.chapters.find((chapter) => chapter.number === chapterNumber)
+        const title = str(item.title).slice(0, 120) || '模型审稿发现'
+        return {
+          id: studioId('check'),
+          kind: 'quality' as const,
+          level,
+          title: `模型审稿 · ${title}`,
+          detail: str(item.detail).slice(0, 1200),
+          ...(target ? { targetId: target.id } : {}),
+          createdAt: nowMs()
+        }
+      })
+    return { checks, cost: result.costCny, model: result.model, summary: str(parsed.summary).slice(0, 300) }
+  }
+
+  /** 全部分批审稿：每批 4 章，覆盖全部正文；不再固定第 1 章 + 最后 5 章。 */
+  private async modelReviewAll(project: StudioProject, request: { [key: string]: unknown }): Promise<StudioActionResult> {
+    const projectId = project.id
+    const runtime = studioTextRuntime(project.runtime.strategy)
+    if (!runtime.configured) throw new Error(`模型审稿需要可用的文本模型。${runtime.message}`)
+    const written = project.chapters.filter((chapter) => chapter.content.trim()).sort((left, right) => left.number - right.number)
+    if (!written.length) throw new Error('还没有正文可供审稿。')
+    const segments = novelReviewSegments(written)
+    const batches = novelReviewBatches(segments)
+    const source = reviewSourceKey(written.map((chapter) => `${chapter.id}:${chapter.revision}:${sha256Buffer(Buffer.from(chapter.content))}`))
+    const estimated = estimateTextCostCny(
+      Math.min(240_000, segments.reduce((sum, segment) => sum + segment.text.length, 0) + 2000),
+      Math.max(4000, batches.length * 4000),
+      project.runtime.strategy
+    )
+    const job = await this.launchJob(project, {
+      kind: 'text',
+      label: `模型审稿 · 全书分批 · ${written.length} 章`,
+      stage: 'review',
+      requestId: str(request.requestId) || undefined,
+      inputHash: sha256Buffer(Buffer.from(`model-review-all:${project.id}:${source}:${runtime.model?.id ?? ''}`)),
+      estimatedCostCny: estimated,
+      costNote: `按 ${batches.length} 批分别调用当前文本模型估算`,
+      retry: { action: 'model-review', payload: { scope: 'all' } },
+      run: async (snapshot, ctx) => {
+        const partialFile = join(this.store.projectDir(projectId), 'derived', 'review-partial.json')
+        const partialKey = sha256Buffer(Buffer.from(`model-review-all:${source}:${runtime.model?.id ?? ''}`))
+        const checks: StudioProject['checks'] = []
+        const coverage: StudioReviewCoverage[] = []
+        let cost: number | null = 0
+        let modelLabel = ''
+        let summary = ''
+        let completed = 0
+        try {
+          const partial = JSON.parse(readFileSync(partialFile, 'utf8')) as {
+            key?: string
+            completed?: number
+            checks?: StudioProject['checks']
+            coverage?: StudioReviewCoverage[]
+            cost?: number | null
+            model?: string
+            summary?: string
+          }
+          if (partial.key === partialKey) {
+            completed = Math.min(batches.length, Math.max(0, Math.round(partial.completed ?? 0)))
+            if (Array.isArray(partial.checks)) checks.push(...partial.checks)
+            if (Array.isArray(partial.coverage)) coverage.push(...partial.coverage.slice(0, completed))
+            cost = typeof partial.cost === 'number' || partial.cost === null ? partial.cost : 0
+            modelLabel = partial.model ?? ''
+            summary = partial.summary ?? ''
+          }
+        } catch {
+          // 没有可续作的审稿草稿
+        }
+        const persistPartial = (): void => {
+          try {
+            mkdirSync(dirname(partialFile), { recursive: true })
+            writeFileSync(partialFile, `${JSON.stringify({ key: partialKey, completed, checks, coverage, cost, model: modelLabel, summary, updatedAt: nowMs() })}\n`, 'utf8')
+          } catch {
+            // 草稿落盘失败不阻断当前批次
+          }
+        }
+        ctx.progress(completed > 0 ? `已找到已完成 ${completed}/${batches.length} 批的审稿记录；从中断处继续` : '准备审稿材料', completed > 0 ? 12 : 8)
+        try {
+          for (let index = completed; index < batches.length; index += 1) {
+            const batch = batches[index]
+            const label = novelReviewBatchLabel(batch)
+            const first = batch[0]?.chapterNumber ?? 1
+            const last = batch.at(-1)?.chapterNumber ?? first
+            ctx.progress(`模型审稿：${label}（${index + 1}/${batches.length}）`, 12 + Math.round((index / batches.length) * 70))
+            const result = await this.reviewNovelBatch(snapshot, batch, ctx)
+            checks.push(...result.checks)
+            const batchSummary = result.summary
+            if (batchSummary) summary = summary ? `${summary} ${batchSummary}` : batchSummary
+            cost = cost === null || result.cost === null ? null : cost + result.cost
+            modelLabel = result.model
+            const batchChapters = [...new Map(batch.map((segment) => [segment.chapterId, segment])).values()]
+            coverage.push({
+              id: studioId('coverage'),
+              createdAt: nowMs(),
+              kind: 'novel',
+              scope: 'all',
+              part: novelReviewBatchPart(batch),
+              label,
+              unitStart: first,
+              unitEnd: last,
+              covered: batchChapters.length,
+              total: written.length,
+              source,
+              model: modelLabel,
+              issues: result.checks.length,
+              units: batchChapters.map((segment) => ({ id: segment.chapterId, version: segment.version })),
+              segments: batch.map((segment) => ({ id: segment.chapterId, version: segment.version, start: segment.start, end: segment.end }))
+            })
+            completed = index + 1
+            persistPartial()
+          }
+        } catch (err) {
+          persistPartial()
+          const detail = err instanceof Error ? err.message : String(err)
+          if (batches.length > 1 && completed > 0) {
+            throw new Error(`${detail} 已完成 ${completed}/${batches.length} 批，审稿记录已保存；重试会从下一批继续。`)
+          }
+          throw err
+        }
+        try {
+          rmSync(partialFile, { force: true })
+        } catch {
+          // 草稿清理失败不影响已成功的结果
+        }
+        ctx.progress('整理审稿结果', 90)
+        const errors = checks.filter((check) => check.level === 'error').length
+        const warns = checks.filter((check) => check.level === 'warn').length
+        const coverageSummary = novelReviewCoverage(mergeReviewCoverage(project.reviewCoverage, coverage, 'novel', source), snapshot.chapters)
+        const completeCoverage = coverageSummary.count >= written.length
+        return {
+          message: `模型审稿完成：${errors} 个问题、${warns} 条提醒；已覆盖全书 ${coverageSummary.count}/${written.length} 章（${batches.length} 批）${!completeCoverage ? `，还有第 ${coverageSummary.missing.slice(0, 20).join('、')}${coverageSummary.missing.length > 20 ? '…' : ''} 章未读完` : ''}${summary ? `。${summary}` : ''}`,
+          costCny: cost,
+          costNote: `按 ${batches.length} 批实际 token 记录`,
+          outputs: [{ label: `全书 ${written.length} 章模型审稿`, path: undefined }],
+          apply: (fresh) => {
+            const coveredIds = new Set(written.map((chapter) => chapter.id))
+            fresh.checks = [...fresh.checks.filter((check) => !(check.title.startsWith('模型审稿') && (!check.targetId || coveredIds.has(check.targetId)))), ...checks]
+            fresh.reviewCoverage = mergeReviewCoverage(fresh.reviewCoverage, coverage, 'novel', source)
+            if (!completeCoverage) {
+              fresh.checks.push({
+                id: studioId('check'),
+                kind: 'quality',
+                level: 'info',
+                title: `模型审稿只覆盖 ${coverageSummary.count}/${written.length} 章`,
+                detail: `未读完：第 ${coverageSummary.missing.slice(0, 30).join('、')}${coverageSummary.missing.length > 30 ? '…' : ''}。长章会按段审稿，未读区间不能算整章完成。`,
+                createdAt: nowMs()
+              })
+            }
+            const localErrors = fresh.checks.filter((check) => check.level === 'error' && !check.resolved && !check.title.startsWith('模型审稿')).length
+            fresh.stages.review = {
+              status: errors || warns || localErrors || !completeCoverage ? 'review' : 'done',
+              updatedAt: nowMs(),
+              message: errors ? `${errors} 个模型审稿问题` : warns ? `${warns} 条模型审稿提醒` : localErrors ? `${localErrors} 个本地检查错误未处理` : completeCoverage ? `全书 ${written.length} 章模型审稿通过` : `模型审稿覆盖 ${coverageSummary.count}/${written.length} 章`,
+              progress: errors || warns || localErrors || !completeCoverage ? 60 : 100
+            }
+            fresh.stage = 'review'
+            fresh.messages.push(assistantMessage('assistant', [`模型审稿：${summary || '已完成。'}`, `已覆盖全书 ${coverageSummary.count}/${written.length} 章（${batches.length} 批）。`, ...checks.slice(0, 4).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
             fresh.messages = fresh.messages.slice(-80)
           }
         }
@@ -10309,81 +11552,134 @@ export class StudioService {
     const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
     if (project.kind === 'drama') return this.dramaModelReview(project, request)
+    if (str(request.scope) === 'all') return this.modelReviewAll(project, request)
     const runtime = studioTextRuntime(project.runtime.strategy)
     if (!runtime.configured) throw new Error(`模型审稿需要可用的文本模型。${runtime.message}`)
     const written = project.chapters.filter((chapter) => chapter.content.trim()).sort((left, right) => left.number - right.number)
     if (!written.length) throw new Error('还没有正文可供审稿。')
-    const picked = written.length <= 6 ? written : [...written.slice(0, 1), ...written.slice(-5)]
-    const chaptersText = picked
-      .map((chapter) => `【第 ${chapter.number} 章 · ${chapter.title}】\n${chapter.content.slice(0, 12_000)}`)
-      .join('\n\n')
-      .slice(0, 60_000)
+    const scope: 'auto' | 'current' = str(request.scope) === 'current' ? 'current' : 'auto'
+    const currentChapter = scope === 'current'
+      ? written.find((chapter) => chapter.id === str(request.chapterId))
+      : undefined
+    if (scope === 'current' && !currentChapter) throw new Error('找不到要审的当前章；请重新选择章节后再审。')
+    const picked = currentChapter ? [currentChapter] : written.length <= 6 ? written : [...written.slice(0, 1), ...written.slice(-5)]
+    const pickedIds = new Set(picked.map((chapter) => chapter.id))
+    const segments = novelReviewSegments(picked)
+    const batches = novelReviewBatches(segments)
+    const source = reviewSourceKey(picked.map((chapter) => `${chapter.id}:${chapter.revision}`))
+    const estimated = estimateTextCostCny(
+      Math.min(120_000, segments.reduce((sum, segment) => sum + segment.text.length, 0) + 2000),
+      Math.max(4000, batches.length * 4000),
+      project.runtime.strategy
+    )
     const job = await this.launchJob(project, {
       kind: 'text',
-      label: `模型审稿 · ${picked.length} 章`,
+      label: scope === 'current' ? `模型审稿 · 第 ${currentChapter!.number} 章` : `模型审稿 · 抽样 ${picked.length} 章`,
       stage: 'review',
       requestId: str(request.requestId) || undefined,
-      inputHash: sha256Buffer(Buffer.from(`model-review:${project.id}:${picked.map((chapter) => `${chapter.id}:${chapter.revision}`).join('|')}:${runtime.model?.id ?? ''}`)),
-      estimatedCostCny: estimateTextCostCny(chaptersText.length + 2000, 4000, project.runtime.strategy) ?? 0,
-      costNote: '按当前文本模型参考价估算',
-      retry: { action: 'model-review', payload: {} },
+      inputHash: sha256Buffer(Buffer.from(`model-review:${project.id}:${scope}:${source}:${runtime.model?.id ?? ''}`)),
+      estimatedCostCny: estimated,
+      costNote: batches.length > 1 ? `按 ${batches.length} 批分别调用当前文本模型估算` : '按当前文本模型参考价估算',
+      retry: { action: 'model-review', payload: { scope, ...(currentChapter ? { chapterId: currentChapter.id } : {}) } },
       run: async (snapshot, ctx) => {
-        ctx.progress('准备审稿材料', 12)
-        const current = snapshot.chapters.filter((chapter) => picked.some((item) => item.id === chapter.id))
-        const result = await completeCreativeText({
-          system: [
-            '你是 Morrow 创作台的审稿编辑，只做审稿，不改稿。',
-            '按写作大师的检查方法核对结构与人物、场景与对话、语言与 AI 腔、连续性与交付完整度。',
-            '每个问题必须引用章节号、原文短句或具体缺失项，不许凭感觉。',
-            '严格输出 JSON，不要 Markdown：',
-            '{"summary":string,"issues":[{"level":"error"|"warn"|"info","title":string,"detail":string,"chapterNumber":number}]}',
-            '低于交付标准必须给可执行的改法；没有证据的判断不要写。',
-            masterPromptContext(snapshot.kind, 'review', '结构 人物 场景 对话 语言 AI 腔 连续性 交付', 'review', snapshot.runtime.strategy)
-          ].join('\n'),
-          prompt: [
-            `作品：${snapshot.title}`,
-            `故事核：${snapshot.blueprint?.storyCore ?? snapshot.logline}`,
-            `人物：${snapshot.characters.map((character) => `${character.name}（${character.role ?? ''}）`).join('、') || '未建立'}`,
-            `已写 ${written.length}/${snapshot.chapters.length} 章；本次审 ${current.map((chapter) => `第 ${chapter.number} 章`).join('、')}。`,
-            '',
-            chaptersText
-          ].join('\n'),
-          structured: true,
-          temperature: 0.3,
-          signal: ctx.signal,
-          strategy: snapshot.runtime.strategy
-        })
-        const parsed = extractJson<Record<string, unknown>>(result.text)
-        if (!parsed || !Array.isArray(parsed.issues)) throw new Error('模型没有返回可解析的审稿结果。请重试。')
-        const allowedLevels = new Set(['error', 'warn', 'info'])
-        const checks: StudioProject['checks'] = (parsed.issues as Array<Record<string, unknown>>)
-          .filter((item) => item && typeof item === 'object')
-          .slice(0, 20)
-          .map((item) => {
-            const level = allowedLevels.has(str(item.level)) ? str(item.level) as 'error' | 'warn' | 'info' : 'info'
-            const chapterNumber = Math.round(num(item.chapterNumber, 0))
-            const target = snapshot.chapters.find((chapter) => chapter.number === chapterNumber)
-            return {
-              id: studioId('check'),
-              kind: 'quality' as const,
-              level,
-              title: str(item.title).slice(0, 120) || '模型审稿发现',
-              detail: str(item.detail).slice(0, 1200),
-              ...(target ? { targetId: target.id } : {}),
-              createdAt: nowMs()
-            }
-          })
-        const summary = str(parsed.summary).slice(0, 300)
+        const partialFile = join(this.store.projectDir(projectId), 'derived', 'review-partial.json')
+        const partialKey = sha256Buffer(Buffer.from(`model-review:${scope}:${currentChapter?.id ?? ''}:${source}:${runtime.model?.id ?? ''}`))
+        const checks: StudioProject['checks'] = []
+        const coverage: StudioReviewCoverage[] = []
+        let cost: number | null = 0
+        let modelLabel = ''
+        let summary = ''
+        let completed = 0
+        try {
+          const partial = JSON.parse(readFileSync(partialFile, 'utf8')) as {
+            key?: string
+            completed?: number
+            checks?: StudioProject['checks']
+            coverage?: StudioReviewCoverage[]
+            cost?: number | null
+            model?: string
+            summary?: string
+          }
+          if (partial.key === partialKey) {
+            completed = Math.min(batches.length, Math.max(0, Math.round(partial.completed ?? 0)))
+            if (Array.isArray(partial.checks)) checks.push(...partial.checks)
+            if (Array.isArray(partial.coverage)) coverage.push(...partial.coverage.slice(0, completed))
+            cost = typeof partial.cost === 'number' || partial.cost === null ? partial.cost : 0
+            modelLabel = partial.model ?? ''
+            summary = partial.summary ?? ''
+          }
+        } catch {
+          // 没有可续作的审稿草稿
+        }
+        const persistPartial = (): void => {
+          try {
+            mkdirSync(dirname(partialFile), { recursive: true })
+            writeFileSync(partialFile, `${JSON.stringify({ key: partialKey, completed, checks, coverage, cost, model: modelLabel, summary, updatedAt: nowMs() })}\n`, 'utf8')
+          } catch {
+            // 草稿落盘失败不阻断当前批次
+          }
+        }
+        ctx.progress(completed > 0 ? `已找到已完成 ${completed}/${batches.length} 批的审稿记录；从中断处继续` : '准备审稿材料', completed > 0 ? 12 : 8)
+        try {
+          for (let index = completed; index < batches.length; index += 1) {
+            const batch = batches[index]
+            const label = novelReviewBatchLabel(batch)
+            const first = batch[0]?.chapterNumber ?? 1
+            const last = batch.at(-1)?.chapterNumber ?? first
+            ctx.progress(`模型审稿：${label}（${index + 1}/${batches.length}）`, 12 + Math.round((index / batches.length) * 70))
+            const result = await this.reviewNovelBatch(snapshot, batch, ctx)
+            checks.push(...result.checks)
+            if (result.summary) summary = summary ? `${summary} ${result.summary}` : result.summary
+            cost = cost === null || result.cost === null ? null : cost + result.cost
+            modelLabel = result.model
+            const batchChapters = [...new Map(batch.map((segment) => [segment.chapterId, segment])).values()]
+            coverage.push({
+              id: studioId('coverage'),
+              createdAt: nowMs(),
+              kind: 'novel',
+              scope: currentChapter ? 'current' : 'auto',
+              part: novelReviewBatchPart(batch),
+              label,
+              unitStart: first,
+              unitEnd: last,
+              covered: batchChapters.length,
+              total: written.length,
+              source,
+              model: modelLabel,
+              issues: result.checks.length,
+              units: batchChapters.map((segment) => ({ id: segment.chapterId, version: segment.version })),
+              segments: batch.map((segment) => ({ id: segment.chapterId, version: segment.version, start: segment.start, end: segment.end }))
+            })
+            completed = index + 1
+            persistPartial()
+          }
+        } catch (err) {
+          persistPartial()
+          const detail = err instanceof Error ? err.message : String(err)
+          if (batches.length > 1 && completed > 0) {
+            throw new Error(`${detail} 已完成 ${completed}/${batches.length} 批，审稿记录已保存；重试会从下一批继续。`)
+          }
+          throw err
+        }
+        try {
+          rmSync(partialFile, { force: true })
+        } catch {
+          // 草稿清理失败不影响已成功的结果
+        }
+        ctx.progress('整理审稿结果', 90)
         const errors = checks.filter((check) => check.level === 'error').length
         const warns = checks.filter((check) => check.level === 'warn').length
+        const pickedCoverage = novelReviewCoverage(coverage, snapshot.chapters.filter((chapter) => pickedIds.has(chapter.id)))
+        const completePicked = pickedCoverage.count >= picked.length
         const sampled = picked.length < written.length
         return {
-          message: `模型审稿完成：${errors} 个问题、${warns} 条提醒${sampled ? `（抽样 ${picked.length}/${written.length} 章）` : ''}${summary ? `。${summary}` : ''}`,
-          costCny: result.costCny,
-          costNote: result.costNote ?? '按实际 token 记录',
+          message: `模型审稿完成：${errors} 个问题、${warns} 条提醒；覆盖 ${pickedCoverage.count}/${picked.length} 章（${batches.length} 批）${sampled ? `（抽样 ${picked.length}/${written.length} 章）` : ''}${summary ? `。${summary}` : ''}`,
+          costCny: cost,
+          costNote: batches.length > 1 ? `按 ${batches.length} 批实际 token 记录` : '按实际 token 记录',
           outputs: [{ label: `${picked.length} 章模型审稿`, path: undefined }],
           apply: (fresh) => {
-            fresh.checks = [...fresh.checks.filter((check) => !check.title.startsWith('模型审稿')), ...checks]
+            const coveredIds = new Set(picked.map((chapter) => chapter.id))
+            fresh.checks = [...fresh.checks.filter((check) => !(check.title.startsWith('模型审稿') && (!check.targetId || coveredIds.has(check.targetId)))), ...checks]
             const localErrors = fresh.checks.filter((check) => check.level === 'error' && !check.resolved && !check.title.startsWith('模型审稿')).length
             if (sampled) {
               fresh.checks.push({
@@ -10391,15 +11687,27 @@ export class StudioService {
                 kind: 'quality',
                 level: 'info',
                 title: `模型审稿为抽样：${picked.length}/${written.length} 章`,
-                detail: '长篇一次只审最近章节；未覆盖章节仍需另行审稿或人工核对。',
+                detail: '自动抽样只覆盖第 1 章与最后 5 章；未覆盖章节仍需另行审稿或人工核对。',
                 createdAt: nowMs()
               })
             }
+            if (!completePicked) {
+              fresh.checks.push({
+                id: studioId('check'),
+                kind: 'quality',
+                level: 'info',
+                title: `模型审稿只读完 ${pickedCoverage.count}/${picked.length} 章`,
+                detail: '长章按段审稿时，仍有区间没有读完；未读区间不能算整章完成。',
+                createdAt: nowMs()
+              })
+            }
+            fresh.reviewCoverage = mergeReviewCoverage(fresh.reviewCoverage, coverage, 'novel', source)
+            const done = !sampled && completePicked && !errors && !warns && !localErrors
             fresh.stages.review = {
-              status: errors || warns || localErrors || sampled ? 'review' : 'done',
+              status: done ? 'done' : 'review',
               updatedAt: nowMs(),
-              message: errors ? `${errors} 个模型审稿问题` : warns ? `${warns} 条模型审稿提醒` : localErrors ? `${localErrors} 个本地检查错误未处理` : sampled ? `模型审稿通过（抽样 ${picked.length}/${written.length} 章）` : '模型审稿通过',
-              progress: errors || warns || localErrors || sampled ? 60 : 100
+              message: errors ? `${errors} 个模型审稿问题` : warns ? `${warns} 条模型审稿提醒` : localErrors ? `${localErrors} 个本地检查错误未处理` : sampled ? `模型审稿通过（抽样 ${picked.length}/${written.length} 章）` : completePicked ? '模型审稿通过' : `模型审稿覆盖 ${pickedCoverage.count}/${picked.length} 章`,
+              progress: done ? 100 : 60
             }
             fresh.stage = 'review'
             fresh.messages.push(assistantMessage('assistant', [`模型审稿：${summary || '已完成。'}`, ...checks.slice(0, 4).map((check) => `· ${check.title}：${check.detail}`)].filter(Boolean).join('\n')))
@@ -10417,10 +11725,9 @@ export class StudioService {
     if (project.kind !== 'drama') throw new Error('只有漫剧时间线可以导出音频。')
     const format = str(request.format)
     if (!['wav', 'mp3', 'm4a', 'flac'].includes(format)) throw new Error('不支持的音频格式。')
-    const latest = [...project.deliveries].reverse().find((item) => isStudioVideoDelivery(item.kind))
-    if (!latest) throw new Error('先合成一版草稿或成片，再从成片提取音频。')
-    const source = join(this.store.projectDir(projectId), latest.path)
-    if (!existsSync(source)) throw new Error('最近一版成片文件不在本机，无法提取音频。')
+    const latest = currentTimelineVideo(project, this.store)
+    if (!latest) throw new Error('当前时间线还没有对应的最新成片；请先重新合成，再提取音频。')
+    const source = this.store.deliveryAbsolute(projectId, latest)
     const job = await this.launchJob(project, {
       kind: 'export',
       label: `导出音频 · ${format === 'm4a' ? 'AAC' : format.toUpperCase()}`,
@@ -10444,7 +11751,7 @@ export class StudioService {
               ? ['-c:a', 'flac']
               : ['-c:a', 'aac', '-b:a', '192k']
         ctx.progress('提取音轨', 35)
-        const result = spawnSync(paths.ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-vn', ...codec, output], { windowsHide: true, timeout: 120_000 })
+        const result = await captureProcess(paths.ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-vn', ...codec, output], { timeoutMs: 120_000 })
         if (result.status !== 0 || !existsSync(output)) throw new Error(`音频导出失败：${result.stderr?.toString().slice(0, 400) || 'FFmpeg 未返回结果'}`)
         ctx.progress('写入交付记录', 90)
         const bytes = readFileSync(output)
@@ -10493,8 +11800,8 @@ export class StudioService {
         ctx.progress('排版四格', 45)
         const filter = [0, 1, 2, 3].map((index) => `[${index}:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1[v${index}]`).join(';') + ';[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[out]'
         const args = ['-y', '-hide_banner', '-loglevel', 'error', ...inputs.flatMap((input) => ['-i', input]), '-filter_complex', filter, '-map', '[out]', '-frames:v', '1', output]
-        const result = spawnSync(paths.ffmpeg, args, { windowsHide: true, timeout: 120_000 })
-        if (result.status !== 0 || !existsSync(output)) throw new Error(`四格漫画排版失败：${result.stderr?.toString().slice(0, 400) || 'FFmpeg 未返回结果'}`)
+        const result = await captureProcess(paths.ffmpeg, args, { timeoutMs: 120_000 })
+        if (result.status !== 0 || !existsSync(output)) throw new Error(`四格漫画排版失败：${result.stderr.slice(0, 400) || (result.timedOut ? 'FFmpeg 超时未返回结果' : 'FFmpeg 未返回结果')}`)
         ctx.progress('写入交付记录', 90)
         const bytes = readFileSync(output)
         const delivery = writeDeliveryFile(projectId, `${cleanFileName(project.title)}-四格漫画.png`, bytes, '四格漫画 · PNG', 'comic', { format: 'PNG 2×2', panels: 4 })
@@ -10541,7 +11848,7 @@ export class StudioService {
     const paths = resolveFfmpegPaths()
     const caps = ffmpegCapabilities()
     const ffmpegAvailable = Boolean(paths)
-    const latestVideo = [...project.deliveries].reverse().find((delivery) => isStudioVideoDelivery(delivery.kind) && existsSync(this.store.deliveryAbsolute(project.id, delivery)))
+    const latestVideo = currentTimelineVideo(project, this.store)
     const hasImages = project.shots.filter((shot) => shot.imageAssetId || shot.videoAssetId).length >= 4
     const subtitleCues = project.timeline.clips.filter((clip) => clip.kind === 'subtitle' && (clip.text ?? '').trim()).length
     const writtenChapters = project.chapters.filter((chapter) => chapter.content.trim()).length
@@ -10636,7 +11943,7 @@ export class StudioService {
       && chapterLengthOk
     const finalVideo = checked.kind === 'drama'
       && ['mp4', 'mov', 'mkv', 'webm', 'folder'].includes(format)
-      && checked.deliveries.some((delivery) => isStudioVideoDelivery(delivery.kind) && existsSync(this.store.deliveryAbsolute(checked.id, delivery)))
+      && Boolean(currentTimelineVideo(checked, this.store))
     const job = await this.launchJob(project, {
       kind: 'export',
       label: labelMap[format] ?? '导出交付物',
@@ -10851,7 +12158,7 @@ export class StudioService {
     })
   }
 
-  private assetWaveform(request: { [key: string]: unknown }): { peaks: number[]; cached: boolean } {
+  private async assetWaveform(request: { [key: string]: unknown }): Promise<{ peaks: number[]; cached: boolean }> {
     const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
     const assetId = str(request.assetId)
@@ -10862,7 +12169,7 @@ export class StudioService {
     const cache = join(this.store.projectDir(projectId), 'derived', 'waveforms', `${assetId}.json`)
     const cached = readWaveformCache(cache, source)
     if (cached) return { peaks: cached, cached: true }
-    const peaks = audioWaveform(source, 96)
+    const peaks = await audioWaveform(source, 96)
     if (peaks.length) writeWaveformCache(cache, peaks)
     return { peaks, cached: false }
   }
@@ -10877,14 +12184,14 @@ export class StudioService {
     return { routes: studioTextRoutes(strategy), strategy }
   }
 
-  private assetProxy(request: { [key: string]: unknown }): { url?: string; ready: boolean } {    const projectId = safeProjectId(str(request.projectId))
+  private async assetProxy(request: { [key: string]: unknown }): Promise<{ url?: string; ready: boolean }> {    const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
     const assetId = str(request.assetId)
     const asset = project.assets.find((item) => item.id === assetId && item.kind === 'video')
     if (!asset) throw new Error('找不到这段视频素材。')
     const source = this.store.assetAbsolute(project, asset)
     const target = join(this.store.projectDir(projectId), 'derived', 'proxies', `${assetId}.mp4`)
-    if (!ensureVideoProxy(source, target)) return { ready: false }
+    if (!(await ensureVideoProxy(source, target))) return { ready: false }
     const relative = `derived/proxies/${assetId}.mp4`
     return { ready: true, url: this.store.deliverableUrl(projectId, relative, 'video/mp4') }
   }
@@ -11069,16 +12376,36 @@ export class StudioService {
     if (project.kind !== 'drama') {
       const units = blueprint?.units ?? []
       lines.push(`大纲（${units.length} 章）：${units.slice(0, 80).map((unit) => `第${unit.index}章《${unit.title}》：${unit.summary.slice(0, 120)}${unit.beats?.length ? `｜节拍：${unit.beats.slice(0, 3).join(' / ').slice(0, 160)}` : ''}`).join('\n')}`)
-      const chapters = [...project.chapters].sort((left, right) => left.number - right.number).slice(0, 80)
+      const sortedChapters = [...project.chapters].sort((left, right) => left.number - right.number)
+      const selectedChapter = selection?.kind === 'chapter' ? sortedChapters.find((chapter) => chapter.id === selection.id) : undefined
+      const chosen = new Map(sortedChapters.slice(0, 80).map((chapter) => [chapter.id, chapter]))
+      if (selectedChapter) {
+        chosen.set(selectedChapter.id, selectedChapter)
+        const index = sortedChapters.findIndex((chapter) => chapter.id === selectedChapter.id)
+        for (const neighbor of [sortedChapters[index - 1], sortedChapters[index + 1]]) {
+          if (neighbor) chosen.set(neighbor.id, neighbor)
+        }
+      }
+      const chapters = [...chosen.values()].sort((left, right) => left.number - right.number)
       lines.push(`章节：${chapters.map((chapter) => {
         const selected = selection?.kind === 'chapter' && selection.id === chapter.id
         const body = chapter.content.trim()
         const tail = body ? `｜结尾：${body.slice(-160)}` : ''
-        const head = selected && body ? `｜开头：${body.slice(0, 500)}` : ''
+        const head = selected && body ? `｜当前选中章原文：${body.slice(0, 2400)}` : ''
         return `第${chapter.number}章《${chapter.title}》${body ? `${countWords(body)}字` : '未写'}${tail}${head}`
       }).join('\n')}`)
     } else {
-      const shots = [...project.shots].sort((left, right) => left.number - right.number).slice(0, 60)
+      const sortedShots = [...project.shots].sort((left, right) => left.number - right.number)
+      const selectedShot = selection?.kind === 'shot' ? sortedShots.find((shot) => shot.id === selection.id) : undefined
+      const chosenShots = new Map(sortedShots.slice(0, 60).map((shot) => [shot.id, shot]))
+      if (selectedShot) {
+        chosenShots.set(selectedShot.id, selectedShot)
+        const index = sortedShots.findIndex((shot) => shot.id === selectedShot.id)
+        for (const neighbor of [sortedShots[index - 1], sortedShots[index + 1]]) {
+          if (neighbor) chosenShots.set(neighbor.id, neighbor)
+        }
+      }
+      const shots = [...chosenShots.values()].sort((left, right) => left.number - right.number)
       lines.push(`分镜（${project.shots.length} 镜）：${shots.map((shot) => {
         const scene = project.scenes.find((item) => item.id === shot.sceneId)
         return `第${shot.number}镜[${scene?.title ?? '?'}]《${shot.title}》${shot.action.slice(0, 120)}${shot.dialogue ? `｜台词 ${shot.speaker || '旁白'}：「${shot.dialogue}」` : ''}｜${shot.camera}/${shot.shotSize}/${shot.durationSec}s｜声线 ${shot.voiceId || '默认'}${shot.imageAssetId || shot.videoAssetId ? '｜已有画面' : ''}${shot.voiceAssetId ? '｜已有配音' : ''}`
@@ -11107,7 +12434,7 @@ export class StudioService {
 
   private normalizeRevisionActions(project: StudioProject, raw: unknown[]): StudioEditAction[] {
     const actions: StudioEditAction[] = []
-    for (const item of raw.slice(0, 12)) {
+    for (const item of raw) {
       if (!item || typeof item !== 'object') continue
       const input = item as Record<string, unknown>
       const type = str(input.type) as StudioEditAction['type']
@@ -11546,6 +12873,7 @@ export class StudioService {
     this.store.savePassive(project)
     this.emitProject(project)
     let firstJob: StudioJob | undefined
+    const planJobIds: string[] = []
     const queueErrors: string[] = []
     for (const action of applied.regenerate) {
       try {
@@ -11593,11 +12921,18 @@ export class StudioService {
           }
         }
         firstJob = firstJob ?? result.job
+        if (result.job?.id) planJobIds.push(result.job.id)
       } catch (err) {
         queueErrors.push(err instanceof Error ? err.message : String(err))
       }
     }
     const latest = this.store.readProject(projectId)
+    for (const message of latest.messages) {
+      if (message.plan?.id !== plan.id) continue
+      message.plan.jobIds = [...new Set([...(message.plan.jobIds ?? []), ...planJobIds])]
+      message.plan.appliedRevision = latest.revision
+    }
+    this.store.savePassive(latest)
     return this.result(latest, { plan, ...(firstJob ? { job: firstJob } : {}), message: queueErrors.length ? `计划已应用，但有 ${queueErrors.length} 个重做任务未能排队：${queueErrors.join('；')}` : applied.chapterCandidates ? `已生成 ${applied.chapterCandidates} 个候选稿，采用前不改正文。` : undefined })
   }
 
@@ -11723,7 +13058,7 @@ const LONG_BLUEPRINT_TOP_SYSTEM = `你是资深中文长篇小说策划。根据
 "facts":[{"subject":string,"predicate":string,"object":string}],
 "volumes":[{"title":string,"summary":string,"unitStart":number,"unitEnd":number}],
 "styleBible":{"look":string,"palette":string[],"camera":string,"sound":string,"negative":string[]}}
-不要输出 characters、places、units；人物与章节会另行生成。计划 3 卷，volumes 覆盖全书章节范围。只写简体中文。`
+不要输出 characters、places、units；人物与章节会另行生成。卷数按故事结构决定，默认 3 卷；若用户明确要求更多卷，必须保留。volumes 覆盖全书章节范围。只写简体中文。`
 
 const LONG_BLUEPRINT_CAST_SYSTEM = `你是中文长篇小说人物编辑。只输出一个合法 JSON 对象：
 {"characters":[{"name":string,"role":string,"age":string,"look":string,"desire":string,"fear":string,"secret":string,"arc":string,"relationships":[{"target":string,"label":string}]}],
@@ -11732,7 +13067,7 @@ const LONG_BLUEPRINT_CAST_SYSTEM = `你是中文长篇小说人物编辑。只�
 
 const LONG_BLUEPRINT_UNITS_SYSTEM = `你是中文长篇小说结构编辑。只输出一个合法 JSON 对象：
 {"units":[{"index":number,"title":string,"summary":string,"wordTarget":number,"beats":string[]}]}
-每章 3–5 个具体节拍；只写本卷章节，不要输出其他字段。只写简体中文。
+每章 3–5 个具体节拍；单章字数按总目标与本卷章数估算，不要擅自把所有章节改成同一长度。只写本卷章节，不要输出其他字段。只写简体中文。
 控制篇幅，保证 JSON 完整：summary 不超过 160 字，每条 beat 不超过 80 字；先保证本批章节全部输出，再补细节。`
 
 const OUTLINE_SYSTEM = `你是中文故事结构编辑。只输出一个合法 JSON：{"units":[...]}。
@@ -11786,7 +13121,7 @@ function longBlueprintTopPrompt(project: StudioProject, plannedUnits: number): s
   return [
     `用户灵感：${project.logline}`,
     `作品形态：长篇`,
-    `目标：约 ${targetWords} 字，计划 ${plannedUnits} 章、3 卷`,
+    `目标：约 ${targetWords} 字，计划 ${plannedUnits} 章；卷数按故事结构决定（默认 3 卷，尊重用户明确卷数）`,
     ...briefLines(project),
     `只根据用户灵感写长篇骨架；facts、volumes、styleBible 与故事主线一致。`
   ].filter(Boolean).join('\n')
@@ -11802,14 +13137,23 @@ function longBlueprintCastPrompt(project: StudioProject, blueprint: StudioBluepr
   ].join('\n')
 }
 
-function longVolumeUnitsPrompt(project: StudioProject, blueprint: StudioBlueprint, volume: NonNullable<StudioBlueprint['volumes']>[number], count: number): string {
+function longVolumeUnitsPrompt(
+  project: StudioProject,
+  blueprint: StudioBlueprint,
+  volume: NonNullable<StudioBlueprint['volumes']>[number],
+  count: number,
+  batch?: { start: number; end: number; previous: Array<{ index: number; title: string; summary: string }> }
+): string {
   return [
     `用户灵感：${project.logline}`,
     `故事核：${blueprint.storyCore}`,
     `人物：${blueprint.characters.map((character) => `${character.name}（${character.role}）：${character.desire ?? ''}`).join('；')}`,
     `本卷：第 ${volume.unitStart}–${volume.unitEnd} 章《${volume.title}》：${volume.summary}`,
-    `请写本卷约 ${count} 章，标题具体，梗概推进主线，每章给出 3–5 个节拍，单章目标 2000–5000 字。`
-  ].join('\n')
+    batch
+      ? `本批只写第 ${batch.start}–${batch.end} 章（全局章号），不要重复或跳过其他章。${batch.previous.length ? `前批最后章节：${batch.previous.map((unit) => `第 ${unit.index} 章《${unit.title}》：${unit.summary.slice(0, 120)}`).join('；')}。请从这里接着推进。` : '这是本卷第一批，请按卷目标开场。'}`
+      : '',
+    `请写本卷约 ${count} 章，标题具体，梗概推进主线，每章给出 3–5 个节拍，单章目标按总目标与本卷章数估算。`
+  ].filter(Boolean).join('\n')
 }
 
 function outlinePrompt(project: StudioProject, blueprint: StudioBlueprint): string {
@@ -11835,10 +13179,223 @@ function outlineBatchPrompt(project: StudioProject, blueprint: StudioBlueprint, 
   ].join('\n\n')
 }
 
-function storyboardPrompt(project: StudioProject, blueprint: StudioBlueprint, locked: boolean, instruction: string): string {
-  const existing = [...project.shots].sort((left, right) => left.number - right.number)
+export interface StoryboardGenerationBatch {
+  chapters: StudioChapter[]
+  existing: StudioShot[]
+  shotOnly?: boolean
+}
+
+/**
+ * 把待改编章节与已有镜头一起分批：已有素材时也按章节分组更新，不再把整本书塞回一次请求。
+ * 镜头归属优先使用场景的来源章节；旧项目没有来源字段时按场景顺序比例折算。
+ */
+export function storyboardChapterBatches(
+  chapters: StudioChapter[],
+  existingShots: StudioShot[] = [],
+  options: {
+    chapterOfShot?: (shot: StudioShot) => number | null
+    focusChapterId?: string
+    focusShotId?: string
+    scope?: 'all' | 'chapter' | 'shot'
+  } = {}
+): StoryboardGenerationBatch[] {
+  const written = [...chapters].sort((left, right) => left.number - right.number).filter((chapter) => chapter.content.trim())
+  const shots = [...existingShots].sort((left, right) => left.number - right.number)
+  const chunk = (source: StudioChapter[]): StudioChapter[][] => {
+    if (source.length <= 12) return [source]
+    const result: StudioChapter[][] = []
+    for (let start = 0; start < source.length; start += 8) result.push(source.slice(start, start + 8))
+    return result
+  }
+  if (!shots.length) return chunk(written).map((items) => ({ chapters: items, existing: [] }))
+  if (options.scope === 'shot' && options.focusShotId) {
+    const shot = shots.find((item) => item.id === options.focusShotId)
+    if (!shot) throw new Error('找不到要重写的镜头。')
+    const targetNumber = options.chapterOfShot?.(shot) ?? null
+    const chapter = targetNumber == null ? undefined : chapters.find((item) => item.number === targetNumber)
+    return [{ chapters: chapter ? [chapter] : [], existing: [shot], shotOnly: true }]
+  }
+  if (options.scope === 'chapter' && options.focusChapterId) {
+    const chapter = chapters.find((item) => item.id === options.focusChapterId)
+    if (!chapter) throw new Error('找不到要重做的章节。')
+    const owned = shots.filter((shot) => options.chapterOfShot?.(shot) === chapter.number)
+    return [{ chapters: chapter.content.trim() ? [chapter] : [], existing: owned }]
+  }
+  if (!written.length) return [{ chapters: [], existing: shots }]
+  const groups = chunk(written).map((items) => ({ chapters: items, existing: [] as StudioShot[] }))
+  const byNumber = new Map<number, StoryboardGenerationBatch>()
+  for (const group of groups) for (const chapter of group.chapters) byNumber.set(chapter.number, group)
+  const leftovers: StudioShot[] = []
+  for (const shot of shots) {
+    const number = options.chapterOfShot?.(shot)
+    const group = number == null ? undefined : byNumber.get(number)
+    if (group) group.existing.push(shot)
+    else leftovers.push(shot)
+  }
+  if (leftovers.length) groups.at(-1)!.existing.push(...leftovers)
+  return groups
+}
+
+export function storyboardChapterResolver(project: StudioProject): (shot: StudioShot) => number | null {
+  const chapters = [...project.chapters].sort((left, right) => left.number - right.number)
+  const scenes = [...project.scenes].sort((left, right) => left.number - right.number)
+  const sceneChapter = new Map<string, number>()
+  for (const scene of project.scenes) {
+    if (!scene.sourceChapterId) continue
+    const chapter = chapters.find((item) => item.id === scene.sourceChapterId)
+    if (chapter) sceneChapter.set(scene.id, chapter.number)
+  }
+  return (shot) => {
+    const direct = sceneChapter.get(shot.sceneId)
+    if (direct != null) return direct
+    if (!chapters.length || !scenes.length) return null
+    const index = scenes.findIndex((scene) => scene.id === shot.sceneId)
+    if (index < 0) return null
+    return chapters[Math.min(chapters.length - 1, Math.floor(((index + 0.5) / scenes.length) * chapters.length))]?.number ?? null
+  }
+}
+
+export function mergeReviewCoverage(
+  existing: StudioReviewCoverage[] | undefined,
+  entries: StudioReviewCoverage[],
+  kind: 'novel' | 'drama',
+  _source: string
+): StudioReviewCoverage[] {
+  // 只替换本次重新审过的同一部分；其他章节/镜头的旧记录即使原文版本不同也保留，
+  // 由每条记录的 units/segments 版本判断是否仍有效。
+  const parts = new Set(entries.map((entry) => entry.part))
+  return [
+    ...(existing ?? []).filter((entry) => entry.kind !== kind || !parts.has(entry.part)),
+    ...entries
+  ]
+}
+
+function reviewSourceKey(parts: Array<string | number>): string {
+  return sha256Buffer(Buffer.from(parts.join('|'))).slice(0, 16)
+}
+
+const NOVEL_REVIEW_SEGMENT_CHARS = 8_000
+
+interface NovelReviewSegment {
+  chapterId: string
+  chapterNumber: number
+  chapterTitle: string
+  start: number
+  end: number
+  version: number
+  text: string
+}
+
+export function novelReviewSegments(chapters: StudioChapter[]): NovelReviewSegment[] {
+  const segments: NovelReviewSegment[] = []
+  for (const chapter of [...chapters].sort((left, right) => left.number - right.number)) {
+    const content = chapter.content ?? ''
+    if (!content.trim()) continue
+    for (let start = 0; start < content.length; start += NOVEL_REVIEW_SEGMENT_CHARS) {
+      const end = Math.min(content.length, start + NOVEL_REVIEW_SEGMENT_CHARS)
+      segments.push({
+        chapterId: chapter.id,
+        chapterNumber: chapter.number,
+        chapterTitle: chapter.title,
+        start,
+        end,
+        version: chapter.revision,
+        text: content.slice(start, end)
+      })
+    }
+  }
+  return segments
+}
+
+export function novelReviewBatches(segments: NovelReviewSegment[], maxSegments = 4, maxChars = 50_000): NovelReviewSegment[][] {
+  const batches: NovelReviewSegment[][] = []
+  let current: NovelReviewSegment[] = []
+  let chars = 0
+  for (const segment of segments) {
+    if (current.length && (current.length >= maxSegments || chars + segment.text.length > maxChars)) {
+      batches.push(current)
+      current = []
+      chars = 0
+    }
+    current.push(segment)
+    chars += segment.text.length
+  }
+  if (current.length) batches.push(current)
+  return batches
+}
+
+function novelReviewBatchPart(batch: NovelReviewSegment[]): string {
+  return `novel:${reviewSourceKey(batch.map((segment) => `${segment.chapterId}:${segment.start}-${segment.end}`))}`
+}
+
+function novelReviewBatchLabel(batch: NovelReviewSegment[]): string {
+  const first = batch[0]
+  const last = batch.at(-1)!
+  const chapters = new Set(batch.map((segment) => segment.chapterId))
+  if (chapters.size === 1 && first.chapterId === last.chapterId) {
+    if (batch.length === 1 && first.start === 0) return `第 ${first.chapterNumber} 章`
+    return `第 ${first.chapterNumber} 章第 ${first.start + 1}–${last.end} 字`
+  }
+  return `第 ${first.chapterNumber}–${last.chapterNumber} 章`
+}
+
+export function novelReviewCoverage(
+  coverage: StudioReviewCoverage[] | undefined,
+  chapters: StudioChapter[]
+): { covered: Set<string>; count: number; missing: number[] } {
+  const covered = new Set<string>()
+  const missing: number[] = []
+  const ranges = new Map<string, Array<{ start: number; end: number }>>()
+  const chapterById = new Map(chapters.map((chapter) => [chapter.id, chapter]))
+  for (const entry of coverage ?? []) {
+    if (entry.kind !== 'novel') continue
+    for (const segment of entry.segments ?? []) {
+      const chapter = chapterById.get(segment.id)
+      if (!chapter || chapter.revision !== segment.version) continue
+      const list = ranges.get(segment.id) ?? []
+      list.push({ start: segment.start, end: segment.end })
+      ranges.set(segment.id, list)
+    }
+  }
+  for (const chapter of chapters) {
+    if (!chapter.content.trim()) continue
+    const legacyFull = chapter.content.length <= NOVEL_REVIEW_SEGMENT_CHARS && (coverage ?? []).some((entry) => entry.kind === 'novel' && !entry.segments?.length && entry.units?.some((unit) => unit.id === chapter.id && unit.version === chapter.revision))
+    if (legacyFull) {
+      covered.add(chapter.id)
+      continue
+    }
+    const list = (ranges.get(chapter.id) ?? []).sort((left, right) => left.start - right.start)
+    let cursor = 0
+    for (const range of list) {
+      if (range.start > cursor) break
+      cursor = Math.max(cursor, range.end)
+    }
+    if (cursor >= chapter.content.length) covered.add(chapter.id)
+    else missing.push(chapter.number)
+  }
+  return { covered, count: covered.size, missing }
+}
+
+interface StoryboardChapterBatch {
+  chapters: StudioChapter[]
+  index: number
+  total: number
+  previous?: string
+  existing?: StudioShot[]
+  shotOnly?: boolean
+}
+
+function storyboardPrompt(
+  project: StudioProject,
+  blueprint: StudioBlueprint,
+  locked: boolean,
+  instruction: string,
+  batch?: StoryboardChapterBatch
+): string {
+  const existing = batch?.existing ? [...batch.existing].sort((left, right) => left.number - right.number) : [...project.shots].sort((left, right) => left.number - right.number)
   const characters = project.characters.slice(0, 8).map((character) => `${character.name}（${character.role}${character.look ? `：${character.look.slice(0, 160)}` : ''}）`)
   const places = project.places.slice(0, 8).map((place) => `${place.name}：${place.description.slice(0, 160)}`)
+  const chapters = batch?.chapters ?? project.chapters
   return [
     `作品：${project.title}（漫剧）`,
     `一句话：${project.logline}`,
@@ -11847,7 +13404,7 @@ function storyboardPrompt(project: StudioProject, blueprint: StudioBlueprint, lo
     `人物：${characters.join('；')}`,
     `地点：${places.join('；')}`,
     existing.length
-      ? `当前镜头计划（${existing.length} 镜）：${JSON.stringify(existing.map((shot) => ({
+      ? `本批已有镜头（${existing.length} 镜，保留各自的 number）：${JSON.stringify(existing.map((shot) => ({
           number: shot.number,
           title: shot.title,
           action: shot.action,
@@ -11859,15 +13416,27 @@ function storyboardPrompt(project: StudioProject, blueprint: StudioBlueprint, lo
         })))}`
       : '',
     `已确认场景：${JSON.stringify(blueprint.scenes ?? [])}`,
-    project.chapters.length
-      ? `原著章节（改编为漫剧时保留来源）：${project.chapters
-          .slice(0, 12)
-          .map((chapter) => `第 ${chapter.number} 章《${chapter.title}》：${(chapter.synopsis || chapter.content.replace(/\s+/g, ' ')).slice(0, 500)}`)
-          .join('\n')}`
+    chapters.length
+      ? `原著章节（改编为漫剧时保留来源；每章同时给梗概与原文摘录）：${chapters
+          .map((chapter) => {
+            const raw = chapter.content.replace(/\s+/g, ' ').trim()
+            const excerpt = raw.length <= 6000 ? raw : `${raw.slice(0, 3000)}\n……\n${raw.slice(-3000)}`
+            return `第 ${chapter.number} 章《${chapter.title}》：${chapter.synopsis ? `梗概：${chapter.synopsis.slice(0, 600)}；` : ''}原文：${excerpt || '（本章还没有正文，按梗概与蓝图处理）'}`
+          })
+          .join('\n\n')}`
       : '',
-    locked
-      ? `这部作品已有 ${existing.length} 镜画面/配音素材；必须输出同样 ${existing.length} 镜，不能增减镜头。`
-      : '请输出 6–30 镜，按故事顺序拆分；镜头数量可以少于当前计划，但必须覆盖完整故事。',
+    batch
+      ? `本批只处理第 ${batch.chapters[0]?.number ?? 1}–${batch.chapters.at(-1)?.number ?? batch.chapters[0]?.number ?? 0} 章（第 ${batch.index + 1}/${batch.total} 批）；只输出本批的场景与镜头，不要重复前批。${batch.previous ? `前批最后一镜：${batch.previous}` : ''}`
+      : '',
+    batch?.shotOnly
+      ? `只重写第 ${existing[0]?.number ?? 1} 镜，必须输出 1 镜；number 写成 ${existing[0]?.number ?? 1}，不要改动其他镜头，也不要输出新增镜头。`
+      : batch && locked
+        ? existing.length
+          ? `本批已有 ${existing.length} 镜画面或配音素材：逐个更新这些镜头并保留 number；除非用户明确要求增删镜头，否则数量和编号不变。只输出本批镜头。`
+          : '本批章节目前没有镜头：只输出本批新增镜头，number 写 0，不要重复其他批次已有镜头。'
+        : locked
+          ? `这部作品已有 ${existing.length} 镜画面/配音素材；必须输出同样 ${existing.length} 镜，不能增减镜头。`
+          : '请输出 6–30 镜，按故事顺序拆分；镜头数量可以少于当前计划，但必须覆盖完整故事。',
     instruction ? `用户补充要求：${instruction}` : '',
     '只输出 JSON。'
   ].filter(Boolean).join('\n\n')
@@ -11885,23 +13454,38 @@ function summarizeChapterText(content: string): string {
   return `${head}。${tail && tail !== sentences[1] ? `${tail}。` : ''}`.slice(0, 220)
 }
 
-function chapterPrompt(project: StudioProject, chapter: StudioChapter, instruction: string): string {
+export function chapterPrompt(project: StudioProject, chapter: StudioChapter, instruction: string): string {
   const sorted = [...project.chapters].sort((a, b) => a.number - b.number)
   const index = sorted.findIndex((item) => item.id === chapter.id)
   const previous = index > 0 ? sorted[index - 1] : null
   const recent = sorted.slice(Math.max(0, index - 3), index)
   const volume = project.volumes.find((item) => item.id === chapter.volumeId)
-  const facts = project.facts
-    .filter((fact) => !fact.chapterId || fact.chapterId === chapter.id || fact.chapterId === previous?.id)
-    .slice(0, 24)
-    .map((fact) => `${fact.subject}${fact.predicate}${fact.object}`)
+  const focus = `${chapter.title} ${chapter.synopsis} ${chapter.beats.join(' ')} ${previous?.summary ?? ''} ${previous?.synopsis ?? ''} ${project.characters.map((item) => item.name).join(' ')}`
+  const facts = [...project.facts]
+    .map((fact) => {
+      const text = `${fact.subject}${fact.predicate}${fact.object}`
+      let score = focus.includes(fact.subject) || focus.includes(fact.object) ? 3 : 0
+      if (fact.chapterId === chapter.id) score += 3
+      else if (fact.chapterId === previous?.id) score += 2
+      else if (!fact.chapterId) score += 1
+      return { fact, text, score }
+    })
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 80)
+    .map((item) => item.text)
+  const rules = project.rules.slice(0, 16).map((item) => `${item.title}：${item.content}`)
+  const factions = project.factions.slice(0, 16).map((item) => `${item.name}：${item.description}`)
+  const props = project.props.slice(0, 24).map((item) => `${item.name}：${item.description}`)
   return [
     `作品：${project.title}`,
     `一句话：${project.logline}`,
     `类型与语气：${project.brief.genre}；${project.brief.tone}`,
     project.blueprint?.storyCore ? `故事核：${project.blueprint.storyCore}` : '',
     volume ? `本卷目标：${volume.title} · ${volume.summary}` : '',
-    `人物：${project.characters.slice(0, 8).map((item) => `${item.name}（${item.role}）：${item.look}`).join('；')}`,
+    `人物：${project.characters.slice(0, 30).map((item) => `${item.name}（${item.role}）：${item.look}`).join('；')}`,
+    rules.length ? `世界规则：${rules.join('；')}` : '',
+    factions.length ? `势力：${factions.join('；')}` : '',
+    props.length ? `关键道具：${props.join('；')}` : '',
     `本章：第 ${chapter.number} 章《${chapter.title}》`,
     `本章梗概：${chapter.synopsis}`,
     `本章节拍：${chapter.beats.join(' / ') || chapter.synopsis}`,
@@ -12016,7 +13600,7 @@ function neutralBlueprint(project: StudioProject): StudioBlueprint {
 
 function normalizeModelBlueprint(project: StudioProject, raw: Record<string, unknown>, model: string, fallback: StudioBlueprint): StudioBlueprint {
   const charactersRaw = Array.isArray(raw.characters) ? (raw.characters as RawCharacter[]) : []
-  const characters = charactersRaw.slice(0, 8).map((item) => ({
+  const characters = charactersRaw.slice(0, 60).map((item) => ({
     id: studioId('char'),
     name: str(item.name).slice(0, 80) || '未命名角色',
     role: str(item.role).slice(0, 100) || '角色',
@@ -12037,7 +13621,7 @@ function normalizeModelBlueprint(project: StudioProject, raw: Record<string, unk
   const placesRaw = Array.isArray(raw.places) ? raw.places : []
   const places = placesRaw
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-    .slice(0, 10)
+    .slice(0, 60)
     .map((item) => ({ id: studioId('place'), name: str(item.name).slice(0, 100) || '未命名地点', description: str(item.description).slice(0, 1000), refAssetIds: [] }))
   const units = normalizeUnits(project.kind, raw.units, [], {
     look: '',
@@ -12141,9 +13725,8 @@ function normalizeModelVolumes(raw: unknown, units: StudioBlueprint['units'], ki
           unitEnd: Math.max(1, Math.min(units.length, Math.round(num(item.unitEnd, units.length))))
         }))
         .filter((item) => item.title && item.unitEnd >= item.unitStart)
-        .slice(0, desired)
     : []
-  if (provided.length >= desired) return provided
+  if (provided.length) return provided
   const per = Math.ceil(units.length / desired)
   return Array.from({ length: desired }, (_, index) => {
     const start = index * per + 1
@@ -12245,7 +13828,7 @@ function normalizeUnits(kind: StudioKind, raw: unknown, fallback: StudioBlueprin
         base.dialogue = str(item.dialogue).slice(0, 500)
         base.speaker = str(item.speaker).slice(0, 80)
       } else {
-        base.wordTarget = Math.max(2000, Math.min(5000, num(item.wordTarget, 3000)))
+        base.wordTarget = Math.max(800, Math.min(10000, num(item.wordTarget, 3000)))
       }
       return base
     })
@@ -12276,7 +13859,7 @@ function updateNovelOutline(project: StudioProject, blueprint: StudioBlueprint):
         synopsis: unit.summary,
         beats: unit.beats ? [...unit.beats] : [],
         content: '',
-        wordTarget: Math.max(2000, Math.min(5000, unit.wordTarget ?? 3000)),
+        wordTarget: Math.max(800, Math.min(10000, unit.wordTarget ?? 3000)),
         status: 'ready' as const,
         revision: 1,
         candidates: [],
@@ -12501,6 +14084,8 @@ function updateDramaShots(project: StudioProject, blueprint: StudioBlueprint): v
 
 interface StoryboardShotSeed {
   number: number
+  /** 模型回传的已有镜头编号；0 表示新增镜头。 */
+  sourceNumber: number
   sceneIndex: number
   title: string
   action: string
@@ -12523,17 +14108,23 @@ function normalizeModelStoryboard(
   raw: Record<string, unknown>,
   project: StudioProject,
   blueprint: StudioBlueprint,
-  locked: boolean
+  options: { locked: boolean; scoped?: boolean; expectedShotCount?: number; allowCountChange?: boolean } = { locked: false }
 ): ModelStoryboard {
   const existing = [...project.shots].sort((left, right) => left.number - right.number)
   const rawShots = Array.isArray(raw.shots)
     ? raw.shots.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
     : []
   if (!rawShots.length) throw new Error('模型没有给出分镜镜头。请重试，或换一个更强的文本模型。')
-  if (locked && rawShots.length !== existing.length) {
-    throw new Error(`这部作品已有 ${existing.length} 镜素材，模型却给了 ${rawShots.length} 镜。为避免打乱素材，请只调整现有镜头，或先移除素材再重排。`)
-  }
-  if (!locked && (rawShots.length < 6 || rawShots.length > 40)) {
+  if (options.scoped) {
+    const expected = options.expectedShotCount ?? 0
+    if (expected > 0 && !options.allowCountChange && rawShots.length !== expected) {
+      throw new Error(`本批已有 ${expected} 镜，模型却改成 ${rawShots.length} 镜。为避免打乱已有素材，本次没有应用；如果确实需要增删镜头，请勾选“允许模型增删本范围的镜头”后重试。`)
+    }
+  } else if (options.locked) {
+    if (rawShots.length !== existing.length) {
+      throw new Error(`这部作品已有 ${existing.length} 镜素材，模型却给了 ${rawShots.length} 镜。为避免打乱素材，请只调整现有镜头，或先移除素材再重排。`)
+    }
+  } else if (rawShots.length < 6 || rawShots.length > 40) {
     throw new Error(`模型给出了 ${rawShots.length} 镜；漫剧需要 6–40 镜才能形成完整故事。请重试。`)
   }
   const sceneNames = new Set(project.characters.map((character) => character.name))
@@ -12557,11 +14148,10 @@ function normalizeModelStoryboard(
         }))
         .filter((item) => item.title && item.unitEnd >= item.unitStart)
         .sort((left, right) => left.unitStart - right.unitStart)
-        .slice(0, 12)
     : []
   const fallbackScenes = (blueprint.scenes ?? []).map((scene) => ({ ...scene, characters: [...scene.characters] }))
-  const finalScenes = scenes.length ? scenes : fallbackScenes
-  if (!finalScenes.length) throw new Error('模型没有给出场景，蓝图里也没有可用的场景范围。请先重新生成蓝图。')
+  const finalScenes = options.scoped ? [] : scenes.length ? scenes : fallbackScenes
+  if (!options.scoped && !finalScenes.length) throw new Error('模型没有给出场景，蓝图里也没有可用的场景范围。请先重新生成蓝图。')
   const shots: StoryboardShotSeed[] = rawShots.map((item, index) => {
     const title = str(item.title).slice(0, 160).trim()
     const action = str(item.action).slice(0, 2000).trim() || str(item.summary).slice(0, 2000).trim()
@@ -12578,12 +14168,13 @@ function normalizeModelStoryboard(
       throw new Error(`模型让不存在的人物「${rawSpeaker}」说话。请重试，或换一个更强的文本模型。`)
     }
     const rawSceneIndex = Math.round(num(item.sceneIndex, 1))
-    const sceneIndex = Math.max(1, Math.min(finalScenes.length, rawSceneIndex))
+    const sceneIndex = finalScenes.length ? Math.max(1, Math.min(finalScenes.length, rawSceneIndex)) : 1
     const durationSec = Math.max(3, Math.min(20, num(item.seconds ?? item.durationSec, 8)))
     const camera = str(item.camera).slice(0, 200).trim() || '固定镜头'
     const shotSize = str(item.shotSize).slice(0, 80).trim() || '中景'
     return {
       number: index + 1,
+      sourceNumber: Math.max(0, Math.round(num(item.number, 0))),
       sceneIndex,
       title,
       action,
@@ -12779,6 +14370,245 @@ function applyModelStoryboard(project: StudioProject, storyboard: ModelStoryboar
   project.updatedAt = now
 }
 
+export interface ScopedStoryboardBatchResult {
+  existingIds: string[]
+  shots: StoryboardShotSeed[]
+  shotOnly?: boolean
+}
+
+/** 按章节范围更新已有镜头：保留镜头 ID 与素材，只替换对应的文字字段。 */
+export function applyScopedStoryboard(
+  project: StudioProject,
+  results: ScopedStoryboardBatchResult[],
+  model: string,
+  options: { allowCountChange?: boolean; baseVersions?: Record<string, number> } = {}
+): void {
+  if (!project.blueprint?.approved) throw new Error('蓝图尚未确认；分镜结果没有应用。')
+  const now = nowMs()
+  const byId = new Map(project.shots.map((shot) => [shot.id, shot]))
+  for (const result of results) {
+    if (result.existingIds.some((id) => !byId.has(id))) {
+      throw new Error('分镜在生成期间有改动；为避免覆盖当前内容，本次结果没有应用。请重新生成。')
+    }
+  }
+  const updated = new Map<string, StoryboardShotSeed>()
+  const removed = new Set<string>()
+  const additions = new Map<string | null, StoryboardShotSeed[]>()
+  let updatedCount = 0
+  let addedCount = 0
+  let removedCount = 0
+  let conflictedCount = 0
+  for (const result of results) {
+    const batchShots = result.existingIds.map((id) => byId.get(id)).filter((shot): shot is StudioShot => Boolean(shot))
+    const byNumber = new Map(batchShots.map((shot) => [shot.number, shot]))
+    const used = new Set<string>()
+    const anchor = batchShots.at(-1)?.id ?? null
+    result.shots.forEach((seed, index) => {
+      let match: StudioShot | undefined
+      if (result.shotOnly && batchShots.length === 1) match = batchShots[0]
+      if (!match && seed.sourceNumber > 0) {
+        const candidate = byNumber.get(seed.sourceNumber)
+        if (candidate && !used.has(candidate.id)) match = candidate
+      }
+      if (!match && batchShots.length === result.shots.length) {
+        const candidate = batchShots[index]
+        if (candidate && !used.has(candidate.id)) match = candidate
+      }
+      if (match) {
+        used.add(match.id)
+        updated.set(match.id, seed)
+      } else {
+        const list = additions.get(anchor) ?? []
+        list.push(seed)
+        additions.set(anchor, list)
+      }
+    })
+    for (const shot of batchShots) if (!used.has(shot.id)) removed.add(shot.id)
+  }
+  const proposedAdds = [...additions.values()].reduce((sum, list) => sum + list.length, 0)
+  if ((proposedAdds > 0 || removed.size > 0) && !options.allowCountChange) {
+    throw new Error(`模型给出 ${proposedAdds} 个新增镜头、${removed.size} 个删除镜头。为避免打乱已有素材，本次没有应用；如确认要增删，请勾选“允许模型增删本范围的镜头”后重试。`)
+  }
+  const scenes = [...project.scenes].sort((left, right) => left.number - right.number)
+  const sceneById = new Map(scenes.map((scene) => [scene.id, scene]))
+  const sceneForSeed = (seed: StoryboardShotSeed, anchor?: StudioShot): StudioScene | undefined =>
+    (anchor ? sceneById.get(anchor.sceneId) : undefined) ?? scenes[Math.max(0, Math.min(scenes.length - 1, seed.sceneIndex - 1))] ?? scenes[0]
+  const makeNewShot = (seed: StoryboardShotSeed, anchor?: StudioShot): StudioShot => {
+    const scene = sceneForSeed(seed, anchor)
+    const speakerCharacter = project.characters.find((character) => character.name === seed.speaker)
+    const sceneCharacters = (scene?.characters ?? [])
+      .map((name) => project.characters.find((character) => character.name === name))
+      .filter((character): character is NonNullable<typeof character> => Boolean(character))
+    const referenceCharacters = [...new Map([
+      ...(speakerCharacter ? [speakerCharacter] : []),
+      ...sceneCharacters
+    ].map((character) => [character.id, character])).values()]
+    const place = project.places.find((item) => item.name === scene?.location)
+    return {
+      id: studioId('shot'),
+      sceneId: scene?.id ?? anchor?.sceneId ?? '',
+      number: 0,
+      title: seed.title,
+      action: seed.action,
+      camera: seed.camera,
+      shotSize: seed.shotSize,
+      durationSec: seed.durationSec,
+      dialogue: seed.dialogue,
+      speaker: seed.speaker,
+      voiceId: speakerCharacter?.voiceId ?? '',
+      prompt: seed.prompt || (scene ? buildStoryboardImagePrompt(project, seed, scene) : seed.action),
+      negative: seed.negative,
+      referenceCharacterIds: referenceCharacters.map((character) => character.id),
+      referencePlaceIds: place ? [place.id] : [],
+      referencePropIds: [],
+      imageAssetId: null,
+      videoAssetId: null,
+      voiceAssetId: null,
+      imageCandidates: [],
+      videoCandidates: [],
+      continuity: seed.continuity,
+      lockedReference: false,
+      status: 'ready',
+      updatedAt: now
+    }
+  }
+  const updateShot = (previous: StudioShot, seed: StoryboardShotSeed): StudioShot => {
+    const baseVersion = options.baseVersions?.[previous.id]
+    if (baseVersion !== undefined && previous.updatedAt !== baseVersion) {
+      conflictedCount += 1
+      return {
+        ...previous,
+        rewriteCandidate: {
+          id: studioId('rewrite'),
+          model,
+          title: seed.title,
+          action: seed.action,
+          camera: seed.camera,
+          shotSize: seed.shotSize,
+          durationSec: seed.durationSec,
+          dialogue: seed.dialogue,
+          speaker: seed.speaker,
+          continuity: seed.continuity,
+          prompt: seed.prompt,
+          negative: seed.negative,
+          createdAt: now
+        },
+        updatedAt: now
+      }
+    }
+    const dialogueChanged = previous.dialogue !== seed.dialogue || previous.speaker !== seed.speaker
+    const visualChanged = previous.title !== seed.title || previous.action !== seed.action || previous.camera !== seed.camera || previous.shotSize !== seed.shotSize || previous.durationSec !== seed.durationSec
+    const speakerCharacter = project.characters.find((character) => character.name === seed.speaker)
+    const scene = sceneById.get(previous.sceneId)
+    return {
+      ...previous,
+      title: seed.title,
+      action: seed.action,
+      camera: seed.camera,
+      shotSize: seed.shotSize,
+      durationSec: seed.durationSec,
+      dialogue: seed.dialogue,
+      speaker: seed.speaker,
+      voiceId: speakerCharacter?.voiceId ?? previous.voiceId,
+      prompt: seed.prompt || (visualChanged && scene ? buildStoryboardImagePrompt(project, seed, scene) : previous.prompt),
+      negative: seed.negative || previous.negative,
+      continuity: seed.continuity,
+      voiceAssetId: dialogueChanged ? null : previous.voiceAssetId,
+      status: (dialogueChanged && previous.voiceAssetId) || (visualChanged && (previous.imageAssetId || previous.videoAssetId)) ? 'stale' : previous.status,
+      updatedAt: now
+    }
+  }
+  const order: StudioShot[] = []
+  for (const shot of project.shots) {
+    if (!removed.has(shot.id)) {
+      const seed = updated.get(shot.id)
+      if (seed) {
+        order.push(updateShot(shot, seed))
+        updatedCount += 1
+      } else {
+        order.push(shot)
+      }
+    } else {
+      removedCount += 1
+    }
+    const inserted = additions.get(shot.id)
+    if (inserted) {
+      for (const seed of inserted) {
+        order.push(makeNewShot(seed, shot))
+        addedCount += 1
+      }
+    }
+  }
+  const tail = additions.get(null)
+  if (tail) {
+    for (const seed of tail) {
+      order.push(makeNewShot(seed))
+      addedCount += 1
+    }
+  }
+  order.forEach((shot, index) => { shot.number = index + 1 })
+  project.shots = order
+  const keptIds = new Set(order.map((shot) => shot.id))
+  const durationByShot = new Map(order.map((shot) => [shot.id, shot]))
+  project.timeline = {
+    ...project.timeline,
+    clips: project.timeline.clips
+      .filter((clip) => !clip.shotId || keptIds.has(clip.shotId))
+      .map((clip) => {
+        const shot = clip.shotId ? durationByShot.get(clip.shotId) : undefined
+        if (!shot) return clip
+        if (clip.kind === 'video') return { ...clip, duration: shot.durationSec, label: shot.title }
+        if (clip.kind === 'subtitle') return { ...clip, text: shot.dialogue }
+        return clip
+      }),
+    version: project.timeline.version + 1,
+    updatedAt: now
+  }
+  project.timeline.durationSec = project.timeline.clips.length
+    ? Math.max(0, ...project.timeline.clips.map((clip) => clip.start + clip.duration))
+    : 0
+  const episode = project.episodes[0]
+  if (episode) {
+    episode.sceneIds = project.scenes.map((scene) => scene.id)
+    episode.durationSec = order.reduce((sum, shot) => sum + shot.durationSec, 0)
+    episode.updatedAt = now
+  }
+  project.blueprint = {
+    ...project.blueprint,
+    units: order.map((shot, index) => ({
+      index: index + 1,
+      title: shot.title,
+      summary: shot.action,
+      seconds: shot.durationSec,
+      camera: shot.camera,
+      shotSize: shot.shotSize,
+      dialogue: shot.dialogue,
+      speaker: shot.speaker
+    })),
+    storyboardModel: model
+  }
+  if (conflictedCount) {
+    project.checks = project.checks.filter((check) => !check.title.includes('生成期间被修改'))
+    project.checks.unshift({
+      id: studioId('check'),
+      kind: 'continuity',
+      level: 'warn',
+      title: `${conflictedCount} 镜在生成期间被修改，AI 新稿已保留为候选`,
+      detail: '这些镜头没有被自动覆盖。请在镜头详情里对照 AI 新稿，选择采用或丢弃；其他镜头已按本次结果更新。',
+      createdAt: now
+    })
+  }
+  project.stages.storyboard = {
+    status: 'done',
+    updatedAt: now,
+    message: `${order.length} 镜 · 更新 ${updatedCount} 镜${addedCount ? ` · 新增 ${addedCount} 镜` : ''}${removedCount ? ` · 删除 ${removedCount} 镜` : ''}${conflictedCount ? ` · ${conflictedCount} 镜有冲突，待比较` : ''}（${model}）`,
+    progress: 100
+  }
+  project.stage = 'storyboard'
+  staleStoryboardDownstream(project)
+  project.updatedAt = now
+}
+
 function staleStoryboardDownstream(project: StudioProject): void {
   const now = nowMs()
   for (const stage of ['visuals', 'voice', 'timeline', 'review', 'delivery'] as const) {
@@ -12904,9 +14734,11 @@ function runChecks(project: StudioProject): StudioProject['checks'] {
     }
     if (tooLong.length) add('audio', 'warn', '配音比镜头长', `${tooLong.join('；')}。可以拉长镜头或重配。`)
     const score = resolveMusicAsset(project)
-    const hasMusic = Boolean(score?.formal || score?.demo)
+    const embeddedScore = hasEmbeddedVideoScore(project)
+    const hasMusic = Boolean(score?.formal || score?.demo || embeddedScore)
     const hasDraftMusic = Boolean(score && !score.formal && !score.demo)
     if (!hasMusic) add('audio', 'warn', hasDraftMusic ? '只有本地配乐草稿' : '还没有配乐', hasDraftMusic ? '草稿可以试听；安装 ACE-Step 配乐模型后可生成正式配乐。' : '可以先生成配乐，或把声音方向写进补充要求后再生成。')
+    else if (embeddedScore && !score) add('audio', 'info', '配乐随 H3 画面生成', '视频模型已生成无人声纯器乐配乐；如需单独替换，可在音乐页生成 ACE-Step 配乐。')
     if (!project.timeline.clips.length) add('missing', 'warn', '时间线还没有装配', '点击“自动装配时间线”，再合成草稿。')
     if (project.stages.timeline.status === 'stale') add('missing', 'warn', '时间线需要重新装配', '有新素材还没进入时间线；直接合成会得到旧画面或旧声音。')
     const unlinkedVisuals = project.shots.filter((shot) => (shot.imageAssetId || shot.videoAssetId) && !project.timeline.clips.some((clip) => clip.kind === 'video' && clip.shotId === shot.id))

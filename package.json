@@ -13,19 +13,20 @@
     "postinstall": "node scripts/ensure-electron.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "build": "npm run typecheck && electron-vite build",
+    "test": "npm run test:unit",
+    "test:suite": "node scripts/check-test-suite.mjs",
     "test:unit": "vitest run",
-    "test:eval": "vitest run tests/unit/core/agent.test.ts -t \"agent-quality\"",
+    "pretest:e2e": "node scripts/build-for-tests.mjs",
     "test:e2e": "playwright test",
-    "probe:live": "node scripts/probe-live.mjs",
     "dist": "npm run build && node scripts/dist-portable.mjs --portable",
     "dist:all": "npm run build && node scripts/dist-portable.mjs",
     "dist:final": "npm run build && node scripts/dist-portable.mjs --two-files",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "pack:source": "node scripts/pack-source.mjs",
-    "verify": "npm run typecheck && npm run audit:ui && npm run test:unit && npm run test:e2e",
-    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs",
-    "audit:ui": "node scripts/ui-token-audit.mjs"
+    "verify": "npm run typecheck && npm run audit:ui && npm run test:suite && npm run test:unit && npm run test:e2e",
+    "audit:ui": "node scripts/ui-token-audit.mjs",
+    "produce:demo-film": "node scripts/produce-demo-film.mjs"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -116,10 +117,6 @@
       {
         "from": "build/tray-light.png",
         "to": "tray-light.png"
-      },
-      {
-        "from": "resources/studio-demo",
-        "to": "studio-demo"
       },
       {
         "from": "resources/tts",

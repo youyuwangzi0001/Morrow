@@ -1,7 +1,7 @@
 {
   "product": "Morrow",
   "version": "0.2.0",
-  "capturedAt": "2026-10-29",
+  "capturedAt": "2026-10-30",
   "runtime": "v0.2.0 r050 (Morrow-app.exe)",
   "theme": "dark + light",
   "images": [
@@ -119,7 +119,7 @@
     },
     {
       "file": "17-studio-writing-dark.png",
-      "alt": "创作台写作：文档工具条、卷章大纲、深色纸页与协作助手",
+      "alt": "创作台写作：查找与替换、文档工具条、深色纸页与协作助手",
       "width": 1600,
       "height": 914,
       "source": "tests/e2e · studio-writing-dark.png"

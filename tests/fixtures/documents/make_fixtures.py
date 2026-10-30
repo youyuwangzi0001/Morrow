@@ -1,20 +1,19 @@
 """Generate the real binary fixtures used by Morrow's document-tool unit tests.
 
 Why committed binaries: the document tools must be tested against files produced by
-*independent* implementations (python-docx / openpyxl / LibreOffice), not by the same
+*independent* implementations (python-docx / LibreOffice), not by the same
 writer code that lives in src/core/tools. The generated files are checked in so
 `npm run test:unit` is reproducible on any machine without Python.
 
 Provenance / regeneration (Windows, bundled Python via load_workspace_dependencies):
     <python> make_fixtures.py
-Requirements: python-docx 1.2.0, openpyxl 3.1.5, LibreOffice Kit CLI (only for PDF).
+Requirements: python-docx 1.2.0, LibreOffice Kit CLI (only for PDF).
 
 Outputs (all in this directory):
     template.docx     M11-style letter: Title + body {{NAME}} + 1x2 table {{DATE}} + confidentiality
     split-run.docx    same idea but placeholders are split across several w:r runs (robustness)
     invoice.pdf       M12-style single-page invoice: INV-0042 / 12, 18, 7 / printed total 38
     invoice.docx      source document invoice.pdf was exported from (provenance)
-    input.xlsx        read fixture: Sales sheet with real formulas + a second sheet
     manifest.json     sha256 + source of every fixture
 """
 from __future__ import annotations
@@ -26,8 +25,6 @@ from pathlib import Path
 
 from docx import Document
 from docx.shared import Pt
-from openpyxl import Workbook
-from openpyxl.styles import Font
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / "build"
@@ -142,55 +139,28 @@ def export_pdf(docx_path: Path, pdf_path: Path) -> Path:
     return pdf_path
 
 
-# ── XLSX read fixture (openpyxl, formula cells have no cached value) ──
-def build_input_xlsx() -> Path:
-    workbook = Workbook()
-    sales = workbook.active
-    sales.title = "Sales"
-    rows = [
-        ("Item", "Qty", "Price", "Total"),
-        ("Pen", 2, 3, "=B2*C2"),
-        ("Book", 3, 5, "=B3*C3"),
-        ("", "", "", "=SUM(D2:D3)"),
-    ]
-    for row in rows:
-        sales.append(row)
-    for cell in sales[1]:
-        cell.font = Font(bold=True)
-    notes = workbook.create_sheet("Notes")
-    notes.append(("key", "value"))
-    notes.append(("owner", "林宁"))
-    notes.append(("approved", True))
-    notes.append(("checked", 2026))
-    path = HERE / "input.xlsx"
-    workbook.save(path)
-    return path
-
-
 def main() -> None:
     template = build_template()
     split_run = build_split_run()
     invoice_docx = build_invoice_docx()
     invoice_zh_docx = build_invoice_zh_docx()
     blank_docx = build_blank_docx()
-    input_xlsx = build_input_xlsx()
     invoice_pdf = export_pdf(invoice_docx, HERE / "invoice.pdf")
     invoice_zh_pdf = export_pdf(invoice_zh_docx, HERE / "invoice-zh.pdf")
     blank_pdf = export_pdf(blank_docx, HERE / "blank.pdf")
 
     manifest = {
         "generator": "make_fixtures.py",
-        "libraries": {"python-docx": "1.2.0", "openpyxl": "3.1.5", "pdf-export": "LibreOffice Kit"},
+        "libraries": {"python-docx": "1.2.0", "pdf-export": "LibreOffice Kit"},
         "fixtures": {
             path.name: {"sha256": sha256(path), "bytes": path.stat().st_size}
-            for path in (template, split_run, invoice_docx, invoice_pdf, invoice_zh_docx, invoice_zh_pdf, blank_pdf, input_xlsx)
+            for path in (template, split_run, invoice_docx, invoice_pdf, invoice_zh_docx, invoice_zh_pdf, blank_pdf)
         },
         "scenarios": {
             "M11": "template.docx — Title + Dear {{NAME}} + 1x2 table {{DATE}} + CONFIDENTIAL",
             "M11-robustness": "split-run.docx — placeholders split across w:r runs",
             "M12": "invoice.pdf — INV-0042 / Items 12,18,7 / Printed total 38 (12+18+7=37)",
             "M12-中文": "invoice-zh.pdf — 中文发票：发票编号 INV-0042 / 项目金额 12、18、7 / 印刷总额 38",
-            "read_xlsx": "input.xlsx — Sales sheet with real formulas =B2*C2 / =B3*C3 / =SUM(D2:D3)",
             "error-path": "blank.pdf — valid PDF with no extractable text",
         },
     }

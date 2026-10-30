@@ -807,7 +807,9 @@ export function TitleBar(): React.JSX.Element {
           </span>
         ) : activeSessionId ? (
           <SessionTitle />
-        ) : null}
+        ) : (
+          <span className="tb-brand" aria-label="Morrow">Morrow</span>
+        )}
       </div>
 
       <div className="tb-right no-drag">

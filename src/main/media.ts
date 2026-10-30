@@ -54,6 +54,16 @@ const REF2VA_MODEL_LABEL = 'MiniMax-H3 Ref2VA 16G HiFi'
 
 const FL2VA_MODEL_LABEL = 'MiniMax-H3 FL2VA 16G HiFi'
 
+/** 全局成片规则：视频模型只出画面与纯器乐配乐；人物配音与字幕永远在视频模型之外。 */
+export const VIDEO_VISUAL_MUSIC_ONLY_RULE =
+  '只生成画面与纯器乐配乐：配乐必须是无人声、无歌词、无对白的情绪音乐；不要生成人物配音、旁白、歌声、说话声或任何字幕；画面中不要出现文字、水印、标志、字幕条或对白气泡。'
+
+export function withVisualMusicOnlyRule(prompt: string): string {
+  const text = prompt.trim()
+  if (text.includes('不要生成人物配音') && text.includes('纯器乐')) return text
+  return text ? `${text}。${VIDEO_VISUAL_MUSIC_ONLY_RULE}` : VIDEO_VISUAL_MUSIC_ONLY_RULE
+}
+
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif'])
 
 const VIDEO_EXT = new Set(['mp4', 'webm', 'mkv', 'mov'])
@@ -1218,7 +1228,7 @@ export class MediaService implements MediaToolHandler {
       }
       lastName = imageNames[1]
     }
-    const graph = this.buildMiniMaxVideo(names, input.prompt, imageNames[0], lastName, width, height, frames, seed, mode)
+    const graph = this.buildMiniMaxVideo(names, withVisualMusicOnlyRule(input.prompt), imageNames[0], lastName, width, height, frames, seed, mode)
     input.onProgress({ stage: '加载 MiniMax-H3 模型', percent: 3 })
     const result = await this.runPrompt({
       settings,
@@ -1228,7 +1238,7 @@ export class MediaService implements MediaToolHandler {
       modelLabel: mode === 'reference' ? REF2VA_MODEL_LABEL : FL2VA_MODEL_LABEL,
       labels: {
         decode: '解码画面',
-        audioDecode: '解码声音',
+        audioDecode: '解码配乐',
         createVideo: '合成视频',
         save: '保存视频'
       },
@@ -1387,7 +1397,7 @@ export class MediaService implements MediaToolHandler {
       report(index, '生成视频', 2)
       const video = await this.generateVideo({
         workspace,
-        prompt: videoPrompt,
+        prompt: withVisualMusicOnlyRule(videoPrompt),
         referencePaths: [firstFrame],
         ...(lastFramePath ? { lastFramePath } : {}),
         mode,
@@ -2159,9 +2169,7 @@ export class MediaService implements MediaToolHandler {
     const choice = localProviders
       .map((providerConfig) => ({
         providerConfig,
-        model: (providerConfig.models ?? []).find(
-          (item) => item.supportsVision === true || /coder390|qwen3\.8-27b/i.test(item.id)
-        )
+        model: (providerConfig.models ?? []).find((item) => item.supportsVision === true)
       }))
       .find((item) => Boolean(item.model))
     if (!choice?.model) {
@@ -2557,7 +2565,7 @@ const BUILTIN_ENGINES: MediaEngineManifest[] = [
     label: 'Ollama',
     kind: 'ollama',
     description: '本地模型服务；支持 pull/rm 与 OpenAI 兼容接口。',
-    homepage: 'https://ollama.com',
+    homepage: 'https://github.com/ollama/ollama/releases',
     capabilities: ['vision', 'chat'],
     source: 'builtin',
     detect: { command: 'ollama', healthUrl: 'http://127.0.0.1:11434/api/tags' },
@@ -2573,7 +2581,7 @@ const BUILTIN_ENGINES: MediaEngineManifest[] = [
     label: 'LM Studio',
     kind: 'lmstudio',
     description: '本地模型服务；通过 lms CLI 管理模型与本地服务器。',
-    homepage: 'https://lmstudio.ai',
+    homepage: 'https://lmstudio.ai/download',
     capabilities: ['vision', 'chat'],
     source: 'builtin',
     detect: { command: 'lms', healthUrl: 'http://127.0.0.1:1234/v1/models' },
@@ -2619,7 +2627,7 @@ const BUILTIN_MODELS: MediaModelManifest[] = [
     kind: 'image',
     capabilities: ['text-to-image', 'image-edit'],
     description: '内置预设：Qwen-Image 2.1 Turbo GGUF，适合中文/英文图像生成与编辑。',
-    homepage: 'https://huggingface.co/unsloth/Qwen-Image-2.1-Turbo-GGUF',
+    homepage: 'https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF',
     license: 'Apache-2.0',
     source: 'builtin',
     install: { type: 'files', files: QWEN_FILES },
@@ -2645,28 +2653,10 @@ const BUILTIN_MODELS: MediaModelManifest[] = [
     kind: 'audio',
     capabilities: ['text-to-music'],
     description: '内置预设：ACE-Step 1.5，根据故事情绪生成纯器乐短片配乐；支持 5–300 秒。',
-    homepage: 'https://huggingface.co/Comfy-Org/ACE-Step-1.5',
+    homepage: 'https://modelscope.cn/models/Comfy-Org/ACE-Step-1.5',
     license: 'Apache-2.0',
     source: 'builtin',
     install: { type: 'files', files: ACE_STEP_FILES }
-  },
-  {
-    id: 'coder390-vision',
-    label: 'Qwen3.8-27B-Coder390（视觉）',
-    engine: 'llamacpp',
-    kind: 'multimodal',
-    capabilities: ['vision', 'chat'],
-    description: '内置预设：现有本地 coder390 + mmproj，用于图片/视频帧审看与聚焦代码任务。',
-    license: 'Apache-2.0',
-    source: 'builtin',
-    install: {
-      type: 'files',
-      files: [{ dest: 'qwen38-27b/Qwen3.8-27B-Coder390-Q3LynnStyle16G-MTP.gguf' }],
-      modelPath: 'qwen38-27b/Qwen3.8-27B-Coder390-Q3LynnStyle16G-MTP.gguf',
-      alias: 'Qwen3.8-27B-Coder390',
-      contextWindow: 65_536,
-      args: ['-ngl', '99', '-fa', 'on', '-c', '65536', '--cache-type-k', 'q4_0', '--cache-type-v', 'q4_0', '-b', '4096', '-ub', '1024', '-t', '14', '--jinja', '--reasoning-format', 'deepseek', '--reasoning-budget', '4096', '--temp', '1.0', '--top-p', '0.95', '--top-k', '20', '--presence-penalty', '1.5', '--parallel', '1', '--mmproj', 'qwen38-27b/mmproj-Qwen3.8-27B-Q8_0.gguf']
-    }
   }
 ]
 

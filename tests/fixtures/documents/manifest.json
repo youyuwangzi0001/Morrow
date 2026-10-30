@@ -2,7 +2,6 @@
   "generator": "make_fixtures.py",
   "libraries": {
     "python-docx": "1.2.0",
-    "openpyxl": "3.1.5",
     "pdf-export": "LibreOffice Kit"
   },
   "fixtures": {
@@ -33,14 +32,6 @@
     "blank.pdf": {
       "sha256": "f3ad70f7e0a37cb46618cca077aa72f554c1a5216a590fc97bd36902a019ae94",
       "bytes": 6550
-    },
-    "input.xlsx": {
-      "sha256": "f6de8078aa435a5bc466890f5b5d08eae8af74e0944272117498e5006319345d",
-      "bytes": 5541
-    },
-    "scanned-zh.pdf": {
-      "sha256": "890fb950071625de6c1513fb3f904695ab974263422c326d570c38c287aab237",
-      "bytes": 61064
     }
   },
   "scenarios": {
@@ -48,7 +39,6 @@
     "M11-robustness": "split-run.docx — placeholders split across w:r runs",
     "M12": "invoice.pdf — INV-0042 / Items 12,18,7 / Printed total 38 (12+18+7=37)",
     "M12-中文": "invoice-zh.pdf — 中文发票：发票编号 INV-0042 / 项目金额 12、18、7 / 印刷总额 38",
-    "read_xlsx": "input.xlsx — Sales sheet with real formulas =B2*C2 / =B3*C3 / =SUM(D2:D3)",
     "error-path": "blank.pdf — valid PDF with no extractable text"
   }
 }

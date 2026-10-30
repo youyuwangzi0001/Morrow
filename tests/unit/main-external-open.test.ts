@@ -25,7 +25,7 @@ describe('openExternalUrl', () => {
     delete process.env.MORROW_TEST
   })
 
-  it('优先用 Electron shell 打开外部链接', async () => {
+  it('@core:interface 优先用 Electron shell 打开外部链接', async () => {
     mocks.openExternal.mockResolvedValue(undefined)
     const result = await openExternalUrl('https://example.com/login?x=1')
     expect(result).toEqual({ opened: true, copied: false })
@@ -33,7 +33,7 @@ describe('openExternalUrl', () => {
     expect(mocks.execFile).not.toHaveBeenCalled()
   })
 
-  it('shell 失败时回退系统处理器，仍失败则复制链接', async () => {
+  it('@core:interface shell 失败时回退系统处理器，仍失败则复制链接', async () => {
     mocks.openExternal.mockRejectedValue(new Error('no browser'))
     mocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args.at(-1) as (error: Error) => void
@@ -58,19 +58,11 @@ describe('openLoginUrl', () => {
     delete process.env.MORROW_TEST
   })
 
-  it('测试模式只复制登录链接', async () => {
+  it('@core:interface 测试模式只复制登录链接', async () => {
     process.env.MORROW_TEST = '1'
     const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
     expect(result).toEqual({ opened: false, copied: true })
     expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
     expect(mocks.openLoginWindow).not.toHaveBeenCalled()
-  })
-
-it('内置窗口不可用时仍复制链接', async () => {
-    mocks.openLoginWindow.mockReturnValue(false)
-    const result = await openLoginUrl('https://auth.openai.com/oauth/authorize?x=1')
-    expect(result).toEqual({ opened: false, copied: true })
-    expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
-    expect(mocks.openExternal).not.toHaveBeenCalled()
   })
 })

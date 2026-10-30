@@ -1,0 +1,866 @@
+{
+  "capturedAt": "2026-10-30T03:58:28.513Z",
+  "decision": "approved-for-internal-beta",
+  "version": "0.2.0",
+  "runtimeRevision": "r056",
+  "baselineCommit": "684acd52423069377edc47277c75a6135e355da1",
+  "includesUncommittedRepairs": true,
+  "auditBasis": "docs/MORROW-REPAIR-REAUDIT-2026-10-30.md",
+  "scope": "Close N01-N10 and accept current core workflows and functional UI; do not treat hypothetical issues or feature requests as beta blockers.",
+  "source": {
+    "capturedAt": "2026-10-30T03:49:44.434Z",
+    "unchangedDuringAcceptance": true,
+    "changedFiles": [],
+    "sha256": {
+      "src/main/studio.ts": "fe70fa81593cca08c9f1358884e739d8d88736a57148f447c44d651549716772",
+      "src/renderer/features/studio-core.ts": "3bb3deada0ba2cb48903db2347fef6b04a5e3b34ea9e7577eea68664d5dd52c8",
+      "src/renderer/features/studio.tsx": "1e108be0ed4826777d3989a9830533fe35b18049fbb8f319ba7207653e184272",
+      "src/renderer/features/studio.css": "969633f5a2ebce6cc7dd28ec26b9b5ed40c1d941f6639ea7d59352400f5ae555",
+      "src/core/agent.ts": "785e9ffe11071ad121a8e5a9afa2980ba67f36affe529faf26f5aff31520b980",
+      "src/core/tools.ts": "21bb14d19599f34cb9b44cd0d292fa098d03872ac160a5601d1f730a08a04f97",
+      "src/main/agent.ts": "cccfbe6e6d08dfb29b8a8f97d5adb5d8098d6c0d244ece4dccdbc5989f140c15",
+      "src/main/terminal-manager.ts": "8779f9572442010f19fbbab47d24b53709d92abc4a13e68ea4541d20e80ebdad",
+      "src/renderer/features/terminal.tsx": "0aad7a7ed6bf46f22e75d04cb316eb04baed3e8a85e2efeb7bad3bc0f91dd1a4",
+      "src/shared/studio.ts": "e28d2ef5cb4e51cdeaeb95a884ffaaf578b434edd103ebbc24b4cffd14bf0c56"
+    }
+  },
+  "checks": {
+    "typecheck": {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "uiTokens": {
+      "command": "npm run audit:ui",
+      "exitCode": 0,
+      "cssFiles": 27,
+      "tsxFiles": 29,
+      "violations": 0
+    },
+    "coreRegistry": {
+      "command": "npm run test:suite",
+      "exitCode": 0,
+      "domains": 38,
+      "unit": 363,
+      "e2e": 45,
+      "budget": {
+        "unit": 380,
+        "e2e": 45
+      }
+    },
+    "coreUnit": {
+      "selected": 363,
+      "passed": 363,
+      "failed": 0,
+      "collected": 1069,
+      "notExecutedByCoreFilter": 706,
+      "durationMs": 5469.989013671875,
+      "raw": "tmp/final-gate-2026-10-30/core-unit.json"
+    },
+    "coreE2E": {
+      "startTime": "2026-10-30T03:49:59.499Z",
+      "duration": 297945.936,
+      "expected": 45,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0,
+      "raw": "tmp/final-gate-2026-10-30/core-e2e.json",
+      "cases": [
+        {
+          "file": "adaptation-all-chapters.spec.ts",
+          "line": 14,
+          "title": "@core:studio-drama 小说改编漫剧不再截断 12 章，全部章节分批进入分镜",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 7190
+            }
+          ]
+        },
+        {
+          "file": "blueprint-resume.spec.ts",
+          "line": 6,
+          "title": "@core:studio-writing 长篇蓝图分批失败后保存已完成章节，重试只补剩余批次",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6401
+            }
+          ]
+        },
+        {
+          "file": "blueprint-resume.spec.ts",
+          "line": 97,
+          "title": "@core:studio-writing 长篇蓝图人物步骤失败后，重试先补人物再继续章节",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6523
+            }
+          ]
+        },
+        {
+          "file": "chat.spec.ts",
+          "line": 339,
+          "title": "@core:attachments 图片可见、附件元数据可见、内部正文不进入气泡",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 3075
+            }
+          ]
+        },
+        {
+          "file": "chat.spec.ts",
+          "line": 950,
+          "title": "@core:agent 运行中排队：编辑、删除、本轮结束后自动发送",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 13479
+            }
+          ]
+        },
+        {
+          "file": "chat.spec.ts",
+          "line": 1124,
+          "title": "@core:permissions A 等待审批时切到 B：提示保留、返回可批准、完成后后台状态清理",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2432
+            }
+          ]
+        },
+        {
+          "file": "chat.spec.ts",
+          "line": 1420,
+          "title": "@core:context 手动压缩：锁住发送、摘要折叠展示、旧消息安全折叠",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6808
+            }
+          ]
+        },
+        {
+          "file": "chat.spec.ts",
+          "line": 1609,
+          "title": "@core:sessions 检查点回退：冲突检测 → 恢复文件与对话",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2763
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 39,
+          "title": "@core:interface 演示模式：点「看一场演示」→ 真实跑完 → HTML 报告落盘 → 画布自动打开",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 9701
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 120,
+          "title": "@core:permissions 权限卡「拒绝」：Mock LLM 触发 write_file → 真实点拒绝 → denied、文件未写入、run 正常结束",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2494
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 201,
+          "title": "@core:permissions 权限卡「允许一次」：Mock LLM 触发 write_file → 真实点允许 → 文件写入、工具 success、run complete",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 1574
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 450,
+          "title": "@core:sessions 会话恢复：完成一轮后重启同一 data-dir → 列表/消息/产物保留，画布可打开",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 11368
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 1756,
+          "title": "@core:media 设置、生成、编辑与预览",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 17788
+            }
+          ]
+        },
+        {
+          "file": "journey.spec.ts",
+          "line": 2520,
+          "title": "@core:memory 强信号任务自动复盘，建议可采纳为真实记忆与技能",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 4078
+            }
+          ]
+        },
+        {
+          "file": "review-coverage.spec.ts",
+          "line": 7,
+          "title": "@core:studio-writing 全书分批审稿保存覆盖范围与版本，界面列出已审和未审部分",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 7469
+            }
+          ]
+        },
+        {
+          "file": "review-coverage.spec.ts",
+          "line": 83,
+          "title": "@core:studio-writing 当前章审稿失败后重试仍只审原来那一章",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6294
+            }
+          ]
+        },
+        {
+          "file": "storyboard-conflict.spec.ts",
+          "line": 6,
+          "title": "@core:studio-drama 分镜生成期间手改同一镜，AI 新稿只进入待比较候选",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 11962
+            }
+          ]
+        },
+        {
+          "file": "storyboard-resume.spec.ts",
+          "line": 6,
+          "title": "@core:studio-drama 分批分镜失败后保存已完成批次，重试只补未完成部分",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 7425
+            }
+          ]
+        },
+        {
+          "file": "studio-novel-core.spec.ts",
+          "line": 10,
+          "title": "@core:studio-writing 新建小说：蓝图、六章正文、审稿、EPUB 与工程包往返",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6784
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 11,
+          "title": "@core:studio-timeline 入口、作品库、写作、分镜、时间线与交付的真实走查",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 25023
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 511,
+          "title": "@core:studio-storage 漫剧画布：镜头、音频、文本节点与连线可编辑并持久化",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 14937
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 650,
+          "title": "@core:studio-storage 从 A 画布切到 B 时，补存只写 A 的画布，不污染 B",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 7769
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 937,
+          "title": "@core:studio-writing 写作台具备查找替换、撤销、排版、字数与 Word 导出",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8966
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 1276,
+          "title": "@core:studio-drama 协作者补全分镜会展示完整方案并在应用后同步蓝图、大纲与分镜",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8563
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 1419,
+          "title": "@core:studio-assistant 中短篇写作页的改写请求会排队真实模型并替换正文",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8200
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 1628,
+          "title": "@core:studio-media 视觉检查真实调用支持图片的模型，而不是只显示未连接提示",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 9411
+            }
+          ]
+        },
+        {
+          "file": "terminal-gitbash.spec.ts",
+          "line": 7,
+          "title": "@core:terminal Git Bash 在 MSYS 共享内存冲突下仍真实可用",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2258
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 599,
+          "title": "@core:sessions 会话分支与消息操作：重新生成、编辑重发、分叉、置顶与归档",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8159
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 950,
+          "title": "@core:settings 设置：模型服务选择 / 上下文 Tab / 自动压缩开关",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 6291
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 1720,
+          "title": "@core:modes 计划模式：/plan 生成 → 拒绝 → 修订 → 批准执行并持久化",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 3466
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 2185,
+          "title": "@core:goals Mock LLM：目标多轮续跑（round 1 active → round 2 completed）",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 1670
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 2238,
+          "title": "@core:goals Mock LLM：暂停/继续/结束的终态不被旧 run 覆盖",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2713
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 2412,
+          "title": "@core:modes chat 硬拦截写入（文件不变）→ 切 work 真实写入 → 运行中拒绝切换 → Goal 不可用 → 重启保持",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 4305
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 3911,
+          "title": "@core:projects 概览展示项目背景；首句在项目工作区创建会话并注入说明与资料",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2580
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 4176,
+          "title": "@core:schedules 创建任务、立即运行、查看结果、暂停与删除",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 4171
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 4657,
+          "title": "@core:research 多轮检索自动补查 → 带引用报告与真实来源面板；内部补查不显示为气泡",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 5940
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 5059,
+          "title": "@core:connectors HTTP 连接器：测试连接 → 保存（密钥加密）→ 再测（解密发请求）→ 启停 → SSRF/文件协议拒绝 → 删除",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 4303
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 5995,
+          "title": "@core:skills 安装 / 读取 / 启停 / 删除 / 重扫 + 恶意 zip 拒绝",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 1040
+            }
+          ]
+        },
+        {
+          "file": "ui.spec.ts",
+          "line": 6642,
+          "title": "@core:swarm 集群：拆解为十个成员并行执行并汇总",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2665
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 52,
+          "title": "@core:documents 图片、PDF、DOCX、音视频、大文本与不支持格式均可预览",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8835
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 475,
+          "title": "@core:workspace 右键菜单：新建文件、重命名、删除（二次确认）真实落盘",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 1853
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 1048,
+          "title": "@core:workspace 打开文件 → 编辑 → 保存 → 重新打开",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2052
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 1267,
+          "title": "@core:workspace 保存进行中继续输入不会丢字，也不会误清脏标记",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 2985
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 2275,
+          "title": "@core:browser K1 自动化：读取 → 真实点击 → 真实输入 → 截图 → 后退/前进（可见视图）",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 3121
+            }
+          ]
+        },
+        {
+          "file": "workspace.spec.ts",
+          "line": 3784,
+          "title": "@core:git Git 工作台：初始化、差异、暂存提交、放弃、分支与历史",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 8562
+            }
+          ]
+        }
+      ]
+    },
+    "narrowLayout": {
+      "startTime": "2026-10-30T03:53:26.238Z",
+      "duration": 29285.159,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0,
+      "raw": "tmp/final-gate-2026-10-30/layout-e2e.json",
+      "cases": [
+        {
+          "file": "studio.spec.ts",
+          "line": 1025,
+          "title": "写作台 1280 窗口展开协作者时，查找/替换工具条不挤压不溢出",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 9649
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 1098,
+          "title": "时间线工具栏在窄中栏折叠为图标，不换行也不压住标尺",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 9575
+            }
+          ]
+        },
+        {
+          "file": "studio.spec.ts",
+          "line": 1146,
+          "title": "画布、交付与检查页在窄窗口不转行、不遮挡播放控件",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 9670
+            }
+          ]
+        }
+      ]
+    },
+    "candidateUI": {
+      "startTime": "2026-10-30T03:53:26.294Z",
+      "duration": 15860.22,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0,
+      "raw": "tmp/final-gate-2026-10-30/candidate-ui.json",
+      "cases": [
+        {
+          "file": "candidate-ui.spec.ts",
+          "line": 7,
+          "title": "内测终验：分镜冲突候选在常规及窄窗口、明暗主题下可操作",
+          "status": "expected",
+          "results": [
+            {
+              "status": "passed",
+              "durationMs": 15496
+            }
+          ]
+        }
+      ],
+      "measurements": [
+        {
+          "width": 307.3333435058594,
+          "height": 900,
+          "theme": "dark",
+          "overflow": 0,
+          "left": 1248.666748046875,
+          "right": 1556.0000915527344,
+          "viewport": 1600
+        },
+        {
+          "width": 281.3333435058594,
+          "height": 800,
+          "theme": "light",
+          "overflow": 0,
+          "left": 954.6666870117188,
+          "right": 1236.0000305175781,
+          "viewport": 1280
+        }
+      ],
+      "viewportCSSPixels": [
+        {
+          "width": 1600,
+          "height": 900,
+          "theme": "dark"
+        },
+        {
+          "width": 1280,
+          "height": 800,
+          "theme": "light"
+        }
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "N01",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N02",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N03",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N04",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N05",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N06",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N07",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N08",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N09",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    },
+    {
+      "id": "N10",
+      "status": "closed",
+      "evidenceDescription": "See the individual acceptance row in docs/MORROW-BETA-ACCEPTANCE-2026-10-30.md."
+    }
+  ],
+  "newBlockingFindings": [],
+  "package": {
+    "file": "tmp/final-gate-2026-10-30/package/.morrow-runtime-0.2.0-r056/resources/app.asar",
+    "files": 467,
+    "diffs": [],
+    "artifacts": [
+      {
+        "path": "deliver/Morrow-0.2.0-portable.exe",
+        "sha256": "39c1c026356b917072b2da8a58fb567d88276d6479eb1afe9406584c384e63ef",
+        "matchesRecorded": true
+      },
+      {
+        "path": "deliver/Morrow-0.2.0-setup.exe",
+        "sha256": "556cb55f382b652784e7011d1ec59faff6b9b36df607766c892c305a2fadefb2",
+        "matchesRecorded": true
+      }
+    ],
+    "smoke": {
+      "ok": true,
+      "kind": "portable",
+      "mode": "portable",
+      "exe": "tmp/final-gate-2026-10-30/package/Morrow-0.2.0-portable.exe",
+      "tempMode": "workspace-redirect",
+      "startedAt": "2026-10-30T03:52:02.125Z",
+      "log": "docs/verification/logs/smoke-packaged-portable.log",
+      "screenshot": "docs/verification/screens/packaged-smoke.png",
+      "exeSizeBytes": 220573184,
+      "exeSizeMB": 210.35,
+      "exeSha256": "39c1c026356b917072b2da8a58fb567d88276d6479eb1afe9406584c384e63ef",
+      "cdpReadyMs": 4196,
+      "windowUrl": "file:///C:/%E4%BA%A4%E4%BB%98%E6%88%90%E5%93%81/Morrow/tmp/final-gate-2026-10-30/package/.morrow-runtime-0.2.0-r056/resources/app.asar/out/renderer/index.html",
+      "runsFromExtractedTemp": false,
+      "onboardingDismissed": true,
+      "electronVersion": "44.9.0",
+      "windowTitle": "Morrow",
+      "bodyTextPreview": "未选择文件夹\n创作台\n新建对话\nCtrl N\n临时对话\n不保存\n搜索或运行命令\nCtrl K\n项目\n长期背景\n定时任务\n自动执行\n文件\n\n还没有文件夹。\n\n选一个文件夹后，这里会显示它的文件树。\n\n选择文件夹\n\n还没有对话\n\n从一句话开始。\n\n设置\n未连接\nv0.2.0\n\n10月30日，周五。适合把一个想法写成能用的第",
+      "dataDir": "tmp/data-packaged-portable-1793332322125",
+      "dataDirCreated": true,
+      "durationMs": 5619,
+      "finishedAt": "2026-10-30T03:52:07.744Z"
+    },
+    "installerInstallUpgradeUninstallTested": false
+  },
+  "manualVisualReview": {
+    "result": "No blocking omission, overflow or control occlusion in the reviewed views.",
+    "screenshots": [
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/packaged-home.png",
+        "sha256": "836d6080de79b5a298b018d51d806f9e5e7fe23f1d893a4b5f7e1c4e782bbfc5",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/studio-home-dark.png",
+        "sha256": "c87f3216054aa531651f6c3e3e12f6d7b37433f3d58460d50aa089e0dbf74c66",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/review-coverage.png",
+        "sha256": "88f351e989997a6bd94968499681d756a6408e6473204f41301993b06b51e3b8",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/writing-1280.png",
+        "sha256": "d8f91c5ddecee129f6345851f275696c77e5b657f3ed95d752d07be0a4093f1f",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/timeline-1280.png",
+        "sha256": "e92a30e8eee38cb8cc74a592e3fed3a8f3096eb8969b25e48a69d80da834be5e",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/canvas-1360.png",
+        "sha256": "3e31db77967ca378d6f85946aa4e7ac843fccaf59dcb5708f72ec012051abb5e",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/delivery-1360.png",
+        "sha256": "c35ba325cda8fed03bcca43476e745ab014965c213f03b6cb3870ba4338ce257",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/conflict-dark-1600.png",
+        "sha256": "88c2c17f5f3cb21642a0b34b6b6a582d3b5d8176dd1a47e6d8a4b00a509ba4ab",
+        "reviewed": true
+      },
+      {
+        "file": "docs/verification/screens/beta-final-2026-10-30/conflict-light-1280.png",
+        "sha256": "5eaa77dca08031944ffad962d1231080696d235b10d3d2a889ba68c9c315ac33",
+        "reviewed": true
+      }
+    ]
+  },
+  "verificationBoundaries": [
+    "Model-dependent acceptance uses controlled local model responses and the real Electron/IPC/service/storage path; paid providers and literary quality were not tested.",
+    "500-chapter coverage is verified through production merge logic, not 125 paid model calls.",
+    "No actual disk-full, 512 MiB project, long-media stress or fresh audio re-encoding run.",
+    "Portable executable was launched from a fresh extracted runtime; setup executable was hash-verified, not installed."
+  ],
+  "productionCodeEditedByThisAcceptance": false,
+  "permanentTestsAddedOrDeletedByThisAcceptance": false
+}

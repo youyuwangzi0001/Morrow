@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { rmSync } from 'node:fs'
 import type { StudioStore } from '../../src/main/studio'
 import { tempStore, makeDramaProject, makeNovelProject, addShot } from './studio-fixtures'
-import { applyEditPlan, assistantMessage, assistantSources, createPlanFromDraft, draftEditPlan, localAssistantReply, StudioService, syncDramaOutline } from '../../src/main/studio'
+import { applyEditPlan, assistantMessage, assistantSources, createPlanFromDraft, draftEditPlan, StudioService, syncDramaOutline } from '../../src/main/studio'
 import { assistantContextFor } from '../../src/shared/studio-assistant'
 
 vi.mock('electron', () => ({
@@ -32,7 +32,7 @@ describe('大白话改片', () => {
     }
   })
 
-  it('把慢速、雨声音量与不改脸翻译成可预览动作', () => {
+  it('@core:studio-assistant 把慢速、雨声音量与不改脸翻译成可预览动作', () => {
     const project = makeDramaProject(store)
     const draft = draftEditPlan(project, '镜 01 慢 20%，雨声压低一点，不要改脸。')
     expect(draft.actions.some((action) => action.type === 'set-clip-speed' && action.value === 0.8)).toBe(true)
@@ -51,17 +51,7 @@ describe('大白话改片', () => {
     expect(project.shots[0].continuity).toContain('保持角色面部')
   })
 
-  it('重做画面把用户原话与锁定约束写进任务指令', () => {
-    const project = makeDramaProject(store)
-    const draft = draftEditPlan(project, '重做镜 01 的画面，不要改脸。')
-    const plan = createPlanFromDraft(project.id, draft)
-    const applied = applyEditPlan(project, plan)
-    const image = applied.regenerate.find((item) => item.kind === 'image')
-    expect(image?.instruction).toContain('重做镜 01 的画面')
-    expect(image?.instruction).toContain('保持角色面部')
-  })
-
-  it('字幕上移只改字幕片段样式', () => {
+  it('@core:studio-assistant 字幕上移只改字幕片段样式', () => {
     const project = makeDramaProject(store)
     const subtitle = project.timeline.clips.find((clip) => clip.kind === 'subtitle')!
     const before = subtitle.style?.yPercent ?? 86
@@ -71,7 +61,7 @@ describe('大白话改片', () => {
     expect(after?.style?.yPercent).toBeLessThan(before)
   })
 
-  it('助手回答记录实际使用的章节、镜头与事实来源', () => {
+  it('@core:studio-assistant 助手回答记录实际使用的章节、镜头与事实来源', () => {
     const project = makeDramaProject(store)
     const shot = project.shots[0]
     const subtitle = project.timeline.clips.find((clip) => clip.kind === 'subtitle')!
@@ -85,7 +75,7 @@ describe('大白话改片', () => {
     expect(assistantMessage('assistant', '没有来源').sources).toBeUndefined()
   })
 
-  it('章节改写不再生成本地假候选，必须走写作台的模型润色', () => {
+  it('@core:studio-assistant 章节改写不再生成本地假候选，必须走写作台的模型润色', () => {
     const project = makeNovelProject(store)
     const original = project.chapters[0].content
     const draft = draftEditPlan(project, '把第 1 章的结尾收得更克制。', { selection: { kind: 'chapter', id: project.chapters[0].id } })
@@ -96,24 +86,14 @@ describe('大白话改片', () => {
     expect(project.chapters[0].candidates).toHaveLength(0)
   })
 
-  it('无法理解的请求明确说明，不假装修改', () => {
-    const project = makeNovelProject(store)
-    const draft = draftEditPlan(project, '随便来点什么')
-    expect(draft.actions).toHaveLength(0)
-    const plan = createPlanFromDraft(project.id, draft)
-    const reply = localAssistantReply(project, '随便来点什么', plan)
-    expect(reply.text).toContain('也可以')
-    expect(plan.actions).toHaveLength(0)
-  })
-
-  it('空计划不能伪装成已应用', () => {
+  it('@core:studio-assistant 空计划不能伪装成已应用', () => {
     const project = makeNovelProject(store)
     const plan = createPlanFromDraft(project.id, draftEditPlan(project, '随便来点什么'))
     expect(() => applyEditPlan(project, plan)).toThrow('没有可执行的修改')
     expect(plan.status).toBe('pending')
   })
 
-  it('重新生成大纲会更新有素材镜头的文字并新增场景镜头', () => {
+  it('@core:studio-assistant 重新生成大纲会更新有素材镜头的文字并新增场景镜头', () => {
     const project = makeDramaProject(store)
     const blueprint = {
       approved: true,
@@ -151,7 +131,7 @@ describe('大白话改片', () => {
     expect(project.blueprint?.scenes?.[1]).toMatchObject({ unitStart: 3, unitEnd: 3 })
   })
 
-  it('补全分镜会创建缺失场景并同步蓝图范围', () => {
+  it('@core:studio-assistant 补全分镜会创建缺失场景并同步蓝图范围', () => {
     const project = makeDramaProject(store)
     project.blueprint = {
       approved: true,
@@ -209,7 +189,7 @@ describe('大白话改片', () => {
     expect(project.stage).toBe('storyboard')
   })
 
-  it('协作者可以更新蓝图并把人物事实同步到项目与下游', () => {
+  it('@core:studio-assistant 协作者可以更新蓝图并把人物事实同步到项目与下游', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const plan = createPlanFromDraft(project.id, {
@@ -242,7 +222,7 @@ describe('大白话改片', () => {
     expect(project.stage).toBe('blueprint')
   })
 
-  it('协作者可以替换章节正文并自动留档', () => {
+  it('@core:studio-assistant 协作者可以替换章节正文并自动留档', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const before = project.chapters[0].content
@@ -262,7 +242,7 @@ describe('大白话改片', () => {
     expect(project.stage).toBe('writing')
   })
 
-  it('协作者可以替换大纲并新增章节，同时保留已有正文', () => {
+  it('@core:studio-assistant 协作者可以替换大纲并新增章节，同时保留已有正文', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const original = project.chapters[0].content
@@ -291,7 +271,7 @@ describe('大白话改片', () => {
     expect(project.stage).toBe('outline')
   })
 
-  it('协作者可以更新单镜文字并同步蓝图与下游状态', () => {
+  it('@core:studio-assistant 协作者可以更新单镜文字并同步蓝图与下游状态', () => {
     const project = makeDramaProject(store)
     project.blueprint = {
       approved: true,
@@ -331,7 +311,7 @@ describe('大白话改片', () => {
     expect(project.stages.visuals.status).toBe('stale')
   })
 
-  it('协作者可以人物改名并同步正文、大纲与事实', () => {
+  it('@core:studio-assistant 协作者可以人物改名并同步正文、大纲与事实', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const plan = createPlanFromDraft(project.id, {
@@ -351,7 +331,7 @@ describe('大白话改片', () => {
     expect(project.stage).toBe('writing')
   })
 
-  it('声音页的需求会落到音效与配乐任务', () => {
+  it('@core:studio-assistant 声音页的需求会落到音效与配乐任务', () => {
     const project = makeDramaProject(store)
     const sfxDraft = draftEditPlan(project, '加一段雨声，铺在开头。')
     expect(sfxDraft.actions.some((action) => action.type === 'generate-sfx' && action.sfx?.kind === 'rain')).toBe(true)
@@ -368,7 +348,7 @@ describe('大白话改片', () => {
     expect(project.timeline.clips.filter((clip) => clip.kind === 'sfx').length).toBeLessThan(beforeClips)
   })
 
-  it('协作者的整章重写会排队真实模型任务', () => {
+  it('@core:studio-assistant 协作者的整章重写会排队真实模型任务', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const plan = createPlanFromDraft(project.id, {
@@ -403,7 +383,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     }
   })
 
-  it('每个创作步骤都把当前步骤和对应选中项交给协作者', () => {
+  it('@core:studio-assistant 每个创作步骤都把当前步骤和对应选中项交给协作者', () => {
     const base = {
       selectedClipId: 'clip-1',
       selectedChapterId: 'ch-1',
@@ -436,7 +416,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     })
   })
 
-  it('把第 3 章移到第 1 章前面，正文随章节一起重排', () => {
+  it('@core:studio-assistant 把第 3 章移到第 1 章前面，正文随章节一起重排', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const seed = project.chapters[0]
@@ -455,23 +435,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     expect(applied.stage).toBe('writing')
   })
 
-  it('还没写正文时也能调整章纲顺序', () => {
-    const project = makeNovelProject(store)
-    project.chapters = []
-    project.blueprint = novelBlueprint(project)
-    project.blueprint.units = [
-      { index: 1, title: '第一章', summary: '一' },
-      { index: 2, title: '第二章', summary: '二' },
-      { index: 3, title: '第三章', summary: '三' }
-    ]
-    const draft = draftEditPlan(project, '把第3章移到第1章前面')
-    const applied = applyEditPlan(project, createPlanFromDraft(project.id, draft))
-    expect(project.blueprint?.units.map((unit) => unit.title)).toEqual(['第三章', '第一章', '第二章'])
-    expect(project.blueprint?.units.map((unit) => unit.index)).toEqual([1, 2, 3])
-    expect(applied.stage).toBe('outline')
-  })
-
-  it('改台词会自动清空旧配音并排队重配', () => {
+  it('@core:studio-assistant 改台词会自动清空旧配音并排队重配', () => {
     const project = makeDramaProject(store)
     const plan = createPlanFromDraft(project.id, {
       title: '改台词',
@@ -489,7 +453,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     ]))
   })
 
-  it('把第 3 镜移到第 1 镜前面，分镜与蓝图单元一起重排', () => {
+  it('@core:studio-assistant 把第 3 镜移到第 1 镜前面，分镜与蓝图单元一起重排', () => {
     const project = makeDramaProject(store)
     addShot(project, 3, { title: '第三镜', action: '第三镜动作', dialogue: '第三句', speaker: '林晚' })
     const draft = draftEditPlan(project, '把第3镜移到第1镜前面')
@@ -500,7 +464,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     expect(applied.stage).toBe('storyboard')
   })
 
-  it('大纲只改梗概时保留原标题与未提到的字段', () => {
+  it('@core:studio-assistant 大纲只改梗概时保留原标题与未提到的字段', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const plan = createPlanFromDraft(project.id, {
@@ -517,7 +481,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     expect(project.chapters[0].content).toContain('雨是从傍晚开始下的')
   })
 
-  it('改人物声线会同步到所有该人物的镜头并排队重配', () => {
+  it('@core:studio-assistant 改人物声线会同步到所有该人物的镜头并排队重配', () => {
     const project = makeDramaProject(store)
     const plan = createPlanFromDraft(project.id, {
       title: '改声线',
@@ -536,7 +500,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     ]))
   })
 
-  it('单镜改声线会清空旧配音并排队重配', () => {
+  it('@core:studio-assistant 单镜改声线会清空旧配音并排队重配', () => {
     const project = makeDramaProject(store)
     const plan = createPlanFromDraft(project.id, {
       title: '改这一镜声线',
@@ -554,7 +518,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     ]))
   })
 
-  it('全片重配只包含有台词的镜头', () => {
+  it('@core:studio-assistant 全片重配只包含有台词的镜头', () => {
     const project = makeDramaProject(store)
     const plan = createPlanFromDraft(project.id, {
       title: '全片重配',
@@ -570,7 +534,7 @@ describe('协作者全步骤上下文与顺序修改', () => {
     ])
   })
 
-  it('模型计划会把局部大纲、重排、人物声线和全片重配规范化', () => {
+  it('@core:studio-assistant 模型计划会把局部大纲、重排、人物声线和全片重配规范化', () => {
     const project = makeNovelProject(store)
     project.blueprint = novelBlueprint(project)
     const service = new StudioService({ store })

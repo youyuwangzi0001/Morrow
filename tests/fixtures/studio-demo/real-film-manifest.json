@@ -1,0 +1,225 @@
+{
+  "generatedAt": "2026-10-30T08:53:09.829Z",
+  "project": {
+    "id": "proj_3668f921c8724844bf",
+    "title": "逆行的伞",
+    "timelineVersion": 6,
+    "durationSec": 96
+  },
+  "final": {
+    "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\demo-final.mp4",
+    "bytes": 50978960,
+    "label": "成片 · 96 秒 · MP4",
+    "meta": {
+      "quality": "final",
+      "format": "mp4",
+      "resolution": "1080p",
+      "width": 1920,
+      "height": 1080,
+      "durationSec": 96,
+      "subtitles": "external",
+      "missingShots": 0,
+      "placeholders": 0,
+      "timelineVersion": 6,
+      "renderKey": "dc7dc35ffd21a8fcc47730fce6168ec8"
+    },
+    "streams": [
+      "video",
+      "audio"
+    ]
+  },
+  "subtitle": {
+    "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\demo-final.srt",
+    "bytes": 453,
+    "label": "字幕文件 · SRT"
+  },
+  "videos": [
+    {
+      "number": 1,
+      "title": "雨夜捡伞",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-01.mp4",
+      "bytes": 1927191,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "伞骨倒转",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-02.mp4",
+      "bytes": 2754733,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "少年出现",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-03.mp4",
+      "bytes": 2201100,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 4,
+      "title": "第一次修伞",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-04.mp4",
+      "bytes": 1771395,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 6.583333,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "红线",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-05.mp4",
+      "bytes": 2395086,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 6,
+      "title": "外婆的声音",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-06.mp4",
+      "bytes": 2503589,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 7,
+      "title": "雨中的纸鹤",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-07.mp4",
+      "bytes": 2423925,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8.708333,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 8,
+      "title": "每周三的秘密",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-08.mp4",
+      "bytes": 3069459,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 9,
+      "title": "记忆变暗",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-09.mp4",
+      "bytes": 1822793,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 6.583333,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 10,
+      "title": "时间退回一步",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-10.mp4",
+      "bytes": 2940752,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8.708333,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 11,
+      "title": "放手",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-11.mp4",
+      "bytes": 2184639,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    },
+    {
+      "number": 12,
+      "title": "雨停之后",
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\video-12.mp4",
+      "bytes": 1911916,
+      "model": "MiniMax-H3 Ref2VA 16G HiFi",
+      "duration": 8,
+      "streams": [
+        "video",
+        "audio"
+      ]
+    }
+  ],
+  "voices": [
+    {
+      "number": 3,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-03.wav",
+      "bytes": 57644
+    },
+    {
+      "number": 4,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-04.wav",
+      "bytes": 184364
+    },
+    {
+      "number": 6,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-06.wav",
+      "bytes": 96044
+    },
+    {
+      "number": 7,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-07.wav",
+      "bytes": 130604
+    },
+    {
+      "number": 8,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-08.wav",
+      "bytes": 96044
+    },
+    {
+      "number": 9,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-09.wav",
+      "bytes": 184364
+    },
+    {
+      "number": 11,
+      "path": "C:\\交付成品\\Morrow\\resources\\studio-demo\\voice-11.wav",
+      "bytes": 122924
+    }
+  ],
+  "music": "",
+  "source": {
+    "engine": "ComfyUI",
+    "videoModel": "MiniMax-H3 Ref2VA 16G HiFi",
+    "note": "MiniMax-H3 real video generated via Morrow Studio"
+  }
+}

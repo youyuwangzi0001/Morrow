@@ -23,7 +23,7 @@
 ### 1.2 内嵌与预算
 
 - 三套内容编译在 `src/main/creative-prompts.generated.ts`：gzip + base64，运行时由 `creative-masters.ts` 解压到内存。
-- 不再读取桌面文件夹、`resources/prompts`、`MORROW_CREATIVE_PROMPTS` 或 `process.resourcesPath/prompts`；`package.json` 的 `extraResources` 只有 pdf-ocr、studio-demo、tts。
+- 不再读取桌面文件夹、`resources/prompts`、`MORROW_CREATIVE_PROMPTS` 或 `process.resourcesPath/prompts`；`package.json` 的 `extraResources` 只有 pdf-ocr 与 tts；示例项目与 studio-demo 素材不再随包。
 - 默认预算 22,000 字符，夹在 4,000–60,000；按模型上下文窗口给 34k/27k/20k/13k/7k。主文件最多约 70%，方法论吃剩余预算，超长时在段落边界截断并注明。
 - 重新生成脚本 `scripts/embed-creative-prompts.mjs` 只供维护者使用；`npm run build` 不调用它，运行时不依赖外部提示词文件。
 

@@ -562,7 +562,7 @@ export const studioEditTool: ToolImpl = {
 export const studioReviewTool: ToolImpl = {
   definition: {
     name: 'studio_review',
-    description: '检查作品连续性、缺失画面/配音、字幕、时间线引用与预算，返回可定位的问题列表。只读作品，不自动修改。',
+    description: '读取作品最近一次检查结果（连续性、缺失画面/配音、字幕、时间线引用与预算）。只读：不重跑检查、不写作品；需要新结果请在创作台检查页运行。',
     parameters: {
       type: 'object',
       properties: {
@@ -595,7 +595,6 @@ export const studioRenderTool: ToolImpl = {
         quality: { type: 'string', enum: ['draft', 'final'], description: '草稿 540p 或成片 1080p/4K' },
         format: { type: 'string', enum: ['mp4', 'mov', 'mkv', 'webm'], description: '成片容器格式' },
         resolution: { type: 'string', enum: ['1080p', '2160p'], description: '成片清晰度' },
-        subtitleMode: { type: 'string', enum: ['burn', 'soft'], description: '字幕烧录或软轨' },
         aspect: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: '画幅' }
       },
       required: ['projectId', 'quality']

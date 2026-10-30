@@ -2741,7 +2741,25 @@ export class AgentService {
   constructor(
     private readonly settingsStore: SettingsStore,
     private readonly sessionStore: SessionStore
-  ) {}
+  ) {
+    this.reconcileInterruptedGoals()
+  }
+
+  /** 崩溃/异常退出后没有实际执行者，却还显示 active 的目标：启动时恢复为可继续的 paused。 */
+  private reconcileInterruptedGoals(): void {
+    for (const meta of this.sessionStore.list()) {
+      try {
+        const session = this.sessionStore.get(meta.id)
+        if (!session?.goal || session.goal.status !== 'active') continue
+        session.goal.status = 'paused'
+        session.goal.stopReason = 'app_restarted'
+        session.goal.updatedAt = Date.now()
+        this.saveGoal(session, session.goal)
+      } catch {
+        // 损坏会话在打开时再处理
+      }
+    }
+  }
 
   isSessionRunning(sessionId: string): boolean {
     if (this.goalLoops.has(sessionId)) return true

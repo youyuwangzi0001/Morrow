@@ -1517,3 +1517,20 @@ body.is-resizing-panel[data-resize-target='sidebar-resizer'] .sidebar-resizer::a
     grid-column: auto;
   }
 }
+
+.tb-brand {
+  background-image: linear-gradient(105deg, var(--gold-deep) 0%, var(--gold) 35%, var(--gold-bright) 50%, var(--gold) 65%, var(--gold-deep) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-family: var(--font-ui);
+  font-size: calc(var(--fs-ui) + 5px);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--ls-ui);
+  line-height: var(--lh-none);
+  animation: brand-sheen 5.6s ease-in-out infinite;
+  transform: translateX(-4px);
+  user-select: none;
+}

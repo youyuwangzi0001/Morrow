@@ -127,6 +127,10 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
   const executablePath = opts.executablePath ?? process.env.MORROW_E2E_EXE
   mkdirSync(chromiumDir, { recursive: true })
   mkdirSync(dataDir, { recursive: true })
+  // 原生媒体工具会写临时脚本；与当前 Electron 实例一起隔离，避免依赖
+  // 系统 TEMP 的写入权限，也不改变测试运行器创建 Git 夹具的临时目录。
+  const runtimeTemp = join(chromiumDir, 'runtime-temp')
+  mkdirSync(runtimeTemp, { recursive: true })
 
   // 缺少构建产物时 Electron 会弹「Unable to find Electron app」模态框并挂起整轮 E2E；
   // 在启动前先失败，把原因直接写进测试报告。
@@ -148,7 +152,7 @@ export async function launchMorrow(opts: LaunchOptions = {}): Promise<MorrowApp>
       ...(opts.extraArgs ?? [])
     ],
     cwd: root,
-    env: electronEnv({ MORROW_TEST: '1', ...(opts.env ?? {}) }),
+    env: electronEnv({ MORROW_TEST: '1', TEMP: runtimeTemp, TMP: runtimeTemp, ...(opts.env ?? {}) }),
     timeout: opts.timeoutMs ?? 60_000
   })
 

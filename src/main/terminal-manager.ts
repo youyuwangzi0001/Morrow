@@ -6,10 +6,20 @@
  * 退出应用时统一结束所有进程。
  */
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync, mkdirSync, statSync } from 'node:fs'
-import { randomBytes } from 'node:crypto'
+import {
+  copyFileSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { createHash, randomBytes } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
-import { basename, delimiter, join } from 'node:path'
+import { basename, delimiter, dirname, join, parse } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import * as nodePty from 'node-pty'
 import type {
@@ -240,12 +250,157 @@ function posixSpecs(): ShellSpec[] {
   return specs
 }
 
+const MSYS_SHARED_MEMORY_FAILURE = /(?:msys-2\.0|NtCreateDirectoryObject)[\s\S]*0xC0000022/i
+
+/**
+ * 系统 Git Bash 与另一个权限级别的 MSYS 进程共用 BaseNamedObjects 共享内存时，
+ * 后启动的一方会被拒绝（0xC0000022）。给 Git Bash 建一个独立前缀后，MSYS 会按
+ * 新路径生成自己的共享内存名，不再和系统里的 Git Bash 抢同一块对象。
+ *
+ * 前缀里的 Git 文件用硬链接（同一文件，不复制、不额外占盘），终端仍运行同一份
+ * 系统 Git，HOME、配置和仓库都不变。
+ */
+function gitInstallRoot(bashFile: string): string | null {
+  const binDir = dirname(bashFile)
+  const root = basename(dirname(binDir)).toLowerCase() === 'usr' ? dirname(dirname(binDir)) : dirname(binDir)
+  return existsSync(join(root, 'usr', 'bin', 'msys-2.0.dll')) ? root : null
+}
+
+function shadowBaseFor(sourceRoot: string): string | null {
+  const sourceVolume = parse(sourceRoot).root.toLowerCase()
+  const candidates = [
+    join(process.env.LOCALAPPDATA ?? '', 'Morrow'),
+    process.env.MORROW_DATA_DIR,
+    join(tmpdir(), 'Morrow')
+  ]
+  for (const base of candidates) {
+    if (!base) continue
+    if (parse(base).root.toLowerCase() === sourceVolume) return base
+  }
+  return null
+}
+
+/** 硬链接优先；遇到 EPERM（普通权限无法给 Program Files 文件加链接）就整体改用复制。 */
+function mirrorShadowDirectory(
+  source: string,
+  target: string,
+  isRoot: boolean,
+  state: { copy: boolean; failures: string[] }
+): void {
+  mkdirSync(target, { recursive: true })
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (isRoot && (entry.name === 'dev' || entry.name === 'proc' || entry.name === 'tmp')) continue
+    const from = join(source, entry.name)
+    const to = join(target, entry.name)
+    if (entry.isDirectory()) {
+      mirrorShadowDirectory(from, to, false, state)
+    } else if (entry.isFile()) {
+      if (!state.copy) {
+        try {
+          linkSync(from, to)
+          continue
+        } catch {
+          state.copy = true
+        }
+      }
+      try {
+        copyFileSync(from, to)
+      } catch (err) {
+        state.failures.push(`${to}: ${String(err)}`)
+      }
+    }
+  }
+}
+
+function prepareShadowGitBash(sourceRoot: string): string | null {
+  if (process.platform !== 'win32') return null
+  const base = shadowBaseFor(sourceRoot)
+  if (!base) return null
+  const name = `git-bash-${createHash('sha1').update(sourceRoot.toLowerCase()).digest('hex').slice(0, 10)}`
+  const shadowRoot = join(base, 'terminal-runtime', name)
+  const shadowBash = join(shadowRoot, 'usr', 'bin', 'bash.exe')
+  const realBash = join(sourceRoot, 'usr', 'bin', 'bash.exe')
+  const realGit = join(sourceRoot, 'mingw64', 'bin', 'git.exe')
+  const markerPath = join(shadowRoot, '.morrow-shadow.json')
+  const errorLog = join(base, 'terminal-runtime', `${name}.error.log`)
+  try {
+    const bashStat = statSync(realBash)
+    const gitStat = statSync(realGit)
+    if (
+      existsSync(shadowBash) &&
+      existsSync(join(shadowRoot, 'usr', 'bin', 'msys-2.0.dll')) &&
+      existsSync(join(shadowRoot, 'mingw64', 'bin', 'git.exe')) &&
+      existsSync(markerPath)
+    ) {
+      const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+        root?: string
+        bashMtimeMs?: number
+        bashSize?: number
+        gitMtimeMs?: number
+        gitSize?: number
+      }
+      if (
+        marker.root === sourceRoot &&
+        marker.bashMtimeMs === bashStat.mtimeMs &&
+        marker.bashSize === bashStat.size &&
+        marker.gitMtimeMs === gitStat.mtimeMs &&
+        marker.gitSize === gitStat.size
+      ) {
+        return shadowBash
+      }
+    }
+    rmSync(shadowRoot, { recursive: true, force: true })
+    // 测试/诊断开关：强制走复制分支，验证无硬链接权限的宿主。
+    const state = { copy: process.env.MORROW_TERMINAL_SHADOW_COPY === '1', failures: [] as string[] }
+    mirrorShadowDirectory(sourceRoot, shadowRoot, true, state)
+    if (
+      !existsSync(shadowBash) ||
+      !existsSync(join(shadowRoot, 'usr', 'bin', 'msys-2.0.dll')) ||
+      !existsSync(join(shadowRoot, 'mingw64', 'bin', 'git.exe'))
+    ) {
+      throw new Error(`shadow runtime incomplete${state.failures.length ? `\n${state.failures.slice(0, 5).join('\n')}` : ''}`)
+    }
+    writeFileSync(
+      markerPath,
+      JSON.stringify({
+        root: sourceRoot,
+        bashMtimeMs: bashStat.mtimeMs,
+        bashSize: bashStat.size,
+        gitMtimeMs: gitStat.mtimeMs,
+        gitSize: gitStat.size,
+        createdAt: Date.now()
+      }),
+      'utf8'
+    )
+    try {
+      rmSync(errorLog, { force: true })
+    } catch {
+      // 旧诊断日志清理失败不影响运行
+    }
+    return shadowBash
+  } catch (err) {
+    try {
+      mkdirSync(join(base, 'terminal-runtime'), { recursive: true })
+      writeFileSync(errorLog, `${String(err)}\n${(err as Error)?.stack ?? ''}`, 'utf8')
+    } catch {
+      // 诊断信息写不进去时继续回退
+    }
+    try {
+      rmSync(shadowRoot, { recursive: true, force: true })
+    } catch {
+      // 清理失败不影响回退
+    }
+    return null
+  }
+}
+
 export class TerminalManager {
   private records = new Map<string, ManagedRecord>()
   private counter = 0
   private disposed = false
   private shellCounters = new Map<string, number>()
   private shellCache: ShellSpec[] | null = null
+  private gitBashResolved: ShellSpec | null | undefined
 
   private specs(): ShellSpec[] {
     if (!this.shellCache) {
@@ -274,6 +429,7 @@ export class TerminalManager {
 
   refreshProfiles(): void {
     this.shellCache = null
+    this.gitBashResolved = undefined
   }
 
   defaultShellId(): string {
@@ -286,13 +442,62 @@ export class TerminalManager {
     return { id: spec.id, label: spec.label, file: spec.file }
   }
 
+  /** 用最小命令确认 Shell 能否真正启动，不把失败输出写进终端。 */
+  private probeShell(spec: ShellSpec): { ok: boolean; logs: string } {
+    try {
+      const args = ['-c', 'exit 0']
+      const result = spawnSync(spec.file, args, {
+        timeout: 5_000,
+        windowsHide: true,
+        env: this.envForShell(),
+        encoding: 'utf8'
+      })
+      return { ok: result.status === 0, logs: `${result.stdout ?? ''}${result.stderr ?? ''}` }
+    } catch (err) {
+      return { ok: false, logs: String(err) }
+    }
+  }
+
+  /**
+   * 系统 Git Bash 可能已安装但被另一个权限级别的 MSYS 进程占住共享内存。
+   * 这种情况下换到独立前缀（同一份 Git），而不是把用户终端换成 PowerShell。
+   */
+  private workingGitBash(spec: ShellSpec): ShellSpec {
+    if (this.gitBashResolved !== undefined) return this.gitBashResolved ?? spec
+    const probe = this.probeShell(spec)
+    if (probe.ok) {
+      this.gitBashResolved = spec
+      return spec
+    }
+    if (!MSYS_SHARED_MEMORY_FAILURE.test(probe.logs)) {
+      this.gitBashResolved = null
+      return spec
+    }
+    const root = gitInstallRoot(spec.file)
+    const shadowFile = root ? prepareShadowGitBash(root) : null
+    if (shadowFile) {
+      const shadow: ShellSpec = { ...spec, file: shadowFile }
+      if (this.probeShell(shadow).ok) {
+        this.gitBashResolved = shadow
+        const cached = this.shellCache?.find((item) => item.id === 'gitbash')
+        if (cached) cached.file = shadowFile
+        return shadow
+      }
+    }
+    this.gitBashResolved = null
+    return spec
+  }
+
   private resolveSpec(shellId?: string): ShellSpec {
     const specs = this.specs()
+    let resolved: ShellSpec
     if (shellId) {
       const requested = specs.find((spec) => spec.id === shellId)
-      if (requested && !requested.disabled) return requested
+      if (requested && !requested.disabled) resolved = requested
     }
-    return specs.find((spec) => spec.isDefault) ?? specs[0]
+    resolved ??= specs.find((spec) => spec.isDefault) ?? specs[0]
+    if (resolved.id === 'gitbash') return this.workingGitBash(resolved)
+    return resolved
   }
 
   list(): TerminalProcessInfo[] {
@@ -399,6 +604,16 @@ export class TerminalManager {
 
   /** 同一 Shell 兼容重试一次；仍失败则切换到其它可用 Shell。 */
   private recoverShell(record: ShellRecord): boolean {
+    if (record.spec.id === 'gitbash' && MSYS_SHARED_MEMORY_FAILURE.test(record.logs)) {
+      this.gitBashResolved = undefined
+      const source = this.specs().find((spec) => spec.id === 'gitbash')
+      if (source) {
+        const working = this.workingGitBash(source)
+        if (working.file !== record.spec.file && this.relaunchShell(record, working, '独立 Git Bash 运行环境')) {
+          return true
+        }
+      }
+    }
     if (!record.retried) {
       record.retried = true
       const compat = this.compatArgs(record.spec)

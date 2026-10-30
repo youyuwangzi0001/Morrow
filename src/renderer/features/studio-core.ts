@@ -543,6 +543,24 @@ const SHOT_SCOPED_ACTIONS = new Set([
   'build-subtitles'
 ])
 
+/** 后台结果只能更新发起它的作品；用户已切走时不能把界面拉回旧作品。 */
+function activeProjectPatch(state: StudioState, project: StudioProject, actionType?: string): Partial<StudioState> {
+  if (state.active?.id !== project.id) return {}
+  const selectedShotId = actionType && SHOT_SCOPED_ACTIONS.has(actionType)
+    ? pickShot(project, state.selectedShotId)
+    : state.selectedShotId && project.shots.some((shot) => shot.id === state.selectedShotId)
+      ? state.selectedShotId
+      : null
+  return {
+    active: project,
+    selectedChapterId: pickChapter(project, state.selectedChapterId),
+    selectedShotId,
+    selectedClipId: state.selectedClipId && project.timeline.clips.some((clip) => clip.id === state.selectedClipId)
+      ? state.selectedClipId
+      : null
+  }
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -771,7 +789,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       const result = await studioApi.get(active.id)
       const project = result.project
       set((state) => ({
-        active: project,
+        ...activeProjectPatch(state, project),
         projects: mergeSummary(state.projects, {
           id: project.id,
           kind: project.kind,
@@ -790,13 +808,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
           demo: project.demo,
           missingVisuals: project.shots.filter((shot) => !shot.imageAssetId && !shot.videoAssetId).length
         }),
-        selectedChapterId: pickChapter(project, state.selectedChapterId),
-        selectedShotId: state.selectedShotId && project.shots.some((shot) => shot.id === state.selectedShotId)
-          ? state.selectedShotId
-          : null,
-        selectedClipId: state.selectedClipId && project.timeline.clips.some((clip) => clip.id === state.selectedClipId)
-          ? state.selectedClipId
-          : null
+        ...activeProjectPatch(state, project)
       }))
     } catch (err) {
       if (!silent) get().notify('error', errorMessage(err))
@@ -867,7 +879,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     if (!active) return
     try {
       const result = await studioApi.action('update-meta', { projectId: active.id, ...patch })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
     } catch (err) {
       get().notify('error', errorMessage(err))
       throw err
@@ -876,22 +888,12 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
 
   async run<T = StudioActionResult>(type: string, payload: Record<string, unknown> = {}) {
     const active = get().active
+    const requestedId = typeof payload.projectId === 'string' && payload.projectId.trim() ? payload.projectId : active?.id
     try {
-      const result = await studioApi.action<T>(type, { ...payload, ...(active ? { projectId: active.id } : {}) })
+      const result = await studioApi.action<T>(type, { ...payload, ...(requestedId ? { projectId: requestedId } : {}) })
       const typed = result as unknown as StudioActionResult
       if (typed?.project) {
-        set((state) => ({
-          active: typed.project,
-          selectedChapterId: pickChapter(typed.project, state.selectedChapterId),
-          selectedShotId: SHOT_SCOPED_ACTIONS.has(type)
-            ? pickShot(typed.project, state.selectedShotId)
-            : state.selectedShotId && typed.project.shots.some((shot) => shot.id === state.selectedShotId)
-              ? state.selectedShotId
-              : null,
-          selectedClipId: state.selectedClipId && typed.project.timeline.clips.some((clip) => clip.id === state.selectedClipId)
-            ? state.selectedClipId
-            : typed.project.timeline.clips[0]?.id ?? null
-        }))
+        set((state) => activeProjectPatch(state, typed.project, type))
       }
       return result
     } catch (err) {
@@ -911,7 +913,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
       const started = Date.now()
       while (Date.now() - started < 20 * 60_000) {
         const project = await readProject(projectId)
-        set({ active: project })
+        set((state) => activeProjectPatch(state, project))
         const job = project.jobs.find((item) => item.id === jobId)
         if (job && (job.status === 'done' || job.status === 'review')) return project
         if (job && (job.status === 'failed' || job.status === 'cancelled')) throw new Error(`${label}失败：${job.message}`)
@@ -921,7 +923,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     }
     const runJob = async (type: string, payload: Record<string, unknown>, label: string): Promise<StudioProject> => {
       notify('info', `一键试做：${label}…`)
-      const result = await get().run(type, payload)
+      const result = await get().run(type, { ...payload, projectId })
       return waitJob(result.job?.id, label)
     }
     try {
@@ -930,9 +932,9 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         project = await runJob('generate-blueprint', { useModel: true, requestId: `auto-bp-${Date.now()}` }, '生成蓝图')
       }
       if (!project.blueprint?.approved) {
-        await get().run('approve-blueprint')
+        await get().run('approve-blueprint', { projectId })
         project = await readProject(projectId)
-        set({ active: project })
+        set((state) => activeProjectPatch(state, project))
       }
       if (project.stages.outline.status !== 'done' && project.stages.outline.status !== 'review') {
         project = await runJob('generate-outline', { useModel: true, requestId: `auto-outline-${Date.now()}` }, '细化大纲')
@@ -969,18 +971,18 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
           }
         }
         notify('info', '一键试做：装配时间线…')
-        await get().run('build-timeline', { force: true })
+        await get().run('build-timeline', { projectId, force: true })
         project = await readProject(projectId)
-        set({ active: project })
+        set((state) => activeProjectPatch(state, project))
         if (project.shots.some((shot) => shot.dialogue.trim())) {
           notify('info', '一键试做：拆分逐句字幕…')
-          await get().run('build-subtitles', { requestId: `auto-subtitles-${Date.now()}` })
+          await get().run('build-subtitles', { projectId, requestId: `auto-subtitles-${Date.now()}` })
           project = await readProject(projectId)
-          set({ active: project })
+          set((state) => activeProjectPatch(state, project))
         }
-        await get().run('review')
+        await get().run('review', { projectId })
         project = await readProject(projectId)
-        set({ active: project })
+        set((state) => activeProjectPatch(state, project))
         project = await runJob('render', { quality: 'draft', allowMissing: true, requestId: `auto-render-${Date.now()}` }, '合成草稿')
         notify(project.stages.delivery.status === 'done' ? 'success' : 'info', project.stages.delivery.status === 'done' ? '一键试做完成：草稿已合成，可在交付页查看。' : '草稿已合成，但有缺失素材需要核对。')
       } else {
@@ -988,7 +990,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
         while (rounds < 30) {
           rounds += 1
           project = await readProject(projectId)
-          set({ active: project })
+          set((state) => activeProjectPatch(state, project))
           const empty = project.chapters.filter((chapter) => !chapter.content.trim())
           if (!empty.length) break
           const before = project.chapters.filter((chapter) => chapter.content.trim()).length
@@ -996,14 +998,14 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
           const after = project.chapters.filter((chapter) => chapter.content.trim()).length
           if (after <= before) break
         }
-        await get().run('review')
+        await get().run('review', { projectId })
         try {
           project = await runJob('model-review', { requestId: `auto-review-${Date.now()}` }, '模型审稿')
         } catch (err) {
           notify('error', `模型审稿没有完成：${errorMessage(err)}。本地检查结果仍然保留。`)
         }
         project = await readProject(projectId)
-        set({ active: project })
+        set((state) => activeProjectPatch(state, project))
         const written = project.chapters.filter((chapter) => chapter.content.trim()).length
         const complete = written >= project.chapters.length
         notify(complete ? 'success' : 'info', `一键试做${complete ? '完成' : '暂停'}：${written}/${project.chapters.length} 章有正文，检查已更新${complete ? '。' : '；可以继续一键写完剩余章。'}`)
@@ -1023,7 +1025,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     set({ assistantBusy: true })
     try {
       const result = await studioApi.assistant({ projectId: active.id, text, ...context })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
       if (result.message) get().notify('info', result.message)
     } catch (err) {
       get().notify('error', errorMessage(err))
@@ -1039,7 +1041,8 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     set({ assistantBusy: true })
     try {
       const result = await studioApi.action('apply-plan', { projectId: active.id, planId })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
+      if (get().active?.id !== active.id) return
       const appliedPlan = result.plan as { actions?: Array<{ type: string }> } | undefined
       if (appliedPlan?.actions?.some((action) => action.type === 'append-shots' || action.type === 'move-shot')) get().navigateStage('storyboard')
       const targetStage = result.project?.stage
@@ -1069,7 +1072,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     if (!active) return
     try {
       const result = await studioApi.action('cancel-job', { projectId: active.id, jobId })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
     } catch (err) {
       get().notify('error', errorMessage(err))
     }
@@ -1086,7 +1089,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
           path,
           ...(shotId ? { shotId } : {})
         })
-        set({ active: result.project })
+        set((state) => activeProjectPatch(state, result.project))
       }
       if (paths.length) get().notify('success', `已导入 ${paths.length} 个素材。`)
     } catch (err) {
@@ -1099,7 +1102,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     if (!active) return
     try {
       const result = await studioApi.render({ ...input, projectId: active.id })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
     } catch (err) {
       get().notify('error', errorMessage(err))
       throw err
@@ -1111,7 +1114,7 @@ export const useStudioStore = create<StudioState>()((set, get) => ({
     if (!active) return
     try {
       const result = await studioApi.exportProject({ projectId: active.id, format })
-      set({ active: result.project })
+      set((state) => activeProjectPatch(state, result.project))
     } catch (err) {
       get().notify('error', errorMessage(err))
       throw err

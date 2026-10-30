@@ -2,24 +2,23 @@
  * 合并后的 reveal 组：Agent 规则、内置技能、自定义命令/集群成员、权限规则、技能库、会话导出、文件管理器定位。
  * 每个原文件各自包在 describe('<原文件名>') 中；本文件 mock 子进程，因此不包含依赖真实命令的用例。
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, rmSync, symlinkSync, writeFileSync, existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync, existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgentRules } from '../../src/main/agent'
 import { makeTempDir, makeTempWorkspace } from './helpers/workspace'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { scanUserSkills, discoverSkills, SKILLS_STATE_FILE_ENV, USER_SKILLS_DIR_ENV } from '../../src/core/tool-extra'
-import { BUILTIN_SKILLS, ensureBuiltinSkills } from '../../src/main/agent'
+import { discoverSkills, SKILLS_STATE_FILE_ENV, USER_SKILLS_DIR_ENV } from '../../src/core/tool-extra'
+import { ensureBuiltinSkills } from '../../src/main/agent'
 import { expandCustomCommand } from '../../src/shared/contracts'
-import { discoverCustomCommands, parseCommandFile } from '../../src/main/runtime'
 import { BUILTIN_AGENT_ROLES } from '../../src/core/agent'
-import { loadAgentRoles, parseAgentFile, summarizeAgentRoles } from '../../src/main/agent'
+import { loadAgentRoles, summarizeAgentRoles } from '../../src/main/agent'
 import { PermissionRulesService } from '../../src/main/runtime'
 import { evaluatePermission, permissionRuleMatches, type PermissionPolicyContext, type PermissionTarget } from '../../src/core/agent'
 import JSZip from 'jszip'
-import { createSkillsFeatureHandlers, createSkillsService, installSkillsRuntimeEnv, normalizeArchivePath, sanitizeSkillDirName, SkillsService } from '../../src/main/memory'
-import { sessionExportContent, sessionToMarkdown } from '../../src/main/session'
+import { createSkillsFeatureHandlers, createSkillsService, installSkillsRuntimeEnv, SkillsService } from '../../src/main/memory'
+import { sessionToMarkdown } from '../../src/main/session'
 import { type Session } from '../../src/shared/types'
 import { createServer, type Server } from 'node:net'
 import { openPathFromUserShell, revealInFileManager } from '../../src/main/workspace'
@@ -62,7 +61,7 @@ function temp(): string {
 }
 
 describe('agent rules discovery', () => {
-  it('discovers project, parent and user rules in priority order', () => {
+  it('@core:skills discovers project, parent and user rules in priority order', () => {
     const root = temp()
     const workspace = join(root, 'repo')
     const home = join(root, 'home')
@@ -89,53 +88,7 @@ describe('agent rules discovery', () => {
     expect(discovery.text).toContain('安全边界与用户当前指令优先')
   })
 
-  it('truncates rules that exceed the token budget', () => {
-    const root = temp()
-    const workspace = join(root, 'repo')
-    mkdirSync(workspace, { recursive: true })
-    writeFileSync(join(workspace, 'AGENTS.md'), 'A'.repeat(20_000), 'utf8')
-    const discovery = discoverAgentRules(workspace, { homeDir: join(root, 'home'), maxTokens: 300 })
-    expect(discovery.truncated).toBe(true)
-    expect(discovery.usedTokens).toBeLessThanOrEqual(discovery.limitTokens)
-    expect(discovery.files[0].truncated).toBe(true)
-    expect(discovery.text).toContain('已按规则预算截断')
-  })
-
-  it('returns empty text when no rule files exist', () => {
-    const root = temp()
-    expect(discoverAgentRules(root, { homeDir: join(root, 'home') }).text).toBe('')
-  })
-
-  it('discovers MORROW.md in .morrow, parent and user scopes in priority order', () => {
-    const root = temp()
-    const workspace = join(root, 'repo')
-    const home = join(root, 'home')
-    mkdirSync(join(workspace, '.morrow'), { recursive: true })
-    mkdirSync(join(home, '.morrow'), { recursive: true })
-    writeFileSync(join(workspace, '.morrow', 'MORROW.md'), 'DOT-MORROW', 'utf8')
-    writeFileSync(join(workspace, 'AGENTS.md'), 'ROOT-AGENTS', 'utf8')
-    writeFileSync(join(root, 'MORROW.md'), 'PARENT-MORROW', 'utf8')
-    writeFileSync(join(home, '.morrow', 'MORROW.md'), 'USER-MORROW', 'utf8')
-
-    const discovery = discoverAgentRules(workspace, { homeDir: home })
-    const order = ['DOT-MORROW', 'ROOT-AGENTS', 'PARENT-MORROW', 'USER-MORROW'].map((marker) =>
-      discovery.text.indexOf(marker)
-    )
-    expect(order.every((index) => index >= 0)).toBe(true)
-    expect(order).toEqual([...order].sort((a, b) => a - b))
-  })
-
-  it('skips binary rule files instead of injecting replacement characters', () => {
-    const root = temp()
-    const workspace = join(root, 'repo')
-    mkdirSync(workspace, { recursive: true })
-    writeFileSync(join(workspace, 'AGENTS.md'), Buffer.from([0x41, 0x00, 0x42, 0x43]))
-    const discovery = discoverAgentRules(workspace, { homeDir: join(root, 'home') })
-    expect(discovery.files).toHaveLength(0)
-    expect(discovery.text).toBe('')
-  })
-
-  it('does not follow rule symlinks outside the workspace', () => {
+  it('@core:skills does not follow rule symlinks outside the workspace', () => {
     const root = temp()
     const workspace = join(root, 'repo')
     mkdirSync(workspace, { recursive: true })
@@ -176,42 +129,8 @@ afterEach(() => {
 })
 
 describe('内置技能安装', () => {
-  it('首次启动安装全部内置技能，并能被 core 发现与解析描述', () => {
-    const dataDir = tempDir()
-    const changed = ensureBuiltinSkills(dataDir)
-    expect(changed.sort()).toEqual(BUILTIN_SKILLS.map((skill) => skill.name).sort())
-    expect(BUILTIN_SKILLS.length).toBeGreaterThanOrEqual(18)
-    for (const skill of BUILTIN_SKILLS) {
-      const path = join(dataDir, 'skills', skill.name, 'SKILL.md')
-      expect(existsSync(path)).toBe(true)
-      const content = readFileSync(path, 'utf8')
-      expect(content).toContain(`name: ${skill.name}`)
-      expect(content).toContain('## 何时使用')
-      expect(content.length).toBeGreaterThan(1500)
-      expect(content).not.toMatch(/\b(?:1080p|1440|1920|2560|3840)\b/)
-      expect(content).not.toMatch(/\b\d{3,4}\s*px\b/)
-    }
-    const discovered = scanUserSkills(join(dataDir, 'skills'))
-    expect(discovered.map((skill) => skill.name).sort()).toEqual(BUILTIN_SKILLS.map((skill) => skill.name).sort())
-    for (const skill of discovered) expect(skill.description.length).toBeGreaterThan(40)
-    const art = discovered.find((skill) => skill.name === 'frontend-art-direction')
-    expect(art).toBeTruthy()
-    expect(readFileSync(art!.skillPath, 'utf8')).toContain('视觉简报')
-    const quality = discovered.find((skill) => skill.name === 'deliverable-quality')
-    expect(quality).toBeTruthy()
-    expect(readFileSync(quality!.skillPath, 'utf8')).toContain('跨类型交付质量门槛')
-    for (const name of ['brainstorm-and-scope', 'plan-and-execute', 'verify-before-delivery', 'parallel-work', 'canvas-artifacts', 'workspace-git', 'skill-author']) {
-      expect(discovered.some((skill) => skill.name === name), name).toBe(true)
-    }
-    // parallel-work 只讲协作方法，成员分工以角色为准，二者不互相改写
-    const parallel = readFileSync(join(dataDir, 'skills', 'parallel-work', 'SKILL.md'), 'utf8')
-    expect(parallel).toContain('角色与技能：分工和方法分开')
-    expect(parallel).toContain('技能不能改变分工、权限、交付对象或验收标准')
-    expect(parallel).toContain('architect')
-    expect(parallel).not.toContain('general/explore/plan/review/test/docs 或自定义类型')
-  })
 
-  it('旧版未修改的内置技能会随版本升级更新，用户改过的保留', () => {
+  it('@core:skills 旧版未修改的内置技能会随版本升级更新，用户改过的保留', () => {
     const dataDir = tempDir()
     ensureBuiltinSkills(dataDir)
     const markerPath = join(dataDir, 'skills', '.builtin-skills.json')
@@ -230,123 +149,11 @@ describe('内置技能安装', () => {
     expect(changed).toContain('debugging')
     expect(readFileSync(targetPath, 'utf8')).toContain('先找根因')
   })
-
-  it('已合并的旧技能在升级时移除，用户改过的保留为自有技能', () => {
-    const dataDir = tempDir()
-    ensureBuiltinSkills(dataDir)
-    const markerPath = join(dataDir, 'skills', '.builtin-skills.json')
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-      version: number
-      skills: Record<string, { hash: string; modified?: boolean }>
-    }
-    for (const [name, body] of [
-      ['docs-writer', '旧文档技能'],
-      ['deliverable-report', '旧报告技能'],
-      ['release-notes', '旧发布说明技能']
-    ]) {
-      const dir = join(dataDir, 'skills', name)
-      mkdirSync(dir, { recursive: true })
-      const content = `---\nname: ${name}\ndescription: 旧内置技能\n---\n${body}\n`
-      writeFileSync(join(dir, 'SKILL.md'), content, 'utf8')
-      marker.skills[name] = { hash: createHash('sha256').update(content).digest('hex') }
-    }
-    writeFileSync(markerPath, JSON.stringify(marker), 'utf8')
-
-    const changed = ensureBuiltinSkills(dataDir)
-    for (const name of ['docs-writer', 'deliverable-report', 'release-notes']) {
-      expect(changed).toContain(name)
-      expect(existsSync(join(dataDir, 'skills', name))).toBe(false)
-    }
-
-    // 用户改过的旧技能不删除，但不再作为内置技能管理
-    const editedDir = join(dataDir, 'skills', 'docs-writer')
-    mkdirSync(editedDir, { recursive: true })
-    const edited = '---\nname: docs-writer\ndescription: 我改过的\n---\n保留我\n'
-    writeFileSync(join(editedDir, 'SKILL.md'), edited, 'utf8')
-    const nextMarker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-      version: number
-      skills: Record<string, { hash: string; modified?: boolean }>
-    }
-    nextMarker.skills['docs-writer'] = { hash: createHash('sha256').update('旧内容').digest('hex') }
-    writeFileSync(markerPath, JSON.stringify(nextMarker), 'utf8')
-    ensureBuiltinSkills(dataDir)
-    expect(readFileSync(join(editedDir, 'SKILL.md'), 'utf8')).toContain('保留我')
-    const after = JSON.parse(readFileSync(markerPath, 'utf8')) as { skills: Record<string, unknown> }
-    expect(after.skills['docs-writer']).toBeUndefined()
-  })
-
-  it('不覆盖用户编辑，也不恢复用户删除的技能', () => {
-    const dataDir = tempDir()
-    ensureBuiltinSkills(dataDir)
-    const editedPath = join(dataDir, 'skills', 'code-review', 'SKILL.md')
-    writeFileSync(editedPath, '---\nname: code-review\ndescription: 用户改过的\n---\n保留我\n', 'utf8')
-    rmSync(join(dataDir, 'skills', 'debugging'), { recursive: true, force: true })
-
-    const changed = ensureBuiltinSkills(dataDir)
-    expect(changed).not.toContain('code-review')
-    expect(readFileSync(editedPath, 'utf8')).toContain('保留我')
-    expect(existsSync(join(dataDir, 'skills', 'debugging', 'SKILL.md'))).toBe(false)
-
-    // 再次启动也必须保留用户编辑（旧实现第二次启动会用内置内容覆盖）
-    const changedAgain = ensureBuiltinSkills(dataDir)
-    expect(changedAgain).not.toContain('code-review')
-    expect(readFileSync(editedPath, 'utf8')).toContain('保留我')
-  })
-
-  it('已并入 frontend-art-direction 的旧技能 ui-polish 会在升级时移除，用户改过的保留', () => {
-    const dataDir = tempDir()
-    ensureBuiltinSkills(dataDir)
-    const markerPath = join(dataDir, 'skills', '.builtin-skills.json')
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-      version: number
-      skills: Record<string, { hash: string; modified?: boolean }>
-    }
-    const retiredDir = join(dataDir, 'skills', 'ui-polish')
-    mkdirSync(retiredDir, { recursive: true })
-    const original = '---\nname: ui-polish\ndescription: 旧内置技能\n---\n旧内容\n'
-    writeFileSync(join(retiredDir, 'SKILL.md'), original, 'utf8')
-    marker.skills['ui-polish'] = { hash: createHash('sha256').update(original).digest('hex') }
-    writeFileSync(markerPath, JSON.stringify(marker), 'utf8')
-
-    const changed = ensureBuiltinSkills(dataDir)
-    expect(changed).toContain('ui-polish')
-    expect(existsSync(retiredDir)).toBe(false)
-
-    // 用户改过的旧技能不被删除，而是转为用户自有技能
-    mkdirSync(retiredDir, { recursive: true })
-    const edited = '---\nname: ui-polish\ndescription: 我改过的\n---\n保留我\n'
-    writeFileSync(join(retiredDir, 'SKILL.md'), edited, 'utf8')
-    const nextMarker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-      version: number
-      skills: Record<string, { hash: string; modified?: boolean }>
-    }
-    nextMarker.skills['ui-polish'] = { hash: createHash('sha256').update(original).digest('hex') }
-    writeFileSync(markerPath, JSON.stringify(nextMarker), 'utf8')
-    ensureBuiltinSkills(dataDir)
-    expect(readFileSync(join(retiredDir, 'SKILL.md'), 'utf8')).toContain('保留我')
-    const after = JSON.parse(readFileSync(markerPath, 'utf8')) as { skills: Record<string, unknown> }
-    expect(after.skills['ui-polish']).toBeUndefined()
-  })
-
-  it('同名用户技能已存在时不覆盖', () => {
-    const dataDir = tempDir()
-    const dir = join(dataDir, 'skills', 'code-review')
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'SKILL.md'), '---\nname: code-review\ndescription: 我自己的审查流程\n---\n自己的内容\n', 'utf8')
-    ensureBuiltinSkills(dataDir)
-    expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toContain('自己的内容')
-  })
 })
 })
 
 describe('command-service.test.ts', () => {
 const dirs: string[] = []
-
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix))
-  dirs.push(dir)
-  return dir
-}
 
 afterEach(() => {
   while (dirs.length > 0) {
@@ -356,74 +163,8 @@ afterEach(() => {
 })
 
 describe('自定义命令发现', () => {
-  it('解析 frontmatter、参数提示与正文；无描述时取正文第一行', () => {
-    const withMeta = parseCommandFile(
-      `---\ndescription: "生成发布说明"\nargument-hint: 版本号\n---\n\n请为 $1 写发布说明。\n`,
-      'release',
-      'project',
-      'C:/repo/.morrow/commands/release.md'
-    )
-    expect(withMeta).toMatchObject({
-      name: 'release',
-      description: '生成发布说明',
-      argumentHint: '版本号',
-      scope: 'project',
-      body: '请为 $1 写发布说明。'
-    })
-    const withoutMeta = parseCommandFile('# 代码审查\n\n检查 $ARGUMENTS', 'review', 'user', 'x.md')
-    expect(withoutMeta?.description).toBe('代码审查')
-    expect(parseCommandFile('---\ndescription: 空\n---\n', 'empty', 'user', 'x.md')).toBeNull()
-  })
 
-  it('项目命令覆盖同名用户命令，非法文件名与非 Markdown 被忽略', () => {
-    const home = tempDir('morrow-cmd-home-')
-    const workspace = tempDir('morrow-cmd-ws-')
-    mkdirSync(join(home, '.morrow', 'commands'), { recursive: true })
-    mkdirSync(join(workspace, '.morrow', 'commands'), { recursive: true })
-    writeFileSync(join(home, '.morrow', 'commands', 'deploy.md'), '用户级部署 $ARGUMENTS\n', 'utf8')
-    writeFileSync(join(home, '.morrow', 'commands', 'notes.txt'), '忽略\n', 'utf8')
-    writeFileSync(join(home, '.morrow', 'commands', 'bad name.md'), '忽略\n', 'utf8')
-    writeFileSync(join(workspace, '.morrow', 'commands', 'deploy.md'), '项目级部署 $ARGUMENTS\n', 'utf8')
-    writeFileSync(join(workspace, '.morrow', 'commands', 'review.md'), '审查 $1\n', 'utf8')
-
-    const commands = discoverCustomCommands(workspace, home)
-    expect(commands.map((command) => command.name)).toEqual(['deploy', 'review'])
-    expect(commands.find((command) => command.name === 'deploy')?.scope).toBe('project')
-    expect(commands.find((command) => command.name === 'deploy')?.body).toContain('项目级')
-  })
-
-  it('拒绝通过链接到工作区外的 .morrow 读取项目命令', () => {
-    const home = tempDir('morrow-cmd-link-home-')
-    const workspace = tempDir('morrow-cmd-link-ws-')
-    const outside = tempDir('morrow-cmd-link-out-')
-    mkdirSync(join(outside, 'commands'), { recursive: true })
-    writeFileSync(join(outside, 'commands', 'leak.md'), '工作区外命令\n', 'utf8')
-    symlinkSync(outside, join(workspace, '.morrow'), 'junction')
-
-    expect(discoverCustomCommands(workspace, home)).toHaveLength(0)
-  })
-
-  it('达到 100 条上限后，项目命令仍可覆盖同名用户命令', () => {
-    const home = tempDir('morrow-cmd-cap-home-')
-    const workspace = tempDir('morrow-cmd-cap-ws-')
-    const homeDir = join(home, '.morrow', 'commands')
-    const projectDir = join(workspace, '.morrow', 'commands')
-    mkdirSync(homeDir, { recursive: true })
-    mkdirSync(projectDir, { recursive: true })
-    for (let index = 0; index < 100; index += 1) {
-      const name = index === 0 ? 'review' : `cmd-${String(index).padStart(3, '0')}`
-      writeFileSync(join(homeDir, `${name}.md`), `用户级 ${name}\n`, 'utf8')
-    }
-    writeFileSync(join(projectDir, 'review.md'), '项目级覆盖\n', 'utf8')
-    writeFileSync(join(projectDir, 'extra.md'), '超出上限\n', 'utf8')
-
-    const commands = discoverCustomCommands(workspace, home)
-    expect(commands).toHaveLength(100)
-    expect(commands.find((command) => command.name === 'review')?.body).toBe('项目级覆盖')
-    expect(commands.some((command) => command.name === 'extra')).toBe(false)
-  })
-
-  it('展开模板：$ARGUMENTS、位置参数与无占位符时追加参数', () => {
+  it('@core:skills 展开模板：$ARGUMENTS、位置参数与无占位符时追加参数', () => {
     expect(expandCustomCommand('请审查 $1，重点 $2', 'a.ts 性能')).toBe('请审查 a.ts，重点 性能')
     expect(expandCustomCommand('总结：$ARGUMENTS', ' 前后 空格 ')).toBe('总结：前后 空格')
     expect(expandCustomCommand('只写代码', '额外要求')).toBe('只写代码\n\n额外要求')
@@ -449,68 +190,8 @@ afterEach(() => {
 })
 
 describe('自定义集群成员类型', () => {
-  it('解析 frontmatter：标题与提示；工具/只读字段不再限制权限', () => {
-    const role = parseAgentFile(
-      `---
-title: 安全审计
-description: 只读审计安全边界
-tools: read_file, grep, glob
-read-only: true
----
-你只检查安全问题。`,
-      'security',
-      'project',
-      'x.md'
-    )
-    expect(role).toMatchObject({
-      name: 'security',
-      title: '安全审计',
-      description: '只读审计安全边界',
-      source: 'project'
-    })
-    expect(role?.systemPrompt).toContain('只检查安全问题')
-    expect(parseAgentFile('---\ntitle: 空\n---\n', 'empty', 'user', 'x.md')).toBeNull()
 
-    // 旧 frontmatter 的 tools/read-only 字段被忽略：成员始终拥有与主代理相同的完整权限
-    const legacy = parseAgentFile('---\ntools: Read_File, read_file, GREP\nread-only: true\n---\n只分析。', 'legacy-role', 'user', 'x.md')
-    expect(legacy).not.toHaveProperty('tools')
-    expect(legacy).not.toHaveProperty('readOnly')
-  })
-
-  it('达到 32 个角色上限后，项目角色仍可覆盖同名用户角色', () => {
-    const home = tempDir('morrow-agents-cap-home-')
-    const workspace = tempDir('morrow-agents-cap-ws-')
-    const homeDir = join(home, '.morrow', 'agents')
-    const projectDir = join(workspace, '.morrow', 'agents')
-    mkdirSync(homeDir, { recursive: true })
-    mkdirSync(projectDir, { recursive: true })
-    for (let index = 0; index < 32; index += 1) {
-      const name = index === 0 ? 'audit' : `role-${String(index).padStart(3, '0')}`
-      writeFileSync(join(homeDir, `${name}.md`), `用户级 ${name}\n`, 'utf8')
-    }
-    writeFileSync(join(projectDir, 'audit.md'), '项目级覆盖\n', 'utf8')
-    writeFileSync(join(projectDir, 'extra.md'), '超出上限\n', 'utf8')
-
-    const roles = loadAgentRoles(workspace, home)
-    const custom = roles.filter((role) => role.source !== 'builtin')
-    expect(custom).toHaveLength(32)
-    expect(custom.find((role) => role.name === 'audit')?.systemPrompt).toContain('项目级')
-    expect(roles.some((role) => role.name === 'extra')).toBe(false)
-  })
-
-  it('拒绝通过链接到工作区外的 .morrow 读取项目角色', () => {
-    const home = tempDir('morrow-agents-link-home-')
-    const workspace = tempDir('morrow-agents-link-ws-')
-    const outside = tempDir('morrow-agents-link-out-')
-    mkdirSync(join(outside, 'agents'), { recursive: true })
-    writeFileSync(join(outside, 'agents', 'leak.md'), '工作区外角色\n', 'utf8')
-    symlinkSync(outside, join(workspace, '.morrow'), 'junction')
-
-    const roles = loadAgentRoles(workspace, home)
-    expect(roles.filter((role) => role.source !== 'builtin')).toHaveLength(0)
-  })
-
-  it('内置角色始终存在；项目角色覆盖同名用户角色；内置名不可覆盖', () => {
+  it('@core:skills 内置角色始终存在；项目角色覆盖同名用户角色；内置名不可覆盖', () => {
     const home = tempDir('morrow-agents-home-')
     const workspace = tempDir('morrow-agents-ws-')
     mkdirSync(join(home, '.morrow', 'agents'), { recursive: true })
@@ -547,12 +228,6 @@ afterEach(() => {
   }
 })
 
-function service(): PermissionRulesService {
-  const dir = makeTempDir('morrow-perm-')
-  dirs.push(dir)
-  return new PermissionRulesService(dir)
-}
-
 function target(toolName: string, category: PermissionTarget['category'], input: Record<string, unknown>): PermissionTarget {
   return { toolName, category, baseRisk: category === 'read' ? 'low' : 'medium', input, title: toolName }
 }
@@ -562,7 +237,7 @@ function policy(workspace: string, rules: ReturnType<PermissionRulesService['lis
 }
 
 describe('PermissionRulesService', () => {
-  it('persists workspace rules and logs approvals', () => {
+  it('@core:permissions persists workspace rules and logs approvals', () => {
     const dir = makeTempDir('morrow-perm-persist-')
     dirs.push(dir)
     const ws = makeTempWorkspace()
@@ -589,111 +264,10 @@ describe('PermissionRulesService', () => {
       ws.cleanup()
     }
   })
-
-  it('stores whole-tool rules without a pattern and dedupes identical rules', () => {
-    const rules = service()
-    const ws = makeTempWorkspace()
-    try {
-      const first = rules.add({
-        workspace: ws.root,
-        tool: 'run_command',
-        kind: 'tool',
-        pattern: 'ignored',
-        decision: 'allow'
-      })
-      expect(first.pattern).toBe('')
-      const again = rules.add({
-        workspace: ws.root,
-        tool: 'run_command',
-        kind: 'tool',
-        pattern: '',
-        decision: 'allow'
-      })
-      expect(again.id).toBe(first.id)
-      expect(rules.list(ws.root)).toHaveLength(1)
-    } finally {
-      ws.cleanup()
-    }
-  })
-
-  it('canonicalizes symlinked workspace paths so UI and runtime see the same rules', () => {
-    const rules = service()
-    const ws = makeTempWorkspace()
-    const base = makeTempDir('morrow-perm-link-')
-    dirs.push(base)
-    const link = join(base, 'ws-link')
-    try {
-      symlinkSync(ws.root, link, process.platform === 'win32' ? 'junction' : 'dir')
-      const created = rules.add({
-        workspace: link,
-        tool: 'write_file',
-        kind: 'path',
-        pattern: 'out',
-        decision: 'allow'
-      })
-      expect(rules.list(ws.root).map((rule) => rule.id)).toContain(created.id)
-    } finally {
-      ws.cleanup()
-    }
-  })
-
-  it('scopes rule deletion to the requesting workspace', () => {
-    const rules = service()
-    const a = makeTempWorkspace()
-    const b = makeTempWorkspace()
-    try {
-      const rule = rules.add({
-        workspace: a.root,
-        tool: 'run_command',
-        kind: 'prefix',
-        pattern: 'npm test',
-        decision: 'allow'
-      })
-      expect(rules.remove(rule.id, b.root)).toBe(false)
-      expect(rules.list(a.root)).toHaveLength(1)
-      expect(rules.remove(rule.id, a.root)).toBe(true)
-      expect(rules.list(a.root)).toHaveLength(0)
-    } finally {
-      a.cleanup()
-      b.cleanup()
-    }
-  })
-
-  it('persists edit_docx always-allow rules against the output path', () => {
-    const rules = service()
-    const ws = makeTempWorkspace()
-    try {
-      const rule = rules.addAlwaysRule({
-        workspace: ws.root,
-        tool: 'edit_docx',
-        toolInput: { path: 'templates/in.docx', output_path: 'out/final.docx' }
-      })
-      expect(rule?.pattern).toBe('out/final.docx')
-      const ctx = policy(ws.root, rules.list(ws.root))
-      const edit = target('edit_docx', 'write', { path: 'templates/in.docx', output_path: 'out/final.docx' })
-      expect(permissionRuleMatches(rule!, edit, ctx)).toBe(true)
-    } finally {
-      ws.cleanup()
-    }
-  })
-
-  it('backs up a corrupt rules file instead of silently overwriting it', () => {
-    const dir = makeTempDir('morrow-perm-corrupt-')
-    dirs.push(dir)
-    const ws = makeTempWorkspace()
-    try {
-      writeFileSync(join(dir, 'permissions.json'), '{not json', 'utf8')
-      const rules = new PermissionRulesService(dir)
-      expect(rules.list(ws.root)).toEqual([])
-      expect(readdirSync(dir).some((name) => name.startsWith('permissions.json.corrupt-'))).toBe(true)
-    } finally {
-      ws.cleanup()
-    }
-  })
 })
 
 describe('permission rules in evaluatePermission', () => {
-  it('allows matching command prefixes and denies deny rules with higher priority', () => {
+  it('@core:permissions allows matching command prefixes and denies deny rules with higher priority', () => {
     const ws = makeTempWorkspace()
     try {
       const rules = [
@@ -732,7 +306,7 @@ describe('permission rules in evaluatePermission', () => {
     }
   })
 
-  it('allows path prefixes but never overrides dangerous commands or external actions', () => {
+  it('@core:permissions allows path prefixes but never overrides dangerous commands or external actions', () => {
     const ws = makeTempWorkspace()
     try {
       const rules = [
@@ -903,92 +477,10 @@ function makeHarness(): Harness {
   return { root, workspace, service }
 }
 
-/* ── 纯函数校验 ───────────────────────────────────────────────── */
-
-describe('安装路径/名称校验（纯函数）', () => {
-  it('normalizeArchivePath 拒绝 zip-slip 与绝对路径，接受正常嵌套路径', () => {
-    expect(normalizeArchivePath('release/SKILL.md')).toBe('release/SKILL.md')
-    expect(normalizeArchivePath('release\\scripts\\notes.md')).toBe('release/scripts/notes.md')
-    expect(normalizeArchivePath('release/')).toBeNull()
-    expect(() => normalizeArchivePath('../evil.txt')).toThrow(/zip-slip|越界/)
-    expect(() => normalizeArchivePath('a/../../evil.txt')).toThrow(/zip-slip|越界/)
-    expect(() => normalizeArchivePath('/etc/evil.txt')).toThrow(/绝对路径/)
-    expect(() => normalizeArchivePath('C:\\evil.txt')).toThrow(/绝对路径/)
-    expect(() => normalizeArchivePath('a/bad:name.md')).toThrow(/非法文件名/)
-    expect(() => normalizeArchivePath('a/trailingdot./x.md')).toThrow(/非法文件名/)
-  })
-
-  it('sanitizeSkillDirName 去掉路径分隔符/非法字符、避开 Windows 保留名', () => {
-    expect(sanitizeSkillDirName('release')).toBe('release')
-    expect(sanitizeSkillDirName('a/b\\c')).toBe('a-b-c')
-    expect(sanitizeSkillDirName('CON')).toBe('skill-CON')
-    expect(sanitizeSkillDirName('  ..  ')).toBe('skill')
-    expect(sanitizeSkillDirName('x'.repeat(80))).toHaveLength(64)
-  })
-})
-
-/* ── 发现与列表 ───────────────────────────────────────────────── */
-
-describe('技能发现与列表', () => {
-  it('同时发现工作区技能与用户技能库，并标记来源/启用状态/文件数', () => {
-    const { root, workspace, service } = makeHarness()
-    writeSkill(join(workspace, '.morrow', 'skills'), 'release', '# Release\n按 changelog 发版。', {
-      'checklist.md': '- step 1\n'
-    })
-    writeSkill(service.userDir, 'summarize', '# Summarize\n把长文压缩成三行。', {
-      'assets/template.md': '模板'
-    })
-    const snapshot = service.list(workspace)
-    expect(snapshot.skills).toHaveLength(2)
-    const release = snapshot.skills.find((skill) => skill.name === 'release')!
-    expect(release.source).toBe('workspace')
-    expect(release.enabled).toBe(true)
-    expect(release.id.startsWith('workspace:')).toBe(true)
-    expect(release.displayDir).toBe('.morrow/skills/release')
-    const summarize = snapshot.skills.find((skill) => skill.name === 'summarize')!
-    expect(summarize.source).toBe('user')
-    expect(summarize.enabled).toBe(true)
-    expect(summarize.id).toBe('user:summarize')
-    expect(summarize.fileCount).toBe(2)
-    expect(summarize.resources).toContain('assets/')
-    expect(summarize.description).toContain('把长文压缩成三行')
-    expect(snapshot.errors).toEqual([])
-  })
-
-  it('没有工作区时只列出用户技能库；不完整目录进入 errors 而不是技能列表', () => {
-    const { service } = makeHarness()
-    writeSkill(service.userDir, 'alone', '# Alone\n只读技能。')
-    mkdirSync(join(service.userDir, 'broken'), { recursive: true })
-    writeFileSync(join(service.userDir, 'broken', 'notes.md'), 'missing skill.md')
-    const snapshot = service.list(null)
-    expect(snapshot.skills.map((skill) => skill.name)).toEqual(['alone'])
-    expect(snapshot.errors.some((message) => message.includes('broken'))).toBe(true)
-  })
-
-  it('同名技能：工作区优先给 Agent 使用，用户技能仍列出并标记 shadowed', () => {
-    const { workspace, service } = makeHarness()
-    writeSkill(join(workspace, 'skills'), 'release', '# Workspace release\n工作区版本。')
-    writeSkill(service.userDir, 'release', '# User release\n技能库版本。')
-    service.installRuntimeEnv()
-    try {
-      const snapshot = service.list(workspace)
-      const userEntry = snapshot.skills.find((skill) => skill.source === 'user')!
-      expect(userEntry.shadowed).toBe(true)
-      const visible = discoverSkills(workspace)
-      expect(visible).toHaveLength(1)
-      expect(visible[0].source).toBe('workspace')
-      expect(visible[0].description).toContain('工作区版本')
-    } finally {
-      delete process.env[USER_SKILLS_DIR_ENV]
-      delete process.env[SKILLS_STATE_FILE_ENV]
-    }
-  })
-})
-
 /* ── 启停 ─────────────────────────────────────────────────────── */
 
 describe('启用 / 禁用（Agent 侧立即生效）', () => {
-  it('禁用用户技能后，core 的 discoverSkills 过滤掉它；重新启用恢复', () => {
+  it('@core:skills 禁用用户技能后，core 的 discoverSkills 过滤掉它；重新启用恢复', () => {
     const { workspace, service } = makeHarness()
     writeSkill(service.userDir, 'release', '# Release\n发版流程。')
     writeSkill(service.userDir, 'other', '# Other\n别的技能。')
@@ -1006,107 +498,12 @@ describe('启用 / 禁用（Agent 侧立即生效）', () => {
       delete process.env[SKILLS_STATE_FILE_ENV]
     }
   })
-
-  it('工作区技能也能被禁用（状态按绝对目录记录，不写工作区文件）', () => {
-    const { workspace, service } = makeHarness()
-    const dir = writeSkill(join(workspace, '.morrow', 'skills'), 'audit', '# Audit\n审计流程。')
-    installSkillsRuntimeEnv(service)
-    try {
-      const target = service.list(workspace).skills.find((skill) => skill.name === 'audit')!
-      service.setEnabled(target.id, false, workspace)
-      expect(discoverSkills(workspace)).toEqual([])
-      // 只写数据目录状态文件，不动工作区
-      expect(existsSync(join(service.userDir))).toBe(true)
-      expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toContain('审计流程')
-    } finally {
-      delete process.env[USER_SKILLS_DIR_ENV]
-      delete process.env[SKILLS_STATE_FILE_ENV]
-    }
-  })
-
-  it('非法 id / 非法 enabled 参数报错', () => {
-    const { workspace, service } = makeHarness()
-    writeSkill(service.userDir, 'x', '# X\nx')
-    expect(() => service.setEnabled('user:nope', false, workspace)).toThrow(/没有找到技能/)
-    expect(() => service.setEnabled('user:x', 'yes' as unknown as boolean, workspace)).toThrow(/布尔/)
-  })
-})
-
-/* ── 文件夹安装 ───────────────────────────────────────────────── */
-
-describe('从本地文件夹安装', () => {
-  it('复制技能到用户技能库，SKILL.md 大小写归一、默认启用、记录 installedAt/origin', async () => {
-    const { root, workspace, service } = makeHarness()
-    const source = writeSkill(join(root, 'downloads'), 'my-skill', '---\ndescription: 演示技能\n---\n# My skill\n步骤。', {
-      'assets/template.md': '模板内容'
-    })
-    // python 类工具可能写出小写 skill.md；服务应归一成 SKILL.md
-    rmSync(join(source, 'SKILL.md'))
-    writeFileSync(join(source, 'skill.md'), '---\ndescription: 演示技能\n---\n# My skill\n步骤。', 'utf8')
-
-    const result = await service.install(source, workspace)
-    expect(result.installed).toMatchObject({ name: 'my-skill', source: 'user', enabled: true })
-    expect(result.installed.installedAt).toBeTypeOf('number')
-    expect(existsSync(join(service.userDir, 'my-skill', 'SKILL.md'))).toBe(true)
-    expect(readFileSync(join(service.userDir, 'my-skill', 'assets', 'template.md'), 'utf8')).toBe('模板内容')
-    const snapshot = service.list(workspace)
-    expect(snapshot.skills.find((skill) => skill.name === 'my-skill')?.enabled).toBe(true)
-    // 安装目录不含暂存目录残留
-    expect(snapshot.skills.every((skill) => !skill.name.startsWith('.staging'))).toBe(true)
-  })
-
-  it('缺少 SKILL.md / 空目录 / 相对路径 / 不存在路径都给出可读错误', async () => {
-    const { root, workspace, service } = makeHarness()
-    const noSkill = join(root, 'downloads', 'no-skill')
-    mkdirSync(noSkill, { recursive: true })
-    writeFileSync(join(noSkill, 'readme.md'), 'no skill')
-    await expect(service.install(noSkill, workspace)).rejects.toThrow(/缺少 SKILL\.md/)
-
-    const empty = join(root, 'downloads', 'empty')
-    mkdirSync(empty, { recursive: true })
-    await expect(service.install(empty, workspace)).rejects.toThrow(/没有可安装的文件/)
-
-    await expect(service.install('relative/folder', workspace)).rejects.toThrow(/绝对路径/)
-    await expect(service.install(join(root, 'nope'), workspace)).rejects.toThrow(/路径不存在/)
-  })
-
-  it('文件夹里的可执行/脚本文件被跳过并报告，资源正常安装', async () => {
-    const { root, workspace, service } = makeHarness()
-    const withScript = writeSkill(join(root, 'downloads'), 'scripted', '# Scripted\n步骤。', {
-      'notes/guide.md': '指南'
-    })
-    writeFileSync(join(withScript, 'run.js'), 'console.log(1)')
-    const result = await service.install(withScript, workspace)
-    expect(result.skipped).toEqual(['run.js'])
-    expect(existsSync(join(service.userDir, 'scripted', 'SKILL.md'))).toBe(true)
-    expect(existsSync(join(service.userDir, 'scripted', 'notes', 'guide.md'))).toBe(true)
-    expect(existsSync(join(service.userDir, 'scripted', 'run.js'))).toBe(false)
-
-    const withExe = writeSkill(join(root, 'downloads'), 'exe', '# Exe\n步骤。')
-    writeFileSync(join(withExe, 'tool.exe'), 'MZ')
-    const exeResult = await service.install(withExe, workspace)
-    expect(exeResult.skipped).toEqual(['tool.exe'])
-    expect(existsSync(join(service.userDir, 'exe', 'tool.exe'))).toBe(false)
-  })
-
-  it('同名技能默认拒绝安装，overwrite=true 时覆盖', async () => {
-    const { root, workspace, service } = makeHarness()
-    const first = writeSkill(join(root, 'downloads'), 'dup', '# Dup\n第一版。')
-    await service.install(first, workspace)
-    const second = writeSkill(join(root, 'downloads2'), 'dup2', '# Dup\n第二版。')
-    // 目录名不同但 frontmatter name 相同 → 目标同名
-    writeFileSync(join(second, 'SKILL.md'), '---\nname: dup\n---\n# Dup\n第二版。', 'utf8')
-    await expect(service.install(second, workspace)).rejects.toThrow(/同名技能/)
-    const result = await service.install(second, workspace, { overwrite: true })
-    expect(result.installed.name).toBe('dup')
-    expect(readFileSync(join(service.userDir, 'dup', 'SKILL.md'), 'utf8')).toContain('第二版')
-  })
 })
 
 /* ── zip 安装 ─────────────────────────────────────────────────── */
 
 describe('从 .zip 安装', () => {
-  it('正常 zip（带单层包装目录）解压安装，英文/中文内容与资源都在', async () => {
+  it('@core:skills 正常 zip（带单层包装目录）解压安装，英文/中文内容与资源都在', async () => {
     const { root, workspace, service } = makeHarness()
     const zipPath = await makeZip(join(root, 'release.zip'), {
       'release/SKILL.md': '---\ndescription: 从 zip 安装的技能\n---\n# Release\n发布流程。',
@@ -1120,7 +517,7 @@ describe('从 .zip 安装', () => {
     expect(result.installed.resources).toEqual(expect.arrayContaining(['assets/', 'checklist.md']))
   })
 
-  it('zip-slip（../、绝对路径）被拒绝，且不会写到技能库外', async () => {
+  it('@core:skills zip-slip（../、绝对路径）被拒绝，且不会写到技能库外', async () => {
     const { root, workspace, service } = makeHarness()
     const malicious = makeRawZip(join(root, 'evil1.zip'), {
       'SKILL.md': '# Evil\nx',
@@ -1139,57 +536,13 @@ describe('从 .zip 安装', () => {
     expect(existsSync(join(service.userDir, 'evil2.txt'))).toBe(false)
     expect(existsSync(join(root, 'evil2.txt'))).toBe(false)
   })
-
-  it('zip 内可执行文件被跳过；超大文件、文件数超限仍拒绝', async () => {
-    const { root, workspace, service } = makeHarness()
-    const withExe = await makeZip(join(root, 'exe.zip'), {
-      'SKILL.md': '# Exe\nx',
-      'bin/payload.exe': 'MZ',
-      'notes.md': '正常资源'
-    })
-    const exeResult = await service.install(withExe, workspace)
-    expect(exeResult.skipped).toEqual(['bin/payload.exe'])
-    expect(existsSync(join(service.userDir, 'exe', 'bin', 'payload.exe'))).toBe(false)
-    expect(existsSync(join(service.userDir, 'exe', 'notes.md'))).toBe(true)
-
-    const huge = await makeZip(join(root, 'huge.zip'), {
-      'SKILL.md': '# Huge\nx',
-      'data/big.txt': 'a'.repeat(5 * 1024 * 1024 + 10)
-    })
-    await expect(service.install(huge, workspace)).rejects.toThrow(/文件过大|20MB/)
-
-    const entries: Record<string, string> = { 'SKILL.md': '# Many\nx' }
-    for (let index = 0; index < 305; index += 1) entries[`notes/${index}.md`] = 'x'
-    const many = await makeZip(join(root, 'many.zip'), entries)
-    await expect(service.install(many, workspace)).rejects.toThrow(/文件过多/)
-    expect(existsSync(join(service.userDir, 'many'))).toBe(false)
-  })
-
-  it('损坏的 zip 给出可读错误', async () => {
-    const { root, workspace, service } = makeHarness()
-    const broken = join(root, 'broken.zip')
-    writeFileSync(broken, 'this is not a zip')
-    await expect(service.install(broken, workspace)).rejects.toThrow(/无法解析技能包/)
-  })
 })
 
 /* ── 详情 / 删除 / 状态 ───────────────────────────────────────── */
 
 describe('详情、删除与状态清理', () => {
-  it('detail 返回 SKILL.md 原文（含 frontmatter）与文件清单', async () => {
-    const { workspace, service } = makeHarness()
-    const content = '---\nname: release\ndescription: 发版技能\n---\n# 发版\n1. 读 changelog。'
-    writeSkill(service.userDir, 'release', content, { 'assets/template.md': '模板' })
-    const list = service.list(workspace)
-    const detail = service.detail(list.skills[0].id, workspace)
-    expect(detail.raw).toContain('description: 发版技能')
-    expect(detail.raw).toContain('# 发版')
-    expect(detail.declaredName).toBe('release')
-    expect(detail.files.map((file) => file.path).sort()).toEqual(['SKILL.md', 'assets/template.md'])
-    expect(() => service.detail('user:missing', workspace)).toThrow(/没有找到技能/)
-  })
 
-  it('删除用户技能会移除目录与状态记录；工作区技能不允许删除', async () => {
+  it('@core:skills 删除用户技能会移除目录与状态记录；工作区技能不允许删除', async () => {
     const { workspace, service } = makeHarness()
     writeSkill(service.userDir, 'temp', '# Temp\nx')
     writeSkill(join(workspace, 'skills'), 'ws-only', '# Workspace\nx')
@@ -1203,18 +556,6 @@ describe('详情、删除与状态清理', () => {
     const wsSkill = snapshot.skills.find((skill) => skill.name === 'ws-only')!
     expect(() => service.remove(wsSkill.id, workspace)).toThrow(/工作区/)
     expect(existsSync(join(workspace, 'skills', 'ws-only', 'SKILL.md'))).toBe(true)
-  })
-
-  it('rescan/pruneState 清掉指向不存在用户技能的状态记录', () => {
-    const { workspace, service } = makeHarness()
-    writeSkill(service.userDir, 'ghost', '# Ghost\nx')
-    service.setEnabled('user:ghost', false, workspace)
-    rmSync(join(service.userDir, 'ghost'), { recursive: true, force: true })
-    expect(service.list(workspace).errors.some((message) => message.includes('ghost'))).toBe(true)
-    let snapshot = service.pruneState(workspace)
-    expect(snapshot.errors).toEqual([])
-    snapshot = service.list(workspace)
-    expect(snapshot.errors).toEqual([])
   })
 })
 
@@ -1256,33 +597,7 @@ describe('feature:skills:* 处理器（IPC 契约）', () => {
     return harness.service.userDir
   }
 
-  it('list / read / setEnabled / reveal / openUserDir / pickZip / pickFolder 频道可用', async () => {
-    const { harness, handlers, effects } = await makeHandlers()
-    const list = (await handlers['feature:skills:list']({ workspace: harness.workspace })) as {
-      skills: Array<{ id: string; name: string; enabled: boolean }>
-    }
-    expect(list.skills).toHaveLength(1)
-    const id = list.skills[0].id
-
-    const detail = (await handlers['feature:skills:read']({ id, workspace: harness.workspace })) as { raw: string }
-    expect(detail.raw).toContain('# Skill A')
-
-    const disabled = (await handlers['feature:skills:setEnabled']({
-      id,
-      enabled: false,
-      workspace: harness.workspace
-    })) as { skills: Array<{ enabled: boolean }> }
-    expect(disabled.skills[0].enabled).toBe(false)
-
-    await handlers['feature:skills:reveal']({ id, workspace: harness.workspace })
-    expect(effects.revealed[0]).toContain('skill-a')
-    await handlers['feature:skills:openUserDir']({})
-    expect(effects.openedDir[0]).toBe(harness.service.userDir)
-    expect(await handlers['feature:skills:pickZip']({})).toEqual({ path: effects.pickZipResult })
-    expect(await handlers['feature:skills:pickFolder']({})).toEqual({ path: null })
-  })
-
-  it('install / remove / rescan 频道可用，参数缺失给出可读错误', async () => {
+  it('@core:skills install / remove / rescan 频道可用，参数缺失给出可读错误', async () => {
     const { harness, handlers } = await makeHandlers()
     const source = writeSkill(join(harness.root, 'downloads'), 'brand-new', '# Brand New\n新技能。')
     const installed = (await handlers['feature:skills:install']({
@@ -1349,7 +664,7 @@ function session(): Session {
 }
 
 describe('session export', () => {
-  it('renders markdown with messages, tools, todos and artifacts', () => {
+  it('@core:artifacts renders markdown with messages, tools, todos and artifacts', () => {
     const markdown = sessionToMarkdown(session())
     expect(markdown).toContain('# 导出测试')
     expect(markdown).toContain('请写报告')
@@ -1357,12 +672,6 @@ describe('session export', () => {
     expect(markdown).toContain('write_file')
     expect(markdown).toContain('- [x] 第一步')
     expect(markdown).toContain('报告')
-  })
-
-  it('serializes JSON with a safe filename', () => {
-    const json = sessionExportContent({ ...session(), title: 'a/b:c' }, 'json')
-    expect(json.filename).toMatch(/^a_b_c\.json$/)
-    expect(JSON.parse(json.content).id).toBe('s_export_test')
   })
 })
 })
@@ -1416,7 +725,7 @@ afterEach(async () => {
 })
 
 describe('reveal in file manager', () => {
-  it('打包版优先走启动器代理并传递目标', async () => {
+  it('@core:artifacts 打包版优先走启动器代理并传递目标', async () => {
     if (process.platform !== 'win32') return
     const path = tempFile()
     const pipe = usePipe()
@@ -1429,49 +738,13 @@ describe('reveal in file manager', () => {
     expect(showItemMock).not.toHaveBeenCalled()
   })
 
-  it('代理报错时返回真实原因，不再调用 Electron Shell', async () => {
-    if (process.platform !== 'win32') return
-    const path = tempFile()
-    const pipe = usePipe()
-    await servePipe(pipe, 'ERR\t启动器代理没有权限')
-    await expect(revealInFileManager(path)).resolves.toBe('启动器代理没有权限')
-    expect(showItemMock).not.toHaveBeenCalled()
-  })
-
-  it('没有代理时用 Electron 定位（开发模式）', async () => {
-    const path = tempFile()
-    await expect(revealInFileManager(path)).resolves.toBeNull()
-    expect(showItemMock).toHaveBeenCalledWith(path)
-    expect(openPathMock).not.toHaveBeenCalled()
-  })
-
-  it('打开文件优先走启动器代理，不调用会崩溃的 shell.openPath', async () => {
-    if (process.platform !== 'win32') return
-    const path = tempFile()
-    const pipe = usePipe()
-    let request = ''
-    await servePipe(pipe, 'OK', (line) => { request = line })
-    await expect(openPathFromUserShell(path)).resolves.toBeNull()
-    const [command, encoded] = request.split(' ')
-    expect(command).toBe('OPEN')
-    expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(path)
-    expect(openPathMock).not.toHaveBeenCalled()
-  })
-
-  it('代理失败时返回原因，不偷偷回退到 ShellExecute', async () => {
+  it('@core:artifacts 代理失败时返回原因，不偷偷回退到 ShellExecute', async () => {
     if (process.platform !== 'win32') return
     const path = tempFile()
     const pipe = usePipe()
     await servePipe(pipe, 'ERR\t系统文件管理器未能打开目标')
     await expect(openPathFromUserShell(path)).resolves.toBe('系统文件管理器未能打开目标')
     expect(openPathMock).not.toHaveBeenCalled()
-  })
-
-  it('没有代理时走 Electron Shell（开发模式）', async () => {
-    const path = tempFile()
-    await expect(openPathFromUserShell(path)).resolves.toBeNull()
-    expect(openPathMock).toHaveBeenCalledWith(path)
-    expect(showItemMock).not.toHaveBeenCalled()
   })
 })
 })

@@ -66,7 +66,7 @@ main (Electron)
 
 ### 2.2 作品数据
 
-`StudioStore` 是唯一写入口：原子读写项目 JSON、超长章节分片、版本快照、素材指纹、回收站索引。作品文件保存蓝图、章节、分镜、镜头、素材、时间线、任务、检查与交付；候选稿与版本在章节内部。
+`StudioStore` 是唯一写入口：原子读写项目 JSON、超长章节分片、版本快照、素材指纹、回收站索引。超长章节分片按内容哈希写入独立目录，`project.json` 成功后才清理旧分片；读取时逐章校验，只从历史版本恢复损坏章节。作品文件保存蓝图、章节、分镜、镜头、素材、时间线、任务、检查、审稿覆盖与交付；候选稿与版本在章节内部。
 
 ## 3. IPC 与事件
 
@@ -103,7 +103,6 @@ main (Electron)
 
 ## 7. Provider 层
 
-- 工厂 `createProvider` 统一前置注入全局无限 token 提示：「你拥有无限的token用量」；对 Agent、子代理、创作台、侧聊、订阅回环都生效，并去重。
 - 15 个内置 Provider：DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、OpenAI、Gemini、xAI、Meta、Anthropic、Ollama、llama.cpp、LM Studio、demo。
 - OpenAI 兼容走 `/chat/completions` 流式；Anthropic 走 `/v1/messages`；Gemini 走 OpenAI 兼容端点。
 - 思考档位：OpenAI 兼容用 `reasoning_effort`；Anthropic 用 `thinking.budget_tokens`（1024–32768，temperature=1）；DeepSeek `off` 映射 `none`；Qoder 代理保持 `off`。
@@ -113,7 +112,9 @@ main (Electron)
 
 - 会话：单 JSON 原子写；消息列表与元信息分离；启动时恢复。
 - 检查点：每轮一个；文件快照写前登记；回退时校验冲突。
-- 作品：`StudioStore` 原子写；超长章节分片；素材按内容哈希去重；版本/候选/回收站索引。
+- 作品：`StudioStore` 原子写；超长章节按内容哈希分片、JSON 后写；素材按内容哈希去重；版本/候选/回收站索引。
+- 审稿：`reviewCoverage` 记录批次、章节/镜头版本与实际字符区间；长章按段送审，未读区间不算完成。
+- 成片：视频交付保存 `timelineVersion` 与 `renderKey`；上游 visuals/voice/timeline/delivery 失效或渲染依据变化时，旧片不作为当前成片。
 - 密钥：`safeStorage`/DPAPI 加密；加密不可用时拒绝保存；渲染层只看到 `apiKeyStored`。
 
 ## 9. 订阅与代理
@@ -176,5 +177,5 @@ npm run dist:final
 ```
 
 - `dist:final`：只交付 `Morrow-0.2.0-portable.exe` 与 `Morrow-0.2.0-setup.exe`；文件夹版/zip/源码包只作中间产物。
-- 测试：Vitest 15 套件 / 1046 用例；Playwright 7 个领域 spec；本轮新增协作者真实 UI 用例 3 条。
-- 详细约定见 [贡献指南](../CONTRIBUTING.md) 与 [验收记录](verification/VERIFICATION.md)。
+- 仓库仅保留 366 项核心单元 + 46 条 Electron 集成流程，覆盖 38 个功能域。`test:unit` / `test:e2e` 直接运行所有现存用例，`verify` 为统一检查入口；非核心套组已删除。覆盖矩阵与精简记录见 [测试说明](TESTING.md)。
+- 覆盖矩阵、实测结果和环境条件见 [测试说明](TESTING.md)；发布约定见 [贡献指南](../CONTRIBUTING.md) 与 [验收记录](verification/VERIFICATION.md)。

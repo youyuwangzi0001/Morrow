@@ -6,7 +6,6 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join, relative, sep } from 'node:path'
 import { ToolProtocolStreamFilter, parseTextToolCalls } from '../shared/types'
 import { isLocalServiceUrl } from '../shared/contracts'
-import { withUnlimitedTokenBudget } from './agent'
 
 export class ProviderError extends Error {
   readonly code: string
@@ -2368,20 +2367,6 @@ export class ToolProtocolProvider implements Provider {
  * 按 ProviderConfig.kind 选择实现。
  * demo 走离线剧本引擎（忽略 apiKey/modelId；模型 id 只用于 UI 展示）。
  */
-export class UnlimitedBudgetProvider implements Provider {
-  readonly id: string
-  private readonly inner: Provider
-
-  constructor(inner: Provider) {
-    this.inner = inner
-    this.id = (inner as Provider & { id?: string }).id ?? 'provider'
-  }
-
-  stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
-    return this.inner.stream({ ...req, system: withUnlimitedTokenBudget(req.system) })
-  }
-}
-
 export function createProvider(config: ProviderConfig, apiKey: string | null, modelId?: string): Provider {
   const inner =
     config.kind === 'demo' || config.id === 'demo'
@@ -2391,8 +2376,7 @@ export function createProvider(config: ProviderConfig, apiKey: string | null, mo
             ? new AnthropicProvider(config, apiKey, modelId)
             : new OpenAICompatProvider(config, apiKey, modelId)
         )
-  // 所有 provider（含订阅回环、创作台、Agent、子代理）统一注入同一句预算提示。
-  return new UnlimitedBudgetProvider(inner)
+  return inner
 }
 
 /**

@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-30",
+  "capturedAt": "2026-10-30T02:55:34.560Z",
+  "baselineCommit": "684acd52423069377edc47277c75a6135e355da1",
+  "includesUncommittedProductionChanges": true,
+  "productionCodeChangedByThisReaudit": false,
+  "productionSourceHashes": {
+    "src/main/studio.ts": "cd5a1b5982e1dc391befdd9957eb14760434411509f3c8ae69c0caf32412d216",
+    "src/renderer/features/studio-core.ts": "3bb3deada0ba2cb48903db2347fef6b04a5e3b34ea9e7577eea68664d5dd52c8",
+    "src/renderer/features/studio.tsx": "c3bee63ac3c79d31a9c1442f78193087c7c5924d6cb54fdd82cb6d0358f48e50",
+    "src/core/agent.ts": "785e9ffe11071ad121a8e5a9afa2980ba67f36affe529faf26f5aff31520b980",
+    "src/core/tools.ts": "21bb14d19599f34cb9b44cd0d292fa098d03872ac160a5601d1f730a08a04f97",
+    "src/main/agent.ts": "cccfbe6e6d08dfb29b8a8f97d5adb5d8098d6c0d244ece4dccdbc5989f140c15",
+    "src/main/terminal-manager.ts": "8779f9572442010f19fbbab47d24b53709d92abc4a13e68ea4541d20e80ebdad",
+    "src/renderer/features/terminal.tsx": "0aad7a7ed6bf46f22e75d04cb316eb04baed3e8a85e2efeb7bad3bc0f91dd1a4",
+    "src/shared/studio.ts": "77dd3b8381a08945dcf4a8ad16e34ac9ac201f7a53bf27f12d85b178e7adbd82"
+  },
+  "tests": {
+    "fullUnit": {
+      "collected": 1060,
+      "passed": 1051,
+      "skipped": 9,
+      "failed": 0,
+      "durationMs": 17030.7470703125
+    },
+    "coreUnitIncludedInFullRun": {
+      "count": 355,
+      "passed": 355
+    },
+    "coreElectron": {
+      "startTime": "2026-10-30T02:42:28.173Z",
+      "duration": 260786.70200000002,
+      "expected": 41,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "completeElectronCollection": {
+      "count": 241,
+      "executedInFull": false
+    },
+    "gitStandalone": {
+      "startTime": "2026-10-30T02:37:54.932Z",
+      "duration": 9170.923,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "evalOffline": {
+      "passed": 4,
+      "failed": 0,
+      "liveModelEnabled": false
+    },
+    "isolatedAuditChecks": {
+      "count": 12,
+      "completed": 12,
+      "assertionFailures": 0,
+      "meaning": "Assertions include reproducing defects. Success is not a product acceptance result."
+    },
+    "interfaceAuditChecks": {
+      "F04": {
+        "submitted": 1.5,
+        "laterEdit": 1.8,
+        "saved": 1.8,
+        "visible": "1.8"
+      },
+      "F05": {
+        "title": "雨停之后",
+        "switchBlocked": true,
+        "draftRetained": true,
+        "otherChaptersUnchanged": true
+      },
+      "N09": {
+        "before": {
+          "a": 16,
+          "b": 0
+        },
+        "after": {
+          "a": 16,
+          "b": 17
+        },
+        "a": "proj_e9d2fd5d86dd418884",
+        "b": "proj_4cf06e44cac5486792",
+        "dataDir": "C:\\交付成品\\Morrow\\tmp\\data-audit-canvas-switch-1793328520451-h5wbqx"
+      }
+    },
+    "setupCorrections": [
+      "Canvas check now waits for seeded nodes to reach disk before measuring.",
+      "Short novel sample initially opens delivery; writing check explicitly navigates to writing."
+    ],
+    "typecheck": "passed",
+    "coverageRegistry": {
+      "passed": true,
+      "domains": 38,
+      "coreUnit": 355,
+      "coreElectron": 41,
+      "unitBudget": 360,
+      "electronBudget": 42
+    }
+  },
+  "observations": {
+    "N01": {
+      "jsonUnchanged": true,
+      "chunkChanged": true,
+      "oldHash": "171334e6aad1667a18bb3e6d9486c2ae76995762291c9212c58105e3c4c01458",
+      "newContentHash": "d9137754b993428bcb441ab942cdccc6b61ae7661c0f49db32b29d69bdf36b5e"
+    },
+    "N02": {
+      "secondChapter": "第二章旧稿",
+      "warning": "正文分片不完整，已从最近历史版本恢复"
+    },
+    "N03": {
+      "partialCharacters": 0,
+      "retryRequests": 2,
+      "firstRetryPrompt": "用户灵感：一个修伞的女孩继承外婆的伞铺，每周三都会有一个失忆的少年，来修同一把黑伞。\n故事核：雨夜旧伞\n人物：\n本卷：第 1–6 章《卷一》：追查\n本批只写第 1–4 章（全局章号），不要重复或跳过其他章。这是本卷第一批，请按卷目标开场。\n请写本卷约 4 章，标题具体，梗概推进主线，每章给出 3–5 个节拍，单章目标按总目标与本卷章数估算。",
+      "error": "Error: 模型没有给出足够的人物（至少 2 位）。请重试，或换一个更强的文本模型。 已完成 2 批章节，蓝图草稿已保存；重试会从下一批继续。"
+    },
+    "N04": {
+      "tailInPrompt": false,
+      "stage": "done",
+      "coverage": [
+        {
+          "covered": 1,
+          "total": 1
+        }
+      ]
+    },
+    "N05": {
+      "batches": 60,
+      "covered": 240,
+      "firstChapter": 261
+    },
+    "N06": {
+      "parts": [
+        "novel:2"
+      ]
+    },
+    "N07": {
+      "action": "基于旧稿生成的动作"
+    },
+    "N08": {
+      "retry": {
+        "action": "model-review",
+        "payload": {}
+      },
+      "firstLabel": "模型审稿 · 1 章",
+      "retryLabel": "模型审稿 · 2 章",
+      "prompt": "作品：测试长篇\n故事核：一个修伞的女孩继承外婆的伞铺，每周三都会有一个失忆的少年，来修同一把黑伞。\n人物：林晚（主角）、少年（失忆者）、外婆（已故亲人）\n已写 2/2 章；本次审 第 1 章、第 2 章。\n\n【第 1 章 · 修伞的人】\n雨是从傍晚开始下的。林晚把最后一把伞挂在门后。\n\n门外站着一个浑身湿透的少年。\n\n【第 2 章 · 修伞的人】\n第二章正文 AUDIT_SECOND"
+    },
+    "D06D07": {
+      "ruleInPrompt": false,
+      "selectedCharacterRoleInPrompt": false
+    },
+    "F09": [
+      {
+        "command": "cat /c/Users/private.txt",
+        "result": "/c/Users/private.txt"
+      },
+      {
+        "command": "cd /c",
+        "result": "/c"
+      },
+      {
+        "command": "cat /c/work/morrow/../../Users/private.txt",
+        "result": "../../Users/private.txt"
+      }
+    ],
+    "N10": {
+      "deliveryStatus": "stale",
+      "timelineStatus": "stale",
+      "selected": "old-video"
+    },
+    "D12": {
+      "input": 20,
+      "output": 20,
+      "last": 20
+    }
+  },
+  "gitPermissionDiagnosis": {
+    "electronIntegritySid": "S-1-16-4096",
+    "runnerIntegritySid": "S-1-16-12288",
+    "ordinaryTextWriteAlsoFailed": true,
+    "changeScope": "Only a newly-created morrow-e2e-git-* fixture directory gets (OI)(CI)L on Windows.",
+    "fixture": "tests/e2e/workspace.spec.ts",
+    "productionPermissionChecksChanged": false
+  },
+  "suiteDecision": {
+    "default": "core",
+    "extendedSuitesDeleted": false,
+    "reason": "Current core checks pass while additional data-safety and scope defects reproduce. Removing non-default suites would not accelerate the default run."
+  },
+  "rawReports": [
+    "tmp/audit-recheck/full-unit.json",
+    "tmp/audit-recheck/core-e2e.json",
+    "tmp/audit-recheck/git-fixed.json",
+    "tmp/audit-recheck/git-probe.json",
+    "tmp/audit-recheck/probes.json",
+    "tmp/audit-recheck/ui-probes.json",
+    "tmp/audit-recheck/ui-probes-followup.json",
+    "tmp/audit-recheck/eval.json"
+  ],
+  "notExecuted": [
+    "Full 241-case Electron suite",
+    "New release package build and smoke",
+    "Paid account / actual cloud billing verification",
+    "Long-media and 512 MiB project stress",
+    "Human evaluation of novel quality or adaptation fidelity"
+  ]
+}

@@ -143,7 +143,7 @@ async function verifyPortableMarker(folderExe, log) {
     log(`[marker] 验证 portable.marker：不带 --data-dir 启动 → 期望数据目录 ${relative(expectedDataDir)}`)
     child = spawn(folderExe, ['--no-sandbox', `--user-data-dir=${chromiumDir}`, '--test-mode', `--remote-debugging-port=${port}`], {
       cwd: root,
-      env: electronEnv({ MORROW_TEST: '1', MORROW_SKIP_DESKTOP_SHORTCUT: '1' }),
+      env: electronEnv({ MORROW_TEST: '1', MORROW_STUDIO_NO_DEMO: '1', MORROW_SKIP_DESKTOP_SHORTCUT: '1' }),
       stdio: ['ignore', 'pipe', 'pipe']
     })
     child.stdout.on('data', (chunk) => appendFileSync(join(root, 'docs', 'verification', 'logs', 'smoke-packaged-folder.log'), `[marker:out] ${chunk}`))
@@ -270,7 +270,7 @@ async function runSmoke(kind) {
       '--test-mode',
       `--remote-debugging-port=${port}`
     ]
-    const extraEnv = { MORROW_TEST: '1' }
+    const extraEnv = { MORROW_TEST: '1', MORROW_STUDIO_NO_DEMO: '1' }
     if (tempMode === 'workspace-redirect') {
       // 启动器的临时文件/首次解压指到工作区内（受限令牌可写）
       extraEnv.TEMP = tempDir

@@ -491,6 +491,22 @@ export interface StudioShot {
   lockedReference: boolean
   status: StudioStatus
   updatedAt: number
+  /** 分镜生成期间用户手改过这一镜时，AI 新稿保留在这里，采用前不覆盖当前内容。 */
+  rewriteCandidate?: {
+    id: string
+    model: string
+    title: string
+    action: string
+    camera: string
+    shotSize: string
+    durationSec: number
+    dialogue: string
+    speaker: string
+    continuity: string
+    prompt: string
+    negative: string
+    createdAt: number
+  }
 }
 
 export interface StudioAsset {
@@ -907,6 +923,8 @@ export interface StudioEditPlan {
   appliedRevision?: number
   /** 应用前的项目快照文件名；只在该版本之后没有新修改时可整体撤销。 */
   undoVersion?: string
+  /** 计划自身排队的任务；这些任务的写入不应阻止整体撤销。 */
+  jobIds?: string[]
 }
 
 export interface StudioMessageSource {
@@ -993,6 +1011,28 @@ export interface StudioCanvas {
   updatedAt: number
 }
 
+export interface StudioReviewCoverage {
+  id: string
+  createdAt: number
+  kind: 'novel' | 'drama'
+  scope: 'auto' | 'current' | 'range' | 'all'
+  /** 可合并的部分标识，例如 novel:1-4 或 drama:1-20。 */
+  part: string
+  label: string
+  unitStart: number
+  unitEnd: number
+  covered: number
+  total: number
+  /** 审稿时原文/镜头的版本指纹；原文改动后旧覆盖不再代表当前内容。 */
+  source: string
+  model: string
+  issues: number
+  /** 本次审稿涉及的章/镜与当时版本；用于判断之后是否被改动。 */
+  units?: Array<{ id: string; version: number }>
+  /** 长章按段审稿时实际阅读的字符区间；缺省表示整章。 */
+  segments?: Array<{ id: string; version: number; start: number; end: number }>
+}
+
 export interface StudioProject {
   schemaVersion: number
   id: string
@@ -1025,6 +1065,8 @@ export interface StudioProject {
   jobs: StudioJob[]
   messages: StudioChatMessage[]
   checks: StudioCheck[]
+  /** 已完成审稿的范围与原文版本；用于展示还有哪些部分没有审。 */
+  reviewCoverage?: StudioReviewCoverage[]
   runtime: StudioRuntime
   canvas: StudioCanvas
   voiceAudit?: StudioVoiceAudit | null
@@ -1244,7 +1286,6 @@ export interface StudioRenderInput {
   projectId: string
   quality: 'draft' | 'final'
   aspect?: StudioAspect
-  subtitleMode?: 'soft' | 'burn'
   allowMissing?: boolean
   format?: 'mp4' | 'mov' | 'mkv' | 'webm'
   resolution?: '1080p' | '2160p'
@@ -1414,7 +1455,7 @@ export function computeProjectProgress(project: StudioProject): number {
     const visuals = shots ? project.shots.filter((shot) => shot.imageAssetId || shot.videoAssetId).length / shots : 0
     const voicesNeeded = project.shots.filter((shot) => shot.dialogue.trim()).length
     const voices = voicesNeeded ? project.shots.filter((shot) => shot.voiceAssetId).length / voicesNeeded : 0
-    const hasMusic = resolveMusicAsset(project)?.formal === true
+    const hasMusic = resolveMusicAsset(project)?.formal === true || hasEmbeddedVideoScore(project)
     const hasTimeline = project.timeline.clips.length > 0
     const hasDelivery = project.deliveries.some((item) => isStudioVideoDelivery(item.kind))
     const weights = [0.18, 0.16, 0.26, 0.14, 0.06, 0.1, 0.1]
@@ -1435,6 +1476,15 @@ export function isFormalMusicAsset(asset: StudioAsset): boolean {
     && !asset.tags.includes('draft')
     && !asset.tags.includes('demo')
     && asset.origin?.source !== 'demo'
+}
+
+/** MiniMax-H3 视频自带无人声配乐；没有单独配乐素材时也算配乐已就位。 */
+export function hasEmbeddedVideoScore(project: StudioProject): boolean {
+  return project.shots.some((shot) => {
+    if (!shot.videoAssetId) return false
+    const asset = project.assets.find((item) => item.id === shot.videoAssetId)
+    return Boolean(asset && asset.kind === 'video' && /MiniMax-H3/i.test(asset.origin?.model ?? ''))
+  })
 }
 
 /** 时间线与“配乐就绪”统一走这里：明确的采用曲目 → 正式配乐 → 样例配乐 → 草稿。 */
@@ -1485,7 +1535,7 @@ export function stageProgress(project: StudioProject, stage: StudioStageId): num
   }
   if (stage === 'music') {
     const score = resolveMusicAsset(project)
-    return score?.formal || score?.demo ? 100 : 0
+    return score?.formal || score?.demo || hasEmbeddedVideoScore(project) ? 100 : 0
   }
   if (stage === 'timeline') return project.timeline.clips.length ? 100 : 0
   if (stage === 'review') {

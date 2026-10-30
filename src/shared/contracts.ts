@@ -325,7 +325,7 @@ const xaiModels: ModelInfo[] = [
 export const RETIRED_MODEL_IDS: Record<string, readonly string[]> = {
   xai: ['grok-4.1', 'grok-4.1-fast', 'grok-4.1-fast-reasoning'],
   kimi: ['kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.7', 'kimi-k2.6-preview'],
-  llamacpp: ['Sage-A1.5-Q4_K_M', 'Sage-A1.5', 'local-model']
+  llamacpp: ['Sage-A1.5-Q4_K_M', 'Sage-A1.5', 'local-model', 'Qwen3.8-27B-Coder390']
 }
 
 const localModels: ModelInfo[] = [
@@ -339,18 +339,8 @@ const localModels: ModelInfo[] = [
   }
 ]
 
-/** llama.cpp 的 llama-server 默认监听 8000，模型 ID 与启动参数 --alias 一致。 */
-const llamaCppModels: ModelInfo[] = [
-  {
-    id: 'Qwen3.8-27B-Coder390',
-    label: 'Qwen3.8 27B（llama.cpp）',
-    contextWindow: 65_536,
-    maxOutput: 16_384,
-    supportsTools: true,
-    supportsVision: true,
-    note: 'llama-server 启动后可用；视觉审看需带 --mmproj；模型 ID 需与 --alias 一致'
-  }
-]
+/** llama.cpp 的 llama-server 默认监听 8000；模型由用户自行添加，不再预置 Coder390。 */
+const llamaCppModels: ModelInfo[] = []
 
 export const DEMO_PROVIDER_ID = 'demo'
 

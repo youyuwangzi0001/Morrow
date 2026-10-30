@@ -81,14 +81,14 @@ beforeEach(() => {
 })
 
 describe('创作台输出预算', () => {
-  it('默认按模型官方 maxOutput 请求，不再私设 8000 上限', async () => {
+  it('@core:studio-models 默认按模型官方 maxOutput 请求，不再私设 8000 上限', async () => {
     const result = await completeCreativeText({ system: '系统', prompt: '写一段' })
     expect(result.text).toContain('ok')
     expect(state.requests).toHaveLength(1)
     expect(state.requests[0].max_tokens).toBe(20_000)
   })
 
-  it('显式预算只在下调时生效，不会超过官方上限', async () => {
+  it('@core:studio-models 显式预算只在下调时生效，不会超过官方上限', async () => {
     await completeCreativeText({ system: '系统', prompt: '写一段', maxTokens: 1200 })
     expect(state.requests[0].max_tokens).toBe(1200)
     state.requests = []
@@ -96,12 +96,12 @@ describe('创作台输出预算', () => {
     expect(state.requests[0].max_tokens).toBe(20_000)
   })
 
-  it('结构化任务触达长度上限时明确报错，不返回半截 JSON', async () => {
+  it('@core:studio-models 结构化任务触达长度上限时明确报错，不返回半截 JSON', async () => {
     state.queue = [{ content: '{"units":[{"index":1,', finish: 'length' }]
     await expect(completeCreativeText({ system: '系统', prompt: '输出 JSON', structured: true })).rejects.toThrow(/官方上限/)
   })
 
-  it('普通文本被截断时自动续写而不是静默截断', async () => {
+  it('@core:studio-models 普通文本被截断时自动续写而不是静默截断', async () => {
     state.queue = [
       { content: '前半段。', finish: 'length' },
       { content: '后半段。', finish: 'stop' }
