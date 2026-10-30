@@ -319,10 +319,9 @@ export function clampCanvasWidth(width: number, max = CANVAS_MAX): number {
   return Math.min(max, Math.max(CANVAS_MIN, Math.round(width)))
 }
 
-/** 默认 420px 的画布在宽屏上放大到更舒适的阅读宽度；用户手动调过的宽度保持原样。 */
-export function responsiveCanvasWidth(savedWidth: number, viewportWidth: number): number {
-  if (savedWidth !== 420 || viewportWidth < 1750) return savedWidth
-  return Math.max(420, Math.min(720, Math.round(viewportWidth * 0.24)))
+/** 画布始终按用户保存的宽度显示；默认 420px，不再随宽屏自动放大。 */
+export function responsiveCanvasWidth(savedWidth: number, _viewportWidth?: number): number {
+  return clampCanvasWidth(savedWidth)
 }
 
 const toast = (kind: Toast['kind'], message: string, extra?: Partial<Toast>): Toast => ({
