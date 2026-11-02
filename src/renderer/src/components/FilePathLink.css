@@ -1,0 +1,102 @@
+/* 对话正文里的文件路径：可点击、可右键，保持与行内代码相近的视觉重量 */
+
+.md-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0 1px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface-inset, var(--surface));
+  color: var(--gold);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-weight: var(--code-font-weight, 400);
+  font-size: 0.92em;
+  line-height: var(--lh-copy);
+  vertical-align: baseline;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.md-file-link:hover {
+  border-color: var(--line-gold);
+  background: var(--gold-ghost);
+  color: var(--gold-strong, var(--gold));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-file-link:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
+.md-file-link-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-file-menu {
+  position: fixed;
+  z-index: var(--z-toast);
+  width: max-content;
+  min-width: 210px;
+  max-width: 280px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(120%);
+  box-shadow: var(--shadow-float);
+  animation: fade-in-up 120ms var(--ease-out) both;
+}
+
+.md-file-menu-head {
+  max-width: 250px;
+  padding: 5px 8px 7px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-xs-plus);
+}
+
+.md-file-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.md-file-menu-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.md-file-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.md-file-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}

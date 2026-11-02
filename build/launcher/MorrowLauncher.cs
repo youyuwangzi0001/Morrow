@@ -1,0 +1,625 @@
+// Morrow 单文件启动器（自研，替代 electron-builder 的 NSIS 自解压壳）
+//
+// 背景：electron-builder 的 portable 目标是 NSIS 自解压，把应用解压到 %TEMP%，
+// 从受限入口（如工作流面板）启动时 %TEMP% 不可写会报 “Error writing temporary file”。
+// 本启动器把应用以 zip 资源内嵌在自身，首次运行时解压到 exe 同级的隐藏缓存目录
+// `.morrow-runtime-<ver>`（不依赖 %TEMP%），之后直接复用；exe 目录只读时回退到
+// %LOCALAPPDATA%\Morrow\runtime-<ver>。
+//
+// 两种编译形态：
+//   单文件版：csc ... -resource:app.zip,MorrowApp.zip MorrowLauncher.cs
+//   文件夹版：csc ... -define:FOLDER_MODE MorrowLauncher.cs（输出为文件夹里的 Morrow.exe，
+//            启动同目录的 Morrow-app.exe；不再需要内部 zip）
+// 两种形态都会给应用追加 --no-sandbox：本机/受限启动环境下 Chromium 沙箱会在初始化阶段
+// 直接崩溃（0x80000003，进程秒退、无窗口），而应用只渲染本地内容，工具层仍有工作区沙箱与
+// 审批机制；这是为了让双击一定能打开的兼容性取舍。
+using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.IO.Compression;
+using System.IO.Pipes;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+
+internal static class MorrowLauncher
+{
+    // 版本与运行时目录由打包脚本根据 package.json 生成，避免升级后启动器仍指向旧版本。
+    private const string AppFolderName = ".morrow-runtime-" + MorrowLauncherBuildInfo.Version + "-" + MorrowLauncherBuildInfo.RuntimeRevision;
+    private const string AppExeName = "Morrow-app.exe";
+    private const string ZipResourceName = "MorrowApp.zip";
+    private const string RuntimeStampFile = ".morrow-runtime-complete";
+    private static string cachedRuntimeStamp;
+#if FOLDER_MODE
+    private const bool FolderMode = true;
+#else
+    private const bool FolderMode = false;
+#endif
+
+    [MTAThread]
+    private static int Main(string[] args)
+    {
+        string exePath = Assembly.GetExecutingAssembly().Location;
+        string exeDir = Path.GetDirectoryName(exePath);
+        string exeRuntimeDir = Path.Combine(exeDir, AppFolderName);
+        string appDir = FolderMode ? exeDir : exeRuntimeDir;
+        if (!FolderMode)
+        {
+            // 上次因 exe 同级目录被占用而回退到 LOCALAPPDATA 时，继续复用该缓存。
+            string savedDir = ReadRuntimeLocation(exeDir);
+            if (savedDir != null && RuntimeIsCurrent(savedDir)) appDir = savedDir;
+        }
+        string appExe = Path.Combine(appDir, AppExeName);
+
+        try
+        {
+            // 单文件版必须校验缓存是否对应当前内嵌包：只按版本号判断会让同版本重建继续运行旧代码。
+            bool runtimeReady = FolderMode ? File.Exists(appExe) : RuntimeIsCurrent(appDir);
+            if (!runtimeReady)
+            {
+                if (FolderMode)
+                {
+                    MessageBox.Show(
+                        "Morrow 运行文件缺失：同目录下找不到 " + AppExeName + "。\n\n请重新解压完整的便携文件夹（不要只拷 Morrow.exe），或使用单文件版。",
+                        "Morrow 启动失败",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return 1;
+                }
+                appDir = exeRuntimeDir;
+                appExe = Path.Combine(appDir, AppExeName);
+                TryDeleteStaleRuntime(appDir);
+                string installedDir;
+                bool ok = TryExtract(appDir, exeDir, out installedDir);
+                if (!ok)
+                {
+                    MessageBox.Show(
+                        "Morrow 无法更新运行文件。\n\n如果 Morrow 正在运行，请先完全退出再启动；否则请把 Morrow 放到有写入权限的文件夹（例如桌面或文档目录）后再试。",
+                        "Morrow 启动失败",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return 1;
+                }
+                // 回退到 LOCALAPPDATA 时，实际运行目录是 installedDir，不能再用 exe 同级路径。
+                appDir = installedDir;
+                appExe = Path.Combine(appDir, AppExeName);
+            }
+
+            string tempDir = Path.Combine(appDir, ".morrow-temp");
+            Directory.CreateDirectory(tempDir);
+
+            // 交付目录若带 Low 完整性标签，解压出的应用也会继承 Low：COM 与 Explorer 都会被
+            // 系统拒绝。启动器此时已是 Medium，启动前把应用本体也标成 Medium，子进程才能正常
+            // 使用文件管理器定位/系统程序打开。
+            EnsureMediumIntegrity(appExe);
+
+            // Electron 主进程在某些 Windows 会话/作业对象里无法创建 Explorer 等 GUI 子进程
+            // （0xC0000142）。启动器自己留在应用外部，用主线程（STA）提供文件打开/定位代理。
+            // 不能把代理放在后台线程：部分 Windows 会话会拒绝后台线程创建 Explorer 窗口。
+            string brokerPipe = "morrow-launcher-" + Guid.NewGuid().ToString("N");
+
+            ProcessStartInfo startInfo = new ProcessStartInfo(appExe);
+            startInfo.WorkingDirectory = appDir;
+            startInfo.UseShellExecute = false;
+            // 从 DSH/工作流终端继承的 ELECTRON_RUN_AS_NODE 会让 Electron 以 Node 模式启动并拒绝 --no-sandbox
+            startInfo.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE");
+            // 兼容性：本机在带 Chromium 沙箱启动时会在初始化阶段直接崩溃，必须禁用沙箱。
+            // 应用仅渲染本地内容；工具权限沙箱、工作区边界与审批不受影响。
+            startInfo.Arguments = "--no-sandbox " + JoinArguments(args);
+            startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_DIR"] = exeDir;
+            startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_FILE"] = exePath;
+            startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_APP_FILENAME"] = AppExeName;
+            startInfo.EnvironmentVariables["TEMP"] = tempDir;
+            startInfo.EnvironmentVariables["TMP"] = tempDir;
+            startInfo.EnvironmentVariables["MORROW_LAUNCHER_PIPE"] = brokerPipe;
+
+            Process appProcess = Process.Start(startInfo);
+            if (appProcess == null)
+            {
+                throw new InvalidOperationException("Morrow-app.exe 未能启动。");
+            }
+            // 应用退出后由后台监视线程结束启动器；主线程（STA）继续提供代理服务。
+            Thread monitor = new Thread(() =>
+            {
+                try
+                {
+                    appProcess.WaitForExit();
+                    Environment.Exit(appProcess.ExitCode);
+                }
+                catch
+                {
+                    Environment.Exit(1);
+                }
+            });
+            monitor.IsBackground = true;
+            monitor.Name = "MorrowAppMonitor";
+            monitor.Start();
+
+            RunShellBroker(brokerPipe, 0);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Morrow 启动失败：\n" + ex.Message + "\n\n可尝试删除 exe 同级的 " + AppFolderName + " 文件夹后重试。",
+                "Morrow 启动失败",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// 启动一个仅服务于本次 Morrow 进程的命名管道代理。
+    /// 命令格式：OPEN/REVEAL + 空格 + UTF-8 路径的 Base64。返回 OK 或 ERR\t原因。
+    /// 路径必须是绝对路径且真实存在；命令通过 Process.Start 参数传递，不经过 shell 拼接。
+    /// </summary>
+    private static void RunShellBroker(string pipeName, int parentPid)
+    {
+        // 父启动器退出后代理必须自行结束，避免留下一个永远等待管道的后台进程。
+        if (parentPid > 0)
+        {
+            Thread watchdog = new Thread(() =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(2000);
+                    try
+                    {
+                        Process.GetProcessById(parentPid);
+                    }
+                    catch
+                    {
+                        Environment.Exit(0);
+                    }
+                }
+            });
+            watchdog.IsBackground = true;
+            watchdog.Name = "MorrowBrokerWatchdog";
+            watchdog.Start();
+        }
+
+        while (true)
+        {
+            try
+            {
+                using (NamedPipeServerStream server = new NamedPipeServerStream(
+                    pipeName,
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.None))
+                {
+                    server.WaitForConnection();
+                    using (StreamReader reader = new StreamReader(server, new UTF8Encoding(false), false, 1024, true))
+                    using (StreamWriter writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true))
+                    {
+                        string line = reader.ReadLine();
+                        string response = HandleShellRequest(line);
+                        writer.Write(response + "\n");
+                        writer.Flush();
+                    }
+                }
+            }
+            catch
+            {
+                Thread.Sleep(50);
+            }
+        }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
+
+    [DllImport("shell32.dll")]
+    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr[] apidl, uint dwFlags);
+
+    [DllImport("shell32.dll")]
+    private static extern void ILFree(IntPtr pidl);
+
+    /// <summary>由现有 Explorer 打开文件夹并选中目标；不创建新的 explorer.exe 进程。</summary>
+    private static bool RevealWithShell(string target)
+    {
+        IntPtr pidl = IntPtr.Zero;
+        uint attributes;
+        int hr = SHParseDisplayName(target, IntPtr.Zero, out pidl, 0, out attributes);
+        if (hr != 0 || pidl == IntPtr.Zero) return false;
+        try
+        {
+            return SHOpenFolderAndSelectItems(pidl, 0, null, 0) == 0;
+        }
+        finally
+        {
+            ILFree(pidl);
+        }
+    }
+
+    /// <summary>
+    /// 把应用本体标成 Medium 完整性。目录继承的 Low 标签会让进程无法激活 Shell COM，
+    /// 也无法启动 Explorer；这里只处理 exe 本身，失败时继续启动。
+    /// </summary>
+    private static void EnsureMediumIntegrity(string filePath)
+    {
+        try
+        {
+            ProcessStartInfo info = new ProcessStartInfo(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe"),
+                "\"" + filePath + "\" /setintegritylevel Medium")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            using (Process process = Process.Start(info))
+            {
+                if (process != null) process.WaitForExit(5000);
+            }
+        }
+        catch
+        {
+            // 普通目录下应用本来就以 Medium 运行；设置失败不应阻断启动。
+        }
+    }
+
+    /// <summary>通过 Shell.Application COM 打开文件夹；由已运行的 Explorer 处理，不新建进程。</summary>
+    private static bool ExploreWithShell(string folder)
+    {
+        object shell = null;
+        try
+        {
+            Type type = Type.GetTypeFromProgID("Shell.Application");
+            if (type == null) return false;
+            shell = Activator.CreateInstance(type);
+            if (shell == null) return false;
+            type.InvokeMember("Explore", BindingFlags.InvokeMethod, null, shell, new object[] { folder });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (shell != null && Marshal.IsComObject(shell)) Marshal.ReleaseComObject(shell);
+        }
+    }
+
+    private static string HandleShellRequest(string line)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return "ERR\t空请求";
+            }
+            int space = line.IndexOf(' ');
+            string command = (space < 0 ? line : line.Substring(0, space)).Trim().ToUpperInvariant();
+            string encoded = space < 0 ? string.Empty : line.Substring(space + 1).Trim();
+            string target = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+            if (string.IsNullOrEmpty(target) || !Path.IsPathRooted(target))
+            {
+                return "ERR\t路径无效";
+            }
+            bool isFile = File.Exists(target);
+            bool isDirectory = Directory.Exists(target);
+            if (!isFile && !isDirectory)
+            {
+                return "ERR\t文件不存在";
+            }
+
+            if (command == "OPEN")
+            {
+                if (isDirectory)
+                {
+                    // 目录交给现有 Shell 打开；不要 Process.Start 目录，那会新建 explorer.exe。
+                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
+                }
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+                return "OK";
+            }
+
+            if (command == "REVEAL")
+            {
+                if (isDirectory)
+                {
+                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
+                }
+                if (RevealWithShell(target)) return "OK";
+                string folder = Path.GetDirectoryName(target);
+                if (!string.IsNullOrEmpty(folder) && ExploreWithShell(folder)) return "OK";
+                return "ERR\t系统 Shell 无法打开目标文件夹";
+            }
+
+            return "ERR\t未知命令";
+        }
+        catch (Exception ex)
+        {
+            return "ERR\t" + ex.Message.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+        }
+    }
+
+    /// <summary>内嵌应用 zip 的 SHA-256；用作运行时缓存的版本指纹。</summary>
+    private static string GetRuntimeStamp()
+    {
+        if (!string.IsNullOrEmpty(cachedRuntimeStamp)) return cachedRuntimeStamp;
+        using (Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ZipResourceName))
+        {
+            if (resource == null) throw new InvalidOperationException("安装资源缺失（MorrowApp.zip）");
+            using (SHA256 sha = SHA256.Create())
+            {
+                cachedRuntimeStamp = BitConverter.ToString(sha.ComputeHash(resource)).Replace("-", "");
+            }
+        }
+        return cachedRuntimeStamp;
+    }
+
+    private static bool RuntimeIsCurrent(string appDir)
+    {
+        try
+        {
+            if (!File.Exists(Path.Combine(appDir, AppExeName))) return false;
+            string stampPath = Path.Combine(appDir, RuntimeStampFile);
+            return File.Exists(stampPath) && File.ReadAllText(stampPath).Trim() == GetRuntimeStamp();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryDeleteStaleRuntime(string appDir)
+    {
+        try
+        {
+            if (Directory.Exists(appDir)) Directory.Delete(appDir, true);
+        }
+        catch
+        {
+            // 旧进程仍占用时交给解压覆盖；若仍失败，TryExtract 会回退到 LOCALAPPDATA
+        }
+    }
+
+    /// <summary>读取上次回退到 LOCALAPPDATA 的运行目录；没有或不可读时返回 null。</summary>
+    private static string ReadRuntimeLocation(string exeDir)
+    {
+        try
+        {
+            string file = Path.Combine(exeDir, ".morrow-runtime-location");
+            if (!File.Exists(file)) return null;
+            string dir = File.ReadAllText(file).Trim();
+            return string.IsNullOrEmpty(dir) ? null : dir;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>顶层目录可写则解压到 exe 目录；否则回退 LOCALAPPDATA。usedDir 是实际可用目录。</summary>
+    private static bool TryExtract(string appDir, string exeDir, out string usedDir)
+    {
+        usedDir = appDir;
+        string fallbackDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Morrow",
+            "runtime-" + MorrowLauncherBuildInfo.Version);
+
+        if (InnerExtract(appDir))
+        {
+            try
+            {
+                File.Delete(Path.Combine(exeDir, ".morrow-runtime-location"));
+            }
+            catch
+            {
+                // 无写入权限时忽略
+            }
+            return true;
+        }
+        if (InnerExtract(fallbackDir))
+        {
+            usedDir = fallbackDir;
+            // 记忆回退位置，后续启动直接从 LOCALAPPDATA 运行
+            try
+            {
+                File.WriteAllText(Path.Combine(exeDir, ".morrow-runtime-location"), fallbackDir);
+            }
+            catch
+            {
+                // 无写入权限时忽略
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static bool InnerExtract(string targetDir)
+    {
+        try
+        {
+            Directory.CreateDirectory(targetDir);
+            // 写权限探测
+            string probe = Path.Combine(targetDir, ".write-test");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+
+            using (Splash splash = new Splash())
+            {
+                splash.Show();
+                Application.DoEvents();
+
+                using (Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ZipResourceName))
+                {
+                    if (resource == null)
+                    {
+                        throw new InvalidOperationException("安装资源缺失（MorrowApp.zip）");
+                    }
+                    using (ZipArchive archive = new ZipArchive(resource, ZipArchiveMode.Read))
+                    {
+                        int total = archive.Entries.Count;
+                        int index = 0;
+                        foreach (ZipArchiveEntry entry in archive.Entries)
+                        {
+                            index++;
+                            string destination = Path.GetFullPath(Path.Combine(targetDir, entry.FullName));
+                            string rootPath = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
+                            if (!destination.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue; // 防 zip-slip
+                            }
+                            if (string.IsNullOrEmpty(entry.Name))
+                            {
+                                Directory.CreateDirectory(destination);
+                                continue;
+                            }
+                            Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                            entry.ExtractToFile(destination, true);
+                            if (index % 40 == 0)
+                            {
+                                splash.SetProgress(index, total);
+                                Application.DoEvents();
+                            }
+                        }
+                    }
+                }
+                splash.Close();
+            }
+            File.WriteAllText(Path.Combine(targetDir, RuntimeStampFile), GetRuntimeStamp());
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                if (Directory.Exists(targetDir))
+                {
+                    Directory.Delete(targetDir, true);
+                }
+            }
+            catch
+            {
+                // 忽略清理失败
+            }
+            return false;
+        }
+    }
+
+    private static string JoinArguments(string[] args)
+    {
+        if (args == null || args.Length == 0)
+        {
+            return string.Empty;
+        }
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+        foreach (string arg in args)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append(' ');
+            }
+            builder.Append(Quote(arg));
+        }
+        return builder.ToString();
+    }
+
+    private static string Quote(string value)
+    {
+        if (value.Length > 0 && value.IndexOfAny(new[] { ' ', '\t', '"' }) < 0)
+        {
+            return value;
+        }
+        System.Text.StringBuilder builder = new System.Text.StringBuilder("\"");
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\\')
+            {
+                int backslashes = 1;
+                while (i + 1 < value.Length && value[i + 1] == '\\')
+                {
+                    backslashes++;
+                    i++;
+                }
+                builder.Append('\\', backslashes * 2);
+            }
+            else if (value[i] == '"')
+            {
+                builder.Append('\\').Append('"');
+            }
+            else
+            {
+                builder.Append(value[i]);
+            }
+        }
+        builder.Append('"');
+        return builder.ToString();
+    }
+
+    /// <summary>首次启动的解压进度小窗（无边框、深色、极简）。</summary>
+    private sealed class Splash : Form
+    {
+        private readonly Label label;
+        private readonly ProgressBar bar;
+
+        public Splash()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterScreen;
+            BackColor = Color.FromArgb(13, 15, 19);
+            Size = new Size(360, 128);
+            ShowInTaskbar = false;
+            TopMost = true;
+
+            label = new Label();
+            label.Text = "Morrow 正在完成首次启动…";
+            label.ForeColor = Color.FromArgb(237, 231, 218);
+            label.BackColor = Color.Transparent;
+            label.Font = new Font("Microsoft YaHei UI", 10.5f);
+            label.AutoSize = true;
+            label.Location = new Point(28, 34);
+            Controls.Add(label);
+
+            bar = new ProgressBar();
+            bar.Style = ProgressBarStyle.Continuous;
+            bar.Minimum = 0;
+            bar.Maximum = 100;
+            bar.Value = 0;
+            bar.Location = new Point(28, 74);
+            bar.Size = new Size(304, 6);
+            Controls.Add(bar);
+
+            Label hint = new Label();
+            hint.Text = "正在准备运行文件（仅首次，约几秒）";
+            hint.ForeColor = Color.FromArgb(107, 103, 95);
+            hint.BackColor = Color.Transparent;
+            hint.Font = new Font("Microsoft YaHei UI", 8.5f);
+            hint.AutoSize = true;
+            hint.Location = new Point(28, 92);
+            Controls.Add(hint);
+
+            // 圆角窗口（Windows 11 由系统处理；这里仅给一个细边框观感）
+            Paint += (sender, e) =>
+            {
+                using (Pen pen = new Pen(Color.FromArgb(70, 200, 174, 125), 1))
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+                }
+            };
+        }
+
+        public void SetProgress(int current, int total)
+        {
+            if (total <= 0)
+            {
+                return;
+            }
+            int percent = (int)(current * 100L / total);
+            if (percent < 0) percent = 0;
+            if (percent > 100) percent = 100;
+            bar.Value = percent;
+        }
+    }
+}
