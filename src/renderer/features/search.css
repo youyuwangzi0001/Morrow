@@ -51,10 +51,14 @@
   font-size: var(--fs-body-lg);
 }
 
+.search-input-row:focus-within {
+  border-bottom-color: var(--field-frame-border-focus);
+}
+
 .search-input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--line-gold);
-  border-radius: var(--control-radius);
+  box-shadow: none;
+  border-radius: var(--field-frame-radius);
 }
 
 .search-input::placeholder {

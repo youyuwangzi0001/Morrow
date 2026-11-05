@@ -3824,3 +3824,162 @@
     display: none;
   }
 }
+
+/* ── 云端多媒体生成（模型页） ─────────────────────────────── */
+.st-cloud-media {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.st-cloud-media-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.st-cloud-media-head .st-hint {
+  margin: 2px 0 0;
+}
+
+.st-cloud-media-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.st-cloud-media-tabs button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  color: var(--text-3);
+  background: transparent;
+  font-size: var(--fs-xs);
+}
+
+.st-cloud-media-tabs button:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.st-cloud-media-tabs button.is-active {
+  border-color: var(--line-gold);
+  color: var(--gold);
+  background: var(--gold-ghost);
+}
+
+.st-cloud-media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.st-cloud-provider {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  padding: 10px;
+}
+
+.st-cloud-provider.is-configured {
+  border-color: color-mix(in srgb, var(--patina) 35%, var(--line));
+}
+
+.st-cloud-provider-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.st-cloud-provider-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.st-cloud-provider-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--fs-sm-plus);
+  font-weight: var(--fw-medium);
+}
+
+.st-cloud-provider-region {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: var(--fs-3xs);
+  font-weight: var(--fw-medium);
+  line-height: 16px;
+}
+
+.st-cloud-provider-region.is-domestic {
+  border-color: var(--line-gold);
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.st-cloud-voice-hint {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-copy);
+}
+
+.st-cloud-provider-desc {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-copy);
+}
+
+.st-cloud-provider-meta {
+  color: var(--text-3);
+  font-size: var(--fs-3xs);
+}
+
+.st-cloud-provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.st-cloud-provider-form {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.st-cloud-provider-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.st-cloud-provider-form-foot > div {
+  display: flex;
+  gap: 5px;
+}
+
+.st-local-models .st-provider-picker {
+  margin-top: 6px;
+}
+
+.st-local-models .st-provider-list {
+  margin-top: 2px;
+}

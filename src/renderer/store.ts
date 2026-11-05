@@ -240,6 +240,9 @@ export interface AppStore {
   /** 从主进程重新读取设置（订阅等主进程侧 Provider 变更后同步 UI） */
   refreshSettings: () => Promise<void>
   saveProvider: (input: Parameters<typeof window.morrow.settings.saveProvider>[0]) => Promise<void>
+  saveMediaProvider: (input: Parameters<typeof window.morrow.settings.saveMediaProvider>[0]) => Promise<void>
+  removeMediaProvider: (providerId: string) => Promise<void>
+  setMediaDefault: (capability: import('@shared/media-cloud').CloudMediaCapability, providerId: string | null) => Promise<void>
   completeOnboarding: (input: Parameters<typeof window.morrow.settings.completeOnboarding>[0]) => Promise<void>
   testProvider: (input: Parameters<typeof window.morrow.settings.testProvider>[0]) => Promise<import('@shared/types').ProviderTestResult>
   saveWebSearch: (input: Parameters<typeof window.morrow.settings.saveWebSearch>[0]) => Promise<boolean>
@@ -1976,6 +1979,41 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       get().notify('success', input.apiKey === '' ? '已清除保存的密钥' : '模型服务已保存')
     } catch (err) {
       const message = err instanceof Error ? err.message : '模型服务保存失败'
+      get().notify('error', message)
+      throw new Error(message)
+    }
+  },
+
+  async saveMediaProvider(input) {
+    try {
+      const settings = await call(window.morrow.settings.saveMediaProvider(input))
+      set({ settings })
+      get().notify('success', '多媒体服务已保存')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '多媒体服务保存失败'
+      get().notify('error', message)
+      throw new Error(message)
+    }
+  },
+
+  async removeMediaProvider(providerId) {
+    try {
+      const settings = await call(window.morrow.settings.removeMediaProvider(providerId))
+      set({ settings })
+      get().notify('success', '已移除这个多媒体服务')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '移除多媒体服务失败'
+      get().notify('error', message)
+      throw new Error(message)
+    }
+  },
+
+  async setMediaDefault(capability, providerId) {
+    try {
+      const settings = await call(window.morrow.settings.setMediaDefault(capability, providerId))
+      set({ settings })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '保存默认多媒体服务失败'
       get().notify('error', message)
       throw new Error(message)
     }

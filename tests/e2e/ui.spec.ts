@@ -244,15 +244,18 @@ test.describe('R5 UI 交互', () => {
     const dialog = page.locator('[role="dialog"]').first()
     await expect(dialog).toBeVisible()
 
-    // 服务选择器包含所有服务；当前默认模型与 DeepSeek 模型可见
+    // 模型页只保留云端服务；本地模型统一放到「本地」页
     await dialog.getByRole('button', { name: '选择模型服务' }).click()
     const providerOptions = dialog.getByRole('option')
-    expect(await providerOptions.count()).toBeGreaterThanOrEqual(14)
-    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', '小米 MiMo', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'Meta（Muse）', 'llama.cpp（本地）', 'Ollama（本地）', 'LM Studio（本地）']) {
+    expect(await providerOptions.count()).toBeGreaterThanOrEqual(11)
+    for (const provider of ['DeepSeek', 'Kimi（月之暗面）', '通义千问（阿里云）', '智谱 GLM（Z.AI）', 'MiniMax', '小米 MiMo', 'Anthropic Claude', 'OpenAI', 'Google Gemini', 'xAI Grok', 'Meta（Muse）']) {
       await expect(dialog.getByText(provider, { exact: true }).first()).toBeVisible()
     }
     // OpenRouter 是中转聚合，不是官方或本地模型，不再出现在服务列表
     await expect(providerOptions.filter({ hasText: 'OpenRouter' })).toHaveCount(0)
+    await expect(providerOptions.filter({ hasText: 'llama.cpp（本地）' })).toHaveCount(0)
+    await expect(providerOptions.filter({ hasText: 'Ollama（本地）' })).toHaveCount(0)
+    await expect(providerOptions.filter({ hasText: 'LM Studio（本地）' })).toHaveCount(0)
     await dialog.getByRole('button', { name: '选择模型服务' }).click()
     await expect(dialog.getByText(/连接一个模型服务/)).toBeVisible()
     await expect(dialog.getByText('DeepSeek V4.1 Flash').first()).toBeVisible()
@@ -5204,6 +5207,61 @@ test('@core:interface 侧边聊天顶栏标题与说明有呼吸间距，窄窗�
   }
 })
 
+test('@core:interface 侧边聊天输入框只有流金外框，没有内部高亮框', async () => {
+  test.setTimeout(90_000)
+  const mock = await startMockLLM({ respond: () => ({ text: '侧边回答。' }) })
+  const workspace = join(root, 'tmp', `e2e-sidechat-frame-${Date.now()}`)
+  mkdirSync(workspace, { recursive: true })
+  const morrow = await launchMorrow({ name: 'sidechat-frame', timeoutMs: 90_000 })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    const provider = await configureMockProvider(page, mock.openaiBaseUrl)
+    await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '侧边聊天输入框测试' })
+    await page.locator('.composer-action-sidechat').click()
+    const input = page.locator('.sidechat-input')
+    await expect(input).toBeVisible({ timeout: 10_000 })
+    await input.focus()
+    await page.waitForTimeout(250)
+    const frame = await page.evaluate(() => {
+      const field = document.querySelector('.sidechat-input') as HTMLElement | null
+      const shell = document.querySelector('.sidechat-composer') as HTMLElement | null
+      if (!field || !shell) throw new Error('missing sidechat field')
+      const fieldStyle = getComputedStyle(field)
+      const shellStyle = getComputedStyle(shell)
+      const rootStyle = getComputedStyle(document.documentElement)
+      return {
+        fieldOutlineStyle: fieldStyle.outlineStyle,
+        fieldAppearance: fieldStyle.appearance,
+        fieldShadow: fieldStyle.boxShadow,
+        fieldBorder: fieldStyle.borderWidth,
+        active: document.activeElement === field,
+        shellBorder: shellStyle.borderColor,
+        shellShadow: shellStyle.boxShadow,
+        shellRadius: shellStyle.borderRadius,
+        focusToken: rootStyle.getPropertyValue('--field-frame-focus-shadow').trim(),
+        radiusToken: rootStyle.getPropertyValue('--field-frame-radius').trim()
+      }
+    })
+    expect(frame.active).toBe(true)
+    expect(frame.fieldOutlineStyle).toBe('none')
+    expect(frame.fieldAppearance).toBe('none')
+    expect(frame.fieldShadow).toBe('none')
+    expect(frame.fieldBorder).toBe('0px')
+    expect(frame.shellBorder).toContain('200, 174, 125')
+    expect(frame.shellShadow).not.toBe('none')
+    expect(frame.focusToken).toContain('0 0 0 3px')
+    expect(frame.radiusToken).not.toBe('')
+    expect(frame.shellRadius).toBe('5px')
+    await page.screenshot({ path: screenshotPath('sidechat-gold-frame.png') })
+  } finally {
+    await morrow.close()
+    await mock.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
 test('@core:interface 输入框底栏在窄窗与 Super 侧栏打开时保持单行', async () => {
   test.setTimeout(90_000)
   const mock = await startMockLLM({ respond: () => ({ text: 'ok' }) })
@@ -7087,6 +7145,95 @@ test('@core:accessibility 桌面伙伴状态可被读屏播报', async () => {
     await expect(live).toHaveAttribute('role', 'status', { timeout: 15_000 })
     await expect(live).toHaveAttribute('aria-live', 'polite')
     await expect(live).toContainText('桌面伙伴')
+  } finally {
+    await morrow.close()
+  }
+})
+
+test('@core:settings 模型页接入国内与海外云端多媒体，本地模型统一在本地页', async () => {
+  test.setTimeout(90_000)
+  const morrow = await launchMorrow({ name: 'cloud-media-settings', waitUntil: 'domcontentloaded' })
+  try {
+    const { page } = morrow
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    await page.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => { openSettings: () => void } } }).__morrowStore
+      store.getState().openSettings()
+    })
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await expect(settings).toBeVisible({ timeout: 10_000 })
+    const cloud = settings.locator('.st-cloud-media')
+    await expect(cloud).toBeVisible()
+    await expect(cloud).toContainText('云端多媒体生成')
+    for (const capability of ['图片生成', '视频生成', '配音生成', '配乐生成']) {
+      await expect(cloud.getByRole('tab', { name: capability })).toBeVisible()
+    }
+
+    for (const name of ['Seedream 5.0 Pro', 'Seedream 5.0 Flash', 'Qwen-Image 2.1 Pro', 'Gemini Nano Banana 2.1']) {
+      await expect(cloud.locator('.st-cloud-provider', { hasText: name })).toBeVisible()
+    }
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI Images 2.6' }).first()).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI Images 2.6 Flare' })).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'Seedream 5.0 Pro' }).locator('.st-cloud-provider-region')).toHaveText('国内')
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI Images 2.6' }).first().locator('.st-cloud-provider-region')).toHaveText('海外')
+    await cloud.getByRole('tab', { name: '视频生成' }).click()
+    for (const name of ['Seedance 2.5', 'Seedance 2.0', 'MiniMax H3', 'Google Veo 3.1']) {
+      await expect(cloud.locator('.st-cloud-provider', { hasText: name })).toBeVisible()
+    }
+    await cloud.getByRole('tab', { name: '配音生成' }).click()
+    const qwenSpeech = cloud.locator('.st-cloud-provider', { hasText: 'Qwen3-TTS-Flash' })
+    await expect(qwenSpeech).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'MiniMax Speech 2.8 HD' })).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI TTS' })).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'ElevenLabs TTS' })).toBeVisible()
+    await qwenSpeech.getByRole('button', { name: '接入' }).click()
+    await expect(qwenSpeech.locator('#st-cloud-voice-qwen3-tts')).toHaveValue('Cherry')
+    await expect(qwenSpeech.locator('#st-cloud-voices-qwen3-tts option')).toHaveCount(48)
+    const keyField = qwenSpeech.locator('#st-cloud-key-qwen3-tts')
+    await keyField.focus()
+    await page.waitForTimeout(250)
+    const keyStyle = await keyField.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { outline: style.outlineStyle, appearance: style.appearance, border: style.borderColor }
+    })
+    expect(keyStyle.outline).toBe('none')
+    expect(keyStyle.appearance).toBe('none')
+    expect(keyStyle.border).toContain('200, 174, 125')
+    await keyField.fill('sk-e2e-qwen-tts')
+    await qwenSpeech.getByRole('button', { name: '保存' }).click()
+    await expect(qwenSpeech).toContainText('Key 已保存', { timeout: 10_000 })
+    const saved = await page.evaluate(async () => {
+      const result = await window.morrow.settings.get()
+      if (!result.ok) throw new Error(result.error.message)
+      return result.data.mediaProviders
+    })
+    expect(saved.some((provider) => provider.id === 'qwen3-tts' && provider.apiKeyStored && provider.voice === 'Cherry')).toBe(true)
+    for (let index = 0; index < 6; index += 1) {
+      if ((await page.locator('.toast-close').count()) === 0) break
+      await page.locator('.toast-close').first().click().catch(() => undefined)
+      await page.waitForTimeout(80)
+    }
+    await cloud.locator('.st-cloud-media-head').evaluate((element) => element.scrollIntoView({ block: 'start' }))
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: screenshotPath('settings-cloud-media.png') })
+
+    await settings.getByRole('tab', { name: '本地' }).click()
+    await expect(settings.locator('.st-page-title')).toHaveText('本地')
+    const localModels = settings.locator('.st-local-models')
+    await expect(localModels).toBeVisible({ timeout: 10_000 })
+    await localModels.getByRole('button', { name: '选择模型服务' }).click()
+    const localOptions = localModels.getByRole('option')
+    await expect(localOptions.filter({ hasText: 'Ollama（本地）' })).toHaveCount(1)
+    await expect(localOptions.filter({ hasText: 'llama.cpp（本地）' })).toHaveCount(1)
+    await expect(localOptions.filter({ hasText: 'LM Studio（本地）' })).toHaveCount(1)
+    await localModels.getByRole('button', { name: '选择模型服务' }).click()
+    await page.waitForTimeout(250)
+    await page.screenshot({ path: screenshotPath('settings-local.png') })
+
+    await settings.getByRole('tab', { name: '模型' }).click()
+    await settings.getByRole('button', { name: '选择模型服务' }).click()
+    await expect(settings.getByRole('option').filter({ hasText: 'Ollama（本地）' })).toHaveCount(0)
   } finally {
     await morrow.close()
   }

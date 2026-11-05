@@ -620,16 +620,16 @@
 }
 
 .pp-home-composer {
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--field-frame-border);
+  border-radius: var(--field-frame-radius);
   background: var(--surface-inset);
   padding: 7px 9px 5px;
   transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .pp-home-composer:focus-within {
-  border-color: var(--line-gold);
-  box-shadow: 0 0 0 3px var(--gold-ghost);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .pp-home-composer textarea {

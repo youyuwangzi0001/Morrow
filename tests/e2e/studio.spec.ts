@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import JSZip from 'jszip'
 import type { StudioActionResult, StudioProject } from '../../src/shared/studio'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 test.describe("18-studio", () => {
 test.describe('Morrow 创作台', () => {
   test('@core:studio-timeline 入口、作品库、写作、分镜、时间线与交付的真实走查', async () => {
@@ -62,7 +64,7 @@ test.describe('Morrow 创作台', () => {
       }))
       expect(assistantFonts).toEqual({ title: '15px', meta: '11.5px', body: '13.5px' })
 
-      // 协作者输入框与 Agent 主聊天框共用流金边框：1px 边框、9px 圆角、聚焦时金线展开。
+      // 协作者输入框与 Agent 主聊天框共用流金边框：1px 边框、5px 微圆角、聚焦时金线展开。
       const assistantFrame = page.locator('.studio-assistant-composer')
       await expect(assistantFrame).toHaveClass(/chat-gold-frame/)
       const assistantFrameBase = await assistantFrame.evaluate((element) => ({
@@ -70,17 +72,19 @@ test.describe('Morrow 创作台', () => {
         border: Number.parseFloat(getComputedStyle(element).borderTopWidth),
         color: getComputedStyle(element).borderTopColor
       }))
-      expect(assistantFrameBase.radius).toBe('9px')
+      expect(assistantFrameBase.radius).toBe('5px')
       expect(assistantFrameBase.border).toBeGreaterThan(0.5)
       expect(assistantFrameBase.border).toBeLessThanOrEqual(1.01)
       await assistantFrame.locator('textarea').focus()
       await page.waitForTimeout(520)
       const assistantFrameFocus = await assistantFrame.evaluate((element) => ({
         color: getComputedStyle(element).borderTopColor,
-        horizon: Number(getComputedStyle(element, '::before').opacity)
+        horizon: Number(getComputedStyle(element, '::before').opacity),
+        fieldOutline: getComputedStyle(element.querySelector('textarea') as HTMLElement).outlineStyle
       }))
       expect(assistantFrameFocus.color).not.toBe(assistantFrameBase.color)
       expect(assistantFrameFocus.horizon).toBeGreaterThan(0.8)
+      expect(assistantFrameFocus.fieldOutline).toBe('none')
       await page.locator('.studio-assistant-head b').click()
       await page.waitForTimeout(320)
 
@@ -1755,3 +1759,173 @@ test('@core:studio-drama 内置漫剧是 12 镜可编辑动态镜头与 1080p �
   }
 })
 }
+
+test('@core:studio-media 云端图片服务接入创作台并生成分镜画面', async () => {
+  test.setTimeout(120_000)
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZz3GQAAAABJRU5ErkJggg==', 'base64')
+  const requests: Array<{ url: string; authorization: string; body: string }> = []
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => chunks.push(chunk))
+    request.on('end', () => {
+      requests.push({
+        url: request.url ?? '',
+        authorization: String(request.headers.authorization ?? ''),
+        body: Buffer.concat(chunks).toString('utf8')
+      })
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as AddressInfo).port
+  const morrow = await launchMorrow({ name: 'cloud-media-studio', timeoutMs: 90_000 })
+  try {
+    const page = morrow.page
+    await dismissOnboarding(page)
+    await page.locator('.tb-create').click()
+    await page.waitForSelector('.studio-home', { timeout: 30_000 })
+    if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+    const result = await page.evaluate(async (baseUrl) => {
+      const saved = await window.morrow.settings.saveMediaProvider({
+        id: 'openai-image',
+        baseUrl,
+        model: 'gpt-image-1',
+        apiKey: 'sk-e2e-image'
+      })
+      if (!saved.ok) throw new Error(saved.error.message)
+      const list = await window.morrow.features.invoke<{ projects: Array<{ id: string; title: string }> }>('feature:studio:action', { type: 'list' })
+      if (!list.ok) throw new Error(list.error.message)
+      const project = list.data.projects.find((item) => item.title === '逆行的伞')
+      if (!project) throw new Error('missing demo project')
+      const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId: project.id })
+      if (!loaded.ok) throw new Error(loaded.error.message)
+      const shot = loaded.data.project.shots[0]
+      const generated = await window.morrow.features.invoke('feature:studio:action', {
+        type: 'generate-shot-image',
+        projectId: project.id,
+        shotId: shot.id
+      })
+      if (!generated.ok) throw new Error(generated.error.message)
+      return { projectId: project.id, shotId: shot.id }
+    }, `http://127.0.0.1:${port}/v1`)
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (arg) => {
+            const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId: arg.projectId })
+            if (!loaded.ok) throw new Error(loaded.error.message)
+            return loaded.data.project.shots.find((item) => item.id === arg.shotId)?.imageCandidates.length ?? 0
+          }, result),
+        { timeout: 30_000 }
+      )
+      .toBeGreaterThan(0)
+    const project = await page.evaluate(async (projectId) => {
+      const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId })
+      if (!loaded.ok) throw new Error(loaded.error.message)
+      return loaded.data.project
+    }, result.projectId)
+    const shot = project.shots.find((item) => item.id === result.shotId)
+    const candidate = shot?.imageCandidates[0]
+    const asset = project.assets.find((item) => item.id === candidate?.assetId)
+    expect(asset?.origin?.source).toBe('cloud-image')
+    expect(asset?.origin?.model).toContain('gpt-image-1')
+    expect(requests[0].url).toContain('/v1/images/generations')
+    expect(requests[0].authorization).toBe('Bearer sk-e2e-image')
+    expect(requests[0].body).toContain('gpt-image-1')
+    await page.screenshot({ path: screenshotPath('cloud-media-studio.png') })
+  } finally {
+    await morrow.close()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
+test('@core:studio-media Seedream 国内服务接入创作台并生成分镜画面', async () => {
+  test.setTimeout(120_000)
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZz3GQAAAABJRU5ErkJggg==', 'base64')
+  const requests: Array<{ url: string; authorization: string; body: string }> = []
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => chunks.push(chunk))
+    request.on('end', () => {
+      requests.push({
+        url: request.url ?? '',
+        authorization: String(request.headers.authorization ?? ''),
+        body: Buffer.concat(chunks).toString('utf8')
+      })
+      if (request.method === 'POST' && request.url === '/api/v3/images/generations') {
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ data: [{ url: `http://${request.headers.host}/seedream.png` }] }))
+        return
+      }
+      if (request.method === 'GET' && request.url === '/seedream.png') {
+        response.setHeader('content-type', 'image/png')
+        response.end(png)
+        return
+      }
+      response.statusCode = 404
+      response.end('missing')
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as AddressInfo).port
+  const morrow = await launchMorrow({ name: 'cloud-media-studio-seedream', timeoutMs: 90_000 })
+  try {
+    const page = morrow.page
+    await dismissOnboarding(page)
+    await page.locator('.tb-create').click()
+    await page.waitForSelector('.studio-home', { timeout: 30_000 })
+    if (await page.locator('.studio-guide').isVisible()) await page.locator('.studio-guide-skip').click()
+    const result = await page.evaluate(async (baseUrl) => {
+      const saved = await window.morrow.settings.saveMediaProvider({
+        id: 'seedream-5-pro',
+        baseUrl,
+        model: 'doubao-seedream-5-0-pro-260628',
+        apiKey: 'ark-e2e-image'
+      })
+      if (!saved.ok) throw new Error(saved.error.message)
+      const list = await window.morrow.features.invoke<{ projects: Array<{ id: string; title: string }> }>('feature:studio:action', { type: 'list' })
+      if (!list.ok) throw new Error(list.error.message)
+      const project = list.data.projects.find((item) => item.title === '逆行的伞')
+      if (!project) throw new Error('missing demo project')
+      const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId: project.id })
+      if (!loaded.ok) throw new Error(loaded.error.message)
+      const shot = loaded.data.project.shots[0]
+      const generated = await window.morrow.features.invoke('feature:studio:action', {
+        type: 'generate-shot-image',
+        projectId: project.id,
+        shotId: shot.id
+      })
+      if (!generated.ok) throw new Error(generated.error.message)
+      return { projectId: project.id, shotId: shot.id }
+    }, `http://127.0.0.1:${port}/api/v3`)
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (arg) => {
+            const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId: arg.projectId })
+            if (!loaded.ok) throw new Error(loaded.error.message)
+            return loaded.data.project.shots.find((item) => item.id === arg.shotId)?.imageCandidates.length ?? 0
+          }, result),
+        { timeout: 30_000 }
+      )
+      .toBeGreaterThan(0)
+    const project = await page.evaluate(async (projectId) => {
+      const loaded = await window.morrow.features.invoke<{ project: StudioProject }>('feature:studio:action', { type: 'get', projectId })
+      if (!loaded.ok) throw new Error(loaded.error.message)
+      return loaded.data.project
+    }, result.projectId)
+    const shot = project.shots.find((item) => item.id === result.shotId)
+    const candidate = shot?.imageCandidates[0]
+    const asset = project.assets.find((item) => item.id === candidate?.assetId)
+    expect(asset?.origin?.source).toBe('cloud-image')
+    expect(asset?.origin?.model).toContain('doubao-seedream-5-0-pro')
+    expect(requests[0].url).toBe('/api/v3/images/generations')
+    expect(requests[0].authorization).toBe('Bearer ark-e2e-image')
+    expect(requests[0].body).toContain('doubao-seedream-5-0-pro-260628')
+    await page.screenshot({ path: screenshotPath('cloud-media-studio-seedream.png') })
+  } finally {
+    await morrow.close()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})

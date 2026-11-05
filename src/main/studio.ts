@@ -19,6 +19,7 @@ import JSZip from 'jszip'
 import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { getMediaService } from './media'
+import { cloudMediaConfigured, cloudMediaFor, generateCloudImage, generateCloudMusic, generateCloudSpeech, generateCloudVideo } from './media-cloud'
 import { creativeMasterPrompt, type CreativeTask } from './creative-masters'
 import { localTtsStatus, localTtsVoices, isLocalTtsVoice, QWEN_DEFAULT_VOICE, synthesizeLocalSpeech } from './tts-local'
 import { sendFeatureEvent } from './feature-ipc'
@@ -10083,20 +10084,21 @@ export class StudioService {
     })
   }
 
-  private mediaReady(model: 'image' | 'video' | 'audio'): Promise<{ ok: boolean; message: string; status: Awaited<ReturnType<ReturnType<typeof getMediaService>['status']>> }> {
+  private async mediaReady(model: 'image' | 'video' | 'audio'): Promise<{ ok: boolean; message: string }> {
+    const capability = model === 'audio' ? 'music' : model
+    if (cloudMediaConfigured(capability)) return { ok: true, message: '' }
     return getMediaService()
       .status()
       .then((status) => {
         const target = status.models.find((item) => item.id === model)
-        if (!status.engine.online) return { ok: false, message: status.engine.message, status }
+        if (!status.engine.online) return { ok: false, message: status.engine.message }
         if (!target?.ready) {
           return {
             ok: false,
-            message: `${model === 'image' ? '图片' : model === 'video' ? '视频' : '配乐'}模型未就绪：${target?.missing?.slice(0, 3).join('、') || '请到设置 → 多媒体检查模型文件'}`,
-            status
+            message: `${model === 'image' ? '图片' : model === 'video' ? '视频' : '配乐'}模型未就绪：${target?.missing?.slice(0, 3).join('、') || '请到设置 → 本地检查模型文件'}`
           }
         }
-        return { ok: true, message: '', status }
+        return { ok: true, message: '' }
       })
       .catch((err) => {
         throw new Error(`无法检查本地媒体引擎：${err instanceof Error ? err.message : String(err)}`)
@@ -10316,6 +10318,36 @@ export class StudioService {
       .join(' ')
     const media = getMediaService()
     const workspace = this.store.projectDir(project.id)
+    const cloud = cloudMediaFor('image')
+    if (cloud?.provider.apiKeyStored) {
+      onProgress(`云端出图 · ${cloud.provider.name}`, 20)
+      const workDir = join(this.store.tempDir(project.id), `cloud-image-${shot.id}`)
+      const result = await generateCloudImage({
+        provider: cloud.provider,
+        apiKey: cloud.apiKey,
+        prompt,
+        aspect: project.brief.aspect,
+        workDir,
+        signal: ctx.signal
+      })
+      const bytes = readFileSync(result.path)
+      const thumb = makeThumbnail(result.path, project.id)
+      const asset = await this.store.addAsset(project, {
+        bytes,
+        title: `第 ${shot.number} 镜 · ${shot.title}`,
+        mime: result.mime,
+        kindHint: 'image',
+        tags: ['image', `shot:${shot.id}`, 'storyboard', 'cloud'],
+        origin: { model: `Cloud Image · ${result.model}`, jobId: ctx.jobId, source: 'cloud-image', promptHash: createHash('sha256').update(prompt).digest('hex').slice(0, 16) },
+        metadata: { width: result.width, height: result.height },
+        ...(thumb ? { thumbBytes: thumb } : {})
+      })
+      try {
+        rmSync(workDir, { recursive: true, force: true })
+      } catch {
+      }
+      return asset
+    }
     const result = await media.generateImage({
       workspace,
       prompt,
@@ -10359,6 +10391,7 @@ export class StudioService {
     if (!image) throw new Error('这一镜的画面素材丢失了。')
     const readiness = await this.mediaReady('video')
     if (!readiness.ok) throw new Error(`${readiness.message}。草稿模式不需要视频，可以先用分镜图合成。`)
+    const cloudVideo = cloudMediaFor('video')
     const instruction = str(request.instruction).slice(0, 1200)
     const requestedMode = str(request.mode) === 'first-only' ? 'first-only' : 'reference'
     const job = await this.launchJob(project, {
@@ -10367,8 +10400,10 @@ export class StudioService {
       stage: 'visuals',
       requestId: str(request.requestId) || undefined,
       inputHash: sha256Buffer(Buffer.from(`video:${instruction}:${requestedMode}:${shot.id}:${image.sha256}:${shot.prompt}:${shot.continuity}`)),
-      estimatedCostCny: 0,
-      costNote: '本机 ComfyUI 引擎，不计边际费用',
+      ...(cloudVideo?.provider.apiKeyStored ? {} : { estimatedCostCny: 0 }),
+      costNote: cloudVideo?.provider.apiKeyStored
+        ? `云端视频 · ${cloudVideo.provider.name} · ${cloudVideo.provider.model}，按服务商账单计费`
+        : '本机 ComfyUI 引擎，不计边际费用',
       retry: { action: 'generate-shot-video', payload: { shotId: shot.id, instruction, mode: requestedMode } },
       run: async (snapshot, ctx) => {
         const currentShot = snapshot.shots.find((item) => item.id === shot.id)
@@ -10391,31 +10426,46 @@ export class StudioService {
               .find((asset) => asset?.kind === 'image')
           : undefined
         ctx.progress('上传首帧', 6)
-        const result = await getMediaService().generateVideo({
-          workspace: this.store.projectDir(snapshot.id),
-          prompt,
-          referencePaths: [
-            this.store.assetAbsolute(snapshot, currentImage),
-            ...(characterRef ? [this.store.assetAbsolute(snapshot, characterRef)] : [])
-          ],
-          mode: requestedMode,
-          width: snapshot.brief.aspect === '9:16' ? 544 : 960,
-          height: snapshot.brief.aspect === '9:16' ? 960 : 544,
-          seconds: Math.max(5, Math.min(15, Math.round(currentShot.durationSec))),
-          signal: ctx.signal,
-          onProgress: (update) => ctx.progress(update.stage, update.percent),
-          ...(ctx.attachRemote ? { onPromptId: (promptId: string) => ctx.attachRemote?.(promptId, { kind: 'video', shotId: currentShot.id }) } : {})
-        })
+        const cloud = cloudVideo
+        const result = cloud?.provider.apiKeyStored
+          ? await generateCloudVideo({
+              provider: cloud.provider,
+              apiKey: cloud.apiKey,
+              prompt,
+              aspect: snapshot.brief.aspect,
+              seconds: Math.max(4, Math.min(8, Math.round(currentShot.durationSec))),
+              referencePath: this.store.assetAbsolute(snapshot, currentImage),
+              referenceMime: currentImage.mime,
+              workDir: join(this.store.tempDir(snapshot.id), `cloud-video-${currentShot.id}`),
+              signal: ctx.signal,
+              onProgress: (stage, percent) => ctx.progress(stage, percent)
+            })
+          : await getMediaService().generateVideo({
+              workspace: this.store.projectDir(snapshot.id),
+              prompt,
+              referencePaths: [
+                this.store.assetAbsolute(snapshot, currentImage),
+                ...(characterRef ? [this.store.assetAbsolute(snapshot, characterRef)] : [])
+              ],
+              mode: requestedMode,
+              width: snapshot.brief.aspect === '9:16' ? 544 : 960,
+              height: snapshot.brief.aspect === '9:16' ? 960 : 544,
+              seconds: Math.max(5, Math.min(15, Math.round(currentShot.durationSec))),
+              signal: ctx.signal,
+              onProgress: (update) => ctx.progress(update.stage, update.percent),
+              ...(ctx.attachRemote ? { onPromptId: (promptId: string) => ctx.attachRemote?.(promptId, { kind: 'video', shotId: currentShot.id }) } : {})
+            })
         ctx.progress('入库视频', 94)
         const bytes = readFileSync(result.path)
         const thumb = makeThumbnail(result.path, snapshot.id)
+        const viaCloud = Boolean(cloud?.provider.apiKeyStored)
         const asset = await this.store.addAsset(snapshot, {
           bytes,
           title: `第 ${currentShot.number} 镜 · 视频`,
           mime: 'video/mp4',
           kindHint: 'video',
-          tags: ['video', `shot:${currentShot.id}`, 'upgraded'],
-          origin: { model: result.model, jobId: ctx.jobId, source: 'comfyui' },
+          tags: ['video', `shot:${currentShot.id}`, 'upgraded', ...(viaCloud ? ['cloud'] : [])],
+          origin: { model: result.model, jobId: ctx.jobId, source: viaCloud ? 'cloud-video' : 'comfyui' },
           metadata: { width: result.width, height: result.height, durationSec: result.durationSec },
           ...(thumb ? { thumbBytes: thumb } : {})
         })
@@ -10424,9 +10474,9 @@ export class StudioService {
         } catch {
         }
         return {
-          message: `第 ${currentShot.number} 镜已升级为视频（${Math.round(result.durationSec ?? currentShot.durationSec)} 秒）。记得重新装配时间线。`,
-          costCny: 0,
-          costNote: '本机 ComfyUI 引擎，不计边际费用',
+          message: `第 ${currentShot.number} 镜已升级为视频（${Math.round(result.durationSec ?? currentShot.durationSec)} 秒）${viaCloud ? ` · 云端 ${cloud?.provider.name}` : ''}。记得重新装配时间线。`,
+          costCny: viaCloud ? null : 0,
+          costNote: viaCloud ? `云端视频 · ${cloud?.provider.name} · ${cloud?.provider.model}，按服务商账单计费` : '本机 ComfyUI 引擎，不计边际费用',
           outputs: [{ label: asset.title, assetId: asset.id }],
           apply: (fresh) => {
             if (!fresh.assets.some((item) => item.id === asset.id)) fresh.assets.push(asset)
@@ -10535,33 +10585,38 @@ export class StudioService {
     const projectId = safeProjectId(str(request.projectId))
     const project = this.store.readProject(projectId)
     const tts = project.runtime.tts ?? { mode: 'system' as const, model: 'tts-1', voice: '' }
-    const cloudMode = tts.mode === 'cloud'
+    const cloudSpeech = cloudMediaFor('speech')
+    const mediaSpeech = Boolean(cloudSpeech?.provider.apiKeyStored)
+    const cloudMode = !mediaSpeech && tts.mode === 'cloud'
     const cloudRoute = cloudMode ? studioTextRuntime('cloud-first') : null
     if (cloudMode) {
       if (!cloudRoute?.configured || !cloudRoute.config || !cloudRoute.apiKey || isLocalServiceUrl(cloudRoute.config.baseUrl, { allowPrivate: true })) {
         throw new Error('云端配音需要先在 Agent 设置里配置云端模型服务商与 API Key。')
       }
     }
-    const voiceList = cloudMode ? { voices: [], error: undefined } : listSystemVoices()
-    if (!cloudMode && voiceList.error && !voiceList.voices.length) throw new Error(voiceList.error)
-    const localReady = !cloudMode && localTtsStatus().modelReady
+    const voiceList = cloudMode || mediaSpeech ? { voices: [], error: undefined } : listSystemVoices()
+    if (!cloudMode && !mediaSpeech && voiceList.error && !voiceList.voices.length) throw new Error(voiceList.error)
+    const localReady = !cloudMode && !mediaSpeech && localTtsStatus().modelReady
     const instruction = str(request.instruction).trim().slice(0, 800)
-    const preferred =
-      str(request.voiceId) ||
-      tts.voice ||
-      project.characters.find((character) => character.voiceId)?.voiceId ||
-      (localReady ? QWEN_DEFAULT_VOICE : '') ||
-      voiceList.voices.find((voice) => voice.culture.startsWith('zh'))?.name ||
-      voiceList.voices[0]?.name ||
-      ''
+    const preferred = mediaSpeech
+      ? cloudSpeech?.provider.voice || str(request.voiceId) || ''
+      : str(request.voiceId) ||
+        tts.voice ||
+        project.characters.find((character) => character.voiceId)?.voiceId ||
+        (localReady ? QWEN_DEFAULT_VOICE : '') ||
+        voiceList.voices.find((voice) => voice.culture.startsWith('zh'))?.name ||
+        voiceList.voices[0]?.name ||
+        ''
     const requestedIds = Array.isArray(request.shotIds) ? arrayOfStrings(request.shotIds) : [str(request.shotId)]
     const targets = project.shots.filter((shot) => (requestedIds.filter(Boolean).length ? requestedIds.includes(shot.id) : Boolean(shot.dialogue.trim()) && !shot.voiceAssetId))
     if (!targets.length) throw new Error('没有需要配音的台词。')
-    const voiceNote = cloudMode
-      ? `云端配音 · ${tts.model || 'tts-1'}`
-      : localReady
-        ? '本地 Qwen3-TTS 声线，本机生成'
-        : 'Windows 系统声线，本机生成'
+    const voiceNote = mediaSpeech
+      ? `云端配音 · ${cloudSpeech?.provider.name} · ${cloudSpeech?.provider.model}`
+      : cloudMode
+        ? `云端配音 · ${tts.model || 'tts-1'}`
+        : localReady
+          ? '本地 Qwen3-TTS 声线，本机生成'
+          : 'Windows 系统声线，本机生成'
     const job = await this.launchJob(project, {
       kind: 'voice',
       label: targets.length > 1 ? `生成 ${targets.length} 段配音` : `第 ${targets[0].number} 镜配音`,
@@ -10571,7 +10626,7 @@ export class StudioService {
         const voice = project.characters.find((character) => character.name === shot.speaker)?.voiceId || shot.voiceId || ''
         return `${shot.id}:${shot.dialogue}:${voice}`
       }).join('|')}`)),
-      ...(cloudMode ? {} : { estimatedCostCny: 0 }),
+      ...(cloudMode || mediaSpeech ? {} : { estimatedCostCny: 0 }),
       costNote: voiceNote,
       retry: { action: 'generate-voice', payload: { shotIds: targets.map((shot) => shot.id), voiceId: preferred, ...(instruction ? { instruction } : {}) } },
       run: async (snapshot, ctx) => {
@@ -10583,25 +10638,46 @@ export class StudioService {
           const workDir = join(this.store.tempDir(snapshot.id), `tts-${shot.id}`)
           const character = snapshot.characters.find((item) => item.name === shot.speaker)
           const storedVoice = character?.voiceId || shot.voiceId || ''
+          const cloudStoredVoice = isLocalTtsVoice(storedVoice) ? '' : storedVoice
           const requestedLocal = isLocalTtsVoice(str(request.voiceId)) ? str(request.voiceId) : ''
-          const voice = cloudMode
-            ? (storedVoice || preferred)
-            : requestedLocal
-              ? requestedLocal
-              : storedVoice
-                ? storedVoice
-                : isLocalTtsVoice(tts.voice)
-                  ? tts.voice
-                  : localReady
-                    ? QWEN_DEFAULT_VOICE
-                    : preferred
-          const useLocalVoice = !cloudMode && isLocalTtsVoice(voice)
-          const extension = cloudMode ? 'mp3' : 'wav'
+          const voice = mediaSpeech
+            ? cloudStoredVoice || cloudSpeech?.provider.voice || preferred
+            : cloudMode
+              ? (storedVoice || preferred)
+              : requestedLocal
+                ? requestedLocal
+                : storedVoice
+                  ? storedVoice
+                  : isLocalTtsVoice(tts.voice)
+                    ? tts.voice
+                    : localReady
+                      ? QWEN_DEFAULT_VOICE
+                      : preferred
+          const useLocalVoice = !cloudMode && !mediaSpeech && isLocalTtsVoice(voice)
+          const extension = cloudMode || mediaSpeech ? 'mp3' : 'wav'
           const output = join(workDir, `voice-${Date.now().toString(36)}.${extension}`)
           const voiceDirection = [instruction, localVoiceInstruction(shot, character)].filter(Boolean).join('；')
           if (useLocalVoice) ctx.progress(`第 ${index + 1}/${targets.length} 段 · 本地 AI 声线合成`, 4 + Math.round((index / targets.length) * 86))
           try {
-            if (cloudMode && cloudRoute?.config) {
+            let speechPath = output
+            let speechMime = cloudMode || mediaSpeech ? 'audio/mpeg' : 'audio/wav'
+            let speechModel = ''
+            let speechSource = ''
+            if (mediaSpeech && cloudSpeech) {
+              const speech = await generateCloudSpeech({
+                provider: cloudSpeech.provider,
+                apiKey: cloudSpeech.apiKey,
+                text: shot.dialogue,
+                instructions: voiceDirection,
+                voice,
+                workDir,
+                signal: ctx.signal
+              })
+              speechPath = speech.path
+              speechMime = speech.mime
+              speechModel = `${cloudSpeech.provider.name} · ${speech.model}`
+              speechSource = 'cloud-tts'
+            } else if (cloudMode && cloudRoute?.config) {
               await synthesizeCloudSpeech({
                 text: shot.dialogue,
                 baseUrl: cloudRoute.config.baseUrl,
@@ -10613,6 +10689,8 @@ export class StudioService {
                 workDir,
                 signal: ctx.signal
               })
+              speechModel = `Cloud TTS · ${tts.model || 'tts-1'}`
+              speechSource = 'cloud-tts'
             } else if (useLocalVoice) {
               try {
                 await synthesizeLocalSpeech({
@@ -10621,6 +10699,8 @@ export class StudioService {
                   instruct: voiceDirection,
                   outputPath: output
                 })
+                speechModel = `Qwen3-TTS · ${voice.replace(/^qwen:/, '')}`
+                speechSource = 'local-tts'
               } catch (localError) {
                 errors.push(`第 ${shot.number} 镜本地声线失败，已回退系统声线：${localError instanceof Error ? localError.message : String(localError)}`)
                 await synthesizeSpeech({
@@ -10630,6 +10710,8 @@ export class StudioService {
                   outputPath: output,
                   workDir
                 })
+                speechModel = `Windows SAPI · ${voice}`
+                speechSource = 'sapi'
               }
             } else {
               await synthesizeSpeech({
@@ -10639,20 +10721,18 @@ export class StudioService {
                 outputPath: output,
                 workDir
               })
+              speechModel = `Windows SAPI · ${voice}`
+              speechSource = 'sapi'
             }
-            const duration = probeDuration(output)
-            const bytes = readFileSync(output)
+            const duration = probeDuration(speechPath)
+            const bytes = readFileSync(speechPath)
             const asset = await this.store.addAsset(snapshot, {
               bytes,
               title: `第 ${shot.number} 镜 · 配音（${shot.speaker || '旁白'}）`,
-              mime: cloudMode ? 'audio/mpeg' : 'audio/wav',
+              mime: speechMime,
               kindHint: 'audio',
-              tags: ['voice', `shot:${shot.id}`],
-              origin: cloudMode
-                ? { model: `Cloud TTS · ${tts.model || 'tts-1'}`, source: 'cloud-tts' }
-                : useLocalVoice
-                  ? { model: `Qwen3-TTS · ${voice.replace(/^qwen:/, '')}`, source: 'local-tts' }
-                  : { model: `Windows SAPI · ${voice}`, source: 'sapi' },
+              tags: ['voice', `shot:${shot.id}`, ...(mediaSpeech ? ['cloud'] : [])],
+              origin: { model: speechModel, source: speechSource },
               ...(duration ? { metadata: { durationSec: duration } } : {})
             })
             generated.push({ shotId: shot.id, asset })
@@ -10667,8 +10747,12 @@ export class StudioService {
         if (!generated.length) throw new Error(errors[0] ?? '没有生成任何配音。')
         return {
           message: `已生成 ${generated.length}/${targets.length} 段配音${errors.length ? `；${errors.length} 段失败` : ''}`,
-          costCny: cloudMode ? null : 0,
-          costNote: cloudMode ? '云端配音按服务商账单计费，单价未知' : localReady ? '本地 Qwen3-TTS，本机生成' : 'Windows 系统声线，本机生成',
+          costCny: cloudMode || mediaSpeech ? null : 0,
+          costNote: mediaSpeech
+            ? `云端配音 · ${cloudSpeech?.provider.name} · ${cloudSpeech?.provider.model}，按服务商账单计费`
+            : cloudMode
+              ? '云端配音按服务商账单计费，单价未知'
+              : localReady ? '本地 Qwen3-TTS，本机生成' : 'Windows 系统声线，本机生成',
           outputs: generated.map((item) => ({ label: '配音', assetId: item.asset.id })),
           apply: (fresh) => {
             for (const item of generated) {
@@ -10705,19 +10789,24 @@ export class StudioService {
         throw new Error(`${readiness.message}。也可以明确选择“本地器乐草稿”，但草稿只是临时试听，不计入正式配乐。`)
       }
     }
+    const cloudMusic = engine === 'model' && !isSfx ? cloudMediaFor('music') : null
     const label = isSfx
       ? `生成音效 · ${kind}`
       : engine === 'local'
         ? `本地配乐草稿 · ${mood.label}`
-        : `生成配乐 · ${mood.label}（ACE-Step）`
+        : cloudMusic?.provider.apiKeyStored
+          ? `生成配乐 · ${mood.label}（${cloudMusic.provider.name}）`
+          : `生成配乐 · ${mood.label}（ACE-Step）`
     const job = await this.launchJob(project, {
       kind: isSfx ? 'sfx' : 'music',
       label,
       stage: 'music',
       requestId: str(request.requestId) || undefined,
       inputHash: sha256Buffer(Buffer.from(`music:${project.id}:${kind}:${engine}:${mood.id}:${seconds}`)),
-      estimatedCostCny: 0,
-      costNote: engine === 'model' && !isSfx ? '本机 ComfyUI 配乐模型，不计边际费用' : '本地器乐/音效，不计模型费用',
+      ...(cloudMusic?.provider.apiKeyStored ? {} : { estimatedCostCny: 0 }),
+      costNote: cloudMusic?.provider.apiKeyStored
+        ? `云端配乐 · ${cloudMusic.provider.name} · ${cloudMusic.provider.model}，按服务商账单计费`
+        : engine === 'model' && !isSfx ? '本机 ComfyUI 配乐模型，不计边际费用' : '本地器乐/音效，不计模型费用',
       retry: { action: 'generate-music', payload: { kind, mood: mood.id, seconds, engine } },
       run: async (snapshot, ctx) => {
         const workDir = join(this.store.tempDir(snapshot.id), `audio-${Date.now().toString(36)}`)
@@ -10753,14 +10842,24 @@ export class StudioService {
           })
         } else {
           ctx.progress('正在生成配乐', 8)
-          const result = await getMediaService().generateMusic({
-            workspace: this.store.projectDir(snapshot.id),
-            prompt: musicModelPrompt(snapshot, mood),
-            seconds,
-            bpm: mood.tempo,
-            signal: ctx.signal,
-            onProgress: (update) => ctx.progress(update.stage, typeof update.percent === 'number' ? Math.max(8, Math.min(92, update.percent)) : undefined)
-          })
+          const viaCloud = Boolean(cloudMusic?.provider.apiKeyStored)
+          const result = viaCloud
+            ? await generateCloudMusic({
+                provider: cloudMusic!.provider,
+                apiKey: cloudMusic!.apiKey,
+                prompt: musicModelPrompt(snapshot, mood),
+                seconds,
+                workDir,
+                signal: ctx.signal
+              })
+            : await getMediaService().generateMusic({
+                workspace: this.store.projectDir(snapshot.id),
+                prompt: musicModelPrompt(snapshot, mood),
+                seconds,
+                bpm: mood.tempo,
+                signal: ctx.signal,
+                onProgress: (update) => ctx.progress(update.stage, typeof update.percent === 'number' ? Math.max(8, Math.min(92, update.percent)) : undefined)
+              })
           ctx.progress('入库配乐', 94)
           const bytes = readFileSync(result.path)
           asset = await this.store.addAsset(snapshot, {
@@ -10768,12 +10867,12 @@ export class StudioService {
             title: `配乐 · ${mood.label}`,
             mime: 'audio/mpeg',
             kindHint: 'audio',
-            tags: ['music', 'model', mood.id],
-            origin: { model: result.model, jobId: ctx.jobId, source: 'comfyui' },
+            tags: ['music', 'model', mood.id, ...(viaCloud ? ['cloud'] : [])],
+            origin: { model: result.model, jobId: ctx.jobId, source: viaCloud ? 'cloud-music' : 'comfyui' },
             metadata: { durationSec: result.durationSec ?? seconds }
           })
           try {
-            if (result.path.startsWith(this.store.projectDir(snapshot.id))) rmSync(result.path, { force: true })
+            if (result.path.startsWith(this.store.projectDir(snapshot.id)) || viaCloud) rmSync(result.path, { force: true })
           } catch {
           }
         }
@@ -10782,10 +10881,13 @@ export class StudioService {
         } catch {
         }
         const isFormal = !isSfx && engine === 'model'
+        const viaCloudMusic = Boolean(cloudMusic?.provider.apiKeyStored)
         return {
-          message: isSfx ? `音效已生成：${asset.title} · ${seconds} 秒` : isFormal ? `配乐已生成：${asset.title} · ${seconds} 秒` : `本地器乐草稿已生成：${asset.title} · ${seconds} 秒；安装 ACE-Step 后可生成正式配乐。`,
-          costCny: 0,
-          costNote: isFormal ? '本机 ComfyUI 配乐模型，不计边际费用' : '本地器乐/音效，不计模型费用',
+          message: isSfx ? `音效已生成：${asset.title} · ${seconds} 秒` : isFormal ? `配乐已生成：${asset.title} · ${seconds} 秒${viaCloudMusic ? ` · 云端 ${cloudMusic?.provider.name}` : ''}` : `本地器乐草稿已生成：${asset.title} · ${seconds} 秒；安装 ACE-Step 后可生成正式配乐。`,
+          costCny: viaCloudMusic ? null : 0,
+          costNote: viaCloudMusic
+            ? `云端配乐 · ${cloudMusic?.provider.name} · ${cloudMusic?.provider.model}，按服务商账单计费`
+            : isFormal ? '本机 ComfyUI 配乐模型，不计边际费用' : '本地器乐/音效，不计模型费用',
           outputs: [{ label: asset.title, assetId: asset.id }],
           apply: (fresh) => {
             if (!fresh.assets.some((item) => item.id === asset.id)) fresh.assets.push(asset)

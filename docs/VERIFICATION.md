@@ -4,6 +4,8 @@
 
 ## 1. 当前交付
 
+> 2026-11-05：本轮接入国内云端多媒体（Seedream 5.0、Seedance 2.5/2.0、MiniMax H3、Qwen-Image 2.1 Pro、Qwen3-TTS-Flash、MiniMax Speech 2.8），并把云端模型更新到 GPT-Image 2.6、Gemini Nano Banana 2.1、Veo 3.1 稳定版、ElevenLabs v4 / Music v2.5；OpenAI、Qwen、MiniMax 的官方系统音色已全部列入声线选择。同时统一全部输入框、文本域和选择框的流金外框，移除内部高亮加粗框。源码、测试与生产构建已通过。`deliver/` 与 GitHub v0.2.0 将随后更新为本轮构建。
+
 > 2026-11-03：本版删除并排对话，统一输入框/文本域/下拉的微圆角与内嵌焦点环，放大记忆、更多功能、快捷键等界面字号，修复大工作区被 300MB 副本上限误拦的问题；同时修复删除同工作区其他对话会误停 Super-Agent 任务，右侧面板支持拖拽调宽并复用 1px 香槟金分隔线，任务栏图标按主题使用多尺寸 ICO；并行派发改为异步复制/扫描，验收命令兼容 `cd <目录> &&` 与 `2>&1`；Router 重新派发会自动修订当前计划，旧批次不再与新批次并行；浏览器与 Super 共用右侧栏时会自动收起另一方。`deliver/Morrow Data` 已按保护规则暂存并恢复。
 
 | 文件 | 大小 | SHA-256 |
@@ -25,10 +27,10 @@
 |---|---|
 | `npm run typecheck` | 通过 |
 | `npm run audit:ui` | 28 CSS + 30 TSX，0 裸排版声明，31 个字号令牌可缩放，焦点环 2px |
-| `npm run docs:check` | 通过（24 个 Markdown、45 张 2100×1200 截图、49 个本地图片链接） |
-| `npm run test:suite` | 494 单元 / 82 Electron / 41 域 |
-| `npm run test:unit` | 494 收集、494 通过、0 跳过、0 失败 |
-| `npm run test:e2e` | 82 项流程通过（PDF 预览首次受渲染时序影响，重跑通过） |
+| `npm run docs:check` | 通过（26 个 Markdown、47 张 2100×1200 截图、53 个本地图片链接） |
+| `npm run test:suite` | 508 单元 / 86 Electron / 41 域 |
+| `npm run test:unit` | 508 收集、508 通过、0 跳过、0 失败 |
+| `npm run test:e2e` | 86 项流程通过（输入框流金外框回归已覆盖） |
 | `npm run smoke:packaged` | 通过（6.0s，CDP 4.9s） |
 
 核心测试入口：`tests/unit/collaboration.test.ts`（37 项协作/Super-Agent）、其余单元按功能域分文件；`tests/e2e` 5 个流程文件。测试截图写 `tmp/e2e-screens`，不进入文档。

@@ -211,14 +211,17 @@
   min-width: 0;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--field-frame-border);
+  border-radius: var(--field-frame-radius);
   background: var(--surface-inset, var(--surface));
-  transition: border-color 160ms;
+  transition:
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
 }
 
 .browser-address:focus-within {
-  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .browser-address-icon {

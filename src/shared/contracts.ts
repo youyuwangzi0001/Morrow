@@ -727,7 +727,9 @@ export function defaultSettings(): Settings {
     answerStyleCustom: '',
     hooks: [],
     terminalShell: '',
-    shortcuts: { ...DEFAULT_SHORTCUTS }
+    shortcuts: { ...DEFAULT_SHORTCUTS },
+    mediaProviders: [],
+    mediaDefaults: {}
   }
 }
 
@@ -2449,6 +2451,9 @@ export const IPC = {
   settingsChanged: 'settings:changed',
   settingsSaveProvider: 'settings:save-provider',
   settingsRemoveProvider: 'settings:remove-provider',
+  settingsSaveMediaProvider: 'settings:save-media-provider',
+  settingsRemoveMediaProvider: 'settings:remove-media-provider',
+  settingsSetMediaDefault: 'settings:set-media-default',
   settingsTestProvider: 'settings:test-provider',
   settingsCompleteOnboarding: 'settings:complete-onboarding',
   settingsSyncModels: 'settings:sync-models',
@@ -2773,6 +2778,9 @@ export interface MorrowApi {
     onChanged(listener: (settings: Settings) => void): () => void
     saveProvider(input: SaveProviderInput): Promise<Result<Settings>>
     removeProvider(providerId: string): Promise<Result<Settings>>
+    saveMediaProvider(input: import('./types').SaveCloudMediaProviderInput): Promise<Result<Settings>>
+    removeMediaProvider(providerId: string): Promise<Result<Settings>>
+    setMediaDefault(capability: import('./media-cloud').CloudMediaCapability, providerId: string | null): Promise<Result<Settings>>
     testProvider(input: ProviderTestInput): Promise<Result<ProviderTestResult>>
     completeOnboarding(input: CompleteOnboardingInput): Promise<Result<Bootstrap>>
     syncModels(providerId: string): Promise<Result<SyncModelsResult>>

@@ -41,8 +41,8 @@ npm run dev
 
 ```powershell
 npm run typecheck     # 类型检查
-npm run test:unit     # 494 项单元
-npm run test:e2e      # 77 条 Electron 流程（会先构建）
+npm run test:unit     # 508 项单元
+npm run test:e2e      # 86 条 Electron 流程（会先构建）
 npm run verify        # 类型、UI、文档、清单、单元与 Electron
 npm run dist:final    # 重建两个交付 exe
 npm run smoke:packaged
@@ -54,6 +54,7 @@ npm run smoke:packaged
 
 | 文档 | 内容 |
 |---|---|
+| [docs/START-HERE.md](docs/START-HERE.md) | 一页版：打开 Morrow、接模型（含不用 API Key 的订阅路线）、选文件夹、排错 |
 | [docs/GUIDE.md](docs/GUIDE.md) | 安装、界面、工作模式、审批、文件/终端/Git/浏览器/电脑操作、模型、订阅、记忆、Super-Agent |
 | [docs/STUDIO.md](docs/STUDIO.md) | 创作台三条链路、协作者、时间线、交付、质量、数据与回收站 |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | 模型与订阅清单、媒体引擎、内置技能、快捷键、数据路径、环境变量 |
@@ -88,7 +89,7 @@ npm run smoke:packaged
 
 - `src/`：89 个 TS/TSX 文件，148,833 行；含 CSS/HTML 共 119 个文件，191,800 行。
 - 代码合计（统一口径：生产源码 + 测试 + 构建脚本 + 启动器，按 `wc -l` 换行计）：185 个文件，232,462 行；运行 `node scripts/count-code.mjs` 可复现。
-- 核心回归：494 项单元 + 82 条 Electron 流程；41 个功能域。
+- 核心回归：508 项单元 + 86 条 Electron 流程；41 个功能域。
 - 质量门槛：类型检查、UI token 审计、核心清单、单元、Electron 与打包冒烟。
 - 文档截图：27 张主文档截图 + 18 张修复记录截图，全部 2100×1200 原始 PNG，不缩放、不压缩。
 

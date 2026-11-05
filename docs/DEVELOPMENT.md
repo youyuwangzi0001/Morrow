@@ -35,8 +35,8 @@
 
 | 命令 | 内容 |
 |---|---|
-| `npm run test:unit` | 494 项核心单元 |
-| `npm run test:e2e` | 先构建，再跑 82 条 Electron 流程 |
+| `npm run test:unit` | 508 项核心单元 |
+| `npm run test:e2e` | 先构建，再跑 86 条 Electron 流程 |
 | `npm run test:suite` | 41 域覆盖登记、核心标记与数量预算 |
 | `npm run verify` | 类型、UI、文档、清单、单元、Electron |
 | `npm run smoke:packaged` | 实际启动打包 exe，检查渲染与截图 |

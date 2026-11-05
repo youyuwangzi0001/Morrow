@@ -41,8 +41,8 @@
 }
 
 .skills-search:focus-within {
-  border-color: var(--line-gold);
-  box-shadow: 0 0 0 1px var(--gold-ghost);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .skills-search-input {

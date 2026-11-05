@@ -416,8 +416,8 @@
 }
 
 .onb-key:focus-within {
-  border-color: var(--line-gold);
-  box-shadow: 0 0 0 3px var(--gold-ghost);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .onb-key-input {

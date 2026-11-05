@@ -2,6 +2,8 @@
 import type { ModelInfo, ProviderConfig, ReasoningEffort, HookConfig, HookEvent, MediaEngineSettings, ProviderCategory, ProviderKind, Settings, WebSearchProvider, WebSearchSettings } from '../shared/types'
 import { isHookEvent, MAX_ENABLED_HOOKS_PER_EVENT, MAX_HOOKS, ANSWER_STYLE_MAX_CUSTOM, isAnswerStyleId, normalizeAnswerStyle, normalizeAnswerStyleCustom } from '../shared/types'
 import { normalizeShortcutMap, validateShortcutMap } from '../shared/shortcuts'
+import { cloudMediaPreset, normalizeCloudMediaProviders, normalizeMediaDefaults } from '../shared/media-cloud'
+import type { CloudMediaCapability, CloudMediaProvider } from '../shared/media-cloud'
 import { isLocalServiceUrl, isReasoningEffort, reasoningEffortsForModel, DEFAULT_MODEL, RETIRED_MODEL_IDS, builtinProviders, defaultSettings, findModel, normalizeReasoningStyle } from '../shared/contracts'
 import { resolveAnthropicMessagesUrl, resolveChatCompletionsUrl } from '../core/providers'
 import { safeStorage } from 'electron'
@@ -204,6 +206,12 @@ export const ENCRYPT_PREFIX = 'enc:'
 
 /** 历史降级格式（仅用于读取兼容，绝不新写） */
 export const LEGACY_FALLBACK_PREFIX = 'b64:'
+
+const MEDIA_SECRET_PREFIX = 'media:'
+
+function mediaSecretKey(id: string): string {
+  return `${MEDIA_SECRET_PREFIX}${id}`
+}
 
 export interface SecretCrypto {
   /** 系统加密（Windows DPAPI / macOS Keychain 等）是否可用 */
@@ -603,6 +611,7 @@ export class SettingsStore {
         : typeof parsed.episodeMemoryEnabled === 'boolean'
           ? parsed.episodeMemoryEnabled
           : fallback.episodeMemoryEnabled
+      const mediaProviders = normalizeCloudMediaProviders(parsed.mediaProviders)
       return {
         ...fallback,
         ...parsed,
@@ -632,7 +641,9 @@ export class SettingsStore {
           typeof parsed.collaborationStuckAlerts === 'boolean'
             ? parsed.collaborationStuckAlerts
             : fallback.collaborationStuckAlerts,
-        shortcuts: normalizeShortcutMap(parsed.shortcuts)
+        shortcuts: normalizeShortcutMap(parsed.shortcuts),
+        mediaProviders,
+        mediaDefaults: normalizeMediaDefaults(parsed.mediaDefaults, mediaProviders)
       }
     } catch (err) {
       log.warn('settings parse failed, using defaults', String(err))
@@ -752,6 +763,10 @@ export class SettingsStore {
     this.settings.providers = this.settings.providers.map((provider) => ({
       ...provider,
       apiKeyStored: provider.kind === 'demo' ? true : Boolean(this.secrets.keys[provider.id])
+    }))
+    this.settings.mediaProviders = this.settings.mediaProviders.map((provider) => ({
+      ...provider,
+      apiKeyStored: Boolean(this.secrets.keys[mediaSecretKey(provider.id)])
     }))
     this.settings.webSearch = {
       ...this.settings.webSearch,
@@ -1127,6 +1142,84 @@ export class SettingsStore {
     this.ensureDefaultModel()
     this.persist()
     return this.get()
+  }
+
+  /** 保存/更新一个云端多媒体服务；只有官方预设可被加入，避免手填协议出现假入口。 */
+  saveCloudMediaProvider(input: {
+    id: string
+    baseUrl?: string
+    model?: string
+    voice?: string
+    enabled?: boolean
+    apiKey?: string
+  }): Settings {
+    const preset = cloudMediaPreset(input.id)
+    if (!preset) failValidation('不支持的多媒体服务。')
+    const existing = this.settings.mediaProviders.find((item) => item.id === preset.id)
+    const baseUrl = (input.baseUrl ?? existing?.baseUrl ?? preset.baseUrl).trim()
+    if (!/^https?:\/\//i.test(baseUrl)) failValidation('服务地址需要以 http:// 或 https:// 开头。')
+    const model = (input.model ?? existing?.model ?? preset.model).trim()
+    if (!model || model.length > 200) failValidation('模型 ID 不能为空且不能超过 200 字符。')
+    const voice = (input.voice ?? existing?.voice ?? '').trim()
+    if ((input.apiKey ?? '').length > 8192) failValidation('API Key 过长。')
+    if (input.apiKey !== undefined) {
+      const trimmed = input.apiKey.trim()
+      if (trimmed) {
+        this.secrets.keys[mediaSecretKey(preset.id)] = encodeSecret(trimmed, this.crypto())
+      } else {
+        delete this.secrets.keys[mediaSecretKey(preset.id)]
+      }
+      this.persistSecrets()
+    }
+    const provider: CloudMediaProvider = {
+      id: preset.id,
+      capability: preset.capability,
+      protocol: preset.protocol,
+      name: preset.name,
+      baseUrl,
+      model,
+      ...(voice ? { voice: voice.slice(0, 200) } : {}),
+      enabled: input.enabled ?? existing?.enabled ?? true,
+      apiKeyStored: Boolean(this.secrets.keys[mediaSecretKey(preset.id)]),
+      isBuiltin: true
+    }
+    const index = this.settings.mediaProviders.findIndex((item) => item.id === preset.id)
+    if (index >= 0) this.settings.mediaProviders[index] = provider
+    else this.settings.mediaProviders.push(provider)
+    if (!this.settings.mediaDefaults[preset.capability]) {
+      this.settings.mediaDefaults[preset.capability] = preset.id
+    }
+    this.syncKeyFlags()
+    this.persist()
+    return this.get()
+  }
+
+  removeCloudMediaProvider(providerId: string): Settings {
+    this.settings.mediaProviders = this.settings.mediaProviders.filter((item) => item.id !== providerId)
+    for (const [capability, id] of Object.entries(this.settings.mediaDefaults)) {
+      if (id === providerId) delete this.settings.mediaDefaults[capability as CloudMediaCapability]
+    }
+    delete this.secrets.keys[mediaSecretKey(providerId)]
+    this.persistSecrets()
+    this.syncKeyFlags()
+    this.persist()
+    return this.get()
+  }
+
+  setMediaDefault(capability: CloudMediaCapability, providerId: string | null): Settings {
+    if (providerId !== null) {
+      const provider = this.settings.mediaProviders.find((item) => item.id === providerId)
+      if (!provider || provider.capability !== capability) failValidation('这个多媒体服务不能用于当前类型。')
+      this.settings.mediaDefaults[capability] = providerId
+    } else {
+      delete this.settings.mediaDefaults[capability]
+    }
+    this.persist()
+    return this.get()
+  }
+
+  getCloudMediaApiKey(providerId: string): string | null {
+    return decodeSecret(this.secrets.keys[mediaSecretKey(providerId)], this.crypto())?.value ?? null
   }
 
   /** 保存联网搜索配置；apiKey 只在渲染层提交时传入，主进程加密存储。 */

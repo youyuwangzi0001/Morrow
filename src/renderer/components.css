@@ -261,8 +261,8 @@
 .text-area {
   width: 100%;
   background: var(--surface-inset);
-  border: 1px solid var(--line);
-  border-radius: var(--control-radius);
+  border: 1px solid var(--field-frame-border);
+  border-radius: var(--field-frame-radius);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--fs-ui);
@@ -286,14 +286,14 @@
 
 .text-input:hover,
 .text-area:hover {
-  border-color: var(--line-strong);
+  border-color: var(--field-frame-border-hover);
 }
 
 .text-input:focus,
 .text-area:focus {
   outline: none;
-  border-color: var(--control-focus-border);
-  box-shadow: var(--control-focus-shadow);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
   background: var(--surface);
 }
 
@@ -435,8 +435,8 @@
   width: 100%;
   height: var(--control-md);
   padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--control-radius);
+  border: 1px solid var(--field-frame-border);
+  border-radius: var(--field-frame-radius);
   background: var(--surface);
   color: var(--text);
   font-size: var(--fs-base-plus);
@@ -448,8 +448,8 @@
 
 .select-trigger:focus-visible {
   outline: none;
-  border-color: var(--control-focus-border);
-  box-shadow: var(--control-focus-shadow);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .select-trigger:hover,
@@ -869,8 +869,8 @@ body.is-resizing-panel * {
 /* ── 聊天输入框流金边框（Agent 主输入 / 侧边聊天 / 协作者共用） ── */
 .chat-gold-frame {
   position: relative;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
+  border: 1px solid var(--field-frame-border);
+  border-radius: var(--field-frame-radius);
   background: var(--surface);
   box-shadow:
     var(--shadow-soft),
@@ -898,10 +898,10 @@ body.is-resizing-panel * {
 }
 
 .chat-gold-frame:focus-within {
-  border-color: var(--line-gold);
+  border-color: var(--field-frame-border-focus);
   box-shadow:
     var(--shadow-float),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    var(--field-frame-focus-shadow);
 }
 
 .chat-gold-frame:focus-within::before {

@@ -33,6 +33,7 @@ import type {
   Result,
   RuntimeEvent,
   RuntimeEventListener,
+  SaveCloudMediaProviderInput,
   SendMessageInput,
   SendMessageResult,
   Session,
@@ -214,6 +215,10 @@ const api: MorrowApi = {
     },
     saveProvider: (input: SaveProviderInput) => invoke<Settings>(IPC.settingsSaveProvider, input),
     removeProvider: (providerId: string) => invoke<Settings>(IPC.settingsRemoveProvider, { providerId }),
+    saveMediaProvider: (input: SaveCloudMediaProviderInput) => invoke<Settings>(IPC.settingsSaveMediaProvider, input),
+    removeMediaProvider: (providerId: string) => invoke<Settings>(IPC.settingsRemoveMediaProvider, { providerId }),
+    setMediaDefault: (capability: string, providerId: string | null) =>
+      invoke<Settings>(IPC.settingsSetMediaDefault, { capability, providerId }),
     testProvider: (input: ProviderTestInput) => invoke<ProviderTestResult>(IPC.settingsTestProvider, input),
     completeOnboarding: (input: CompleteOnboardingInput) => invoke<Bootstrap>(IPC.settingsCompleteOnboarding, input),
     syncModels: (providerId: string) => invoke<SyncModelsResult>(IPC.settingsSyncModels, { providerId }),

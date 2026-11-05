@@ -16,6 +16,8 @@ import { findModel, isLocalServiceUrl, reasoningEffortsForModel } from '@shared/
 import { RESERVED_COMMAND_NAMES, SHORTCUT_GROUPS } from '@shared/contracts'
 import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, findShortcutConflict, formatShortcutBinding, shortcutFromKeyboardEvent } from '@shared/shortcuts'
 import type { ShortcutActionId } from '@shared/shortcuts'
+import { MEDIA_CAPABILITY_HINT, MEDIA_CAPABILITY_LABEL, MEDIA_REGION_LABEL, cloudMediaPresetsFor } from '@shared/media-cloud'
+import type { CloudMediaCapability, CloudMediaPreset, CloudMediaProvider } from '@shared/media-cloud'
 import type { SettingsTabId } from './settings-core'
 import { consumeRequestedTab, onSettingsTabRequest } from './settings-core'
 import type { WorkbenchPanel } from './workbench-core'
@@ -1145,6 +1147,15 @@ export function MediaTab(): React.JSX.Element {
             下载 ffmpeg
           </button>
         </p>
+      </section>
+
+      <section className="st-media-card st-local-models">
+        <div className="st-media-card-head">
+          <span className="st-media-card-title">本地文本模型</span>
+          <Badge tone="success">无需联网</Badge>
+        </div>
+        <p className="st-media-note">Ollama、llama.cpp、LM Studio 等本机文本模型在这里接入；它们不参与云端模型列表。</p>
+        <ModelsTab scope="local" />
       </section>
 
       <section className="st-media-card">
@@ -2678,7 +2689,7 @@ export function SubscriptionTab(): React.JSX.Element {
 const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'models', label: '模型', icon: <Plug size={15} strokeWidth={1.5} /> },
   { id: 'subscriptions', label: '订阅', icon: <BadgeCheck size={15} strokeWidth={1.5} /> },
-  { id: 'media', label: '多媒体', icon: <Clapperboard size={15} strokeWidth={1.5} /> },
+  { id: 'media', label: '本地', icon: <Clapperboard size={15} strokeWidth={1.5} /> },
   { id: 'search', label: '联网搜索', icon: <Globe size={15} strokeWidth={1.5} /> },
   { id: 'context', label: '对话长度', icon: <Gauge size={15} strokeWidth={1.5} /> },
   { id: 'style', label: '回答', icon: <MessageSquareText size={15} strokeWidth={1.5} /> },
@@ -2696,7 +2707,7 @@ const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
 const PAGE_META: Record<SettingsTabId, { title: string; description: string }> = {
   models: { title: '模型', description: '连接一个模型服务，选好默认模型就能开始。密钥只保存在本机。' },
   subscriptions: { title: '订阅', description: '登录你已经在用的账号，直接用订阅额度。登录信息只保存在本机。' },
-  media: { title: '多媒体', description: '连接本机的图片、视频和声音工具；没有连接时会明确提示。' },
+  media: { title: '本地', description: '本机文本模型、图片、视频与声音工具；跑在自己的电脑上，不需要联网。' },
   search: { title: '联网搜索', description: '需要最新信息时，让 Morrow 上网查资料。' },
   context: { title: '对话长度', description: '看看这次对话用了多少空间；太长时自动整理旧内容。' },
   style: { title: '回答方式', description: '调整回答方式、发送键和对话偏好。' },
@@ -2754,7 +2765,229 @@ const PROVIDER_HINT: Record<string, string> = {
   lmstudio: '本机运行，不需要联网'
 }
 
-function ModelsTab(): React.JSX.Element {
+function CloudMediaProviderCard({
+  preset,
+  capability
+}: {
+  preset: CloudMediaPreset
+  capability: CloudMediaCapability
+}): React.JSX.Element {
+  const settings = useAppStore((state) => state.settings)
+  const saveMediaProvider = useAppStore((state) => state.saveMediaProvider)
+  const removeMediaProvider = useAppStore((state) => state.removeMediaProvider)
+  const setMediaDefault = useAppStore((state) => state.setMediaDefault)
+  const provider: CloudMediaProvider | undefined = settings.mediaProviders.find((item) => item.id === preset.id)
+  const isDefault = settings.mediaDefaults[capability] === preset.id
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? preset.baseUrl)
+  const [model, setModel] = useState(provider?.model ?? preset.model)
+  const [voice, setVoice] = useState(provider?.voice ?? preset.defaultVoice ?? '')
+  useEffect(() => {
+    if (!provider) return
+    setBaseUrl(provider.baseUrl)
+    setModel(provider.model)
+    setVoice(provider.voice ?? preset.defaultVoice ?? '')
+  }, [provider?.id, provider?.baseUrl, provider?.model, provider?.voice, preset.defaultVoice])
+
+  const save = async (): Promise<void> => {
+    setError(null)
+    if (preset.voiceRequired && !voice.trim()) {
+      setError('这个服务需要填 Voice ID；在服务商后台复制后粘贴到这里。')
+      return
+    }
+    setSaving(true)
+    try {
+      await saveMediaProvider({
+        id: preset.id,
+        baseUrl: baseUrl.trim(),
+        model: model.trim(),
+        ...(preset.capability === 'speech' ? { voice: voice.trim() || preset.defaultVoice || '' } : {}),
+        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        enabled: true
+      })
+      setApiKey('')
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败。')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const useAsDefault = async (): Promise<void> => {
+    if (!provider?.apiKeyStored) {
+      setError('先保存 API Key，再设为默认。')
+      return
+    }
+    setError(null)
+    try {
+      await setMediaDefault(capability, preset.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '设置默认失败。')
+    }
+  }
+
+  const remove = async (): Promise<void> => {
+    if (!window.confirm(`移除「${preset.name}」？已保存的 Key 也会一并删除。`)) return
+    setError(null)
+    try {
+      await removeMediaProvider(preset.id)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '移除失败。')
+    }
+  }
+
+  return (
+    <div className={['st-cloud-provider', provider ? 'is-configured' : ''].filter(Boolean).join(' ')}>
+      <div className="st-cloud-provider-head">
+        <div className="st-cloud-provider-copy">
+          <span className="st-cloud-provider-name">
+            <span className={`st-cloud-provider-region is-${preset.region}`}>{MEDIA_REGION_LABEL[preset.region]}</span>
+            {preset.name}
+            {isDefault ? <Badge tone="gold">默认</Badge> : null}
+          </span>
+          <span className="st-cloud-provider-desc">{preset.description}</span>
+          <span className="st-cloud-provider-meta mono">
+            {provider ? `${provider.model} · ${provider.apiKeyStored ? 'Key 已保存' : '未保存 Key'}` : '尚未接入'}
+          </span>
+        </div>
+        <div className="st-cloud-provider-actions">
+          <button type="button" className="st-link" onClick={() => void window.morrow.app.openExternal(preset.docsUrl)}>
+            官方文档
+          </button>
+          {provider ? (
+            <>
+              {!isDefault ? (
+                <Button size="sm" variant="ghost" onClick={() => void useAsDefault()}>设为默认</Button>
+              ) : null}
+              <Button size="sm" variant="secondary" onClick={() => setEditing((value) => !value)}>
+                {editing ? '收起' : '设置'}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="gold" onClick={() => setEditing(true)}>接入</Button>
+          )}
+        </div>
+      </div>
+      {editing ? (
+        <div className="st-cloud-provider-form">
+          <label className="st-field-label" htmlFor={`st-cloud-key-${preset.id}`}>
+            API Key
+            <span className="st-field-aside">只保存在本机</span>
+          </label>
+          <input
+            id={`st-cloud-key-${preset.id}`}
+            className="st-inline-input mono"
+            type="password"
+            value={apiKey}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={provider?.apiKeyStored ? '已保存，留空表示不修改' : '粘贴 API Key'}
+            onChange={(event) => setApiKey(event.target.value)}
+          />
+          <label className="st-field-label" htmlFor={`st-cloud-url-${preset.id}`}>服务地址</label>
+          <input
+            id={`st-cloud-url-${preset.id}`}
+            className="st-inline-input mono"
+            value={baseUrl}
+            spellCheck={false}
+            onChange={(event) => setBaseUrl(event.target.value)}
+          />
+          <label className="st-field-label" htmlFor={`st-cloud-model-${preset.id}`}>模型 ID</label>
+          <input
+            id={`st-cloud-model-${preset.id}`}
+            className="st-inline-input mono"
+            value={model}
+            spellCheck={false}
+            onChange={(event) => setModel(event.target.value)}
+          />
+          {preset.capability === 'speech' ? (
+            <>
+              <label className="st-field-label" htmlFor={`st-cloud-voice-${preset.id}`}>
+                声线 / Voice ID
+                {preset.voiceRequired ? <span className="st-field-aside">必填</span> : <span className="st-field-aside">可选</span>}
+              </label>
+              <input
+                id={`st-cloud-voice-${preset.id}`}
+                className="st-inline-input mono"
+                value={voice}
+                list={preset.voices?.length ? `st-cloud-voices-${preset.id}` : undefined}
+                spellCheck={false}
+                placeholder={preset.voiceRequired ? '从服务商后台复制 Voice ID' : preset.defaultVoice ? `留空使用 ${preset.defaultVoice}` : '例如 alloy / nova'}
+                onChange={(event) => setVoice(event.target.value)}
+              />
+              {preset.voices?.length ? (
+                <>
+                  <datalist id={`st-cloud-voices-${preset.id}`}>
+                    {preset.voices.map((option) => (
+                      <option key={option.id} value={option.id}>{`${option.label}（${option.id}）`}</option>
+                    ))}
+                  </datalist>
+                  <span className="st-cloud-voice-hint">
+                    官方系统音色 {preset.voices.length} 个已全部列出；也可以直接粘贴自定义或复刻音色 ID。
+                  </span>
+                </>
+              ) : preset.capability === 'speech' ? (
+                <span className="st-cloud-voice-hint">Voice ID 来自你的 ElevenLabs 账号，可在 Voice Library 中复制；这里无法预置公共列表。</span>
+              ) : null}
+            </>
+          ) : null}
+          <InlineError message={error} />
+          <div className="st-cloud-provider-form-foot">
+            {provider ? <button type="button" className="st-link-danger" onClick={() => void remove()}>移除服务</button> : <span />}
+            <div>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>取消</Button>
+              <Button size="sm" variant="primary" loading={saving} onClick={() => void save()}>保存</Button>
+            </div>
+          </div>
+        </div>
+      ) : error ? (
+        <InlineError message={error} />
+      ) : null}
+    </div>
+  )
+}
+
+function CloudMediaSection(): React.JSX.Element {
+  const [capability, setCapability] = useState<CloudMediaCapability>('image')
+  const presets = cloudMediaPresetsFor(capability)
+  return (
+    <section className="st-cloud-media" aria-label="云端多媒体生成">
+      <div className="st-cloud-media-head">
+        <div>
+          <p className="st-section-title">云端多媒体生成</p>
+          <p className="st-hint">图片、视频、配音、配乐各自连接官方服务；国内与海外服务都在这里，只有保存了 Key 的服务才会被创作台调用。</p>
+        </div>
+      </div>
+      <div className="st-cloud-media-tabs" role="tablist" aria-label="多媒体类型">
+        {(Object.keys(MEDIA_CAPABILITY_LABEL) as CloudMediaCapability[]).map((item) => (
+          <button
+            key={item}
+            type="button"
+            role="tab"
+            aria-selected={item === capability}
+            className={item === capability ? 'is-active' : ''}
+            onClick={() => setCapability(item)}
+          >
+            {MEDIA_CAPABILITY_LABEL[item]}
+          </button>
+        ))}
+      </div>
+      <p className="st-hint">{MEDIA_CAPABILITY_HINT[capability]}</p>
+      <div className="st-cloud-media-list">
+        {presets.map((preset) => (
+          <CloudMediaProviderCard key={preset.id} preset={preset} capability={capability} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ModelsTab({ scope = 'cloud' }: { scope?: 'cloud' | 'local' }): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const saveProvider = useAppStore((s) => s.saveProvider)
   const removeProvider = useAppStore((s) => s.removeProvider)
@@ -2763,8 +2996,13 @@ function ModelsTab(): React.JSX.Element {
   const syncModels = useAppStore((s) => s.syncModels)
 
   const providers = useMemo(
-    () => settings.providers.filter((provider) => provider.kind !== 'demo'),
-    [settings.providers]
+    () =>
+      settings.providers.filter(
+        (provider) =>
+          provider.kind !== 'demo' &&
+          (scope === 'local' ? providerCategory(provider) === 'local' : providerCategory(provider) !== 'local')
+      ),
+    [settings.providers, scope]
   )
   const defaultProviderId =
     settings.providers.find((p) => p.id === settings.defaultModel.providerId)?.id ?? providers[0]?.id ?? ''
@@ -3100,10 +3338,12 @@ function ModelsTab(): React.JSX.Element {
             width="100%"
           />
         </div>
-        <button type="button" className="st-add-provider st-add-provider-inline" onClick={() => setCustomOpen(true)}>
-          <Plus size={13} strokeWidth={1.5} aria-hidden />
-          自定义服务
-        </button>
+        {scope === 'cloud' ? (
+          <button type="button" className="st-add-provider st-add-provider-inline" onClick={() => setCustomOpen(true)}>
+            <Plus size={13} strokeWidth={1.5} aria-hidden />
+            自定义服务
+          </button>
+        ) : null}
       </div>
 
       {groups.map((group) => (
@@ -3357,7 +3597,9 @@ function ModelsTab(): React.JSX.Element {
         </section>
       ))}
 
-      {customOpen ? (
+      {scope === 'cloud' ? <CloudMediaSection /> : null}
+
+      {scope === 'cloud' && customOpen ? (
         <div className="st-custom">
           <div className="st-custom-head">
             <span className="st-section-title">添加自定义服务</span>

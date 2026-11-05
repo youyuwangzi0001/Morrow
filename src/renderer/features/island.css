@@ -644,15 +644,15 @@ html.island-root[data-theme='light'] {
 .island-composer {
   flex: 0 0 auto;
   padding: 8px 10px 6px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
+  border-radius: var(--field-frame-radius);
+  border: 1px solid var(--field-frame-border);
   background: var(--island-composer-bg);
   transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .island-composer:focus-within {
-  border-color: var(--line-gold);
-  box-shadow: 0 0 0 3px var(--gold-ghost);
+  border-color: var(--field-frame-border-focus);
+  box-shadow: var(--field-frame-focus-shadow);
 }
 
 .island-composer textarea {

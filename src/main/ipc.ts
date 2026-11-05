@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto'
 import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { IPC, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type IslandStudioSyncInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/contracts'
+import type { SaveCloudMediaProviderInput } from '../shared/types'
+import type { CloudMediaCapability } from '../shared/media-cloud'
 import { DEFAULT_MODEL, findModel } from '../shared/contracts'
 import { isReasoningEffort } from '../shared/contracts'
 import type {
@@ -677,6 +679,33 @@ export function registerIpcHandlers(): void {
       return fail('PROVIDER_REMOVE_FAILED', err instanceof Error ? err.message : '删除提供方失败')
     }
   })
+
+  ipcMain.handle(IPC.settingsSaveMediaProvider, (_e, input: SaveCloudMediaProviderInput): Result<unknown> => {
+    try {
+      return ok(getSettingsStore().saveCloudMediaProvider(input))
+    } catch (err) {
+      return fail('MEDIA_PROVIDER_SAVE_FAILED', err instanceof Error ? err.message : '保存多媒体服务失败')
+    }
+  })
+
+  ipcMain.handle(IPC.settingsRemoveMediaProvider, (_e, payload: { providerId: string }): Result<unknown> => {
+    try {
+      return ok(getSettingsStore().removeCloudMediaProvider(payload.providerId))
+    } catch (err) {
+      return fail('MEDIA_PROVIDER_REMOVE_FAILED', err instanceof Error ? err.message : '删除多媒体服务失败')
+    }
+  })
+
+  ipcMain.handle(
+    IPC.settingsSetMediaDefault,
+    (_e, payload: { capability: CloudMediaCapability; providerId: string | null }): Result<unknown> => {
+      try {
+        return ok(getSettingsStore().setMediaDefault(payload.capability, payload.providerId))
+      } catch (err) {
+        return fail('MEDIA_DEFAULT_FAILED', err instanceof Error ? err.message : '保存默认多媒体服务失败')
+      }
+    }
+  )
 
   ipcMain.handle(IPC.settingsTestProvider, async (_e, input: ProviderTestInput): Promise<Result<unknown>> => {
     const store = getSettingsStore()

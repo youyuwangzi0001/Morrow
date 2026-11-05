@@ -218,8 +218,14 @@
   --control-field: 36px;
   --control-lg: 40px;
   --control-radius: var(--r-sm);
-  --control-focus-border: var(--line-gold);
-  --control-focus-shadow: inset 0 0 0 1px var(--line-gold), 0 0 0 3px var(--gold-ghost);
+  /* 交互框：统一流金外框，不使用内部加粗高亮 */
+  --field-frame-border: var(--line);
+  --field-frame-border-hover: var(--line-strong);
+  --field-frame-border-focus: var(--line-gold);
+  --field-frame-radius: var(--control-radius);
+  --field-frame-focus-shadow: 0 0 0 3px var(--gold-ghost);
+  --control-focus-border: var(--field-frame-border-focus);
+  --control-focus-shadow: var(--field-frame-focus-shadow);
   --icon-xs: 10px;
   --icon-sm: 12px;
   --icon-md: 14px;
@@ -629,17 +635,30 @@ kbd {
   outline-offset: var(--focus-ring-offset);
 }
 
-input:focus-visible,
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: -2px;
+  outline: none;
+  border-color: var(--field-frame-border-focus);
 }
 
 input:not([type='checkbox']):not([type='radio']):not([type='range']),
 textarea,
 select {
   border-radius: var(--control-radius);
+}
+
+/* 去掉 Chromium 原生焦点描边；文本类控件统一由流金外框表示焦点 */
+input:not([type]),
+input[type='text'],
+input[type='search'],
+input[type='url'],
+input[type='email'],
+input[type='tel'],
+input[type='password'],
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 /* 可被选择的内容（对话、代码、输入区） */

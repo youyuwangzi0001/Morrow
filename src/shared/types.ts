@@ -2,6 +2,7 @@
 import { diffArrays, diffChars } from 'diff'
 import type { StudioKind } from './studio'
 import type { ShortcutMap } from './shortcuts'
+import type { CloudMediaCapability, CloudMediaProvider } from './media-cloud'
 
 /**
  * Morrow 领域契约 — 主进程与渲染进程共同引用。
@@ -283,6 +284,15 @@ export interface ProviderTestResult {
   latencyMs: number
   modelCount?: number
   message: string
+}
+
+export interface SaveCloudMediaProviderInput {
+  id: string
+  baseUrl?: string
+  model?: string
+  voice?: string
+  enabled?: boolean
+  apiKey?: string
 }
 
 /* ── 消息内容 ─────────────────────────────────────────────────── */
@@ -1603,6 +1613,10 @@ export interface Settings {
   terminalShell: string
   /** 可自定义快捷键：统一存 CommandOrControl+… 形式 */
   shortcuts: ShortcutMap
+  /** 云端多媒体生成服务（图片/视频/配音/配乐），与文本 Provider 分开 */
+  mediaProviders: CloudMediaProvider[]
+  /** 每类多媒体生成默认使用的服务 id */
+  mediaDefaults: Partial<Record<CloudMediaCapability, string>>
 }
 
 /* ── 自定义命令与钩子（P1-12） ───────────────────────────────── */

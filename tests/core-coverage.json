@@ -1,8 +1,8 @@
 {
   "version": 1,
   "limits": {
-    "unit": 494,
-    "e2e": 82
+    "unit": 508,
+    "e2e": 86
   },
   "features": [
     {
