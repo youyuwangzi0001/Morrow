@@ -1,0 +1,44 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T01",
+  "capturedAt": "2026-11-02T16:09:50.904658+00:00",
+  "kind": "unit + Electron E2E",
+  "implementation": {
+    "parallelWhitelist": [
+      "read_file",
+      "read_pdf",
+      "read_docx",
+      "read_xlsx",
+      "read_pptx",
+      "list_dir",
+      "glob",
+      "grep",
+      "list_skills",
+      "read_skill",
+      "browser_read",
+      "web_fetch"
+    ],
+    "maxParallel": 4,
+    "barrier": "write/command/MCP/desktop/ask_user serialized in original order",
+    "abort": "signal checked before each call; unfinished calls marked interrupted"
+  },
+  "unit": {
+    "file": "tests/unit/tool-parallel.test.ts",
+    "tests": 2,
+    "sharedParallelGroup": true,
+    "allStartedBeforeFirstFinished": true,
+    "writeBarrierRespected": true
+  },
+  "e2e": {
+    "title": "并行只读工具并排展示，组可折叠为单行摘要",
+    "cardsShown": 3,
+    "groupHeader": "3 个工具并行",
+    "collapseAndExpand": true,
+    "screenshot": "docs/screens/tool-parallel-group.png"
+  },
+  "safety": {
+    "writeSerialized": true,
+    "permissionQueuePreserved": true,
+    "userOriginalFilesReadOnly": true
+  }
+}

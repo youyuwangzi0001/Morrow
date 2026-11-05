@@ -1,0 +1,29 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T04",
+  "capturedAt": "2026-11-02T16:18:20.061227+00:00",
+  "kind": "unit + Electron E2E",
+  "implementation": {
+    "skip": "result.ok=true 且未被外部改动",
+    "rerun": "失败、中断或没有结果",
+    "denied": "用户拒绝保持，不自动重试",
+    "conflict": "成功写入后文件哈希变化，阻止恢复",
+    "permission": "重跑走当前权限模式与审批链，不复用旧 always 授权",
+    "ui": "检查点弹窗显示跳过/重跑/保持拒绝数量，确认后恢复"
+  },
+  "unit": {
+    "file": "tests/unit/checkpoint-replay.test.ts",
+    "tests": 3,
+    "classification": true,
+    "hashConflictBlocks": true,
+    "onlyFailedAndMissingReplayed": true
+  },
+  "e2e": {
+    "title": "检查点恢复只重跑失败步骤，跳过成功读取",
+    "skippedRead": 1,
+    "rerunWrite": 1,
+    "writeSucceeded": true,
+    "successfulReadNotReexecuted": true,
+    "screenshot": "docs/screens/checkpoint-resume.png"
+  }
+}

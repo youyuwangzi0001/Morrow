@@ -1,0 +1,48 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "FONT-SCALE",
+  "capturedAt": "2026-11-02T18:26:27.000000+00:00",
+  "kind": "Electron E2E + static UI token audit",
+  "rootCause": "只有 --fs-body/--fs-ui/--fs-code 被设置覆盖，其余 --fs-* 为固定 px，使用 xs/3xs/panel 令牌的 Super-Agent、侧栏与创作台协作者不随字号设置变化",
+  "implementation": {
+    "baseTokens": "--font-ui-size（12–15，默认14）与 --font-code-size（11–14，默认12）",
+    "scale": "31 个 --fs-* 全部由基值 calc/max 推导；默认值逐像素等于旧版；极小标签设有可读下限",
+    "aliases": "--text-*、--settings-*、--fs-panel-* 继续作为令牌别名，无独立写死字号",
+    "runtime": "applyThemePreferences 统一设置两个基值，主窗口、独立桌面伙伴窗口与设置变更共用同一路径",
+    "island": "桌面伙伴独立窗口不再停留在默认字号",
+    "audit": "npm run audit:ui 新增 --fs-* 派生校验与原始 font-size 校验",
+    "exceptions": ["文档预览 HTML", "EPUB/PDF/DOCX 导出模板", "画布/封面位图", "字幕视频内容", "xterm canvas 字重", "第三方网页与 PDF/Office 预览"]
+  },
+  "audit": {
+    "cssFontSizeDeclarations": 1716,
+    "tokenized": 1712,
+    "relativeOrHidden": 4,
+    "scaleTokenDefinitions": 31,
+    "rawInlinePxInUI": 0,
+    "passed": true
+  },
+  "e2e": {
+    "fontScale": {
+      "title": "字号设置驱动侧栏、创作台协作者与代码字号",
+      "passed": true,
+      "assertions": [
+        "默认 body/ui/title/3xs/code = 14/13/20/9/12，侧栏按钮 12.5px",
+        "12px 时 body/ui/title/3xs = 12/11/18/8，侧栏 10.5px，协作者正文 11.5px",
+        "15px 时 body/ui/title/3xs = 15/14/21/10，协作者正文 14.5px",
+        "代码字号 11px 时 --fs-code 为 11px"
+      ],
+      "screenshots": ["docs/screens/font-scale-12.png", "docs/screens/font-scale-15.png"]
+    },
+    "superAgent": {
+      "title": "Router 派发 DAG Worker 并在右侧驾驶舱展示",
+      "passed": true,
+      "assertions": ["Super-Agent 卡片副标题 10px → 11px → 10px 跟随全局字号设置"]
+    }
+  },
+  "regression": {
+    "unit": "490 passed",
+    "e2e": "81 collected",
+    "domains": 40,
+    "docs": "npm run docs:check 通过（2100x1200 截图）"
+  }
+}

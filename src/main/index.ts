@@ -1,24 +1,28 @@
-import { app, BrowserWindow, Menu, Tray, crashReporter, globalShortcut, nativeImage, protocol, screen, session } from 'electron'
+import { app, BrowserWindow, Menu, Tray, crashReporter, nativeImage, protocol, screen, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { disposeAgentRuntime, registerIpcHandlers } from './ipc'
 import { installFeatureIpc } from './feature-ipc'
 import { registerFeatureModules } from './features'
-import { getSubscriptionService } from './services/subscriptions'
-import { getQoderSubscriptionService } from './services/qoder-subscription'
-import { allAgentServices } from './services/agent-subscriptions'
-import { openExternalQuiet } from './services/external-open'
-import { handlePreviewProtocol } from './services/file-preview'
-import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './services/artifact-preview'
-import { ensureDataDirs, resolveDataDir } from './services/paths'
-import { installMcpRuntimeEnv } from './services/mcp-service'
-import { configureMemoryRuntime } from './services/memory-service'
-import { configureProjectsRuntime } from './services/project-service'
-import { getTerminalManager } from './services/terminal-manager'
-import { configurePermissionRulesRuntime } from './services/permission-rules'
-import { initializeTokenActivity } from './services/runtime'
-import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
-import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
+import { getSubscriptionService } from './subscriptions'
+import { getQoderSubscriptionService } from './subscriptions'
+import { allAgentServices } from './subscriptions'
+import { openExternalQuiet } from './workspace'
+import { handlePreviewProtocol } from './workspace'
+import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './artifacts'
+import { ensureDataDirs, resolveDataDir } from './workspace'
+import { installMcpRuntimeEnv } from './memory'
+import { configureMemoryRuntime } from './memory'
+import { configureCollaborationStoreRuntime } from './collaboration'
+import { configureProjectsRuntime } from './runtime'
+import { getCommandSandboxService } from './sandbox'
+import { disposeGlobalShortcut, refreshGlobalShortcut } from './shortcuts'
+import { getTerminalManager } from './terminal-manager'
+import { stopLocalTts } from './tts-local'
+import { configurePermissionRulesRuntime } from './runtime'
+import { initializeTokenActivity } from './runtime'
+import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './runtime'
+import { disposeScheduleRuntime, initializeScheduleRuntime } from './schedules'
 import {
   appIconPath,
   attachIconTray,
@@ -30,9 +34,9 @@ import {
   markAppQuitting,
   quitApp,
   requestCloseFromIsland
-} from './services/lifecycle'
-import { log } from './services/logger'
-import { isLoginSession } from './services/login-window'
+} from './runtime'
+import { log } from './logger'
+import { isLoginSession } from './workspace'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -77,11 +81,12 @@ if (!gotLock) {
 
 function bootstrap(dataDir: string): void {
   // 便携版：数据目录跟随 exe，做到「拷走就能用」
-  app.setAppUserModelId('studio.morrow.agent')
+  app.setAppUserModelId('studio.morrow.agent.desktop')
   ensureDataDirs()
   configureMemoryRuntime(dataDir)
   configureProjectsRuntime(dataDir)
   configurePermissionRulesRuntime(dataDir)
+  configureCollaborationStoreRuntime(dataDir)
   installMcpRuntimeEnv(process.env, dataDir)
 
   app.on('second-instance', () => showMainWindow())
@@ -99,13 +104,14 @@ function bootstrap(dataDir: string): void {
     void getQoderSubscriptionService().restore()
     for (const service of allAgentServices()) void service.restore()
     initializeTokenActivity()
+    void getCommandSandboxService().refresh()
     configureLifecycle(() => mainWindow)
     createWindow()
     configureIsland({ openMain: showMainWindow, requestClose: () => void requestCloseFromIsland() })
     createIsland()
     createTray()
     initializeScheduleRuntime()
-    registerIslandShortcut()
+    refreshGlobalShortcut()
 
     app.on('activate', () => {
       if (!mainWindow || mainWindow.isDestroyed()) createWindow()
@@ -119,14 +125,14 @@ function bootstrap(dataDir: string): void {
   app.on('will-quit', () => {
     disposeScheduleRuntime()
     disposeAgentRuntime()
+    stopLocalTts()
     void getSubscriptionService().dispose()
     void getQoderSubscriptionService().dispose()
     for (const service of allAgentServices()) void service.dispose()
-    globalShortcut.unregisterAll()
+    disposeGlobalShortcut()
     try {
       getTerminalManager().dispose()
     } catch {
-      // ignore
     }
     hideIsland(true)
     if (tray && !tray.isDestroyed()) tray.destroy()
@@ -233,7 +239,7 @@ function createTray(): void {
   const menu = Menu.buildFromTemplate([
     { label: '打开 Morrow', click: () => showMainWindow() },
     { label: '显示 / 隐藏桌面小伙伴', click: () => toggleIsland() },
-    { label: '快捷键：Ctrl+Shift+M', enabled: false },
+    { label: '桌面伙伴快捷键：设置 → 快捷键', enabled: false },
     { type: 'separator' },
     {
       label: '退出',
@@ -247,18 +253,7 @@ function createTray(): void {
   tray.on('double-click', () => showMainWindow())
 }
 
-/** 桌面快速唤起：无论主窗口在托盘还是别的应用前面，都能把小伙伴叫出来。 */
-function registerIslandShortcut(): void {
-  const isTest = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
-  if (isTest) return
-  try {
-    const ok = globalShortcut.register('CommandOrControl+Shift+M', () => toggleIsland())
-    if (!ok) log.warn('global shortcut Ctrl+Shift+M is already taken')
-  } catch (err) {
-    log.warn('global shortcut registration failed', String(err))
-  }
-}
-
+/** 桌面快速唤起：快捷键由设置 → 快捷键管理，主进程启动时统一注册。 */
 export function createWindow(): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
 
@@ -275,7 +270,9 @@ export function createWindow(): BrowserWindow {
   const windowWidth = toDip(targetPhysicalWidth)
   const windowHeight = toDip(targetPhysicalHeight)
   log.info('window sizing', { scaleFactor, windowWidth, windowHeight, targetPhysicalWidth, targetPhysicalHeight })
-  const windowIcon = appIconPath(currentIconTheme())
+  const iconPath = appIconPath(currentIconTheme())
+  const iconImage = iconPath ? nativeImage.createFromPath(iconPath) : null
+  const windowIcon = iconImage && !iconImage.isEmpty() ? iconImage.resize({ width: 256, height: 256 }) : null
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
@@ -307,6 +304,8 @@ export function createWindow(): BrowserWindow {
     win.webContents.setBackgroundThrottling(false)
     win.show()
     win.focus()
+    // 窗口显示后任务栏按钮才创建，再应用一次主题图标，避免 Windows 使用默认 Electron 图标。
+    attachIconWindow(win)
     // 构造参数的 DIP 取整可能造成 ±1 物理像素偏差；等窗口完成首帧后再校正一次内容尺寸。
     setTimeout(() => {
       if (!win || win.isDestroyed()) return
@@ -322,7 +321,6 @@ export function createWindow(): BrowserWindow {
     try {
       mainWindow?.flashFrame(false)
     } catch {
-      // ignore
     }
     markIslandRead()
   })

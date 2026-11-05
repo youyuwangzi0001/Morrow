@@ -1,230 +1,205 @@
 # Morrow 架构说明
 
-本文描述 Morrow 0.1.0（r019）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、数据写到哪里、哪些边界不可越过。
+Morrow 是 Electron 桌面应用：主进程负责系统能力与持久化，preload 提供白名单 API，renderer 用 React 19 / Zustand 呈现界面。本文只写当前实现的稳定边界；具体行为以源码与测试为准。
 
-## 1. 进程模型
-
-```text
-┌─────────────────────────────── main (Electron) ───────────────────────────────┐
-│ index.ts        启动、单实例、窗口/灵动岛/托盘、安全策略、崩溃处理            │
-│ ipc.ts          chat/session/settings/window 等基础 IPC                       │
-│ feature-ipc.ts  feature:* 白名单注册与 Result 包装                            │
-│ services/       AgentService、订阅代理、终端、Git、媒体、记忆、项目、MCP...  │
-│ core/           agent 循环、工具、权限、上下文、Provider                       │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-                                    │ contextBridge / ipcRenderer.invoke
-┌───────────────────────────────────▼───────────────────────────────────────────┐
-│ preload（contextIsolation + sandbox）                                         │
-│ 只暴露 window.morrow 白名单；所有 invoke 返回 Result<T>，不暴露 ipcRenderer   │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────▼───────────────────────────────────────────┐
-│ renderer（React 19 + Zustand）                                                │
-│ TitleBar/Sidebar/Transcript/Composer/Canvas/Workbench/Settings/Island        │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
-
-主窗口与灵动岛都启用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，禁用 `<webview>`。渲染层不能直接读文件、执行命令或访问密钥。
-
-### 1.1 启动顺序
-
-1. 解析数据目录：`--data-dir` → `%LOCALAPPDATA%\Morrow\data-location.json` → `portable.marker` → `PORTABLE_EXECUTABLE_DIR` → `%APPDATA%\Morrow`。
-2. 在单实例锁之前 `app.setPath('userData', dataDir)`；否则多个便携副本会互相顶掉。
-3. 获取单实例锁；第二个实例只唤醒已有主窗。
-4. 注册 `morrow-file` / `morrow-artifact` 私有协议。
-5. `whenReady`：安全策略 → 协议处理器 → 菜单置空 → 基础 IPC → feature 模块 → 订阅恢复 → Token 账本 → 主窗 → 灵动岛 → 托盘 → 定时任务 → 全局快捷键。
-6. 打包版启动本地 crashReporter；主进程安装未捕获异常/未处理 Promise/子进程消失日志。
-
-### 1.2 窗口与生命周期
-
-- 主窗默认按 2100×1200 物理像素换算 DIP；最小 1200×760 物理像素左右。
-- 关闭动作由 `settings.closeAction` 决定：每次询问、最小化到任务栏、完全退出。
-- `window-all-closed` 不退出进程；托盘/灵动岛仍可运行后台任务。
-- 退出时清理终端、Agent、订阅代理、定时任务、托盘；4 秒未完成强制 `app.exit(0)`。
-- 主窗口渲染进程崩溃后 800ms 自动 reload；60 秒内最多两次，避免崩溃循环。无响应事件写入日志。
-
-## 2. 目录与数据
-
-数据目录初始化时创建：
+## 进程模型
 
 ```text
-<dataDir>/
-  sessions/          会话 JSON
-  snapshots/         文件写入前快照
-  checkpoints/       每轮检查点
-  logs/main.log      主进程日志
-  providers/         Provider 相关状态
-  attachments/       附件临时/持久文件
-  schedules/         定时任务
-  skills/            用户技能
-  memories/          全局记忆
-  projects/          项目元信息
-  artifact-versions/ 成品版本
-  usage/             Token 日账
-  permissions/       审批日志
-  secrets.json       safeStorage 加密的 API Key
-  settings.json      脱敏设置
+renderer (React 19 / Zustand)
+  │  window.morrow（preload 白名单）
+  ▼
+preload（contextIsolation，sandbox，无 nodeIntegration）
+  │  IPC / feature:*
+  ▼
+main (Electron)
+  ├─ index：窗口、生命周期、单实例、协议、CSP、托盘、灵动岛
+  ├─ AgentService / core/agent：循环、工具、权限、压缩
+  ├─ core/collaboration：成果、计划、追溯、验收、资源探测、卡住判断
+  ├─ main/collaboration：成果存储、运行时、项目存储、追溯、验收、共享资源、成员名额、工具审计
+  ├─ provider 工厂：OpenAI 兼容 / Anthropic / 本机 / demo
+  ├─ StudioService / StudioStore：创作台
+  ├─ creative-masters / creative-prompts.generated：内嵌大师方法
+  ├─ media：ComfyUI / ffmpeg / TTS / 模型目录
+  └─ session / settings / secrets / projects / memory / skills / schedules
 ```
 
-工作区内另有：
+### 启动顺序
 
-```text
-<workspace>/.morrow/
-  memories.json      项目记忆
-  episodes.json      任务经验
-  skills/            工作区技能
-  commands/          自定义命令
-  agents/            自定义角色
-  mcp.json           工作区 MCP 配置
-  mcp-trust.json     MCP 信任登记
+1. 解析 `--data-dir` / 数据目录指针 / `portable.marker` / `%APPDATA%`，在单实例锁之前 `setPath`。
+2. 创建主窗口与灵动岛；主窗口 `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`，禁用 webview。
+3. 注册基础 IPC 与 `feature:*` 精确通道。
+4. 启动 Agent 运行时、Studio 服务、媒体/终端/订阅等按需服务。
+5. 恢复上次会话/工作区；渲染崩溃自动 reload（800ms，60 秒内最多 2 次）。
+
+### 默认窗口
+
+窗口目标为 **2100×1200 物理像素**，按主屏缩放比换算为 DIP；最小 1200×760。主窗口无边框；灵动岛是独立窗口。文档截图保持默认窗口，输出 2100×1200 物理像素原图。
+
+## 扁平源码结构
+
+源码按职责扁平放在 `src/main`、`src/core`、`src/renderer/features`、`src/shared`。合并功能套组后不保留多层 `studio/`、`core/agent/` 目录；新增文件优先放到对应扁平目录。
+
+- **协作域**：核心逻辑在 `src/core/collaboration.ts`；主进程服务在 `src/main/collaboration.ts`。成果、计划、追溯、验收、共享资源、成员名额、工具审计都在这两个文件内。
+- **工具域**：`tool-kit`（公共层）、`tools`（注册表）、`tool-extra`（技能/MCP/任务）、`tool-files`（文件与文档）、`tool-media`（媒体/网页/搜索/浏览器/电脑/命令）。
+- **渲染层**：每个功能域一个 `*.tsx` 组件 + 一个 `*.css`；跨 feature 复用的纯逻辑放 `*-core.ts`（如 `artifacts-core`、`files-core`、`studio-core`）。
+- **共享层**：`shared/types`、`shared/contracts`、`shared/studio`、`shared/studio-assistant`、`shared/diff.d.ts`。
+- **测试**：`tests/unit` 按功能域合并入口（协作/Super-Agent 统一 `collaboration.test.ts`）；`tests/e2e` 5 个流程文件；共用辅助平铺为 `helpers.ts`。
+
+### 为什么保留少数分文件
+
+- `feature-ipc` 被 `features`、`agent` 与多个服务复用；合并进 `features` 会让 `agent → features → agent` 形成循环。
+- `*-core.ts` 被多个 feature 交叉引用；合并进单个组件文件会造成跨 feature 反向依赖。
+- `main/workspace-isolation.ts` 属于工作区隔离域（`@core:workspace`），不是协作域内部实现。
+- `studio-*.test.ts` 各自 mock 不同的 `electron` / `settings` 或独立 HTTP/TTS 生命周期；合并会把 mock 提升为整文件生效。
+
+## 数据目录
+
+解析顺序：`--data-dir` → `%LOCALAPPDATA%\Morrow\data-location.json` → 便携版 `portable.marker` → `%APPDATA%\Morrow`。
+
+| 目录/文件 | 内容 |
+|---|---|
+| `sessions/` | 会话与消息 |
+| `snapshots/`、`checkpoints/` | 文件/会话检查点 |
+| `logs/main.log` | JSON 行日志，5MB 轮转保留 3 份 |
+| `providers/`、`secrets.json` | 模型配置与加密凭据 |
+| `settings.json` | 应用设置 |
+| `studio/` | 作品、素材、版本、任务、回收站 |
+| `usage/` | Token Activity |
+| `schedules/` | 定时任务 |
+| `skills/` | 用户技能 |
+| `permissions/` | 审批日志 |
+| `collaboration/` | 项目、工具审计、共享资源、成果、追溯 |
+
+工作区内 `.morrow/` 存项目记忆、经验、技能、命令、角色、MCP 配置。
+
+### 作品数据
+
+`StudioStore` 是唯一写入口：原子读写项目 JSON、超长章节分片、版本快照、素材指纹、回收站索引。超长章节按内容哈希写入独立目录，`project.json` 成功后才清理旧分片；读取时逐章校验，只从历史版本恢复损坏章节。作品文件保存蓝图、章节、分镜、镜头、素材、时间线、任务、检查、审稿覆盖与交付；候选稿与版本在章节内部。
+
+## IPC 与事件
+
+- 基础 IPC + 精确 `feature:*` 注册；统一返回 `{ ok, data }` 或 `{ ok, error }`。
+- 渲染层不直接使用 `ipcRenderer`；只通过 `window.morrow` 白名单调用。
+- `RuntimeEvent` 带 `seq/runId/sessionId/at`；主进程先脱敏、持久化、登记检查点、更新灵动岛，再广播 `morrow:event`。
+- 消息增量在主流式路径按 40ms 合并后广播，渲染层再按 24ms 兜底合并；`sessionLoad` 合并内存中的进行中消息并返回 `liveMessageId`，切回运行中的会话不会从下一个分片重新开始。
+- 工具执行前校验执行身份（主代理 / Router / Worker）的 token、工具白名单、会话与运行、有效期和写入目录；「始终允许」按身份与尝试隔离并过期。允许/拒绝写入 `collaboration/tool-audit.jsonl`，不含工具参数或文件内容。
+
+## Agent 循环
+
+`core/agent` 负责：
+
+- 组装系统提示词、角色、规则、技能与上下文；
+- 调 Provider 流式生成，处理文本、思考、工具调用与错误；
+- 执行工具、写检查点、广播事件、累计用量；
+- 处理中断、重试、压缩与 Goal/Plan 模式；
+- 维护权限签名与审批。
+
+工具结果统一为 `ok/error`，错误带可读原因；工具参数按 schema 校验。文件工具限制在工作区内，工作区外读取只允许显式附件；写入仍走权限。
+
+## 权限与审批
+
+三档权限：
+
+| 档位 | 行为 |
+|---|---|
+| 只读 | 拒绝写文件、命令、记忆与外部副作用动作 |
+| 询问 | 工作区内写入/普通命令放行；危险命令、越界、外部动作、终端 stdin 逐次询问 |
+| 完全访问 | 全部放行；只用于可信任务 |
+
+审批卡显示工具、目标、影响范围与参数；危险动作没有“始终允许”。拒绝优先于允许；审批请求与执行身份绑定，过期或换身份后失效。
+
+## Super-Agent
+
+Router / Worker 协作由 `core/agent` 与 `core/collaboration` 驱动，主进程服务在 `main/collaboration`：
+
+- **固定编号**：每次协作使用固定 `projectId` / `taskId`，每次重试生成新的 `attemptId`；状态记录来源（router/worker/verifier/user/system/legacy）、`revision` 与 `createdAt`，拒绝重复通知和晚到的旧 run。
+- **执行前落盘**：协作动作在执行前写入 `collaboration/projects/<projectId>.json`；`pending` 可恢复，崩溃后遗留的 `running/executed` 转为 `uncertain` 等待人工核对，`done` 不会再次领取。会话文件只保存项目/任务编号。
+- **独立工作副本**：Worker 在隔离副本中读写，结束后按任务文件清单合并；同文件同处冲突保留两版交给用户选择；用户未提交改动保留。
+- **成果版本**：发布时把文件复制到用户数据目录的只读快照；依赖成员读取快照，不受发布者后续修改影响；记录谁用了哪一版，新版本让旧使用记录过期。
+- **独立验收**：verifier 在候选版本上运行安全命令并检查必需文件；失败退回作者返工，超过次数交负责人；验收后交付文件变化会作废旧结论并重新验收。
+- **追溯**：从验收失败追到文件版本、修复和通过记录；跨项目访问被拒绝并写审计。
+- **并发与预算**：Worker 名额受本机并发限制；token 预算超限停止派发，但用户仍可接话。
+- **卡住判断**：只有重复无成果、审批等待或稳定产出等有依据的情况才提醒；停止或继续等待不影响其他成员。
+- **试点回退**：关闭 Super 只停止新派工，在途成员完成；切回旧方式不重跑已完成任务。
+
+实现位置：`core/collaboration.ts`（成果、计划、追溯、验收、资源探测、卡住判断）与 `main/collaboration.ts`（存储、运行时、追溯、验收、共享资源、成员名额、工具审计）。
+
+## 上下文与压缩
+
+- 上下文账本保留最近用户消息、关键事实、工具结果与任务约束。
+- 压缩 v2：确定性关键信息账本；不把摘要再次摘要；保留最近用户消息；压缩提示词带预算；Thrashing 保护避免反复压缩。
+- 压缩后仍校验工具配对与首条角色；恢复时合并进行中消息，避免丢分片。
+
+## Provider 与订阅
+
+Provider 工厂支持 OpenAI 兼容、Anthropic 原生与 demo；本机模型走 OpenAI 兼容地址。订阅渠道使用独立适配器，处理 OAuth、本机登录、用量与模型目录；协议差异集中在 `src/main/subscriptions.ts`。未实测渠道不显示已连接，不伪造额度。详细清单见 [REFERENCE.md](REFERENCE.md#订阅渠道)。
+
+## 持久化
+
+- 会话、设置、项目、记忆、技能、定时任务、用量、协作项目均为本机文件/JSON。
+- 写入采用临时文件 + 重命名；读取校验并保留回滚清单。
+- 密钥通过系统安全存储加密；界面不回显明文。
+- 日志脱敏后写 JSON 行；敏感字段不落日志。
+
+## 创作台架构
+
+- `StudioService` 负责动作、任务、模型调用、媒体与导出；`StudioStore` 是唯一写入口。
+- 蓝图确认后才写正文/分镜并产生费用；候选稿、历史版本、覆盖范围、任务状态与交付记录都在作品内。
+- 内嵌三套大师方法只来自 `src/main/creative-prompts.generated.ts`；本地只做可计算检查。
+- 协作者使用统一动作契约：预览影响、确认后应用、可撤销、下游过期；不直接改用户文件。
+- 漫剧：蓝图 → 分镜 → 画面 → 配音/配乐 → 时间线 → 检查 → 交付；画布只组织工作流，不替代时间线。
+- 导出：图片/视频/音频/PDF/DOCX/EPUB/工程包；FFmpeg、字体与引擎缺失时明确失败。
+
+## 设计系统
+
+- **主题**：墨夜（默认）与素纸（light），共享 token；不新增第三套主题。
+- **色彩**：背景/表面/文字/分隔线/强调色/状态色都由 token 驱动；破坏性确认使用低饱和酒红。
+- **字体**：界面 Manrope / 中文系统字体；正文与文档使用 Newsreader / Noto Serif SC；代码 IBM Plex Mono / JetBrains Mono。
+- **布局**：左侧栏、中心对话/画布、右侧面板；创作台三栏；1px 分隔线；默认 2100×1200，适配 1280–3840。
+- **组件**：页签、开关、状态标签、按钮、Composer、消息与轨迹、权限卡、画布、设置、灵动岛、创作台品牌；输入框、文本域与下拉统一使用 `--control-radius` 微圆角和 `--control-focus-shadow` 内嵌焦点环，避免滚动容器裁切。
+- **动效**：克制、短时、只用于状态变化与空间关系；减少动态偏好下不阻塞操作。
+- **可访问性**：键盘可达、焦点可见、对比度达标、禁用斜体、窗口缩放不挤压。
+
+样式集中在 `src/renderer/styles.css`、`components.css` 与各 feature 的 `*.css`；`npm run audit:ui` 检查裸字号/排版声明。
+
+## 安全边界
+
+- **进程隔离**：contextIsolation、sandbox、无 nodeIntegration、webview 禁用；preload 白名单。
+- **CSP**：生产包收紧 CSP；仅应用自身 `index.html` 与受控成品预览协议可加载。
+- **路径**：文件工具限制在工作区；工作区外读取只允许显式附件；写入仍走权限。
+- **命令**：危险命令、越界路径、外部副作用、终端 stdin 逐次审批；命令环境过滤敏感变量。
+- **网页/MCP/桌面**：内容按不可信数据处理；浏览器只允许 http(s)；`window.open` 拒绝；MCP 信任按工作区；桌面敏感窗口拒绝。
+- **密钥**：系统安全存储加密；界面不回显；日志脱敏。
+- **网络**：订阅与搜索走明确服务商；本机/局域网模型不误走原生搜索；SSRF 防护。
+- **已知边界**：两个 exe 未签名；外部引擎与 FFmpeg 不随包；真实模型质量与账号额度由服务商决定。
+
+## 扁平化与去重记录
+
+2026-11-02 完成协作域合并：
+
+| 合并 | 结果 |
+|---|---|
+| 核心协作 6 文件 → `src/core/collaboration.ts` | 成果、计划、追溯、验收、资源探测、卡住判断；`taskKey` 只保留一份 |
+| 主进程协作 8 文件 → `src/main/collaboration.ts` | 成果存储、运行时、项目存储、追溯、验收、共享资源、成员名额、工具审计；`inside`/`sha256`/`isBinary` 去重，单例按服务重命名 |
+| 8 个协作/Super-Agent 单元入口 → `tests/unit/collaboration.test.ts` | 37 项用例，保留独立 `describe` 作用域 |
+| 单元辅助 6 文件 → `tests/unit/helpers.ts`；E2E 辅助 2 文件 → `tests/e2e/helpers.ts` | 删除 `helpers/` 子目录 |
+| 基准夹具 `collaboration-benchmark/` → `tests/fixtures/collaboration-benchmark.ts` + `tests/fixtures/login-demo/` | 少一层目录 |
+
+本轮追加合并：`a11y.tsx` → `App.tsx`；`connectors-core`/`projects-core`/`skills-core` → 对应组件；`main/embedding.ts` → `main/memory.ts`；`motion`/`shortcuts` 测试 → `shared.test.ts`，provider 续接/结构化输出测试 → `core-runtime.test.ts`，工具并行测试 → `core-tools.test.ts`。保留但未合并的原因见上文“为什么保留少数分文件”。扫描方法：导出符号按名称聚类、检查工具注册/进程启动/持久化/压缩/搜索/技能安装/渲染层 core，并用测试回归确认行为一致。
+
+## 构建、测试与打包
+
+```powershell
+npm run typecheck
+npm run audit:ui
+npm run docs:check
+npm run test:suite
+npm run test:unit
+npm run test:e2e
+npm run dist:final
+npm run smoke:packaged
 ```
 
-`deliver/Morrow Data` 是用户数据；构建脚本保留但从不计入交付。
-
-## 3. IPC 与事件
-
-- 基础 IPC 覆盖 chat/send、session CRUD、settings、window、数据目录、归档等。
-- feature IPC 只挂载已注册的精确 `feature:*` 频道；返回值统一 `{ok:true,data}` 或 `{ok:false,error}`，避免 Electron 原始异常泄漏。
-- 渲染层通过 preload 的 `window.morrow` 调用；没有裸 `ipcRenderer`。
-- Agent 运行产生 `RuntimeEvent`（started/delta/tool/permission/usage/compaction/notice/finished 等），带 `seq/runId/sessionId/at`；主进程先做敏感值脱敏、持久化、检查点登记、灵动岛更新，再广播 `morrow:event`。
-- feature 事件走 `feature:*` 并广播所有窗口；设置变更只发主窗。
-- 网页/浏览器/MCP 内容按不可信数据处理，不作为系统指令。
-
-## 4. Agent 循环
-
-一次 `chat:send` 的主路径：
-
-1. `user_prompt_submit` 钩子（返回码 2 可阻断发送）。
-2. 同会话互斥检查；已有运行则拒绝或排队。
-3. 创建本轮检查点与快照目录。
-4. 解析 Provider/Model/Key/权限/上下文覆盖。
-5. 写入用户消息、自动标题（首条可见消息截 26 字，仅在标题仍是“新对话/临时对话”时）。
-6. `runAgent`：构建 system prompt、历史、工具列表；流式调用 Provider；聚合文本/思考/工具调用；执行工具；回填 tool_result；循环直到完成/步数/预算/中止。
-7. 每个工具调用前做权限判断；审批/提问全局按 run 串行。
-8. 运行结束持久化消息、usage、todo、artifact、goal/plan/research；执行 `run_finished` 钩子、队列/目标/研究后续。
-9. 清理临时状态；迟到事件不再覆盖新运行。
-
-### 4.1 模式与限制
-
-- `chat`：只读工具集合 + ask_user/web_search；内核拒绝写/命令/记忆/集群。
-- `work`：默认；完整工具。
-- `plan`：仅工作模式；固定只读 + `submit_plan`；最多 2 步；批准后转执行。
-- `research`：固定只读权限 `auto`，但有研究白名单；计划阶段不暴露工具；检索轮以隐藏消息续跑。
-- `goal`：仅工作模式；2–256 轮；预算含工具调用、有效时间、连续无进展；完成需证据文件；全局同时一个目标。
-- `temporary`：不写项目记忆、不持久化；不提供回退/成品版本。
-- `demo`：一次性演示工作区，跳过审批但真实执行工具，约 35–50 秒。
-
-### 4.2 工具注册
-
-工具按固定顺序注册：文件、PDF/DOCX/XLSX/PPTX、搜索、命令、技能、元工具、联网、终端、MCP、浏览器、computer-use、多媒体。`submit_plan/update_goal` 按模式注入。
-
-- 主代理工具调用串行执行；单个工具异常转 `ToolResult`，不炸整轮。
-- 连续 4 次完全相同工具调用判死循环。
-- 工具结果、参数、MCP 配置等都有大小上限；文件/终端/媒体路径必须在工作区内。
-
-## 5. 权限与审批
-
-权限模型在 `core/permissions.ts`，持久化在 `services/permission-rules.ts`。
-
-| 档位 | 普通写/命令 | 危险命令 | 越界路径 | 外部副作用 |
-|---|---|---|---|---|
-| 只读 | 拒绝 | 拒绝 | 拒绝 | 拒绝 |
-| 询问 | 工作区内放行 | 询问 | 询问 | 询问 |
-| 完全访问 | 放行 | 询问 | 询问 | 询问 |
-
-- “始终允许”按工具 + 目标 + 参数哈希形成会话 grant，并落为工作区 allow 规则。
-- deny 规则优先；allow 不能越过危险/越界/外部动作。
-- 危险命令、越界路径、终端 stdin 等始终逐次确认，不提供“始终允许”。
-- 审批日志在 `permissions/approval-log.jsonl`，规则在 `permissions.json`。
-- 无人值守运行/定时任务自动拒绝审批和提问，不会挂起。
-
-## 6. 上下文、压缩与恢复
-
-- 自动压缩默认阈值 0.8、保留最近 8 条；可配 0.5–0.98、2–50。
-- 只在完整消息边界切；保留首条用户锚点与当前请求；有未回填 `tool_use` 时拒绝压缩。
-- 优先模型摘要；失败退本地摘要；仍超目标再 `aggressiveTrim`。
-- 上下文溢出最多强制压缩重试 2 次；手动 `/compact` 需空闲、至少 4 条消息、90s 超时、压缩前后校验消息签名。
-- 每轮检查点最多 100 个；回退范围 code/conversation/both；命令副作用不可通用追踪。
-- 写文件前快照记录 before/after 哈希；恢复前校验会话根、清单哈希和当前文件哈希，冲突拒绝。
-
-## 7. Provider 层
-
-### 7.1 工厂
-
-- `demo`：离线剧本，真实执行工具。
-- `anthropic`：Anthropic Messages。
-- 其他：OpenAI 兼容 Chat Completions。
-- 真实 Provider 外包 `ToolProtocolProvider`：剔除正文中的文本工具协议，缺失结构化 tool_calls 时解析为工具事件，未知工具忽略并提示。
-
-### 7.2 OpenAI 兼容
-
-- `/chat/completions` + SSE + `stream_options.include_usage`。
-- tool_calls 按 index 拼接；`reasoning_content/reasoning` → `thinking_delta`。
-- `reasoning_effort` 透传；DeepSeek 直接 Provider 的 `off` 映射为 `none`；Qoder 代理保持 `off`。
-- 支持 `x-morrow-context-window` 会话级上下文覆盖。
-- 图片消息使用 content 数组 + `image_url` data URL。
-
-### 7.3 Anthropic
-
-- system 顶层；user/assistant 交替；tool_use/tool_result 块。
-- 思考档位映射 `thinking.budget_tokens`（low 1024 … max 32768），强制 temperature=1；`off` 不发送 thinking。
-- 缓存读写计入总输入；不使用 Morrow 的 context-window 头。
-
-### 7.4 重试
-
-- 408/409/425/429/5xx 与网络错误可重试，最多 3 次，退避 800/2000/5000ms。
-- 只有“尚未产出任何内容”才重试；abort 立即停止。
-
-## 8. 持久化
-
-| 数据 | 位置 | 说明 |
-|---|---|---|
-| 会话 | `sessions/<id>.json` | 整份 JSON；临时文件 + rename；临时会话仅内存；列表最多 300 |
-| 设置 | `settings.json` | 脱敏配置；内置 Provider 每次启动与代码预设合并 |
-| 密钥 | `secrets.json` | safeStorage 加密；加密不可用时拒绝保存；旧 `b64:` 只读兼容 |
-| 项目 | `projects/projects.json` | 背景、资料、会话、范围 |
-| 记忆 | 工作区 `.morrow/memories.json` / 全局 `memories/global.json` | 项目/全局长期记忆 |
-| 任务经验 | `.morrow/episodes.json` / `episodes/global.json` | 任务复盘 |
-| 成品版本 | `artifact-versions/<session>/<artifact>/` | 最多 30 版、单版 8MB |
-| 技能 | `skills/` / 工作区 `.morrow/skills` | 用户/工作区技能 |
-| MCP | `mcp.json` / 工作区 `.morrow/mcp.json` | 工作区需 `mcp-trust.json` |
-| 定时任务 | `schedules/tasks.json` | 最多 50 |
-| Token 账 | `usage/token-activity.json` | 日账 |
-| 日志 | `logs/main.log` | 主进程 JSON 行日志 |
-
-## 9. 订阅与代理
-
-订阅服务在 `main/services/*-subscription.ts`，协议在 `*-protocol.ts`。共同结构：
-
-- 登录/导入 → 凭据加密落盘 → 账号/额度校验 → 模型目录 → 本地回环代理 → Provider。
-- 回环代理只绑 `127.0.0.1` 随机端口，要求随机本地 Bearer；上游 token 不进入渲染层。
-- 401/403 只刷新一次后重试；刷新先落盘再使用。
-- 官方接口变化时返回真实错误，不假装已连接。
-- 各渠道细节见 [订阅接入](SUBSCRIPTIONS.md)。
-
-## 10. 终端、Git、浏览器与媒体
-
-- `TerminalManager`：node-pty / ConPTY；Git Bash 默认；PowerShell 7 / WSL 可选；Windows PowerShell 5.1 与 CMD 移除（CMD 仅在无其他 Shell 时兼容回退）。
-- Git：`git-service` 封装工作区仓库操作；拒绝越界与父仓库根操作；diff 超长截断。
-- 浏览器：`BrowserService` 管理多标签/原生视图；普通页面与登录 session 分离；导航白名单、下载、权限与错误页有独立处理。
-- 媒体：`MediaService` + `media-catalog` 管理引擎/模型/下载/启动；ComfyUI、llama.cpp、Ollama、LM Studio；ffmpeg 由系统或设置提供；产物写入 `media/`。
-
-## 11. 安全边界
-
-- 文件 IPC 必须 realpath 后位于最近工作区/会话工作区。
-- 外部 URL 仅 http(s)；`window.open` 拒绝；webview 禁止。
-- 打包版 CSP；画布 HTML 走独立 `morrow-artifact` 协议与独立 CSP。
-- 密钥永不下发渲染层；日志脱敏；输出守卫遮蔽邮箱/用户名/token。
-- 网页、MCP、浏览器内容不可信；不执行页面指令。
-- Antigravity 不内置 OAuth secret，需 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
-- 详见 [安全与隐私](SECURITY-PRIVACY.md)。
-
-## 12. 构建、打包与测试
-
-- 构建：`npm run build`（typecheck + electron-vite）。
-- 打包：`npm run dist` / `dist:all`；便携版使用自研 C# 启动器，内嵌 zip，首次解压到 exe 同级 `.morrow-runtime-<version>-<revision>`。
-- 安装包：NSIS，按当前用户安装。
-- 单元测试：Vitest，14 个套件 / 952 用例。
-- E2E：Playwright `_electron`，17 个套件 / 209 用例；打包版另跑 5 个用例。
-- 真实账号/媒体用例默认跳过，需环境变量与本机引擎。
-- 评测指标与复现命令见 [评测规范](EVALUATION.md)。
+- 核心套组：494 项单元 + 82 条 Electron / 41 域；清单 `tests/core-coverage.json`。
+- 测试截图写 `tmp/e2e-screens`；文档截图由 `npm run docs:capture` 生成到 `docs/screens`，全部 2100×1200 原图。
+- 打包：`dist:final` 产出便携 exe + 安装包，`deliver/` 只保留两个文件与用户数据；详见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [VERIFICATION.md](VERIFICATION.md)。

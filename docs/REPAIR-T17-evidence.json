@@ -1,0 +1,35 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T17",
+  "capturedAt": "2026-11-02T18:18:58.000000+00:00",
+  "kind": "Electron E2E + pure unit",
+  "implementation": {
+    "settings": "Settings.shortcuts 持久化六个动作；旧配置自动补默认，非法/冲突/保留组合回落",
+    "recorder": "设置 → 快捷键：点击录制、按下组合保存、Esc 取消、恢复默认",
+    "validation": "至少 Ctrl/⌘/Alt；拒绝系统保留组合；重复组合红框提示；主进程二次校验",
+    "runtime": "渲染层按键统一读 settings.shortcuts；tooltip/标题栏/桌面伙伴提示同步",
+    "global": "桌面伙伴全局快捷键保存后重新注册；失败回滚设置并提示原因",
+    "boundary": "仅单组合键；上下文快捷键只读；测试模式跳过系统级注册"
+  },
+  "unit": {
+    "files": ["tests/unit/shortcuts.test.ts"],
+    "count": 4,
+    "passed": true
+  },
+  "e2e": {
+    "title": "快捷键可录制改键、冲突提示并实际生效",
+    "passed": true,
+    "assertions": [
+      "录制 Ctrl+Shift+U 后保存为 CommandOrControl+Shift+U",
+      "关闭设置后按新组合新建对话",
+      "重复组合显示冲突红框且原组合不变",
+      "Esc 取消录制并清除错误"
+    ],
+    "screenshots": ["docs/screens/shortcut-keymap.png", "docs/screens/shortcut-conflict.png"]
+  },
+  "regression": {
+    "unit": "490 passed",
+    "e2e": "80 collected",
+    "docs": "npm run docs:check 通过（2100x1200 截图）"
+  }
+}

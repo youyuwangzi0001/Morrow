@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_CLOSE_REQUEST_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/ipc'
+import { EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, IPC, ISLAND_OPEN_CHANNEL, ISLAND_QUICK_SEND_CHANNEL, ISLAND_UPDATE_CHANNEL, WINDOW_CLOSE_REQUEST_CHANNEL, WINDOW_STATE_CHANNEL } from '../shared/contracts'
 import type {
   CompactResult,
   GoalActionResult,
@@ -15,7 +15,7 @@ import type {
   SaveWebSearchInput,
   UpdateSettingsInput,
   WebSearchTestResult
-} from '../shared/ipc'
+} from '../shared/contracts'
 import type {
   Artifact,
   ArtifactExportFormat,
@@ -74,6 +74,50 @@ const api: MorrowApi = {
     return () => ipcRenderer.removeListener(EVENT_CHANNEL, wrapped)
   },
 
+  collaboration: {
+    confirmAction: (input: { projectId: string; actionId: string }) =>
+      invoke<import('../shared/types').CollaborationProjection>(IPC.collaborationConfirm, input),
+    stopTask: (input: { projectId: string; taskId: string }) =>
+      invoke<{ stopped: boolean }>(IPC.collaborationStopTask, input),
+    dismissStuck: (input: { projectId: string; taskId: string }) =>
+      invoke<{ dismissed: boolean }>(IPC.collaborationDismissStuck, input),
+    retryTask: (input: { sessionId: string; projectId: string; taskId: string }) =>
+      invoke<{ started: boolean }>(IPC.collaborationRetryTask, input),
+    reactivate: (input: { sessionId: string; projectId: string; taskId: string; text: string; clientMessageId?: string }) =>
+      invoke<{ started: boolean }>(IPC.collaborationReactivate, input),
+    resolveConflict: (input: {
+      sessionId: string
+      projectId: string
+      conflictId: string
+      choice: 'current' | 'incoming'
+    }) => invoke<{ resolved: boolean }>(IPC.collaborationResolveConflict, input),
+    revokeArtifact: (input: {
+      sessionId: string
+      projectId: string
+      name: string
+      version: number
+      reason?: string
+    }) => invoke<{ revoked: boolean }>(IPC.collaborationRevokeArtifact, input),
+    trace: (input: {
+      sessionId: string
+      projectId: string
+      query: import('../shared/types').CollaborationTraceQuery
+    }) => invoke<import('../shared/types').CollaborationTraceResult>(IPC.collaborationTrace, input),
+    openTraceSnapshot: (input: { sessionId: string; projectId: string; path: string }) =>
+      invoke<void>(IPC.collaborationTraceOpen, input),
+    resources: () =>
+      invoke<import('../shared/types').SharedResourceView[]>(IPC.collaborationResources),
+    sendMessage: (input: { sessionId: string; projectId?: string; taskId: string; text: string; clientMessageId?: string; replyTo?: string }) =>
+      invoke<{
+        message: import('../shared/types').CollaborationMessage
+        projection: import('../shared/types').CollaborationProjection
+      }>(IPC.collaborationSendMessage, input),
+    cancelMessage: (input: { projectId: string; messageId: string }) =>
+      invoke<import('../shared/types').CollaborationProjection>(IPC.collaborationCancelMessage, input),
+    projection: (projectId: string) =>
+      invoke<import('../shared/types').CollaborationProjection>(IPC.collaborationProjection, { projectId })
+  },
+
   island: {
     snapshot: () => invoke<import('../shared/types').IslandSnapshot>(IPC.islandState),
     setExpanded: (expanded: boolean) => invoke<void>(IPC.islandSetExpanded, { expanded }),
@@ -81,6 +125,7 @@ const api: MorrowApi = {
     openMain: (input?: IslandOpenMainInput) => invoke<void>(IPC.islandOpenMain, input ?? {}),
     quickSend: (input: IslandQuickSendInput) => invoke<void>(IPC.islandQuickSend, input),
     syncSession: (sessionId: string | null) => invoke<void>(IPC.islandSyncSession, { sessionId }),
+    syncStudio: (input: import('../shared/contracts').IslandStudioSyncInput) => invoke<void>(IPC.islandSyncStudio, input),
     onState: (listener: (snapshot: import('../shared/types').IslandSnapshot) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, payload: import('../shared/types').IslandSnapshot): void =>
         listener(payload)
@@ -129,8 +174,8 @@ const api: MorrowApi = {
     editResend: (sessionId: string, messageId: string, text: string) =>
       invoke<SendMessageResult>(IPC.chatEditResend, { sessionId, messageId, text }),
     deleteAfter: (sessionId: string, messageId: string) => invoke<Session>(IPC.chatDeleteAfter, { sessionId, messageId }),
-    respondPermission: (requestId: string, decision: PermissionDecision) =>
-      invoke<void>(IPC.permissionRespond, { requestId, decision }),
+    respondPermission: (requestId: string, decision: PermissionDecision, sandbox?: boolean) =>
+      invoke<void>(IPC.permissionRespond, { requestId, decision, ...(sandbox ? { sandbox: true } : {}) }),
     respondQuestion: (requestId: string, answer: AskUserAnswer) =>
       invoke<void>(IPC.questionRespond, { requestId, answer })
   },
@@ -145,6 +190,8 @@ const api: MorrowApi = {
     setPermissionMode: (sessionId: string, mode: PermissionMode) =>
       invoke<SessionMeta>(IPC.sessionSetPermissionMode, { sessionId, mode }),
     setMode: (sessionId: string, mode: SessionMode) => invoke<SessionMeta>(IPC.sessionSetMode, { sessionId, mode }),
+    setSuperMode: (sessionId: string, enabled: boolean) =>
+      invoke<SessionMeta>(IPC.sessionSetSuperMode, { sessionId, enabled }),
     setReasoningEffort: (sessionId: string, effort: import('../shared/types').ReasoningEffort) =>
       invoke<SessionMeta>(IPC.sessionSetReasoning, { sessionId, effort }),
     setPinned: (sessionId: string, pinned: boolean) => invoke<SessionMeta>(IPC.sessionSetPinned, { sessionId, pinned }),
@@ -192,7 +239,14 @@ const api: MorrowApi = {
     preview: (sessionId: string, checkpointId: string) =>
       invoke<import('../shared/types').RewindPreview>(IPC.checkpointPreview, { sessionId, checkpointId }),
     rewind: (sessionId: string, checkpointId: string, scope: import('../shared/types').RewindScope) =>
-      invoke<import('../shared/types').RewindResult>(IPC.checkpointRewind, { sessionId, checkpointId, scope })
+      invoke<import('../shared/types').RewindResult>(IPC.checkpointRewind, { sessionId, checkpointId, scope }),
+    replayPreview: (sessionId: string, checkpointId: string) =>
+      invoke<import('../shared/types').CheckpointReplayPreview>(IPC.checkpointReplayPreview, {
+        sessionId,
+        checkpointId
+      }),
+    resume: (sessionId: string, checkpointId: string) =>
+      invoke<import('../shared/types').SendMessageResult>(IPC.checkpointResume, { sessionId, checkpointId })
   },
   queue: {
     list: (sessionId: string) => invoke<import('../shared/types').QueuedMessage[]>(IPC.queueList, { sessionId }),

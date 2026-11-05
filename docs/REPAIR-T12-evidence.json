@@ -1,0 +1,33 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T12",
+  "capturedAt": "2026-11-02T17:43:40.000000+00:00",
+  "kind": "Electron E2E + unit",
+  "implementation": {
+    "heuristicCapture": "任务完成且有工具/文件/成果时先落一条基础经验",
+    "modelExtraction": "同一模型抽取 0–2 条 title/intent/summary/tags/files；超时 30s；失败静默",
+    "dedupe": "本地向量相似度 ≥0.86 视为重复，不重复写入",
+    "privacy": "提示明确排除密钥、密码、隐私和一次性调试",
+    "ui": "输入框上方提示已沉淀 N 条经验，可查看、撤销、关闭"
+  },
+  "unit": {
+    "file": "tests/unit/memory-capture.test.ts",
+    "count": 3,
+    "passed": true
+  },
+  "e2e": {
+    "title": "任务完成后自动沉淀经验，可查看/撤销",
+    "passed": true,
+    "assertions": [
+      "任务完成后出现沉淀提示",
+      "提示包含查看和撤销按钮",
+      "记忆中心任务经验页出现该条目",
+      "撤销后经验条目归零"
+    ],
+    "screenshot": "docs/screens/memory-capture.png"
+  },
+  "regression": {
+    "unit": "491 passed",
+    "e2e": "83 collected"
+  }
+}

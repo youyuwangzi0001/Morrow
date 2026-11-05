@@ -14,7 +14,7 @@
 // - Playwright 的 _electron.launch 直连 Electron 主进程，穿过自研启动器不稳定；统一用
 //   「--remote-debugging-port + chromium.connectOverCDP」连接，对两种形态都成立。
 //
-// 证据（docs/verification/）：
+// 证据：截图与日志写 tmp/verification/，摘要写 docs/smoke-packaged.json。
 //   screens/packaged-smoke.png         + smoke-packaged.json          单文件
 //   screens/packaged-folder-smoke.png  + smoke-packaged-folder.json   文件夹版
 //
@@ -31,8 +31,8 @@ import { chromium } from '@playwright/test'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const screensDir = join(root, 'docs', 'verification', 'screens')
-const logsDir = join(root, 'docs', 'verification', 'logs')
+const screensDir = join(root, 'tmp', 'verification', 'screens')
+const logsDir = join(root, 'tmp', 'verification', 'logs')
 mkdirSync(screensDir, { recursive: true })
 mkdirSync(logsDir, { recursive: true })
 
@@ -143,11 +143,11 @@ async function verifyPortableMarker(folderExe, log) {
     log(`[marker] 验证 portable.marker：不带 --data-dir 启动 → 期望数据目录 ${relative(expectedDataDir)}`)
     child = spawn(folderExe, ['--no-sandbox', `--user-data-dir=${chromiumDir}`, '--test-mode', `--remote-debugging-port=${port}`], {
       cwd: root,
-      env: electronEnv({ MORROW_TEST: '1', MORROW_SKIP_DESKTOP_SHORTCUT: '1' }),
+      env: electronEnv({ MORROW_TEST: '1', MORROW_STUDIO_NO_DEMO: '1', MORROW_SKIP_DESKTOP_SHORTCUT: '1' }),
       stdio: ['ignore', 'pipe', 'pipe']
     })
-    child.stdout.on('data', (chunk) => appendFileSync(join(root, 'docs', 'verification', 'logs', 'smoke-packaged-folder.log'), `[marker:out] ${chunk}`))
-    child.stderr.on('data', (chunk) => appendFileSync(join(root, 'docs', 'verification', 'logs', 'smoke-packaged-folder.log'), `[marker:err] ${chunk}`))
+    child.stdout.on('data', (chunk) => appendFileSync(join(root, 'tmp', 'verification', 'logs', 'smoke-packaged-folder.log'), `[marker:out] ${chunk}`))
+    child.stderr.on('data', (chunk) => appendFileSync(join(root, 'tmp', 'verification', 'logs', 'smoke-packaged-folder.log'), `[marker:err] ${chunk}`))
     child.on('exit', (code, signal) => {
       child.__exitInfo = { code, signal }
     })
@@ -215,7 +215,7 @@ async function runSmoke(kind) {
   const exe = resolve(getArg('exe', defaultExe))
   const screenshotName = isFolder ? 'packaged-folder-smoke.png' : 'packaged-smoke.png'
   const summaryName = getArg('summary', isFolder ? 'smoke-packaged-folder.json' : 'smoke-packaged.json')
-  const summaryPath = join(root, 'docs', 'verification', summaryName)
+  const summaryPath = join(root, 'docs', summaryName)
   const logPath = join(logsDir, `smoke-packaged-${kind}.log`)
   writeFileSync(logPath, '')
   const log = (message) => {
@@ -270,7 +270,7 @@ async function runSmoke(kind) {
       '--test-mode',
       `--remote-debugging-port=${port}`
     ]
-    const extraEnv = { MORROW_TEST: '1' }
+    const extraEnv = { MORROW_TEST: '1', MORROW_STUDIO_NO_DEMO: '1' }
     if (tempMode === 'workspace-redirect') {
       // 启动器的临时文件/首次解压指到工作区内（受限令牌可写）
       extraEnv.TEMP = tempDir

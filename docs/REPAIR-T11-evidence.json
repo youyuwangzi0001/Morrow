@@ -1,0 +1,34 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T11",
+  "capturedAt": "2026-11-02T17:18:30.000000+00:00",
+  "kind": "Electron E2E + Docker argument unit",
+  "implementation": {
+    "sandbox": "Docker Linux 容器；只挂载工作区、默认断网、cap-drop ALL、no-new-privileges、2GB/2CPU/256 pids",
+    "detection": "启动时探测 Docker 守护进程、容器类型和镜像；不自动拉取镜像",
+    "approval": "命令审批卡提供「在沙箱中运行」复选；不可用时显示真实原因并降级为当前终端",
+    "execution": "只有用户明确勾选且沙箱可用才设置 ToolContext.sandbox；沙箱启动失败不回退宿主机执行",
+    "focus": "审批卡焦点默认落在拒绝"
+  },
+  "unit": {
+    "file": "tests/unit/command-sandbox.test.ts",
+    "count": 3,
+    "passed": true
+  },
+  "e2e": {
+    "title": "命令审批默认焦点在拒绝，沙箱不可用时如实提示降级",
+    "passed": true,
+    "assertions": [
+      "审批卡显示沙箱不可用及环境变量原因",
+      "沙箱不可用时没有假复选",
+      "焦点默认在拒绝按钮",
+      "拒绝后命令未执行，run 正常结束"
+    ],
+    "screenshot": "docs/screens/command-sandbox-unavailable.png"
+  },
+  "regression": {
+    "unit": "472 passed",
+    "e2e": "74 collected"
+  },
+  "boundary": "截图环境未安装 Docker，展示降级路径；Docker 参数由单元测试覆盖，真实容器执行需安装 Docker 后复验。"
+}

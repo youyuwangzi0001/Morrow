@@ -1,0 +1,27 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T05",
+  "capturedAt": "2026-11-02T16:26:51.216260+00:00",
+  "kind": "unit + Electron E2E",
+  "implementation": {
+    "openai": "已收文本作为 assistant 前缀 + user 续写指令；新流开头按最长后缀/前缀重叠去掉重复",
+    "anthropic": "assistant 预填，从部分回复之后继续",
+    "retry": "incomplete_stream / 429 / 5xx / 网络错误；最多 3 次，间隔加 20% 抖动",
+    "empty": "零产出仍按原策略重试",
+    "ui": "流式轨迹显示「连接中断：已保留 X 字，正在从断点续接…」，收到续接文本后自动消失"
+  },
+  "unit": {
+    "file": "tests/unit/provider-continuation.test.ts",
+    "tests": 3,
+    "openaiPreservedAndDeduped": true,
+    "anthropicPrefill": true,
+    "emptyRetry": true
+  },
+  "e2e": {
+    "title": "流式断流后保留已收文字并在轨迹里显示续接状态",
+    "preservedChars": 3,
+    "noticeVisible": true,
+    "finalText": "第一段第二段",
+    "screenshot": "docs/screens/stream-resume.png"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T18",
+  "capturedAt": "2026-11-02T18:44:38.000000+00:00",
+  "kind": "Electron E2E + unit + static audit",
+  "implementation": {
+    "liveRegions": "LiveAnnouncer polite/assertive；运行开始/结束、压缩、审批、提问；流式 token 不播报",
+    "transcript": "role=log 保持 aria-live=off；运行中 aria-busy=true",
+    "island": "独立窗口隐藏 live region 播报状态、详情与进度",
+    "focus": "全局 2px 焦点环令牌；按钮 box-shadow 环；自定义焦点指示统一；Modal aria-describedby + 焦点陷阱",
+    "reducedMotion": "系统媒体查询 + 应用设置；动画/过渡/延迟/滚动全覆盖；JS 平滑滚动助手；xterm 光标不闪",
+    "module": "src/shared/motion.ts"
+  },
+  "unit": {
+    "files": [
+      "tests/unit/motion.test.ts"
+    ],
+    "count": 1,
+    "passed": true
+  },
+  "e2e": {
+    "titles": [
+      "焦点环统一、读屏播报、焦点陷阱与减少动效",
+      "桌面伙伴状态可被读屏播报",
+      "命令审批默认焦点在拒绝，沙箱不可用时如实提示降级（新增 assertive 播报断言）"
+    ],
+    "passed": true,
+    "assertions": [
+      "polite 播报开始/完成，运行中 aria-busy",
+      "焦点环计算为 2px 且 :focus-visible 命中",
+      "焦点陷阱 Tab 循环不离开弹窗",
+      "审批 assertive 播报 run_command",
+      "岛窗口 live region role=status / aria-live=polite",
+      "设置或系统减少动效时动画时长 0.001s"
+    ],
+    "screenshot": "docs/screens/a11y-focus-ring.png",
+    "screenshots": [
+      "docs/screens/a11y-focus-ring.png",
+      "docs/screens/tool-catalog.png"
+    ]
+  },
+  "regression": {
+    "unit": "491 passed",
+    "e2e": "83 collected",
+    "domains": 41,
+    "audit": "0 raw typography declarations；31 scale-derived tokens；焦点环 2px 令牌",
+    "docs": "npm run docs:check 通过（2100x1200 截图）"
+  }
+}

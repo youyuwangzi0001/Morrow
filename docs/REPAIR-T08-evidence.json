@@ -1,0 +1,41 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T08",
+  "capturedAt": "2026-11-02T16:54:00.000000+00:00",
+  "kind": "Electron E2E",
+  "implementation": {
+    "embeddingSources": "MediaCatalog 本机服务探测：llama.cpp / Ollama / LM Studio；无模型时回退 256 维离线词面向量",
+    "vectorIndex": ".morrow/episode-vectors.json（模型）与 .morrow/episode-vectors-hash.json（离线）",
+    "ranking": "向量余弦 + 精确词面 + 重要性 1–3 星 + 时间衰减",
+    "importance": "记忆与任务经验均可点星设置；任务经验默认 1 星",
+    "forget": "达到容量上限时按重要性 × 新鲜度 × 使用次数淘汰，计数持久化",
+    "searchUi": "相关度 / 时间排序切换、命中高亮、匹配百分比、空结果区分无记忆与无匹配"
+  },
+  "unit": {
+    "file": "tests/unit/memory-semantic.test.ts",
+    "count": 6,
+    "passed": true
+  },
+  "e2e": {
+    "title": "记忆中心支持相关度排序、语义搜索与重要性星级",
+    "passed": true,
+    "assertions": [
+      "无记忆与无匹配两种空状态",
+      "任务经验 3 条、每条 3 颗重要性星",
+      "默认相关度排序，3 星经验在前",
+      "搜索「销售」仅命中销售报表并高亮",
+      "时间排序切回最新经验在前",
+      "点 3 星后写入 episodes.json",
+      "无匹配查询显示空结果并可清除"
+    ],
+    "screenshot": "docs/screens/memory-semantic.png"
+  },
+  "regression": {
+    "unit": "464 passed",
+    "e2e": "73 collected",
+    "targeted": [
+      "tests/e2e/ui.spec.ts -g 记忆中心支持相关度排序",
+      "tests/e2e/journey.spec.ts -g 强信号任务自动复盘"
+    ]
+  }
+}

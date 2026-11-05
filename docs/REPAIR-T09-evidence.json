@@ -1,0 +1,30 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T09",
+  "capturedAt": "2026-11-02T17:06:00.000000+00:00",
+  "kind": "Electron E2E + provider unit",
+  "implementation": {
+    "openai": "response_format json_schema，拒绝后自动降级 json_object / prompt，并发出 structured_degraded notice",
+    "anthropic": "强制工具 morrow_structured_output，工具参数转 JSON 文本；不支持时降级提示词",
+    "studioReview": "长篇与漫剧审稿传入 studio_review Schema",
+    "ui": "制作检查 → 使用的引擎新增结构化输出状态：原生 / 已降级 / 不可用 / 自动探测"
+  },
+  "unit": {
+    "file": "tests/unit/structured-output.test.ts",
+    "count": 5,
+    "passed": true
+  },
+  "e2e": {
+    "title": "Morrow 创作台入口、作品库、写作、分镜、时间线与交付的真实走查",
+    "passed": true,
+    "assertions": [
+      "检查页显示结构化输出状态行",
+      "未配置文本模型时显示不可用并说明原因"
+    ],
+    "screenshot": "docs/screens/structured-output.png"
+  },
+  "regression": {
+    "unit": "469 passed",
+    "e2e": "73 collected"
+  }
+}

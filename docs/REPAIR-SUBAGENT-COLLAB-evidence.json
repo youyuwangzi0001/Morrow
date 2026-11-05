@@ -1,0 +1,39 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T01+T02-SUBAGENT-COLLAB",
+  "capturedAt": "2026-11-02T17:38:00.000000+00:00",
+  "kind": "Electron E2E + core unit",
+  "implementation": {
+    "messaging": "main/worker 双向消息；directive/note/question/answer；replyTo 关联答复",
+    "workerTools": "worker_message、worker_ask（等待答复）、worker_todo_write（只改自己的待办）",
+    "reactivation": "保留 taskId、尝试历史、待办与压缩线程，追加新指令继续",
+    "sharedWorkspace": "普通 swarm 共享工作区，按声明 files 加租约；不同文件并行",
+    "liveReview": "Worker 每次写入的 diff 实时进入操作记录，驾驶舱可展开查看",
+    "permissions": "Worker 与主代理同一套工具/权限/审批链；仍禁止嵌套 swarm、改父目标和主计划"
+  },
+  "unit": {
+    "file": "tests/unit/worker-collaboration.test.ts",
+    "count": 6,
+    "passed": true
+  },
+  "e2e": {
+    "title": "Worker 可向主代理提问、回消息、维护待办并重新激活",
+    "passed": true,
+    "assertions": [
+      "Worker 提问出现在驾驶舱并可答复",
+      "答复送达并记录为已采用",
+      "Worker 待办实时显示完成/进行中",
+      "Worker 写文件后出现实时 diff",
+      "任务结束后带原线程重新激活",
+      "第 2 次尝试完成，原任务编号保留"
+    ],
+    "screenshots": [
+      "docs/screens/worker-collaboration.png",
+      "docs/screens/worker-live-diff.png"
+    ]
+  },
+  "regression": {
+    "unit": "478 passed",
+    "e2e": "75 collected"
+  }
+}

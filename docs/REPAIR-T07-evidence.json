@@ -1,0 +1,18 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T07",
+  "capturedAt": "2026-11-02T16:37:30.400468+00:00",
+  "kind": "Electron E2E",
+  "implementation": {
+    "placement": "上下文圆环面板底部一行",
+    "content": "近 7 日 tokens + 今天 tokens + 查看用量",
+    "link": "打开设置 → 用量（按天 Token 活动页）",
+    "noDuplication": "不再重复上下文占用、输入/缓存/输出、费用和模型字段"
+  },
+  "e2e": {
+    "title": "上下文面板底部显示近 7 日趋势并可打开用量页",
+    "trendVisible": true,
+    "openedUsageTab": true,
+    "screenshot": "docs/screens/usage-trend.png"
+  }
+}

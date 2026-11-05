@@ -1,0 +1,41 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T13",
+  "capturedAt": "2026-11-02T18:48:35.000000+00:00",
+  "kind": "Electron E2E + local HTTP unit",
+  "implementation": {
+    "http_request": "GET/POST/PUT/PATCH/DELETE/HEAD；自定义头与 256KB 请求体；公网 SSRF 防护；不自动重定向；每次审批",
+    "browser_tab": "list/new/activate/close，复用内置浏览器标签栏",
+    "catalog": "设置 → 更多功能 → 扩展功能 → 全部功能：与现有子页同一行入口；点击进入独立子页，返回入口；运行时真实工具、按域分组、风险与审批方式、搜索",
+    "deferred": "Jupyter / LSP / DB / Docker 未接入；依赖外部运行时，避免假功能"
+  },
+  "unit": {
+    "files": [
+      "tests/unit/http-request.test.ts",
+      "tests/unit/main-runtime.test.ts"
+    ],
+    "count": 5,
+    "passed": true
+  },
+  "e2e": {
+    "title": "更多功能中的全部功能子页展示真实工具清单与审批方式",
+    "passed": true,
+    "assertions": [
+      "全部功能入口与现有子页同一行 UI，首页不再内联清单",
+      "点击进入子页、返回后回到入口列表",
+      "95 个真实注册工具按域展示",
+      "http_request 显示高风险、每次审批",
+      "搜索 http_request 只返回一条",
+      "browser_tab 出现在清单中"
+    ],
+    "screenshots": [
+      "docs/screens/tool-catalog-entry.png",
+      "docs/screens/tool-catalog.png"
+    ]
+  },
+  "regression": {
+    "unit": "491 passed",
+    "e2e": "83 collected",
+    "docs": "npm run docs:check 通过（2100x1200 截图）"
+  }
+}

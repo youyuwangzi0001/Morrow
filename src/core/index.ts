@@ -11,7 +11,6 @@
  * 本模块只依赖 Node 内置能力与 src/shared 契约，不依赖 electron / react / DOM。
  */
 
-/* ── Agent 循环 ───────────────────────────────────────────────── */
 export {
   runAgent,
   compactSession,
@@ -19,13 +18,15 @@ export {
   getSessionPermissionGrants,
   clearSessionPermissionGrants,
   resetAllPermissionGrants,
+  authorizeActorToolCall,
+  ScopedPermissionGrants,
+  type ActorToolAuthorization,
   type RunAgentOptions,
   type RunAgentResult,
   type CompactSessionOptions,
   type CompactSessionResult
 } from './agent'
 
-/* ── Provider ─────────────────────────────────────────────────── */
 export {
   createProvider,
   testProviderConnection,
@@ -49,7 +50,6 @@ export {
 } from './providers'
 export type { ConnectionTestOptions } from './types'
 
-/* ── 工具 ─────────────────────────────────────────────────────── */
 export {
   TOOL_DEFINITIONS,
   READ_ONLY_TOOL_DEFINITIONS,
@@ -57,6 +57,8 @@ export {
   PLAN_TOOL_DEFINITION,
   PLAN_MODE_TOOL_DEFINITIONS,
   toolDefinitionsForRun,
+  superRouterToolDefinitions,
+  isSuperRouterToolAllowed,
   executeTool,
   getToolDefinition,
   isKnownTool,
@@ -64,12 +66,12 @@ export {
   toolCategory,
   toolRiskFor,
   toolTitleFor
-} from './tools/registry'
-export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools/types'
-export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools/paths'
-export { createUnifiedDiff, diffSummary } from './tools/diff'
+} from './tools'
+export { WorkspaceEscapeError, ToolInputError, ToolExecutionError } from './tools'
+export { sleep } from './util'
+export { inspectWorkspacePath, resolveWorkspacePath, displayPath, normalizeWorkspace } from './tools'
+export { createUnifiedDiff, diffSummary } from './tools'
 
-/* ── 权限 ─────────────────────────────────────────────────────── */
 export {
   evaluatePermission,
   detectDangerousCommand,
@@ -80,10 +82,9 @@ export {
   type PermissionPolicyContext,
   type PermissionTarget,
   type DangerousCommandInfo
-} from './permissions'
+} from './agent'
 
-/* ── 提示词 / 上下文 ──────────────────────────────────────────── */
-export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './prompt'
+export { buildSystemPrompt, buildGoalPromptSection, buildPlanModePromptSection } from './agent'
 export {
   estimateTokens,
   estimateMessageTokens,
@@ -93,9 +94,8 @@ export {
   serializeMessagesForSummary,
   hasDanglingToolUse,
   type CompactionPlan
-} from './context'
+} from './agent'
 
-/* ── 共享类型再导出（方便主进程只 import 一处） ───────────────── */
 export type {
   Artifact,
   AskUserAnswer,

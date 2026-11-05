@@ -1,0 +1,30 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "T16",
+  "capturedAt": "2026-11-02T18:12:19.000000+00:00",
+  "kind": "Electron E2E",
+  "implementation": {
+    "abDiff": "候选 A/B 并排 diff，两侧可切换候选，红绿只表示两稿差异",
+    "adopt": "A/B 两侧可分别整篇采用；采纳前自动留档",
+    "noScore": "不提供质量分、模型评审或胜出统计；只展示原文差异与字数",
+    "version": "采纳后历史版本原因记录候选标签，不做评分统计",
+    "boundary": "未做按段落合并；逐条采纳指每个候选可单独采用"
+  },
+  "e2e": {
+    "title": "候选稿可并排 A/B 对照并逐条采用",
+    "passed": true,
+    "assertions": [
+      "真实 mock 模型润色生成第二个候选",
+      "候选对照只显示原文与字数，无结构分/评分标签",
+      "候选 A/B 两侧选择器与双栏 diff 可见",
+      "采纳 A 后正文替换、剩余候选为 1、版本原因包含采用候选",
+      "项目数据中没有 candidateStats 评分统计"
+    ],
+    "screenshot": "docs/screens/studio-candidate-ab.png"
+  },
+  "regression": {
+    "unit": "486 passed",
+    "e2e": "79 collected",
+    "docs": "npm run docs:check 通过（2100x1200 截图）"
+  }
+}
