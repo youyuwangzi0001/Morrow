@@ -4,22 +4,22 @@
 
 ## 1. 当前交付
 
-> 2026-11-05：本轮接入国内云端多媒体（Seedream 5.0、Seedance 2.5/2.0、MiniMax H3、Qwen-Image 2.1 Pro、Qwen3-TTS-Flash、MiniMax Speech 2.8），并把云端模型更新到 GPT-Image 2.6、Gemini Nano Banana 2.1、Veo 3.1 稳定版、ElevenLabs v4 / Music v2.5；OpenAI、Qwen、MiniMax 的官方系统音色已全部列入声线选择。同时统一全部输入框、文本域和选择框的流金外框，移除内部高亮加粗框。源码、测试、生产构建、`deliver/` 与 GitHub v0.2.0 均使用本轮构建。
+> 2026-11-06：本轮接入国内云端多媒体（Seedream 5.0、Seedance 2.5/2.0、MiniMax H3、Qwen-Image 2.1 Pro、Qwen3-TTS-Flash、MiniMax Speech 2.8、Mureka V9.5 配乐），并把云端模型更新到 GPT-Image 2.6、Gemini Nano Banana 2.1、Veo 3.1 稳定版、ElevenLabs v4 / Music v2.5；OpenAI、Qwen、MiniMax 的官方系统音色已全部列入声线选择。同时统一全部输入框、文本域和选择框的流金外框，移除内部高亮加粗框；多媒体验签改为分段切换，云端服务字号与文本模型行对齐。源码、测试、生产构建、`deliver/` 与 GitHub v0.2.0 均使用本轮构建。
 
 > 2026-11-03：本版删除并排对话，统一输入框/文本域/下拉的微圆角与内嵌焦点环，放大记忆、更多功能、快捷键等界面字号，修复大工作区被 300MB 副本上限误拦的问题；同时修复删除同工作区其他对话会误停 Super-Agent 任务，右侧面板支持拖拽调宽并复用 1px 香槟金分隔线，任务栏图标按主题使用多尺寸 ICO；并行派发改为异步复制/扫描，验收命令兼容 `cd <目录> &&` 与 `2>&1`；Router 重新派发会自动修订当前计划，旧批次不再与新批次并行；浏览器与 Super 共用右侧栏时会自动收起另一方。`deliver/Morrow Data` 已按保护规则暂存并恢复。
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `Morrow-0.2.0-portable.exe` | 206,917,632 B / 197.33 MiB | `58f3c0fadbcb907652561b1b5f65ca886ed541ceb03f41797a41ac0cc4aed2c4` |
-| `Morrow-0.2.0-setup.exe` | 157,463,922 B / 150.17 MiB | `0cea3c3ef50c4f5e8f7c26014328b5ab3163b252c7b988fb52ae0e3324b9d156` |
-| **合计** | **364,381,554 B / 347.50 MiB** | 未签名（signed:false） |
+| `Morrow-0.2.0-portable.exe` | 206,916,608 B / 197.33 MiB | `9c1549337506deeb65cbbe93abc7b4b7f105829e9ad442833419e5a08dd646eb` |
+| `Morrow-0.2.0-setup.exe` | 157,459,190 B / 150.16 MiB | `9ce5ef11555767528ac716bdee9224ee19242d22066e55b606a03e31aef29b60` |
+| **合计** | **364,375,798 B / 347.50 MiB** | 未签名（signed:false） |
 
 - 任务栏图标：改用新的 AppUserModelID（`studio.morrow.agent.desktop`），修复旧 AUMID 缓存导致 Windows 继续显示 Electron 默认图标；窗口图标改为从 extraResources 读取并缩放为 256px。
 - `deliver/` 只保留两个分发 exe；源码包、使用说明、`SHA256SUMS.txt` 与 `LICENSE` 作为 GitHub Release 资产提供；`deliver/Morrow Data` 用户数据保留，未打入分发包。
 - 便携版运行时修订：`.morrow-runtime-0.2.0-r020`；已确认运行时目录包含 `icon.ico` / `icon-light.ico` 与主题 PNG。
 - 打包：`npm run dist:final`；打包时暂存并恢复 `Morrow Data`；耗时 82.2s。
-- 冒烟：`npm run smoke:packaged` 通过；CDP 4.1s 就绪，总耗时 5.2s，窗口标题 `Morrow`，首屏显示 `v0.2.0`，预加载 API 与渲染正常。
-- 代码统计：`node scripts/count-code.mjs` 统一口径为 189 文件 / 235,442 行；0.1.0 同口径复算为 351 文件 / 171,550 行。
+- 冒烟：`npm run smoke:packaged` 通过；CDP 3.8s 就绪，总耗时 5.2s，窗口标题 `Morrow`，首屏显示 `v0.2.0`，预加载 API 与渲染正常。
+- 代码统计：`node scripts/count-code.mjs` 统一口径为 189 文件 / 235,564 行；0.1.0 同口径复算为 351 文件 / 171,550 行。
 
 ## 2. 代码与测试
 
@@ -28,10 +28,10 @@
 | `npm run typecheck` | 通过 |
 | `npm run audit:ui` | 28 CSS + 30 TSX，0 裸排版声明，31 个字号令牌可缩放，焦点环 2px |
 | `npm run docs:check` | 通过（26 个 Markdown、47 张 2100×1200 截图、53 个本地图片链接） |
-| `npm run test:suite` | 508 单元 / 86 Electron / 41 域 |
-| `npm run test:unit` | 508 收集、508 通过、0 跳过、0 失败 |
+| `npm run test:suite` | 509 单元 / 86 Electron / 41 域 |
+| `npm run test:unit` | 509 收集、509 通过、0 跳过、0 失败 |
 | `npm run test:e2e` | 86 项流程通过（输入框流金外框回归已覆盖） |
-| `npm run smoke:packaged` | 通过（5.2s，CDP 4.1s） |
+| `npm run smoke:packaged` | 通过（5.2s，CDP 3.8s） |
 
 核心测试入口：`tests/unit/collaboration.test.ts`（37 项协作/Super-Agent）、其余单元按功能域分文件；`tests/e2e` 5 个流程文件。测试截图写 `tmp/e2e-screens`，不进入文档。
 

@@ -7167,7 +7167,7 @@ test('@core:settings 模型页接入国内与海外云端多媒体，本地模�
     await expect(cloud).toBeVisible()
     await expect(cloud).toContainText('云端多媒体生成')
     for (const capability of ['图片生成', '视频生成', '配音生成', '配乐生成']) {
-      await expect(cloud.getByRole('tab', { name: capability })).toBeVisible()
+      await expect(cloud.getByRole('radio', { name: capability })).toBeVisible()
     }
 
     for (const name of ['Seedream 5.0 Pro', 'Seedream 5.0 Flash', 'Qwen-Image 2.1 Pro', 'Gemini Nano Banana 2.1']) {
@@ -7177,11 +7177,31 @@ test('@core:settings 模型页接入国内与海外云端多媒体，本地模�
     await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI Images 2.6 Flare' })).toBeVisible()
     await expect(cloud.locator('.st-cloud-provider', { hasText: 'Seedream 5.0 Pro' }).locator('.st-cloud-provider-region')).toHaveText('国内')
     await expect(cloud.locator('.st-cloud-provider', { hasText: 'OpenAI Images 2.6' }).first().locator('.st-cloud-provider-region')).toHaveText('海外')
-    await cloud.getByRole('tab', { name: '视频生成' }).click()
+    const cloudFonts = await page.evaluate(() => {
+      const size = (selector: string): string => {
+        const element = document.querySelector(selector)
+        return element ? getComputedStyle(element).fontSize : ''
+      }
+      return {
+        cloudName: size('.st-cloud-provider-name'),
+        modelName: size('.st-model-name'),
+        cloudDesc: size('.st-cloud-provider-desc'),
+        modelNote: size('.st-model-note'),
+        cloudMeta: size('.st-cloud-provider-meta'),
+        modelMeta: size('.st-model-meta')
+      }
+    })
+    expect(cloudFonts.cloudName).toBe(cloudFonts.modelName)
+    expect(cloudFonts.cloudDesc).toBe(cloudFonts.modelNote)
+    expect(cloudFonts.cloudMeta).toBe(cloudFonts.modelMeta)
+    await cloud.getByRole('radio', { name: '视频生成' }).click()
     for (const name of ['Seedance 2.5', 'Seedance 2.0', 'MiniMax H3', 'Google Veo 3.1']) {
       await expect(cloud.locator('.st-cloud-provider', { hasText: name })).toBeVisible()
     }
-    await cloud.getByRole('tab', { name: '配音生成' }).click()
+    await cloud.getByRole('radio', { name: '配乐生成' }).click()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'Mureka V9.5 配乐' })).toBeVisible()
+    await expect(cloud.locator('.st-cloud-provider', { hasText: 'ElevenLabs Music' })).toBeVisible()
+    await cloud.getByRole('radio', { name: '配音生成' }).click()
     const qwenSpeech = cloud.locator('.st-cloud-provider', { hasText: 'Qwen3-TTS-Flash' })
     await expect(qwenSpeech).toBeVisible()
     await expect(cloud.locator('.st-cloud-provider', { hasText: 'MiniMax Speech 2.8 HD' })).toBeVisible()

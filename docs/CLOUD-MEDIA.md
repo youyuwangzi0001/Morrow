@@ -48,6 +48,7 @@
 | 配音 | 国内 | MiniMax Speech 2.8 HD | MiniMax T2A v2 | `speech-2.8-hd` | `POST /v1/t2a_v2` |
 | 配音 | 海外 | OpenAI TTS | OpenAI Audio Speech | `gpt-4o-mini-tts` | `POST /audio/speech` |
 | 配音 | 海外 | ElevenLabs TTS | ElevenLabs TTS | `eleven_v4` | `POST /text-to-speech/{voice_id}` |
+| 配乐 | 国内 | 昆仑万维 Mureka V9.5 | Mureka Instrumental | `auto` | `POST /v1/instrumental/generate` |
 | 配乐 | 海外 | ElevenLabs Music | ElevenLabs Music | `music_v2_5` | `POST /music` |
 
 ## 3. 模型更新说明
@@ -61,6 +62,7 @@
 - **Qwen-Image 2.1 Pro/Turbo** 已于 2026-10-11 在百炼提供 API，默认从 `qwen-image-2.0-pro` 升级为 `qwen-image-2.1-pro`；需要更快出图时可在「模型 ID」改为 `qwen-image-2.1-turbo`。
 - **Seedance** 默认 Seedance 2.5；保留 Seedance 2.0 作为成本更低的备选。
 - **MiniMax H3 Max** 没有单独做成预设；需要时可在 H3 卡片的「模型 ID」里改为对应模型。
+- **国内配乐**选择 Mureka V9.5 纯音乐 API：Mureka 在 2026 年 3 月的 Artificial Analysis 乐器榜登顶，官方 API 可直接开通；默认 `auto` 使用最新版本，实际模型名与曲目时长以服务商返回为准。MiniMax Music 3.0 的付费音乐接口自 2026-08-20 起不对新用户开放，因此没有作为入口。
 - 已保存的旧默认模型（`gpt-image-1`、`veo-3.1-generate-preview`、`eleven_multilingual_v2`、`music_v2`）在读取设置时会自动迁移到当前默认模型；用户自己填过的其他模型 ID 不会被覆盖。
 - **配音音色**：OpenAI TTS、Qwen3-TTS-Flash、MiniMax Speech 2.8 的官方系统音色已全部写入声线选择器（分别为 13、48、327 个）；输入框仍允许粘贴自定义或复刻音色 ID。ElevenLabs 的音色属于账号私有资源，保留 Voice ID 输入并提示从 Voice Library 复制。
 
@@ -76,8 +78,8 @@
 
 ```bash
 npm run typecheck
-npm run test:unit                    # 508 passed（其中 14 项云端多媒体协议测试）
-npm run test:suite                   # 508 unit / 86 e2e
+npm run test:unit                    # 509 passed（其中 15 项云端多媒体协议测试）
+npm run test:suite                   # 509 unit / 86 e2e
 npx playwright test tests/e2e/ui.spec.ts -g "国内与海外云端多媒体"   # 1 passed
 npx playwright test tests/e2e/studio.spec.ts -g "Seedream 国内服务"  # 1 passed
 ```
@@ -92,6 +94,7 @@ npx playwright test tests/e2e/studio.spec.ts -g "Seedream 国内服务"  # 1 pas
 - Qwen3-TTS：百炼请求体、`output.audio.url` 下载与 wav 识别；
 - MiniMax Speech 2.8：T2A v2 请求体与 hex 音频解码；
 - 官方音色目录：OpenAI 13、Qwen 48、MiniMax 327，默认音色与 Qwen-Image 2.1 Pro 默认模型；
+- Mureka 配乐：纯音乐任务创建、轮询、MP3 下载与实际时长读取；
 - Veo 3.1：长任务轮询、视频下载；
 - Seedance 2.5：首帧 base64、任务轮询、视频下载；
 - MiniMax H3：任务创建、查询、`task.content.url` 下载；
@@ -108,7 +111,7 @@ npx playwright test tests/e2e/studio.spec.ts -g "Seedream 国内服务"  # 1 pas
 
 - 云端服务是经过核对的官方列表，不是全量市场；未验证的平台不会以「可选」形式出现。
 - 图片暂只做文生图；云端参考图编辑尚未接入，参考图工作流仍可用本地 ComfyUI。
-- 国内配乐本轮未加入：MiniMax Music 付费接口自 2026-08-20 起不再向新用户开放，本轮没有把不可开通的服务做成入口。
+- 国内配乐使用 Mureka 官方纯音乐 API；MiniMax Music 3.0 因付费接口不对新用户开放，未作为入口。各服务商的实际可用性、额度和商用授权仍以用户账号为准。
 - 云端计费属于用户自己的服务商账号；Morrow 只显示服务与模型，不估算具体价格。
 - Key 走本地加密存储，不写入渲染层状态或项目文件。
 
@@ -121,6 +124,7 @@ npx playwright test tests/e2e/studio.spec.ts -g "Seedream 国内服务"  # 1 pas
 - Qwen-Image：<https://help.aliyun.com/zh/model-studio/qwen-image-api>
 - Qwen-Image 2.1 Pro：<https://help.aliyun.com/zh/model-studio/qwen-image-2-1-pro>
 - Qwen3-TTS：<https://help.aliyun.com/zh/model-studio/qwen-tts-api>
+- Mureka API：<https://platform.mureka.cn/docs/cn/quickstart.html>
 - OpenAI Images：<https://platform.openai.com/docs/guides/image-generation>
 - OpenAI TTS：<https://platform.openai.com/docs/guides/text-to-speech>
 - Gemini 图像：<https://ai.google.dev/gemini-api/docs/image-generation>

@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-11-05T16:59:50.359Z",
+  "startedAt": "2026-11-05T23:15:12.210Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,30 +13,30 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 19290,
+      "durationMs": 9345,
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output"
     },
     {
       "name": "zip",
       "exitCode": 0,
-      "durationMs": 19508
+      "durationMs": 18506
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 18602,
+      "durationMs": 18743,
       "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-portable.exe)"
     },
     {
       "name": "nsis",
       "exitCode": 0,
-      "durationMs": 19202,
+      "durationMs": 19531,
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win nsis --x64 --prepackaged C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked --publish never -c.directories.output=C:\\交付成品\\Morrow\\release"
     },
     {
       "name": "installer",
       "exitCode": 0,
-      "durationMs": 19957,
+      "durationMs": 20287,
       "command": "installer(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe)"
     }
   ],
@@ -46,12 +46,12 @@
       "path": "release/Morrow-0.2.0-portable",
       "exePath": "release/Morrow-0.2.0-portable/Morrow.exe",
       "exeSizeBytes": 126464,
-      "exeSha256": "be9cc5078564b6fff0c8f83b86d8adcbdaaaf413b19d3fe7a9346a95672970ff",
+      "exeSha256": "3daa49e09da2d6f9ad38c103b2b451e5808acd85265aec94e48c62174ce562ea",
       "appExePath": "release/Morrow-0.2.0-portable/Morrow-app.exe",
       "appExeSizeBytes": 247250432,
-      "appExeSha256": "8bdb8f59e90fe1b93a24eaac7469446f8c77ef99eaca418e8fdf0134db88f5c8",
-      "appAsarSha256": "fdbf752c2526a68cd6bcec3f2fdd9d1b2e118906d16a87eb862a5d6c7c52ff23",
-      "sizeBytes": 525406461,
+      "appExeSha256": "74c3db1d69f71c9c969e46c14bf935f21bc973b77259b0f5e4fa4e056f4b7037",
+      "appAsarSha256": "3bd04a8cbe6ab322d78e21df8e9a215e27838ce94c0043f56fea517fbe17d681",
+      "sizeBytes": 525410112,
       "sizeMB": 501.07,
       "fileCount": 339,
       "extras": [
@@ -90,9 +90,9 @@
     "portableZip": {
       "kind": "zip",
       "path": "release/Morrow-0.2.0-portable-win64.zip",
-      "sizeBytes": 206814647,
+      "sizeBytes": 206813627,
       "sizeMB": 197.23,
-      "sha256": "65177c8ae2a296147304e6bca8764e50176dc590c38c34cc0a0649ba3672fd82",
+      "sha256": "7175e5a6df5c9905c5b70c2f5b083844875afa387359e3306602b01bacc9ce4c",
       "signed": false,
       "signature": {
         "signed": false,
@@ -104,9 +104,9 @@
     "portableExe": {
       "kind": "portable-exe",
       "path": "deliver/Morrow-0.2.0-portable.exe",
-      "sizeBytes": 206917632,
+      "sizeBytes": 206916608,
       "sizeMB": 197.33,
-      "sha256": "58f3c0fadbcb907652561b1b5f65ca886ed541ceb03f41797a41ac0cc4aed2c4",
+      "sha256": "9c1549337506deeb65cbbe93abc7b4b7f105829e9ad442833419e5a08dd646eb",
       "signed": false,
       "signature": {
         "signed": false,
@@ -123,9 +123,9 @@
     "installer": {
       "kind": "nsis-installer",
       "path": "deliver/Morrow-0.2.0-setup.exe",
-      "sizeBytes": 157463922,
-      "sizeMB": 150.17,
-      "sha256": "0cea3c3ef50c4f5e8f7c26014328b5ab3163b252c7b988fb52ae0e3324b9d156",
+      "sizeBytes": 157459190,
+      "sizeMB": 150.16,
+      "sha256": "9ce5ef11555767528ac716bdee9224ee19242d22066e55b606a03e31aef29b60",
       "signed": false,
       "signature": {
         "signed": false,
@@ -141,7 +141,7 @@
     }
   },
   "logs": {
-    "combined": "tmp/verification/logs/dist-all-2026-11-05T16-59-50-358Z.log"
+    "combined": "tmp/verification/logs/dist-all-2026-11-05T23-15-12-090Z.log"
   },
   "signing": {
     "enabled": false,
@@ -204,34 +204,34 @@
   "delivery": {
     "dir": "deliver",
     "cleaned": true,
-    "createdAt": "2026-11-05T17:01:11.306Z",
+    "createdAt": "2026-11-05T23:16:22.531Z",
     "folder": null,
     "artifacts": [
       {
         "name": "portable-exe",
         "path": "deliver/Morrow-0.2.0-portable.exe",
-        "sizeBytes": 206917632,
+        "sizeBytes": 206916608,
         "sizeMB": 197.33,
-        "sha256": "58f3c0fadbcb907652561b1b5f65ca886ed541ceb03f41797a41ac0cc4aed2c4"
+        "sha256": "9c1549337506deeb65cbbe93abc7b4b7f105829e9ad442833419e5a08dd646eb"
       },
       {
         "name": "installer",
         "path": "deliver/Morrow-0.2.0-setup.exe",
-        "sizeBytes": 157463922,
-        "sizeMB": 150.17,
-        "sha256": "0cea3c3ef50c4f5e8f7c26014328b5ab3163b252c7b988fb52ae0e3324b9d156"
+        "sizeBytes": 157459190,
+        "sizeMB": 150.16,
+        "sha256": "9ce5ef11555767528ac716bdee9224ee19242d22066e55b606a03e31aef29b60"
       }
     ],
     "usage": null,
     "sha256Sums": null,
     "checksums": [],
-    "totalSizeBytes": 364381554,
+    "totalSizeBytes": 364375798,
     "totalSizeMB": 347.5,
     "totalFileCount": 2,
     "localData": null
   },
   "primaryArtifact": "portableFolder",
   "notes": "Morrow 0.2.0 打包完成：启动器嵌入完整 Win32 manifest；交付便携版 exe 与安装包。未配置代码签名证书，产物 signed:false。 deliver/ 保留便携版、安装包、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。",
-  "finishedAt": "2026-11-05T17:01:12.513Z",
-  "durationMs": 82154
+  "finishedAt": "2026-11-05T23:16:23.735Z",
+  "durationMs": 71525
 }

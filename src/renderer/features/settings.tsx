@@ -2963,20 +2963,15 @@ function CloudMediaSection(): React.JSX.Element {
           <p className="st-hint">图片、视频、配音、配乐各自连接官方服务；国内与海外服务都在这里，只有保存了 Key 的服务才会被创作台调用。</p>
         </div>
       </div>
-      <div className="st-cloud-media-tabs" role="tablist" aria-label="多媒体类型">
-        {(Object.keys(MEDIA_CAPABILITY_LABEL) as CloudMediaCapability[]).map((item) => (
-          <button
-            key={item}
-            type="button"
-            role="tab"
-            aria-selected={item === capability}
-            className={item === capability ? 'is-active' : ''}
-            onClick={() => setCapability(item)}
-          >
-            {MEDIA_CAPABILITY_LABEL[item]}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        ariaLabel="多媒体类型"
+        value={capability}
+        options={(Object.keys(MEDIA_CAPABILITY_LABEL) as CloudMediaCapability[]).map((item) => ({
+          value: item,
+          label: MEDIA_CAPABILITY_LABEL[item]
+        }))}
+        onChange={setCapability}
+      />
       <p className="st-hint">{MEDIA_CAPABILITY_HINT[capability]}</p>
       <div className="st-cloud-media-list">
         {presets.map((preset) => (

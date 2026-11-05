@@ -19,6 +19,7 @@ export type CloudMediaProtocol =
   | 'elevenlabs-speech'
   | 'dashscope-speech'
   | 'minimax-speech'
+  | 'mureka-music'
   | 'elevenlabs-music'
 
 export interface CloudMediaProvider {
@@ -270,6 +271,18 @@ export const CLOUD_MEDIA_PRESETS: CloudMediaPreset[] = [
     model: 'eleven_v4',
     voiceRequired: true,
     docsUrl: 'https://elevenlabs.io/docs/api-reference/text-to-speech/convert'
+  },
+  {
+    id: 'mureka-instrumental',
+    capability: 'music',
+    protocol: 'mureka-music',
+    region: 'domestic',
+    providerName: '昆仑万维',
+    name: 'Mureka V9.5 配乐',
+    description: 'Mureka 官方纯音乐 API，auto 使用最新 V9.5；生成完整器乐，时长以服务商返回为准。',
+    baseUrl: 'https://api.mureka.cn',
+    model: 'auto',
+    docsUrl: 'https://platform.mureka.cn/docs/cn/quickstart.html'
   },
   {
     id: 'elevenlabs-music',

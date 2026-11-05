@@ -3846,30 +3846,8 @@
   margin: 2px 0 0;
 }
 
-.st-cloud-media-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.st-cloud-media-tabs button {
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--control-radius);
-  color: var(--text-3);
-  background: transparent;
-  font-size: var(--fs-xs);
-}
-
-.st-cloud-media-tabs button:hover {
-  border-color: var(--line-strong);
-  color: var(--text);
-}
-
-.st-cloud-media-tabs button.is-active {
-  border-color: var(--line-gold);
-  color: var(--gold);
-  background: var(--gold-ghost);
+.st-cloud-media > .segmented {
+  align-self: flex-start;
 }
 
 .st-cloud-media-list {
@@ -3908,7 +3886,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text);
-  font-size: var(--fs-sm-plus);
+  font-size: var(--fs-base-plus);
   font-weight: var(--fw-medium);
 }
 
@@ -3939,13 +3917,13 @@
 
 .st-cloud-provider-desc {
   color: var(--text-3);
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs-plus);
   line-height: var(--lh-copy);
 }
 
 .st-cloud-provider-meta {
   color: var(--text-3);
-  font-size: var(--fs-3xs);
+  font-size: var(--fs-2xs);
 }
 
 .st-cloud-provider-actions {

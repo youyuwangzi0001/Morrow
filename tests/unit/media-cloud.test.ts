@@ -56,7 +56,7 @@ const workDir = (): string => mkdtempSync(join(tmpdir(), 'morrow-media-cloud-'))
 function capabilityFor(protocol: CloudMediaProvider['protocol']): CloudMediaCapability {
   if (protocol.endsWith('-image')) return 'image'
   if (protocol === 'google-veo' || protocol === 'ark-video' || protocol === 'minimax-video') return 'video'
-  if (protocol === 'elevenlabs-music') return 'music'
+  if (protocol === 'elevenlabs-music' || protocol === 'mureka-music') return 'music'
   return 'speech'
 }
 
@@ -492,6 +492,53 @@ describe('云端多媒体 HTTP 接入', () => {
           expect(readFileSync(result.path).equals(MP3)).toBe(true)
           expect(requests[0].url).toContain('/v1/music')
           expect(JSON.parse(requests[0].body)).toMatchObject({ prompt: '克制的钢琴', music_length_ms: 30_000, model_id: 'music_v2_5' })
+        }
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('@core:media Mureka 纯音乐提交任务、轮询并下载', async () => {
+    const dir = workDir()
+    try {
+      await withServer(
+        (request, response) => {
+          if (request.method === 'POST' && request.url === '/v1/instrumental/generate') {
+            response.setHeader('content-type', 'application/json')
+            response.end(JSON.stringify({ id: 'mureka-1', status: 'preparing', model: 'mureka-9.5' }))
+            return
+          }
+          if (request.method === 'GET' && request.url === '/v1/instrumental/query/mureka-1') {
+            response.setHeader('content-type', 'application/json')
+            response.end(JSON.stringify({
+              id: 'mureka-1',
+              status: 'succeeded',
+              model: 'mureka-9.5',
+              choices: [{ id: 'track-1', url: `http://${request.headers.host}/mureka.mp3`, duration: 195300 }]
+            }))
+            return
+          }
+          if (request.method === 'GET' && request.url === '/mureka.mp3') {
+            response.setHeader('content-type', 'audio/mpeg')
+            response.end(MP3)
+            return
+          }
+          response.statusCode = 404
+          response.end('missing')
+        },
+        async (baseUrl, requests) => {
+          const result = await generateCloudMusic({
+            provider: provider('mureka-music', baseUrl, 'auto'),
+            apiKey: 'mureka-key',
+            prompt: '克制的钢琴与雨声',
+            seconds: 30,
+            workDir: dir
+          })
+          expect(readFileSync(result.path).equals(MP3)).toBe(true)
+          expect(result.model).toBe('mureka-9.5')
+          expect(result.durationSec).toBe(195)
+          expect(JSON.parse(requests[0].body)).toMatchObject({ prompt: '克制的钢琴与雨声', model: 'auto', n: 1, stream: false })
         }
       )
     } finally {

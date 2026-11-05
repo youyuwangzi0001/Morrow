@@ -10797,6 +10797,7 @@ export class StudioService {
         : cloudMusic?.provider.apiKeyStored
           ? `生成配乐 · ${mood.label}（${cloudMusic.provider.name}）`
           : `生成配乐 · ${mood.label}（ACE-Step）`
+    let actualSeconds = seconds
     const job = await this.launchJob(project, {
       kind: isSfx ? 'sfx' : 'music',
       label,
@@ -10861,15 +10862,16 @@ export class StudioService {
                 onProgress: (update) => ctx.progress(update.stage, typeof update.percent === 'number' ? Math.max(8, Math.min(92, update.percent)) : undefined)
               })
           ctx.progress('入库配乐', 94)
+          actualSeconds = result.durationSec ?? seconds
           const bytes = readFileSync(result.path)
           asset = await this.store.addAsset(snapshot, {
             bytes,
             title: `配乐 · ${mood.label}`,
-            mime: 'audio/mpeg',
+            mime: (result as { mime?: string }).mime ?? 'audio/mpeg',
             kindHint: 'audio',
             tags: ['music', 'model', mood.id, ...(viaCloud ? ['cloud'] : [])],
             origin: { model: result.model, jobId: ctx.jobId, source: viaCloud ? 'cloud-music' : 'comfyui' },
-            metadata: { durationSec: result.durationSec ?? seconds }
+            metadata: { durationSec: actualSeconds }
           })
           try {
             if (result.path.startsWith(this.store.projectDir(snapshot.id)) || viaCloud) rmSync(result.path, { force: true })
@@ -10883,7 +10885,7 @@ export class StudioService {
         const isFormal = !isSfx && engine === 'model'
         const viaCloudMusic = Boolean(cloudMusic?.provider.apiKeyStored)
         return {
-          message: isSfx ? `音效已生成：${asset.title} · ${seconds} 秒` : isFormal ? `配乐已生成：${asset.title} · ${seconds} 秒${viaCloudMusic ? ` · 云端 ${cloudMusic?.provider.name}` : ''}` : `本地器乐草稿已生成：${asset.title} · ${seconds} 秒；安装 ACE-Step 后可生成正式配乐。`,
+          message: isSfx ? `音效已生成：${asset.title} · ${seconds} 秒` : isFormal ? `配乐已生成：${asset.title} · ${actualSeconds} 秒${viaCloudMusic ? ` · 云端 ${cloudMusic?.provider.name}` : ''}` : `本地器乐草稿已生成：${asset.title} · ${actualSeconds} 秒；安装 ACE-Step 后可生成正式配乐。`,
           costCny: viaCloudMusic ? null : 0,
           costNote: viaCloudMusic
             ? `云端配乐 · ${cloudMusic?.provider.name} · ${cloudMusic?.provider.model}，按服务商账单计费`

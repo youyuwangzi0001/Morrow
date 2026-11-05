@@ -636,25 +636,92 @@ export async function generateCloudMusic(input: {
   workDir: string
   signal?: AbortSignal
 }): Promise<{ path: string; model: string; durationSec: number; mime: string }> {
-  if (input.provider.protocol !== 'elevenlabs-music') throw new Error('这个多媒体服务不支持配乐生成。')
+  const protocol = input.provider.protocol
+  if (protocol !== 'elevenlabs-music' && protocol !== 'mureka-music') {
+    throw new Error('这个多媒体服务不支持配乐生成。')
+  }
   mkdirSync(input.workDir, { recursive: true })
   const seconds = Math.max(10, Math.min(300, Math.round(input.seconds)))
-  const response = await request(
-    joinUrl(input.provider.baseUrl, 'music?output_format=mp3_44100_128'),
-    {
+  let bytes: Buffer
+  let mime = 'audio/mpeg'
+  let durationSec = seconds
+  let model = input.provider.model
+  if (protocol === 'elevenlabs-music') {
+    const response = await request(
+      joinUrl(input.provider.baseUrl, 'music?output_format=mp3_44100_128'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': input.apiKey },
+        body: JSON.stringify({
+          prompt: input.prompt,
+          music_length_ms: seconds * 1000,
+          model_id: input.provider.model
+        })
+      },
+      { signal: input.signal, timeoutMs: 300_000 }
+    )
+    bytes = await binaryOrThrow(response, 'ElevenLabs 配乐', 120 * 1024 * 1024)
+    mime = response.headers.get('content-type')?.split(';')[0] || 'audio/mpeg'
+  } else {
+    const prompt = input.prompt.trim().slice(0, 2000)
+    if (!prompt) throw new Error('Mureka 配乐需要一段音乐描述。')
+    const start = await request(joinUrl(input.provider.baseUrl, 'v1/instrumental/generate'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'xi-api-key': input.apiKey },
+      headers: { 'Content-Type': 'application/json', ...authBearer(input.apiKey) },
       body: JSON.stringify({
-        prompt: input.prompt,
-        music_length_ms: seconds * 1000,
-        model_id: input.provider.model
+        prompt,
+        model: input.provider.model,
+        n: 1,
+        stream: false
       })
-    },
-    { signal: input.signal, timeoutMs: 300_000 }
-  )
-  const path = join(input.workDir, `cloud-music-${Date.now().toString(36)}.mp3`)
-  writeFileSync(path, await binaryOrThrow(response, 'ElevenLabs 配乐', 120 * 1024 * 1024))
-  return { path, model: input.provider.model, durationSec: seconds, mime: 'audio/mpeg' }
+    }, { signal: input.signal, timeoutMs: 120_000 })
+    const created = await jsonOrThrow(start, 'Mureka 配乐任务')
+    const taskId = typeof created.id === 'string' ? created.id : ''
+    if (!taskId) throw new Error('Mureka 没有返回任务 ID。')
+    let choice: Record<string, unknown> | null = null
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      if (input.signal?.aborted) throw new Error('配乐生成已取消。')
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+      const poll = await request(joinUrl(input.provider.baseUrl, `v1/instrumental/query/${encodeURIComponent(taskId)}`), {
+        method: 'GET',
+        headers: authBearer(input.apiKey)
+      }, { signal: input.signal, timeoutMs: 60_000 })
+      const status = await jsonOrThrow(poll, 'Mureka 配乐状态')
+      const state = typeof status.status === 'string' ? status.status.toLowerCase() : ''
+      if (state === 'failed' || state === 'cancelled' || state === 'canceled') {
+        const error = status.error as Record<string, unknown> | undefined
+        throw new Error(`Mureka 配乐失败：${String(error?.message ?? state)}`)
+      }
+      const choices = status.choices as Array<Record<string, unknown>> | undefined
+      const first = choices?.find((item) => typeof item.url === 'string' || typeof item.wav_url === 'string' || typeof item.flac_url === 'string')
+      if (first && (state === '' || state === 'succeeded' || state === 'completed' || state === 'finished' || state === 'success')) {
+        choice = first
+        if (typeof status.model === 'string') model = status.model
+        break
+      }
+      if (state === 'succeeded' || state === 'completed' || state === 'finished' || state === 'success') {
+        throw new Error('Mureka 配乐完成了，但没有返回音频地址。')
+      }
+    }
+    if (!choice) throw new Error('Mureka 配乐生成超时，任务可能仍在服务商侧运行。')
+    const url = typeof choice.url === 'string'
+      ? choice.url
+      : typeof choice.wav_url === 'string'
+        ? choice.wav_url
+        : typeof choice.flac_url === 'string'
+          ? choice.flac_url
+          : ''
+    if (!url) throw new Error('Mureka 没有返回可下载的音频。')
+    const download = await downloadOrThrow(url, 'Mureka 配乐下载', { signal: input.signal, maxBytes: 120 * 1024 * 1024 })
+    bytes = download.bytes
+    mime = download.mime.startsWith('audio/') ? download.mime : 'audio/mpeg'
+    const duration = typeof choice.duration === 'number' ? choice.duration : 0
+    if (duration > 0) durationSec = Math.max(1, Math.round(duration > 1000 ? duration / 1000 : duration))
+  }
+  const extension = extensionForMime(mime, 'mp3')
+  const path = join(input.workDir, `cloud-music-${Date.now().toString(36)}.${extension}`)
+  writeFileSync(path, bytes)
+  return { path, model, durationSec, mime }
 }
 
 export function cloudMediaPresetCount(): number {

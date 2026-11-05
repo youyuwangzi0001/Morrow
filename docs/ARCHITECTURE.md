@@ -200,6 +200,6 @@ npm run dist:final
 npm run smoke:packaged
 ```
 
-- 核心套组：508 项单元 + 86 条 Electron / 41 域；清单 `tests/core-coverage.json`。
+- 核心套组：509 项单元 + 86 条 Electron / 41 域；清单 `tests/core-coverage.json`。
 - 测试截图写 `tmp/e2e-screens`；文档截图由 `npm run docs:capture` 生成到 `docs/screens`，全部 2100×1200 原图。
 - 打包：`dist:final` 产出便携 exe + 安装包，`deliver/` 只保留两个文件与用户数据；详见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [VERIFICATION.md](VERIFICATION.md)。
