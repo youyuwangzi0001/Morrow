@@ -20,7 +20,6 @@
     "paths": {
       "@shared/*": ["src/shared/*"],
       "@core/*": ["src/core/*"],
-      "@builtin-skills/*": ["src/main/builtin-skill-content/*"]
     },
     "noEmit": true
   },

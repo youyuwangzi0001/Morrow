@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Morrow v0.3.0 · 长期使用与增长规划 · 源码复核版</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --bg-2: #0d1117;
+    --panel: #11161f;
+    --panel-2: #151c26;
+    --line: rgba(200, 174, 125, .18);
+    --line-strong: rgba(200, 174, 125, .34);
+    --gold: #c8ae7d;
+    --gold-2: #e4ce9e;
+    --gold-dim: rgba(200, 174, 125, .12);
+    --ink: #efe8da;
+    --ink-2: #c9c1b3;
+    --muted: #8d887e;
+    --green: #93b89d;
+    --blue: #93abc8;
+    --red: #c99083;
+    --mono: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
+    --serif: "Newsreader", "Noto Serif SC", "Songti SC", Georgia, serif;
+    --sans: "Manrope", "Noto Sans SC", "Segoe UI", sans-serif;
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 620px at 78% -8%, rgba(200,174,125,.10), transparent 62%),
+      radial-gradient(900px 520px at 8% 18%, rgba(110,139,160,.08), transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: .2;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,.012) 3px);
+    z-index: 20;
+  }
+  a { color: var(--gold-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { width: min(1280px, calc(100% - 48px)); margin: 0 auto; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .eyebrow { font: 11px/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--ink-2); font: 10px/1 var(--mono); letter-spacing: .04em;
+    background: rgba(255,255,255,.015); white-space: nowrap;
+  }
+  .chip i { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); display: block; }
+  .chip.is-green i { background: var(--green); }
+  .chip.is-blue i { background: var(--blue); }
+  .hero { padding: 30px 0 0; position: relative; }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-bottom: 52px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 34px; height: 34px; border: 1px solid var(--gold); border-radius: 9px;
+    display: grid; place-items: center; color: var(--gold-2); font: 19px var(--serif);
+    background: linear-gradient(145deg, rgba(200,174,125,.16), rgba(200,174,125,.02));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+  }
+  .brand-name { font: 18px var(--serif); letter-spacing: .04em; }
+  .brand-sub { display: block; color: var(--muted); font: 9px var(--mono); letter-spacing: .16em; margin-top: 2px; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 34px; align-items: end; padding-bottom: 42px; }
+  h1, h2, h3, h4 { margin: 0; font-weight: 500; }
+  h1 { font: 64px/1.06 var(--serif); letter-spacing: -.03em; margin: 16px 0 24px; }
+  h1 em { color: var(--gold-2); font-style: normal; }
+  .lead { max-width: 760px; font-size: 16px; color: var(--ink-2); margin: 0 0 22px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hero-card {
+    border: 1px solid var(--line-strong); border-radius: var(--r-lg); padding: 22px;
+    background: linear-gradient(145deg, rgba(200,174,125,.075), rgba(17,22,31,.84) 50%);
+    box-shadow: 0 28px 70px rgba(0,0,0,.24);
+  }
+  .hero-card .eyebrow { margin-bottom: 12px; }
+  .hero-card h2 { font: 25px/1.25 var(--serif); margin-bottom: 6px; }
+  .hero-card > p { color: var(--muted); font-size: 12px; margin: 0 0 18px; }
+  .question { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .q-no { color: var(--gold); font: 10px var(--mono); padding-top: 3px; }
+  .question strong { display: block; font-size: 13px; font-weight: 500; }
+  .question span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .hero-foot { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 13px 0; }
+  .hero-foot .wrap { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center; justify-content: space-between; }
+  .hero-foot p { margin: 0; font: 10px var(--mono); color: var(--muted); letter-spacing: .04em; }
+  .sticky-nav {
+    position: sticky; top: 0; z-index: 10; backdrop-filter: blur(18px);
+    background: rgba(10,13,18,.78); border-bottom: 1px solid var(--line);
+  }
+  .sticky-nav .wrap { display: flex; align-items: center; gap: 22px; min-height: 48px; overflow-x: auto; }
+  .sticky-nav a { color: var(--muted); font: 11px var(--mono); letter-spacing: .03em; white-space: nowrap; }
+  .sticky-nav a:hover { color: var(--gold-2); text-decoration: none; }
+  main { padding: 76px 0 80px; }
+  section { padding: 0 0 92px; scroll-margin-top: 70px; }
+  .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 30px; }
+  .section-head h2 { font: 38px/1.1 var(--serif); letter-spacing: -.02em; }
+  .section-head p { max-width: 590px; margin: 0; color: var(--muted); font-size: 13px; text-align: right; }
+  .kicker { color: var(--gold); font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px; }
+  .panel { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); padding: 22px; }
+  .panel h3 { font: 21px var(--serif); margin-bottom: 4px; }
+  .panel .panel-note { color: var(--muted); font-size: 11px; margin: 0 0 18px; }
+  .state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .state-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+  .state-list li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid rgba(200,174,125,.10); font-size: 12px; color: var(--ink-2); }
+  .state-list li:first-child { border-top: 0; }
+  .state-list .mark { color: var(--gold); font-family: var(--mono); font-size: 10px; padding-top: 2px; }
+  .state-list.is-gap .mark { color: var(--red); }
+  .state-list b { font-weight: 500; color: var(--ink); }
+  .constraint { margin-top: 18px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; display: flex; gap: 14px; align-items: flex-start; background: linear-gradient(90deg, rgba(200,174,125,.06), transparent); }
+  .constraint .mono { color: var(--gold); font-size: 10px; padding-top: 2px; white-space: nowrap; }
+  .constraint p { margin: 0; color: var(--ink-2); font-size: 12px; }
+  .goal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .goal { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px; min-height: 220px; background: linear-gradient(160deg, rgba(255,255,255,.025), transparent 70%), var(--panel); position: relative; overflow: hidden; }
+  .goal::after { content: ""; position: absolute; width: 130px; height: 130px; border: 1px solid rgba(200,174,125,.13); border-radius: 50%; right: -52px; bottom: -52px; }
+  .goal-no { font: 10px var(--mono); color: var(--gold); letter-spacing: .12em; }
+  .goal h3 { font: 28px/1.15 var(--serif); margin: 18px 0 6px; }
+  .goal p { color: var(--ink-2); font-size: 12px; margin: 0; }
+  .goal .goal-list { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px; }
+  .goal .goal-list span { font: 10px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 7px; }
+  .source-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 18px; }
+  .source { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 13px; background: rgba(255,255,255,.012); }
+  .source .mono { color: var(--gold); font-size: 8px; letter-spacing: .08em; }
+  .source b { display: block; font: 13px var(--serif); font-weight: 500; margin: 7px 0 4px; }
+  .source p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+  .timeline { position: relative; display: grid; gap: 0; }
+  .phase { display: grid; grid-template-columns: 150px 1fr; gap: 22px; padding: 22px 0; border-top: 1px solid var(--line); }
+  .phase:last-child { border-bottom: 1px solid var(--line); }
+  .phase-label { font: 10px var(--mono); color: var(--muted); letter-spacing: .06em; }
+  .phase-label strong { display: block; color: var(--gold); font: 12px var(--mono); margin-top: 5px; }
+  .phase-body h3 { font: 22px var(--serif); margin-bottom: 5px; }
+  .phase-body p { margin: 0; color: var(--muted); font-size: 12px; max-width: 780px; }
+  .phase-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .phase-tags span { font: 9px var(--mono); color: var(--ink-2); border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; }
+  .task-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-btn { border: 1px solid var(--line); color: var(--muted); background: transparent; border-radius: 999px; padding: 6px 10px; font: 10px var(--mono); cursor: pointer; }
+  .filter-btn:hover, .filter-btn.is-active { color: var(--gold-2); border-color: var(--line-strong); background: var(--gold-dim); }
+  .task-count { color: var(--muted); font: 10px var(--mono); }
+  .scope-bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0 0 16px; padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--r-sm); background: rgba(200,174,125,.035); color: var(--muted); font: 10px var(--mono); }
+  .scope-bar b { color: var(--gold-2); font-weight: 400; }
+  .scope-bar .sep { color: rgba(200,174,125,.35); }
+  .task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .task { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); overflow: hidden; transition: border-color .2s; }
+  .task:hover { border-color: var(--line-strong); }
+  .task summary { list-style: none; cursor: pointer; padding: 17px 18px; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
+  .task summary::-webkit-details-marker { display: none; }
+  .task-summary-title { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .task-summary-title h3 { font: 18px var(--serif); }
+  .task-id { color: var(--gold); font: 9px var(--mono); letter-spacing: .06em; }
+  .task-summary p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+  .task-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .prio { font: 9px var(--mono); padding: 3px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--gold-2); }
+  .prio.p0 { background: rgba(200,174,125,.15); border-color: rgba(200,174,125,.35); }
+  .prio.p1 { color: var(--blue); border-color: rgba(147,171,200,.35); }
+  .prio.p2 { color: var(--muted); }
+  .task-track { font: 9px var(--mono); color: var(--muted); }
+  .task-body { border-top: 1px solid var(--line); padding: 16px 18px 18px; }
+  .task-body-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .task-block h4 { font: 10px var(--mono); color: var(--gold); letter-spacing: .08em; margin: 0 0 7px; text-transform: uppercase; }
+  .task-block p, .task-block li { color: var(--ink-2); font-size: 11px; margin: 0; }
+  .task-block ul { margin: 0; padding-left: 15px; display: grid; gap: 4px; }
+  .task-block li::marker { color: var(--gold); }
+  .task-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; border-top: 1px solid var(--line); margin-top: 15px; padding-top: 12px; color: var(--muted); font: 10px var(--mono); }
+  .task-foot b { color: var(--ink-2); font-weight: 400; }
+  .merged { color: var(--gold); }
+  .mock-section { display: grid; gap: 22px; }
+  .mock-label { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .mock-label span:first-child { color: var(--gold); font: 10px var(--mono); letter-spacing: .08em; }
+  .mock-label span:last-child { color: var(--muted); font-size: 11px; }
+  .mock-note { margin: 7px 0 0; color: var(--muted); font-size: 10px; }
+  .window { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg-2); box-shadow: 0 24px 70px rgba(0,0,0,.24); }
+  .window-bar { height: 30px; background: #0e131a; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: #313a45; display: block; }
+  .dots i:first-child { background: #6d5a47; }
+  .window-title { color: var(--muted); font: 9px var(--mono); letter-spacing: .06em; }
+  .window-body { display: grid; grid-template-columns: 174px minmax(0, 1fr) 220px; min-height: 360px; }
+  .mock-side { border-right: 1px solid var(--line); padding: 14px 11px; background: rgba(255,255,255,.012); }
+  .mock-brand { display: flex; align-items: center; gap: 7px; margin-bottom: 18px; color: var(--ink); font: 13px var(--serif); }
+  .mock-brand .brand-mark { width: 20px; height: 20px; border-radius: 5px; font-size: 11px; }
+  .mock-nav { display: grid; gap: 3px; }
+  .mock-nav span { border-radius: 5px; padding: 6px 8px; color: var(--muted); font-size: 9px; display: flex; align-items: center; gap: 7px; }
+  .mock-nav span::before { content: ""; width: 4px; height: 4px; border: 1px solid currentColor; display: block; flex: none; }
+  .mock-nav .is-active { background: var(--gold-dim); color: var(--gold-2); border: 1px solid var(--line); }
+  .mock-nav .is-active::before { background: var(--gold); border-color: var(--gold); }
+  .mock-workspace { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font: 8px var(--mono); }
+  .mock-main { padding: 25px 28px; min-width: 0; }
+  .mock-date { color: var(--muted); font: 9px var(--mono); letter-spacing: .06em; }
+  .mock-h { font: 26px/1.18 var(--serif); margin: 8px 0 5px; }
+  .mock-sub { color: var(--muted); font-size: 10px; margin: 0 0 18px; }
+  .resume-card { border: 1px solid var(--line-strong); border-radius: 9px; padding: 13px; background: linear-gradient(110deg, rgba(200,174,125,.10), rgba(255,255,255,.018)); }
+  .resume-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .resume-title { font: 15px var(--serif); }
+  .resume-meta { color: var(--muted); font: 8px var(--mono); margin-top: 4px; }
+  .resume-actions { display: flex; gap: 5px; }
+  .m-btn { border: 1px solid var(--line); background: rgba(255,255,255,.02); color: var(--ink-2); border-radius: 4px; font: 8px var(--mono); padding: 5px 7px; white-space: nowrap; }
+  .m-btn.primary { background: var(--gold); color: #15120d; border-color: var(--gold); }
+  .mock-section-title { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 8px; }
+  .mock-section-title span:first-child { font: 9px var(--mono); color: var(--gold); letter-spacing: .06em; }
+  .mock-section-title span:last-child { font: 8px var(--mono); color: var(--muted); }
+  .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mini-card { border: 1px solid var(--line); border-radius: 6px; padding: 9px; min-height: 64px; background: rgba(255,255,255,.015); }
+  .mini-card .glyph { color: var(--gold); font: 9px var(--mono); margin-bottom: 6px; }
+  .mini-card b { display: block; font: 10px var(--serif); font-weight: 500; margin-bottom: 2px; }
+  .mini-card em { display: block; color: var(--muted); font-size: 8px; font-style: normal; line-height: 1.4; }
+  .mock-rail { border-left: 1px solid var(--line); padding: 15px 13px; background: rgba(255,255,255,.008); }
+  .rail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--muted); font: 8px var(--mono); letter-spacing: .06em; }
+  .rail-card { border-top: 1px solid var(--line); padding: 10px 0; }
+  .rail-card:first-of-type { border-top: 0; }
+  .rail-card b { display: block; font: 10px var(--serif); font-weight: 500; margin-bottom: 3px; }
+  .rail-card p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
+  .rail-card .bar { height: 3px; border-radius: 3px; background: #1d2731; margin-top: 7px; overflow: hidden; }
+  .rail-card .bar i { display: block; height: 100%; background: var(--gold); width: 64%; }
+  .rail-list { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .rail-list li { color: var(--ink-2); font-size: 8px; display: flex; gap: 6px; align-items: center; }
+  .rail-list li::before { content: "·"; color: var(--gold); }
+  .mock-onboarding { display: grid; grid-template-columns: 1fr 240px; min-height: 380px; background: var(--bg-2); }
+  .onb-main { padding: 30px 34px; }
+  .onb-side { border-left: 1px solid var(--line); background: rgba(200,174,125,.035); padding: 22px; }
+  .onb-steps { display: flex; gap: 6px; margin-bottom: 22px; }
+  .onb-step { display: flex; align-items: center; gap: 5px; color: var(--muted); font: 8px var(--mono); }
+  .onb-step i { width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-style: normal; }
+  .onb-step.is-done i { background: var(--gold-dim); color: var(--gold); border-color: var(--line-strong); }
+  .onb-step.is-current { color: var(--gold-2); }
+  .onb-step.is-current i { border-color: var(--gold); color: var(--gold); }
+  .onb-h { font: 27px/1.15 var(--serif); margin: 0 0 5px; }
+  .onb-p { color: var(--muted); font-size: 11px; margin: 0 0 20px; }
+  .onb-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .onb-choice { border: 1px solid var(--line); border-radius: 7px; padding: 11px; background: rgba(255,255,255,.012); }
+  .onb-choice.is-selected { border-color: var(--line-strong); background: linear-gradient(150deg, rgba(200,174,125,.10), transparent); }
+  .onb-choice .choice-tag { color: var(--gold); font: 7px var(--mono); letter-spacing: .04em; }
+  .onb-choice b { display: block; font: 11px var(--serif); font-weight: 500; margin: 5px 0 3px; }
+  .onb-choice em { display: block; color: var(--muted); font-size: 8px; font-style: normal; line-height: 1.45; }
+  .onb-form { margin-top: 17px; display: grid; gap: 8px; }
+  .mock-field { border: 1px solid var(--line); border-radius: 5px; min-height: 30px; display: flex; align-items: center; padding: 0 9px; color: var(--muted); font: 8px var(--mono); }
+  .mock-field span { margin-left: auto; color: var(--gold); font-size: 7px; }
+  .onb-actions { display: flex; align-items: center; gap: 7px; margin-top: 15px; }
+  .onb-fine { color: var(--muted); font: 8px var(--mono); margin: 13px 0 0; }
+  .onb-side h4 { font: 12px var(--serif); margin: 0 0 7px; }
+  .onb-side p { color: var(--muted); font-size: 9px; margin: 0 0 14px; }
+  .onb-side .side-item { padding-top: 9px; border-top: 1px solid var(--line); margin-top: 9px; }
+  .onb-side .side-item b { display: block; color: var(--ink-2); font-size: 9px; font-weight: 500; }
+  .onb-side .side-item span { display: block; color: var(--muted); font-size: 8px; margin-top: 2px; line-height: 1.45; }
+  .project-mock { display: grid; grid-template-columns: 210px 1fr 220px; min-height: 330px; }
+  .project-side { border-right: 1px solid var(--line); padding: 17px; }
+  .project-main { padding: 22px 25px; }
+  .project-rail { border-left: 1px solid var(--line); padding: 17px; }
+  .project-title { font: 25px var(--serif); margin: 8px 0 4px; }
+  .project-meta { color: var(--muted); font: 8px var(--mono); }
+  .project-tabs { display: flex; gap: 5px; margin: 18px 0 12px; }
+  .project-tabs span { font: 8px var(--mono); color: var(--muted); padding: 5px 7px; border-radius: 3px; }
+  .project-tabs .is-active { color: var(--gold-2); background: var(--gold-dim); }
+  .timeline-row { display: grid; grid-template-columns: 9px 1fr auto; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); align-items: start; }
+  .timeline-row:first-of-type { border-top: 0; }
+  .timeline-dot { width: 5px; height: 5px; border: 1px solid var(--gold); border-radius: 50%; margin-top: 3px; }
+  .timeline-row b { display: block; font: 10px var(--serif); font-weight: 500; }
+  .timeline-row em { display: block; color: var(--muted); font-size: 8px; font-style: normal; margin-top: 2px; }
+  .timeline-row time { color: var(--muted); font: 7px var(--mono); }
+  .recipe-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 20px; background: var(--bg-2); }
+  .recipe { border: 1px solid var(--line); border-radius: 7px; padding: 11px; background: rgba(255,255,255,.012); }
+  .recipe .tag { color: var(--gold); font: 7px var(--mono); }
+  .recipe b { display: block; font: 12px var(--serif); font-weight: 500; margin: 7px 0 4px; }
+  .recipe p { color: var(--muted); font-size: 8px; margin: 0 0 9px; line-height: 1.45; }
+  .recipe .m-btn { font-size: 7px; }
+  .share-sheet { display: grid; grid-template-columns: 1fr 190px; border-top: 1px solid var(--line); background: var(--bg-2); }
+  .share-main { padding: 21px; }
+  .share-side { border-left: 1px solid var(--line); padding: 18px; background: rgba(200,174,125,.03); }
+  .share-main h4, .share-side h4 { font: 14px var(--serif); margin: 0 0 5px; }
+  .share-main p, .share-side p { color: var(--muted); font-size: 8px; margin: 0 0 13px; }
+  .share-side .side-item { padding-top: 9px; border-top: 1px solid var(--line); margin-top: 9px; }
+  .share-side .side-item b { display: block; color: var(--ink-2); font: 9px var(--sans); font-weight: 500; }
+  .share-side .side-item span { display: block; color: var(--muted); font-size: 8px; margin-top: 2px; line-height: 1.45; }
+  .file-row { display: flex; align-items: center; gap: 7px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 9px; }
+  .file-row:first-of-type { border-top: 0; }
+  .file-row .file-icon { color: var(--gold); font: 8px var(--mono); }
+  .file-row span:last-child { margin-left: auto; color: var(--muted); font: 7px var(--mono); }
+  .settings-mock { display: grid; grid-template-columns: 170px 1fr; background: var(--bg-2); min-height: 300px; }
+  .settings-side { border-right: 1px solid var(--line); padding: 17px 11px; }
+  .settings-side span { display: block; color: var(--muted); font-size: 8px; padding: 6px 8px; border-radius: 4px; }
+  .settings-side .is-active { color: var(--gold-2); background: var(--gold-dim); }
+  .settings-main { padding: 22px; }
+  .settings-main h4 { font: 21px var(--serif); margin: 0 0 4px; }
+  .settings-main > p { color: var(--muted); font-size: 9px; margin: 0 0 17px; }
+  .health-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .health-row b { display: block; color: var(--ink-2); font-size: 10px; font-weight: 500; }
+  .health-row span { display: block; color: var(--muted); font-size: 8px; margin-top: 2px; }
+  .health-ok { color: var(--green); font: 8px var(--mono); }
+  .update-card { margin-top: 15px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 12px; background: rgba(200,174,125,.06); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .update-card b { display: block; font: 11px var(--serif); font-weight: 500; }
+  .update-card span { display: block; color: var(--muted); font-size: 8px; margin-top: 3px; }
+  .metrics-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .metrics-table th { color: var(--gold); font: 9px var(--mono); letter-spacing: .08em; text-align: left; padding: 10px 9px; border-bottom: 1px solid var(--line-strong); font-weight: 400; }
+  .metrics-table td { padding: 11px 9px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+  .metrics-table td:first-child { color: var(--ink); font-weight: 500; }
+  .funnel { display: grid; gap: 9px; }
+  .funnel-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid rgba(200,174,125,.10); font-size: 11px; color: var(--ink-2); }
+  .funnel-row:first-child { border-top: 0; }
+  .funnel-row .idx { font: 9px var(--mono); color: var(--gold); }
+  .funnel-row .num { font: 10px var(--mono); color: var(--muted); }
+  .guardrails { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .guardrail { border: 1px solid var(--line); border-radius: var(--r-md); padding: 17px 18px; background: var(--panel); }
+  .guardrail h4 { font: 15px var(--serif); margin-bottom: 5px; }
+  .guardrail p { margin: 0; color: var(--muted); font-size: 11px; }
+  .gate { display: grid; grid-template-columns: 100px 1fr auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); }
+  .gate:last-of-type { border-bottom: 1px solid var(--line); }
+  .gate-id { color: var(--gold); font: 9px var(--mono); letter-spacing: .06em; }
+  .gate b { display: block; font-size: 12px; font-weight: 500; }
+  .gate p { margin: 2px 0 0; color: var(--muted); font-size: 10px; }
+  .gate-state { color: var(--gold-2); font: 9px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; white-space: nowrap; }
+  .handoff-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; }
+  .handoff-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .handoff-table th { color: var(--gold); font: 9px var(--mono); text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line-strong); font-weight: 400; }
+  .handoff-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+  .handoff-table td:first-child { color: var(--ink); white-space: nowrap; }
+  .handoff-table code { color: var(--gold-2); font: 10px var(--mono); }
+  .handoff-list { margin: 0; padding-left: 16px; display: grid; gap: 7px; color: var(--ink-2); font-size: 11px; }
+  .handoff-list li::marker { color: var(--gold); }
+  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--muted); font: 10px var(--mono); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+  @media (max-width: 1000px) {
+    h1 { font-size: 50px; }
+    .hero-grid, .state-grid, .goal-grid, .north-star, .handoff-grid { grid-template-columns: 1fr; }
+    .hero-card { max-width: 680px; }
+    .window-body { grid-template-columns: 150px 1fr; }
+    .mock-rail { display: none; }
+    .project-mock { grid-template-columns: 180px 1fr; }
+    .project-rail { display: none; }
+    .task-grid { grid-template-columns: 1fr; }
+    .source-grid { grid-template-columns: repeat(2, 1fr); }
+    .section-head { align-items: flex-start; flex-direction: column; }
+    .section-head p { text-align: left; }
+  }
+  @media (max-width: 720px) {
+    .wrap { width: min(100% - 28px, 1280px); }
+    .hero-top { padding-bottom: 34px; }
+    h1 { font-size: 40px; }
+    .hero-foot .wrap { display: block; }
+    .hero-foot p { margin-top: 7px; }
+    .window-body { display: block; }
+    .mock-side { display: none; }
+    .mock-main { padding: 20px; }
+    .mini-grid, .onb-choices, .recipe-grid { grid-template-columns: 1fr 1fr; }
+    .mock-onboarding, .share-sheet, .settings-mock { grid-template-columns: 1fr; }
+    .onb-side, .share-side { border-left: 0; border-top: 1px solid var(--line); }
+    .settings-side { display: none; }
+    .task-body-grid, .guardrails { grid-template-columns: 1fr; }
+    .source-grid { grid-template-columns: 1fr; }
+    .phase { grid-template-columns: 1fr; gap: 8px; }
+    .gate { grid-template-columns: 1fr auto; }
+    .gate-id { grid-column: 1 / -1; }
+  }
+
+  /* Review additions preserve the original ink/gold document identity. */
+  :root { --muted: #aca598; --scroll-thumb: #70634f; --scroll-track: #11161f; }
+  html { scrollbar-color: var(--scroll-thumb) var(--scroll-track); scrollbar-width: auto; }
+  *::-webkit-scrollbar { width: 12px; height: 12px; }
+  *::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 3px solid var(--scroll-track); border-radius: 8px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+  *::-webkit-scrollbar-thumb:active { background: var(--gold-2); }
+  *::-webkit-scrollbar-track { background: var(--scroll-track); }
+  a, button, summary { cursor: pointer; }
+  a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible { outline: 2px solid var(--gold-2); outline-offset: 4px; }
+  [hidden] { display: none !important; }
+  code, .task-foot b { overflow-wrap: anywhere; }
+  .task-body-grid > *, .state-grid > *, .handoff-grid > * { min-width: 0; }
+  .audit-evidence { margin-top: 24px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r-md); }
+  .audit-evidence summary { color: var(--gold-2); }
+  .audit-evidence p { color: var(--ink-2); font-size: 13px; }
+  .audit-table { overflow: auto; }
+  .audit-table table { min-width: 640px; }
+  .task summary { scroll-margin-top: 70px; }
+  @media (max-width: 760px) { .hero-top { flex-wrap: wrap; } .brand { flex-shrink: 0; } .brand-sub { white-space: nowrap; } .metrics-table, .handoff-table { display: block; overflow-x: auto; } .hero-badges .chip { white-space: normal; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+  @media (forced-colors: active) { html { scrollbar-color: auto; } }
+  @media print { .sticky-nav, .task-toolbar { display: none !important; } .task[hidden] { display: block !important; } .audit-table { overflow: visible; } .audit-table table { min-width: 0; } }
+
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div class="brand">
+        <span class="brand-mark">M</span>
+        <span class="brand-name">Morrow <span class="brand-sub">明日工坊 / v0.3.0 规划</span></span>
+      </div>
+      <div class="chip"><i></i> 源码复核 · 2026.11.08 · 未实施</div>
+    </div>
+
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">MORROW · v0.3.0</p>
+        <h1>让 Morrow<br><em>值得每天打开。</em></h1>
+        <p class="lead">v0.3.0 不新增一套 Agent 能力。它先补上长期使用的三个基础：回来知道做什么、长期数据敢托付、第一次配置足够短。</p>
+        <div class="hero-badges">
+          <span class="chip"><i></i> 基于 v0.2.0</span>
+          <span class="chip is-green"><i></i> 本地优先</span>
+          <span class="chip is-blue"><i></i> Windows 10/11 x64</span>
+          <span class="chip"><i></i> 11 张开发任务卡</span>
+        </div>
+      </div>
+      <aside class="hero-card">
+        <p class="eyebrow">这一版的目标</p>
+        <h2>把“用过”变成“常用”</h2>
+        <p>三个能直接验收的结果，不用增长术语包装。</p>
+        <div class="question">
+          <span class="q-no">01</span>
+          <div><strong>每天回来有下一步</strong><span>接着上次的工作，不再面对空白输入框。</span></div>
+        </div>
+        <div class="question">
+          <span class="q-no">02</span>
+          <div><strong>长期数据敢托付</strong><span>能备份、能恢复、更新前有保护。</span></div>
+        </div>
+        <div class="question">
+          <span class="q-no">03</span>
+          <div><strong>不填 API Key 也能开始</strong><span>订阅、Key、本地模型三扇门。</span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div class="hero-foot">
+    <div class="wrap">
+      <p>已有：Agent · Super-Agent · Studio · 记忆/项目/定时任务 · 本地优先</p>
+      <p>2026-11-08 源码复核 · 基线 878eaf8 + 本地未提交改动 · 本文仍是开发计划。</p>
+    </div>
+  </div>
+  <nav class="sticky-nav" aria-label="规划导航">
+    <div class="wrap">
+      <a href="#state">当前起点</a><a href="#review">源码复核</a>
+      <a href="#goals">三个目标</a>
+      <a href="#roadmap">路线图</a>
+      <a href="#cards">任务卡</a>
+      <a href="#ui">界面示意</a>
+      <a href="#metrics">指标</a>
+      <a href="#gates">发布门槛</a>
+      <a href="#handoff">开发交接</a>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap">
+  <section id="state">
+    <div class="section-head">
+      <div><p class="kicker">01 / 当前起点</p><h2>v0.2.0 已经很强，<br>但还没有被“接住”。</h2></div>
+      <p>现有能力足够支撑长期工作，问题集中在入口、信任和配置成本，而不是缺少又一个工具。</p>
+    </div>
+    <div class="state-grid">
+      <div class="panel">
+        <h3>已有，直接复用</h3>
+        <p class="panel-note">来自当前代码与文档，不是规划项。</p>
+        <ul class="state-list">
+          <li><span class="mark">✓</span><span><b>Agent 与 Super-Agent</b>：文件、命令、浏览器、电脑操作、审批、并行成员、独立验收与重试。</span></li>
+          <li><span class="mark">✓</span><span><b>Studio</b>：中短篇、长篇、漫剧；蓝图、写作、分镜、时间线、配音、配乐、检查与交付。</span></li>
+          <li><span class="mark">✓</span><span><b>长期资料</b>：项目、知识文件、全局/项目记忆、任务经验、技能、MCP、定时任务、灵动岛。</span></li>
+          <li><span class="mark">✓</span><span><b>模型来源</b>：订阅登录、API Key、本地 Ollama/llama.cpp/LM Studio；不强制注册账号。</span></li>
+          <li><span class="mark">✓</span><span><b>恢复基础</b>：检查点、文件历史、会话搜索、归档与数据目录迁移。</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>需要验证的使用障碍</h3>
+        <p class="panel-note">代码能确认能力缺口；实际影响仍需 Beta 访谈与任务观察验证。</p>
+        <ul class="state-list is-gap">
+          <li><span class="mark">×</span><span><b>缺少跨会话摘要</b>：已有会话选择与恢复，但缺少待处理事项、上次进度和最近成品的统一入口。</span></li>
+          <li><span class="mark">×</span><span><b>首启路径不完整</b>：现有引导以 API Key 为主；订阅在“订阅”，本机模型在“本地”，没有统一首启分流。</span></li>
+          <li><span class="mark">×</span><span><b>长期数据没有保险</b>：只有数据目录迁移，没有完整备份/恢复和更新前保护。</span></li>
+          <li><span class="mark">×</span><span><b>能力发现靠猜</b>：项目、模板、配方和导入都已有或可做，但没有“我想做什么”的入口。</span></li>
+          <li><span class="mark">×</span><span><b>交付完整性需补强</b>：已有工程包导入/导出及发布套组；缺失素材仍可能被跳过，分享前须核对完整性。</span></li>
+          <li><span class="mark">×</span><span><b>安装信任成本</b>：两个 exe 未签名，SmartScreen 会劝退第一次用户。</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="constraint">
+      <span class="mono">边界</span>
+      <p>不伪造已连接/已验收，不默认上传数据，不加强制账号，不把 token/费用做成硬闸门，不用启发式评分冒充质量审查。</p>
+    </div>
+  </section>
+
+
+  <section id="review">
+    <div class="section-head"><div><p class="kicker">源码复核 / 2026-11-08</p><h2>先校准起点，<br>再增加功能。</h2></div><p>公开 v0.2.0 标签为 878eaf8；本机另有设置页、上下文措辞等未提交修改。以下为代码审查结论，不代表 v0.3.0 已实现。</p></div>
+    <div class="state-grid"><div class="panel"><h3>本次优化</h3><ul class="handoff-list">
+      <li><b>收紧核心：</b>4 张 P0 保持，T04 拆成首成果与导入；T07 缺件检查、T09 基线提前成为发布门槛。</li>
+      <li><b>复用现有能力：</b>日志轮转、检查点、工程包导入/导出与发布套组已有实现，下一版只补缺口。</li>
+      <li><b>备份可落地：</b>补全数据清单、外部根目录、凭据排除、一致性快照、事务恢复和跨机重新定位。</li>
+      <li><b>验收可判断：</b>定义“真实成果”、连接与工具能力、性能 p95、错误/取消/重启测试和证据类型。</li>
+    </ul></div><div class="panel"><h3>需要先解决的事实</h3><ul class="handoff-list">
+      <li>当前 <code>exportPackage</code> 遇到缺失素材会跳过；现有 manifest 只记实际入包文件，不能证明所有引用完整。</li>
+      <li>v0.2.0 同版本名已替换过附件；更新识别必须包括构建与摘要，不能只看 semver。</li>
+      <li>Studio 可使用独立存储根目录；“备份应用目录”不等于备份所有作品与外部资料。</li>
+      <li>原稿把度量放 P2，却让增长验收依赖它；现在先定义字典，后续可选实现采集。</li>
+    </ul></div></div>
+    <details class="audit-evidence"><summary>查看源码证据与审查边界</summary>
+      <p>下列链接指向公开基线；本机未提交差异另按当前文件核对并记录 SHA-256。源码证明存在实现，不能替代真实服务、安装升级和数据恢复测试。</p>
+      <div class="audit-table" tabindex="0" role="region" aria-label="源码证据表"><table class="metrics-table"><thead><tr><th>证据</th><th>源码落点</th><th>对计划的影响</th></tr></thead><tbody>
+      <tr><td>E01 首启</td><td><code>src/renderer/features/onboarding.tsx</code> · handleTest / finish</td><td>已有 API 测试与演示；补三路入口和请求状态隔离。</td></tr>
+      <tr><td>E02 恢复会话</td><td><code>src/renderer/store.ts</code> · initialize / firstSession</td><td>已有会话载入；缺的是跨会话摘要，避免“总是空白”描述。</td></tr>
+      <tr><td>E03 数据迁移</td><td><code>src/main/ipc.ts</code> · copyUserDataForMigration / writeDataLocation</td><td>迁移保留原目录，但不是带校验的一致性备份协议。</td></tr>
+      <tr><td>E04 日志轮转</td><td><code>src/main/logger.ts</code> · MAX_SIZE / KEEP / rotate</td><td>已有 5 MiB / 3 份轮转，新增范围改为性能与脱敏诊断。</td></tr>
+      <tr><td>E05 工程交付</td><td><code>src/main/studio.ts</code> · exportPackage（3959 起）/ exportFolder / importPackage</td><td>优先修补素材缺失，再复用工程包和发布套组。</td></tr>
+      <tr><td>E06 连接与媒体</td><td><code>src/main/subscriptions.ts</code>；<code>src/shared/media-cloud.ts</code>；<code>src/main/media-cloud.ts</code></td><td>渠道/协议已有，配置存在不能推定全渠道真实可用。</td></tr>
+      <tr><td>E07 已有执行服务</td><td><code>src/main/schedules.ts</code>；<code>src/main/features.ts</code>；<code>src/main/memory.ts</code></td><td>配方复用现有调度/命令/MCP，补信任、去重与恢复默认禁用。</td></tr>
+      </tbody></table></div>
+      <p><a href="https://github.com/youyuwangzi0001/Morrow/tree/878eaf8f255a2530b9292eca60c87e3a73667eb9/src" target="_blank" rel="noopener noreferrer">查看基线源码</a> · <a href="https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer">核对公开发布附件</a></p>
+      <p>本次仅更新网站与计划文档。历史产品验证记录为 509 项单元通过、86 条 Electron 流程中首轮 85 通过及 1 项单独复跑通过；本轮未重跑整个桌面产品套组，也未做付费模型、安装/升级或物理设备验证。</p>
+    </details>
+  </section>
+
+  <section id="goals">
+    <div class="section-head">
+      <div><p class="kicker">02 / 三个目标</p><h2>留存、信任、增长，<br>各做一件完整的事。</h2></div>
+      <p>先把现有用户接住，再让第一次安装更短。增长不是加广告位，而是让完成的成果成为下一次打开的理由。</p>
+    </div>
+    <div class="goal-grid">
+      <article class="goal">
+        <span class="goal-no">01 / 留存</span>
+        <h3>每天回来有下一步</h3>
+        <p>用现有会话、项目、任务和成品做聚合。打开就能继续，不需要重新回忆。</p>
+        <div class="goal-list"><span>Today</span><span>接着上次</span><span>项目首页</span><span>每周回顾</span></div>
+      </article>
+      <article class="goal">
+        <span class="goal-no">02 / 信任</span>
+        <h3>长期数据敢托付</h3>
+        <p>能备份、能恢复、更新前有保护，连接失败能说清原因。这些比更聪明的回答更重要。</p>
+        <div class="goal-list"><span>备份恢复</span><span>连接诊断</span><span>安全更新</span><span>性能恢复</span></div>
+      </article>
+      <article class="goal">
+        <span class="goal-no">03 / 增长</span>
+        <h3>更容易开始和带走</h3>
+        <p>不填 Key 也能进门；已有工具的用户能搬家；模板和成品能分享。</p>
+        <div class="goal-list"><span>首启三扇门</span><span>从工具搬家</span><span>模板/分享</span><span>安装信任</span></div>
+      </article>
+    </div>
+    <div class="source-grid">
+      <div class="source"><span class="mono">来源 01</span><b>已有 ChatGPT / Codex 订阅</b><p>首启直接导入本机登录或浏览器登录，不申请 API Key。</p></div>
+      <div class="source"><span class="mono">来源 02</span><b>Claude Code / Codex CLI 用户</b><p>继续识别 AGENTS/CLAUDE 规则，导入 MCP、技能与命令。</p></div>
+      <div class="source"><span class="mono">来源 03</span><b>本机模型用户</b><p>Ollama / LM Studio 作为独立首启入口，不强迫注册。</p></div>
+      <div class="source"><span class="mono">来源 04</span><b>创作者与转介绍</b><p>从 Studio 模板和分享包进入，先看到结果，再配置完整 Agent。</p></div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <div class="section-head">
+      <div><p class="kicker">03 / 路线图</p><h2>先补地基，再做入口。</h2></div>
+      <p>先冻结验收基线，再分别推进备份、连接和只读聚合。Today 的只读实现不依赖备份；发布时统一执行数据保护门槛。阶段顺序不等于工期承诺。</p>
+    </div>
+    <div class="timeline">
+      <div class="phase">
+        <div class="phase-label">阶段一<strong>基线 / 基础服务</strong></div>
+        <div class="phase-body">
+          <h3>基线与安心</h3>
+          <p>T09-A 先测当前性能与恢复；T03 定义快照/恢复协议，T02 接入现有连接服务；T01 聚合查询可独立开发。</p>
+          <div class="phase-tags"><span>T09-A 基准</span><span>T03 备份</span><span>T02 连接</span><span>T01 摘要查询</span><span>T11-A 指标定义</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-label">阶段二<strong>核心闭环</strong></div>
+        <div class="phase-body">
+          <h3>让用户回来</h3>
+          <p>完成 T01/T02/T03/T04-A：连接模型 → 首个真实成果 → 退出重开 → 找回成果 → 备份并恢复。同步修复 T07-A 工程包缺件。</p>
+          <div class="phase-tags"><span>T01 继续工作</span><span>T04-A 首个成果</span><span>T07-A 缺件检查</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-label">阶段三<strong>扩展 / 发布</strong></div>
+        <div class="phase-body">
+          <h3>增长与发布</h3>
+          <p>先完成核心发布门槛，再按实测收益安排项目首页、配置导入、回顾、模板与更新。代码签名预算另行决策；不以未定外部条件阻塞核心测试。</p>
+          <div class="phase-tags"><span>T05 项目页</span><span>T04-B 导入</span><span>T06 回顾/配方</span><span>T07-B 模板/分享</span><span>T08 更新</span><span>T10 签名</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="cards">
+    <div class="section-head">
+      <div><p class="kicker">04 / 任务卡</p><h2>11 张卡，<br>先完成最小闭环。</h2></div>
+      <p>保留 11 张卡；按卡内子范围交付。P0 四张全部验收，T07-A 完整性与 T09-A 基线也列为发布门槛；P1 扩展逐项排期，P2 不阻塞核心版。</p>
+    </div>
+    <div class="task-toolbar">
+      <div class="filters" role="group" aria-label="任务卡筛选">
+        <button class="filter-btn is-active" type="button" aria-pressed="true" data-filter="all">全部</button>
+        <button class="filter-btn" type="button" aria-pressed="false" data-filter="retention">留存</button>
+        <button class="filter-btn" type="button" aria-pressed="false" data-filter="trust">信任</button>
+        <button class="filter-btn" type="button" aria-pressed="false" data-filter="growth">增长</button>
+        <button class="filter-btn" type="button" aria-pressed="false" data-filter="metrics">度量</button>
+      </div>
+      <span class="task-count" id="taskCount" role="status" aria-live="polite">11 张卡</span>
+    </div>
+    <div class="scope-bar"><span><b>v0.3.0 核心</b> · 4 张 P0 + 2 项前置门槛</span><span class="sep">/</span><span><b>5 张 P1</b></span><span class="sep">/</span><span><b>2 张 P2</b>（签名、度量）</span></div>
+    <div class="task-grid" id="taskGrid">
+
+      <details class="task" data-track="retention" data-priority="P0" open>
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T01</span><h3>今天 + 接着上次</h3></div><p>打开 Morrow 先看到下一步；会话顶部保留“上次做到这里”。</p></div>
+          <div class="task-meta"><span class="prio p0">P0</span><span class="task-track">留存</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>先做 Today 最小版：最近会话、未完成目标、最近成品；复用会话/项目/任务元数据，不在渲染层一次读取所有正文。</li><li>主进程提供有上限的只读摘要查询（默认最近 20 项），复用现有 store/IPC；T05/T06 共用同一查询与完成状态规则，不建第二套状态数据库。</li><li>尊重“恢复上次会话 / 打开 Today”的用户选择；无历史沿用欢迎页。删除、归档、临时会话与缺失工作区分别处理。</li><li>“继续”只打开对象并展示上下文与权限。失效审批显示已过期；工具结果不确定时要求核对，禁止自动重放命令、付款或外发动作。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>卡片能定位到真实对象；删除、归档、重命名后无悬空入口，空状态可新建任务。</li><li>退出重开、崩溃中断、流式断连后，已完成/失败/待核对状态不混淆；继续不会重复工具副作用。</li><li>首次查询只读元数据；达到 T09-A 的启动与查询预算；键盘可操作且不抢正在输入的焦点。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/main/session.ts / runtime.ts；src/renderer/features/shell.tsx；src/renderer/store.ts</b></span><span>依赖与范围 <b>依赖现有会话/目标状态；T09-A 提供基线。与 T03 可独立开发，不能为了 Today 强行迁移全量数据。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="growth" data-priority="P0">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T02</span><h3>首启三扇门 + 连接医生</h3></div><p>订阅、API Key、本地模型三条路都能完成首启；失败时知道改哪一项。</p></div>
+          <div class="task-meta"><span class="prio p0">P0</span><span class="task-track">增长</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>首启提供订阅、API Key、本机模型三条路径，复用设置 → 订阅 / 模型 / 本地的服务与状态；不复制认证实现。</li><li>先校验地址/本机服务，再由真实请求区分 DNS/TLS/网络、401/403、404/模型不存在、429/额度、超时。只按已知证据诊断，不从单一超时断言 Key 错误。</li><li>区分“凭据已保存”“服务可达”“文本回复成功”“工具调用可用”；首个 Agent 任务另外核对工具调用能力。切换服务和取消测试时取消旧请求或丢弃迟到结果。</li><li>复用已配置账号；登录由用户完成。可跳过进入离线演示，演示状态与真实连接清楚区分，不自动试遍所有收费模型。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>API、一个订阅渠道、一个本地服务分别完成真实文本回复；记录日期/应用构建/服务/模型，不能以 mock 替代渠道实测。</li><li>三条路径都覆盖取消、重试、401/403、404、429、超时和离线；导入登录不等于已连接。没有测试条件的渠道标为未验证。</li><li>切换提供方不串 Key/模型/旧响应，日志和错误导出脱敏；先看演示不产生真实连接成功事件。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/renderer/features/onboarding.tsx / settings.tsx；src/main/ipc.ts / subscriptions.ts / settings.ts</b></span><span>依赖与范围 <b>现有 provider/subscriptions 服务可复用；供应商账号与本机模型是验收环境依赖，不是应用内置能力。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="trust" data-priority="P0">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T03</span><h3>备份与恢复</h3></div><p>按真实存储清单备份应用数据与选定素材；预览后恢复到新目录，保留原库可退回。</p></div>
+          <div class="task-meta"><span class="prio p0">P0</span><span class="task-track">信任</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>先列持久化清单：会话/检查点/文件历史、项目/知识/记忆、技能/命令/hooks、定时任务、协作元数据、Studio 工程与素材、非敏感设置。按真实存储位置收集，禁止只复制固定七个目录。</li><li>个人备份显式声明包含正文及项目路径；用清单白名单排除所有凭据（含加密 Key、OAuth、MCP env/header 密钥）、浏览器登录与缓存。分享时另走 T07 脱敏清单，不承诺私人备份没有私有路径。</li><li>发现 Studio 自定义根目录及外部知识/素材。默认备份应用管理数据，工作区源码不等于应用数据；用户选择外部依赖后打包，否则列出未包含项与恢复后重新定位步骤。</li><li>备份前检查活跃 Agent/Studio/定时任务，让用户等待结束或主动停止；禁止后台强停。暂停新写入 → flush → 快照 → 恢复服务；以临时文件生成并校验 manifest 的大小、SHA-256、schema 后原子提交。</li><li>恢复先解包到隔离暂存目录并校验版本、路径穿越/符号链接、体积与磁盘空间；预览差异并确认。创建恢复前快照，停止写入，按事务日志切换；下次启动能完成或回滚中断事务。</li><li>v1 只提供整套恢复到独立新目录并切换，保留原目录可退回；不做逐条合并。跨机器重选工作区/外部根目录并重新授权；恢复的 schedules/hooks 默认禁用，待用户逐项启用。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>在新数据目录完成备份 → 恢复 → 重启，按清单比对内容/哈希/引用；覆盖自定义 Studio 根目录、中文/长路径、空库、跨机根路径变化。</li><li>备份与恢复各阶段注入中断、磁盘不足、损坏哈希、旧/未来 schema 和路径穿越；原库保持可读，不出现部分恢复后自动执行任务。</li><li>扫描凭据文件与嵌入式 env/header 字段；导出清单明确缺少的外部资源、不可迁移凭据和不包含的工作区源码。恢复前快照不可用时阻止切换。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>新增 src/main/backup.ts（建议）；src/main/workspace.ts / ipc.ts；src/shared/types.ts / contracts.ts；src/preload/index.ts；settings.tsx</b></span><span>依赖与范围 <b>P0。先完成存储清单和一致性协议，再做设置按钮；复用数据目录迁移约束，不把现有迁移当作完整备份。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="growth" data-priority="P0">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T04</span><h3>新用户入口：搬家 + 首个成果</h3></div><p>先交付可复现的首份报告，再做配置搬家；15 分钟作为指定环境下的观察目标。</p></div>
+          <div class="task-meta"><span class="prio p0">P0</span><span class="task-track">增长</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T04-A（P0）先交付一条无需媒体引擎的首成果路线：在用户选定的工作区读取示例资料，产出有来源且可打开的交接报告。整理文件和短篇模板随后复用；漫剧不纳入 15 分钟承诺。</li><li>在模型已就绪、资料可读的受控环境，从用户确认任务起计时；下载、注册和模型安装另计。记录成功/失败和真实成品，不拿完成轮次代替成果。</li><li>T04-B（P1）再导入 MCP/技能/命令：来源 → 解析预览 → 冲突选择 → 事务写入。默认禁用导入的 MCP/自动命令，重新确认信任；不导入 Key、OAuth、环境中的秘密。</li><li>复用现有规则发现和命令/技能目录，显示来源；禁止导入时执行 shell、启动服务或自动下载，防止路径穿越与覆盖现有配置。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>P0：固定夹具和指定模型下生成一份可打开、来源可追溯的报告；5 位首次用户观察记录成功数、中位耗时和失败原因，目标 ≤15 分钟，不保证所有服务网络。</li><li>报告不存在/为空/写入失败时不得显示成功；重试复用任务 ID 或提示已存在成果，不重复改动用户文件。</li><li>P1：取消不写入、重复导入不重复、冲突可预览；恶意配置/超大文件/中断写入不改变现有可用配置。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/renderer/features/onboarding.tsx / shell.tsx / composer.tsx；src/main/memory.ts / features.ts / agent.ts</b></span><span>依赖与范围 <b>T04-A 依赖 T02；可先挂现有欢迎页，随后接 T01。T04-B 依赖 T03 的配置保护与回滚，不与入口改造强绑交付。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="retention" data-priority="P1">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T05</span><h3>项目首页</h3></div><p>把一个文件夹从“会话集合”变成有状态的项目主页。</p></div>
+          <div class="task-meta"><span class="prio p1">P1</span><span class="task-track">留存</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>复用 T01 摘要接口，显示规则来源、知识、会话、目标和最近成品；工作区 ID/规范化路径作为关联键。</li><li>Git 与外部目录查询按需加载、可取消、有超时；项目切换丢弃旧响应，不因一个不可读目录阻塞首页。</li><li>提供新对话、继续、记忆与检查点入口；归档/删除/重命名和缺失工作区采用 T01 同一状态与措辞。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>空项目、非 Git 仓库、断开的磁盘、改名/删除项目都能给真实反馈；不显示过期“正常”。</li><li>所有入口定位正确对象；项目 A 的迟到结果不会出现在 B；大量会话下符合 T09-A 查询预算。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/renderer/features/projects.tsx；src/main/runtime.ts / memory.ts / workspace.ts</b></span><span>依赖与范围 <b>P1，依赖 T01 的只读摘要。核心版延期时保留现有项目页，不阻塞继续会话。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="retention" data-priority="P1">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T06</span><h3>每周回顾 + 自动化配方</h3></div><p>让用户看到一周真实产出，并把自动化从“懂设置”变成可预览的配方。</p></div>
+          <div class="task-meta"><span class="prio p1">P1</span><span class="task-track">留存</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T06-A 先提供本地每周清单，复用 T01 成果与完成判定；按用户时区、周界和去重 ID 计算，不把同一成果多次导出、失败轮次算多件完成。</li><li>可选模型摘要由用户触发，说明发送内容与费用；失败回退本地清单。成果入口与计数可追溯，缺文件明确标注。</li><li>T06-B 再提供内置只读摘要/交接配方，复用 schedules/hooks/commands；预览触发器、目标目录、权限和运行条件后安装，默认禁用。</li><li>Morrow 退出时不执行。错过触发默认跳过并提示，不积压补跑；重启/夏令时/重复触发用运行 ID 去重。整理文件配方须用户显式配置写权限。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>时区边界、归档/删除、失败/部分完成/重复导出统计准确；无模型能产出清单，结果能跳到真实对象。</li><li>配方重复安装不重复创建；默认不启动，无人值守不绕过审批，重启不会重复运行已完成实例。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/main/schedules.ts / features.ts；src/renderer/features/schedules.tsx / composer.tsx</b></span><span>依赖与范围 <b>依赖 T01 查询和 T11-A 指标字典；配方安装/回退复用 T03/T04-B。回顾与自动化配方可分别验收。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="growth" data-priority="P1">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T07</span><h3>Studio 模板 + 分享包</h3></div><p>先验证工程包素材完整，再做模板预览与统一交付；阅读成品和继续编辑分别验收。</p></div>
+          <div class="task-meta"><span class="prio p1">P1</span><span class="task-track">增长</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T07-A（发布门槛）先修补现有 exportPackage/exportFolder：逐项解析素材/封面/音轨/字幕/时间线引用，缺件时列清单并阻止“完整工程包”；用户明确选择不完整归档时另行标记。</li><li>复用现有 .morrowcraft 导入、manifest 文件指纹和发布套组，不另造同义包格式。工程包用于 Morrow 继续编辑；无 Morrow 阅读使用已导出的 PDF/EPUB/视频等成品。</li><li>T07-B（P1）再提供统一交付面板、模板结构预览和来源清单。模板只白名单导出结构；清除正文、提示中的私密路径、任务日志、账号及凭据。</li><li>自包含 HTML 是新增可选格式，需资产打包、离线资源和脚本安全验收后开放。“在 Morrow 继续”回执先使用导入操作；深链注册/安装检测未实现前不展示一键继续。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>P0 门槛：故意删除引用素材、缩略图及外部文件，能显示缺件且不会把不完整包标为完整；含哈希清单的完整包可导入并重连时间线。</li><li>将成品复制到没有 Morrow、断网的新环境打开，不引用本机绝对路径；.morrowcraft 在干净 Morrow 数据目录 roundtrip 验证。</li><li>模板取消不创建项目；导入校验 schema/大小/路径且不执行脚本；失败不留下半成品。素材授权与可分享范围由用户确认，不宣称所有云端内容均可商用。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/main/studio.ts（exportPackage/exportFolder/importPackage）；src/shared/studio.ts；src/renderer/features/studio.tsx / artifacts.tsx</b></span><span>依赖与范围 <b>T07-A 独立提前；T07-B 依赖其完整性与脱敏。工程包完整不代表整个应用数据已备份。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="trust" data-priority="P1">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T08</span><h3>安全更新</h3></div><p>有新版本可查、更新说明可读、更新前有备份；不静默安装。</p></div>
+          <div class="task-meta"><span class="prio p1">P1</span><span class="task-track">信任</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>首版仅由用户点击检查 GitHub Release；离线、限流、超时、无可用附件、预发布分别显示，不在未请求或请求失败时写“已是最新”。</li><li>版本比较使用语义版本，同时保存构建标识与附件 SHA-256；同为 v0.2.0 的替换附件也能识别“同版本新构建”，不能只比较版本字符串。</li><li>受信任 HTTPS 发布源 + 明确文件名/架构/大小/摘要，流式下载到临时路径并校验后展示位置；Release 文本不执行脚本，重定向目标受控。</li><li>用户主动运行安装程序，更新前完成 T03 备份与 v0.2→v0.3 数据迁移验证。SHA-256 是完整性证据，不等同作者签名；不静默安装或自动执行未签名包。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>用 fixtures 验证新版本、同版新构建、版本回退、预发布、缺件、哈希错、网络失败与取消；旧数据仍可打开。</li><li>Windows 安装版覆盖升级和便携版独立目录升级分别测试；记录版本、build ID、备份状态、恢复入口。</li><li>新 schema 首次升级失败能退回旧数据；未验证的降级不直接让旧程序写新库。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>新增 src/main/update.ts（建议）；src/main/ipc.ts；src/shared/types.ts / contracts.ts；src/preload/index.ts；settings.tsx</b></span><span>依赖与范围 <b>依赖 T03 + 数据 schema 迁移与 T10 发布资产信息；T10 证书采购可延后，签名状态必须真实。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="trust" data-priority="P1">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T09</span><h3>性能与恢复</h3></div><p>长期使用后，启动、搜索、恢复在真实体积下仍然可靠。</p></div>
+          <div class="task-meta"><span class="prio p1">P1</span><span class="task-track">信任</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T09-A 在阶段一冻结基线：同一 Windows 10/11 x64 测试机记录 CPU/RAM/SSD、构建与数据集哈希；空库、1,000 会话 + 10,000 工作区文件 + 100 Studio 工程三档。</li><li>冷启动 10 次、热查询 30 次记录 median/p95。拟定目标：启动可输入 p95 ≤5 秒，Today 首批元数据 ≤1 秒，提交搜索到首批结果 ≤1.5 秒；阶段一实测不符时先调整并记录理由，不能发布后改门槛。</li><li>T09-B 按剖析结果修复阻塞 IO/全量正文加载/索引节流；复用已有 5 MiB、3 份日志轮转与检查点。新增诊断导出采用字段白名单和脱敏，不复制原始请求体。</li><li>对任务启动、工具已执行但回执未保存、流式中断、检查点写入和恢复切换分别注入崩溃；状态未知时转人工核对，不自动重放有副作用工具。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>核心路径不比冻结基线 p95 恶化超过 20%；如超过，修复或移除造成退化的扩展后再发布。绝对预算与实测报告同时保留。</li><li>长会话恢复不丢用户最后输入，失败可重试/导出诊断；工具副作用不重复、已完成成果不变成“未执行”。</li><li>备份/恢复在大素材集上记录耗时、磁盘峰值和进度；中途取消可清理临时文件并保持原库可用。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>src/main/runtime.ts / session.ts / workspace.ts / logger.ts；scripts/ 新增复现基准入口</b></span><span>依赖与范围 <b>T09-A 是启动前置门槛，T09-B 随功能开发按证据优化；不把现有日志轮转或基础检查点当作新能力。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="growth" data-priority="P2">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T10</span><h3>可信安装 / 签名</h3></div><p>降低 SmartScreen 对第一次安装的劝退；签名是外部依赖，不伪造。</p></div>
+          <div class="task-meta"><span class="prio p2">P2</span><span class="task-track">增长</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T10-A 发布必需：为安装版/便携版提供构建标识、SHA-256、架构、签名状态与下载说明，链接与实际附件一致。</li><li>T10-B（P2 外部依赖）确认代码签名预算与主体后再接入；私钥留在发布环境，不进入源码包。</li><li>签名后验证发布者、证书链、时间戳与文件完整性；SmartScreen 信誉独立于签名，不承诺签完即不弹警告。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>安装版、便携版和网站所列摘要一致；未签名不显示“已签名”。</li><li>Win10/Win11 干净环境分别记录安装/启动/覆盖升级/卸载后的数据保留；签名方案未落实时明示状态，不伪造结论。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>package.json；scripts/dist-portable.mjs；发布流水线与网站 docs/release-snapshot.json</b></span><span>依赖与范围 <b>T10-A 纳入发布核对；T10-B 等预算/主体确认，不阻塞 T01–T04 核心功能。</b></span></div>
+        </div>
+      </details>
+
+      <details class="task" data-track="metrics" data-priority="P2">
+        <summary>
+          <div><div class="task-summary-title"><span class="task-id">T11</span><h3>隐私优先的本地度量</h3></div><p>先统一统计定义；可选本地采集默认关闭，不建设上传端点。</p></div>
+          <div class="task-meta"><span class="prio p2">P2</span><span class="task-track">度量</span></div>
+        </summary>
+        <div class="task-body">
+          <div class="task-body-grid">
+            <div class="task-block"><h4>实现</h4><ul><li>T11-A（阶段一，仅定义）先写事件字典、分母、去重键与时区口径，供 T04/T06 的测试和访谈使用；不以新增采集为其他卡的依赖。</li><li>T11-B（P2）若启用本地度量，默认关闭，由用户选择；只记录事件类别、日期、结果枚举和随机本机 ID，不含正文、路径、项目名、模型 Key 或完整 URL。</li><li>采集与诊断日志分开；本地保留 30 天后删除，查看/导出/清除明确可用，关闭后停止写入并提供清除旧记录。v0.3.0 不建设上传端点。</li><li>“真实成果”需用户确认可用或有确定性文件验收，不以模型自评、工具返回 0 或轮次结束代替。首启事件不冒充安装次数。</li></ul></div>
+            <div class="task-block"><h4>验收</h4><ul><li>关闭/重启后无新增记录；过期清理、清除、导出和随机 ID 重置可验证；导出字段白名单可检查。</li><li>D1/D7 使用同一首成果日期 cohort 与已到观察窗口的分母；多次打开/同一成果多次导出去重。</li><li>Beta 只汇报自愿提交者的样本数与样本范围，不把单机记录或自选样本推断为全体用户留存。</li></ul></div>
+          </div>
+          <div class="task-foot"><span>落点 <b>新增 src/main/local-metrics.ts（可选建议）；src/shared/types.ts；settings.tsx；独立于 logger.ts</b></span><span>依赖与范围 <b>T11-A 不新增遥测，现即可定义；T11-B 留作后续可选项。匿名上传需单独产品决策和明示授权。</b></span></div>
+        </div>
+      </details>
+
+    </div>
+  </section>
+
+  <section id="ui">
+    <div class="section-head">
+      <div><p class="kicker">05 / 界面示意</p><h2>少解释，<br>先让下一步可见。</h2></div>
+      <p>示意只表达信息结构；真实实现从现有 sessions、projects、schedules、artifacts 读取。</p>
+    </div>
+    <div class="mock-section">
+
+      <div>
+        <div class="mock-label"><span>界面 01 / 今天</span><span>继续 + 今天 + 起点</span></div>
+        <div class="window">
+          <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span class="window-title">MORROW · TODAY · 示意</span><span class="mono" style="color:var(--muted);font-size:8px">v0.3</span></div>
+          <div class="window-body">
+            <aside class="mock-side">
+              <div class="mock-brand"><span class="brand-mark">M</span> Morrow</div>
+              <div class="mock-nav"><span class="is-active">今天</span><span>新建对话</span><span>项目</span><span>任务</span><span>设置</span></div>
+              <div class="mock-workspace">WORKSPACE<br><span style="color:var(--ink-2)">demo-workspace</span></div>
+            </aside>
+            <div class="mock-main">
+              <div class="mock-date">11 月 7 日 · 周六</div>
+              <div class="mock-h">早上好。接着上次的进度。</div>
+              <p class="mock-sub">1 个待确认 · 2 个今天到期</p>
+              <div class="resume-card">
+                <div class="resume-top"><div><div class="resume-title">季度销售分析</div><div class="resume-meta">2 小时前 · 3 个文件变更</div></div><div class="resume-actions"><button class="m-btn">新开一轮</button><button class="m-btn primary">继续 →</button></div></div>
+              </div>
+              <div class="mock-section-title"><span>今天</span><span>2 项</span></div>
+              <div class="mini-grid">
+                <div class="mini-card"><div class="glyph">09:00</div><b>周报提醒</b><em>定时任务</em></div>
+                <div class="mini-card"><div class="glyph">WAIT</div><b>等你确认</b><em>验收候选</em></div>
+                <div class="mini-card"><div class="glyph">DOC</div><b>最近成品</b><em>分析报告</em></div>
+              </div>
+              <div class="mock-section-title"><span>从配方开始</span><span>不用想第一句</span></div>
+              <div class="mini-grid">
+                <div class="mini-card"><div class="glyph">01</div><b>整理下载文件夹</b><em>先预览</em></div>
+                <div class="mini-card"><div class="glyph">02</div><b>会议记录成文</b><em>保留来源</em></div>
+                <div class="mini-card"><div class="glyph">03</div><b>启动一个短篇</b><em>从结构开始</em></div>
+              </div>
+            </div>
+            <aside class="mock-rail">
+              <div class="rail-head"><span>项目</span><span>本周</span></div>
+              <div class="rail-card"><b>登录改版</b><p>3 个活跃会话 · 2 个未完成</p><div class="bar"><i></i></div></div>
+              <div class="rail-card"><b>最近</b><ul class="rail-list"><li>docs/login.md</li><li>检查点已创建</li><li>等你一次验收</li></ul></div>
+              <div class="rail-card"><b>模型</b><p>Codex 订阅 · 已连接</p></div>
+              <div class="rail-card"><b>备份</b><p>昨天 21:40</p></div>
+            </aside>
+          </div>
+        </div>
+        <p class="mock-note">继续优先于新建；每张卡都能回到真实对象；没有模型时仍显示真实会话。</p>
+      </div>
+
+      <div>
+        <div class="mock-label"><span>界面 02 / 首启</span><span>三条路都能进门</span></div>
+        <div class="window">
+          <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span class="window-title">MORROW · 首次引导 · 示意</span><span class="mono" style="color:var(--muted);font-size:8px">2 / 3</span></div>
+          <div class="mock-onboarding">
+            <div class="onb-main">
+              <div class="onb-steps"><span class="onb-step is-done"><i>✓</i> 认识</span><span class="onb-step is-current"><i>2</i> 接模型</span><span class="onb-step"><i>3</i> 文件夹</span></div>
+              <h3 class="onb-h">接入模型。</h3>
+              <p class="onb-p">三选一，稍后也能换。</p>
+              <div class="onb-choices">
+                <div class="onb-choice is-selected"><span class="choice-tag">已有订阅</span><b>ChatGPT / Codex</b><em>导入本机登录</em></div>
+                <div class="onb-choice"><span class="choice-tag">推荐国内</span><b>DeepSeek Key</b><em>按量付费</em></div>
+                <div class="onb-choice"><span class="choice-tag">本机</span><b>Ollama</b><em>不需要联网</em></div>
+              </div>
+              <div class="onb-form"><div class="mock-field">已检测到本机 Codex 登录 <span>已连接</span></div><div class="m-btn primary" style="justify-self:start;font-size:8px">导入本机登录</div></div>
+              <div class="onb-actions"><button class="m-btn">上一步</button><button class="m-btn primary">下一步 →</button></div>
+              <p class="onb-fine">Key 只保存在本机；测试成功才显示已连接。</p>
+            </div>
+            <aside class="onb-side">
+              <h4>不用先注册</h4>
+              <p>Morrow 没有账号体系，对话默认留在本机。</p>
+              <div class="side-item"><b>订阅优先</b><span>已有 ChatGPT/Codex 订阅的人不用再申请 Key。</span></div>
+              <div class="side-item"><b>失败可诊断</b><span>连不上进入连接医生，不卡在空白页。</span></div>
+            </aside>
+          </div>
+        </div>
+        <p class="mock-note">首启不再默认“只有 API Key”；三种入口全部走真实连接测试。</p>
+      </div>
+
+      <div>
+        <div class="mock-label"><span>界面 03 / 项目首页</span><span>正在做 / 等你 / 最近完成</span></div>
+        <div class="window">
+          <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span class="window-title">MORROW · PROJECT · 示意</span><span class="mono" style="color:var(--muted);font-size:8px">login-refresh</span></div>
+          <div class="project-mock">
+            <aside class="project-side">
+              <div class="mock-workspace">PROJECT<br><span style="color:var(--ink-2)">登录改版</span></div>
+              <div class="mock-nav" style="margin-top:17px"><span class="is-active">概览</span><span>对话</span><span>知识</span><span>记忆</span><span>任务</span><span>成品</span></div>
+            </aside>
+            <div class="project-main">
+              <div class="mock-date">PROJECT · 11 月 7 日</div>
+              <h3 class="project-title">登录改版</h3>
+              <div class="project-meta">3 个活跃会话 · 2 个未完成</div>
+              <div class="project-tabs"><span class="is-active">活动</span><span>检查点</span><span>文件</span><span>知识</span></div>
+              <div class="timeline-row"><span class="timeline-dot"></span><div><b>等你确认：验收候选 #2</b><em>独立验收已通过</em></div><time>2h</time></div>
+              <div class="timeline-row"><span class="timeline-dot"></span><div><b>docs/login.md 已更新</b><em>检查点 cp_8f2a</em></div><time>3h</time></div>
+              <div class="timeline-row"><span class="timeline-dot"></span><div><b>周报配方已安装</b><em>每周五 18:00</em></div><time>昨天</time></div>
+              <div class="timeline-row"><span class="timeline-dot"></span><div><b>项目记忆已更新</b><em>3 条长期记忆</em></div><time>昨天</time></div>
+            </div>
+            <aside class="project-rail">
+              <div class="rail-head"><span>状态</span><span>实时</span></div>
+              <div class="rail-card"><b>Git</b><p>3 个未暂存文件</p></div>
+              <div class="rail-card"><b>备份</b><p>今天 09:12 · 可恢复</p></div>
+              <div class="rail-card"><b>下一步</b><p>确认验收候选。</p></div>
+              <div class="rail-card"><b>快捷</b><ul class="rail-list"><li>新对话</li><li>记忆</li><li>成品</li></ul></div>
+            </aside>
+          </div>
+        </div>
+        <p class="mock-note">项目页只读聚合；没有 Git/备份/任务时明确显示为空。</p>
+      </div>
+
+      <div>
+        <div class="mock-label"><span>界面 04 / 配方与分享</span><span>能做什么，能带走什么</span></div>
+        <div class="window">
+          <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span class="window-title">MORROW · RECIPES / SHARE · 示意</span><span class="mono" style="color:var(--muted);font-size:8px">GROWTH</span></div>
+          <div class="recipe-grid">
+            <div class="recipe"><span class="tag">每周 · 只读</span><b>项目摘要</b><p>周五汇总本周产出。</p><button class="m-btn">预览</button></div>
+            <div class="recipe"><span class="tag">文件 · 先预览</span><b>整理下载文件夹</b><p>按类型分组，先建检查点。</p><button class="m-btn">预览</button></div>
+            <div class="recipe"><span class="tag">Studio · 启动包</span><b>雨夜短篇</b><p>12 章结构 · 1.8 万字。</p><button class="m-btn">从模板开始</button></div>
+          </div>
+          <div class="share-sheet">
+            <div class="share-main">
+              <h4>分享成果</h4>
+              <p>只打包选中成品与来源清单。</p>
+              <div class="file-row"><span class="file-icon">HTML</span><span>季度销售分析.html</span><span>自包含</span></div>
+              <div class="file-row"><span class="file-icon">PDF</span><span>季度销售分析.pdf</span><span>可打印</span></div>
+              <div class="file-row"><span class="file-icon">JSON</span><span>来源清单 / 回执</span><span>不含 Key</span></div>
+              <div style="margin-top:13px"><button class="m-btn primary">生成分享包</button> <button class="m-btn">复制说明</button></div>
+            </div>
+            <aside class="share-side">
+              <h4>对方会看到</h4>
+              <p>成品能直接打开，回执可让下一次在 Morrow 继续。</p>
+              <div class="side-item"><b>不依赖 Morrow</b><span>核心成品直接打开。</span></div>
+              <div class="side-item"><b>不泄露对话</b><span>回执只带模板结构。</span></div>
+              <div class="side-item"><b>可撤回</b><span>没有云端副本。</span></div>
+            </aside>
+          </div>
+        </div>
+        <p class="mock-note">配方默认不启用；分享包不含密钥、私有路径或完整会话。</p>
+      </div>
+
+      <div>
+        <div class="mock-label"><span>界面 05 / 数据与更新</span><span>备份、恢复、更新</span></div>
+        <div class="window">
+          <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span class="window-title">MORROW · 数据与更新 · 示意</span><span class="mono" style="color:var(--muted);font-size:8px">SETTINGS</span></div>
+          <div class="settings-mock">
+            <aside class="settings-side"><span class="is-active">数据与更新</span><span>模型</span><span>订阅</span><span>本地</span><span>权限</span><span>关于</span></aside>
+            <div class="settings-main">
+              <h4>数据与更新</h4>
+              <p>数据默认在本机；这里负责带走、恢复和升级。</p>
+              <div class="health-row"><div><b>完整备份</b><span>昨天 21:40 · 3 个项目 / 128 个会话</span></div><span class="health-ok">可恢复</span></div>
+              <div class="health-row"><div><b>恢复演练</b><span>建议每月验证一次。</span></div><button class="m-btn">验证备份</button></div>
+              <div class="health-row"><div><b>更新</b><span>当前 v0.2.0 · GitHub Release</span></div><span class="mono" style="font-size:8px;color:var(--muted)">未检查</span></div>
+              <div class="update-card"><div><b>v0.3.0 可用</b><span>先备份，再下载；不会静默安装。</span></div><button class="m-btn primary">查看更新说明</button></div>
+            </div>
+          </div>
+        </div>
+        <p class="mock-note">备份、恢复、更新都以用户确认和可回退为前提。</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section id="metrics">
+    <div class="section-head">
+      <div><p class="kicker">06 / 指标</p><h2>先量真实价值，<br>再谈增长。</h2></div>
+      <p>当前没有代表全体用户的留存基线。先定义口径与观察样本；可选本地采集留在 P2，不以采集功能阻塞核心版。</p>
+    </div>
+    <div class="panel" style="margin-bottom:18px">
+      <p class="eyebrow" style="margin-bottom:8px">核心目标</p>
+      <h3 style="font:30px/1.2 var(--serif);margin-bottom:8px">参与观察者中，每周完成至少一个可用成果的人数</h3>
+      <p class="muted" style="margin:0;font-size:12px">成果须有实际文件及可打开/验收证据，或用户确认可用。同一成果多次导出去重；不把退出码 0 或模型自述当作用户价值。</p>
+    </div>
+    <table class="metrics-table">
+      <thead><tr><th>阶段</th><th>指标</th><th>采集</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td>激活</td><td>首启完成 / 开始首启；连接成功 / 测试尝试；首成果耗时（模型已就绪后）</td><td>受控任务观察；可选本地报告</td><td>优化 T02/T04；归类失败原因</td></tr>
+        <tr><td>留存</td><td>首成果 cohort 的 D1 / D7 回访；分母仅含已到观察窗口且同意参与者</td><td>可选本地事件；按本机日期；没有采集则用访谈，不能填 0</td><td>验证 T01/T05/T06 是否减少重新进入成本</td></tr>
+        <tr><td>扩展</td><td>配方安装、模板使用、分享包生成、导入完成</td><td>本地计数 + 用户反馈</td><td>验证 T06/T04/T07 是否带来二次使用</td></tr>
+        <tr><td>信任</td><td>备份/恢复演练、连接失败率、崩溃恢复、更新完成</td><td>本地日志与测试记录</td><td>低于门槛不发布；不用“看起来正常”代替证据</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="gates">
+    <div class="section-head">
+      <div><p class="kicker">07 / 发布门槛</p><h2>什么才算可以发布</h2></div>
+      <p>不是任务卡写完，而是用户路径、数据安全和真实测试都过关。</p>
+    </div>
+    <div class="guardrails" style="margin-bottom:24px">
+      <div class="guardrail"><h4>不做的事</h4><p>不强制账号、不默认云同步、不默认上传遥测、不加启发式质量分、不把 token/费用做成硬闸门、不伪造“已连接/已验收”。</p></div>
+      <div class="guardrail"><h4>必须守住的事</h4><p>连接成功有真实请求证据；写操作遵循现有权限。文件快照不撤销外部副作用；备份恢复需一致性校验，失败与未知状态如实呈现。</p></div>
+    </div>
+    <div class="gate"><span class="gate-id">GATE 01</span><div><b>首启不需要 API Key 也能完成</b><p>API、一个订阅、一个本地服务分别实测成功；其余渠道注明未验证。取消与错误分类不串状态。</p></div><span class="gate-state">P0</span></div>
+    <div class="gate"><span class="gate-id">GATE 02</span><div><b>Today / 接着上次不产生假数据</b><p>所有卡片可追溯到真实对象；重启后一致。</p></div><span class="gate-state">P0</span></div>
+    <div class="gate"><span class="gate-id">GATE 03</span><div><b>备份→恢复 roundtrip 通过</b><p>完整清单、自定义 Studio 根目录、外部依赖、跨机路径及中断恢复通过；凭据排除，恢复后自动化默认禁用。</p></div><span class="gate-state">P0</span></div>
+    <div class="gate"><span class="gate-id">GATE 04</span><div><b>首成果 → 退出重开 → 备份恢复可复现</b><p>指定模型/夹具下生成可用报告，5 位首次用户记录耗时与失败；Today 找回成果，恢复后内容与引用一致。</p></div><span class="gate-state">P0</span></div>
+    <div class="gate"><span class="gate-id">GATE 05</span><div><b>长期体积回归</b><p>T09-A 在开发前冻结设备、数据集和预算；测 p95，核心路径不退化超过 20%，不能用小型 mock 代替长数据集。</p></div><span class="gate-state">P1</span></div>
+    <div class="gate"><span class="gate-id">GATE 06</span><div><b>质量门槛</b><p>typecheck、UI token、docs、单元、E2E、打包冒烟；新增用例不降低现有覆盖。</p></div><span class="gate-state">发布前</span></div>
+    <div class="gate"><span class="gate-id">GATE 07</span><div><b>工程包引用完整</b><p>T07-A 缺件阻止完整包标识，哈希与引用逐项核对；异机离线阅读和干净目录重新导入分别验收。</p></div><span class="gate-state">发布前</span></div>
+    <div class="gate"><span class="gate-id">GATE 08</span><div><b>安装升级与数据兼容</b><p>安装版/便携版、旧 schema 迁移、升级中断与恢复、卸载数据保留分别留证；没有做过的步骤标为未验证。</p></div><span class="gate-state">发布前</span></div>
+    <div class="constraint" style="margin-top:20px"><span class="mono">发布规则</span><p>P0 T01/T02/T03/T04-A、T07-A 缺件检查和 T09-A 基线/退化检查全部通过；其余 P1 按明确子范围进入发布清单，延期功能移除入口并记录。P2 不阻塞核心版。每条证据注明构建、环境、日期；mock、浏览器验证和真实渠道实测分开记。</p></div>
+  </section>
+
+  <section id="handoff">
+    <div class="section-head">
+      <div><p class="kicker">08 / 开发交接</p><h2>开工前先看这一页</h2></div>
+      <p>先固定 T09-A 基线与 T11-A 事件口径；T03、T02 和 T01 摘要接口可独立推进。T04-A 接通后，用完整用户旅程验收。</p>
+    </div>
+    <div class="handoff-grid">
+      <div class="panel">
+        <h3>文件落点</h3>
+        <p class="panel-note">只列主要落点，具体实现以现有模块为准。</p>
+        <table class="handoff-table">
+          <thead><tr><th>任务</th><th>主进程</th><th>渲染层</th></tr></thead>
+          <tbody>
+            <tr><td>T01</td><td><code>session.ts</code>、<code>runtime.ts</code></td><td><code>shell.tsx</code>、<code>store.ts</code></td></tr>
+            <tr><td>T02</td><td><code>ipc.ts</code>、<code>subscriptions.ts</code>、<code>settings.ts</code></td><td><code>onboarding.tsx</code>、<code>settings.tsx</code></td></tr>
+            <tr><td>T03</td><td><code>backup.ts（新增建议）</code>、<code>workspace.ts</code>、<code>ipc.ts</code></td><td><code>settings.tsx</code></td></tr>
+            <tr><td>T04</td><td><code>agent.ts</code>、<code>memory.ts</code></td><td><code>onboarding.tsx</code>、<code>shell.tsx</code></td></tr>
+            <tr><td>T05</td><td><code>runtime.ts</code>、<code>memory.ts</code></td><td><code>projects.tsx</code></td></tr>
+            <tr><td>T06</td><td><code>schedules.ts</code>、<code>features.ts</code>、<code>agent.ts</code></td><td><code>composer.tsx</code>、<code>schedules.tsx</code></td></tr>
+            <tr><td>T07</td><td><code>studio.ts</code>、<code>artifacts.ts</code></td><td><code>studio.tsx</code>、<code>artifacts.tsx</code></td></tr>
+            <tr><td>T08/T09</td><td><code>runtime.ts</code>、<code>workspace.ts</code>、<code>logger.ts</code></td><td><code>settings.tsx</code></td></tr>
+            <tr><td>T10/T11</td><td><code>scripts/dist-portable.mjs</code>、<code>local-metrics.ts（可选新增）</code></td><td><code>settings.tsx</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>开发约束</h3>
+        <ul class="handoff-list">
+          <li>Today、项目首页、回顾复用主进程有上限的摘要查询，渲染层只做呈现；不全量载入会话正文，不建立第二份可写状态。</li>
+          <li>备份建议新增 <code>BackupManifest</code> 与预览/执行接口；先注册共享契约、preload 白名单、主进程校验和 renderer 状态，接口名以实现评审为准。全部凭据均排除。</li>
+          <li>配方复用现有 schedules/hooks/commands，默认禁用；定义重启、错过触发、重试去重及无人值守权限，不新建配方引擎。</li>
+          <li>导入先做预览接口，不直接写 MCP/技能目录；密钥只在 Morrow 内重新授权。</li>
+          <li>更新只做检查与下载，不做静默安装；签名是发布依赖，不是 UI 文案。</li>
+          <li>新增状态必须可失败、可重试、可回退；测试覆盖无模型、断网、损坏数据。</li>
+        </ul>
+        <p class="panel-note" style="margin-top:14px">本稿范围建议：v1 备份排除所有凭据；更新手动检查；本地度量默认关闭且无上传。外部依赖：订阅实测账号、测试机、代码签名主体/预算。实现前另评审 schema 兼容与恢复协议。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MORROW v0.3.0 · 长期使用与增长规划 · 2026-11-08 源码复核版</span>
+    <span>规划稿：界面为结构示意；功能状态以真实连接、测试和交付证据为准。</span>
+  </div>
+</footer>
+<script>
+  (() => {
+    const grid = document.getElementById('taskGrid');
+    const buttons = [...document.querySelectorAll('.filter-btn')];
+    const count = document.getElementById('taskCount');
+    const cards = [...grid.querySelectorAll('.task')];
+    function apply(filter) {
+      let visible = 0;
+      for (const card of cards) {
+        const show = filter === 'all' || card.dataset.track === filter;
+        card.hidden = !show;
+        if (show) visible += 1;
+      }
+      count.textContent = visible + ' 张卡';
+    }
+    for (const button of buttons) {
+      button.addEventListener('click', () => {
+        buttons.forEach((item) => { item.classList.toggle('is-active', item === button); item.setAttribute('aria-pressed', String(item === button)); });
+        apply(button.dataset.filter || 'all');
+      });
+    }
+    let printState = [];
+    window.addEventListener('beforeprint', () => {
+      printState = [...document.querySelectorAll('details')].map(d => [d, d.open]);
+      printState.forEach(([d]) => { d.open = true; });
+    });
+    window.addEventListener('afterprint', () => { printState.forEach(([d, open]) => { d.open = open; }); });
+    apply('all');
+  })();
+</script>
+</body>
+</html>

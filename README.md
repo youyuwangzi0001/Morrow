@@ -1,180 +1,125 @@
 # Morrow · 明日工坊
 
-> 住在你电脑里的 AI 工作伙伴。说清想要的结果，Morrow 会读文件、写代码、运行命令、检查成品，并把结果放回你的工作区。
+Morrow 是住在 Windows 电脑里的本地 AI 工作伙伴。它不只是聊天：能读文件、写代码、跑命令、操作浏览器和桌面，把结果做成可打开的成品；也能进入创作台，从一句话开始写小说或做漫剧，最后交付成片、电子书或工程包。
 
-Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作模式、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务和本机多媒体放在同一个工作台里。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
+- **Agent**：工作区内的真实读写、终端、Git、浏览器、电脑操作、审批与长任务。
+- **Studio**：中短篇、长篇与漫剧三条创作链路，蓝图、写作、分镜、时间线、配音、配乐、检查与交付。
+- **本地优先**：会话、记忆、作品、密钥和数据目录都在本机；模型与引擎由你接入。
+- **默认窗口**：2100×1200 物理像素；界面同时适配 1280–3840 宽的桌面窗口。
 
-![Morrow 主界面](docs/guide/screens/02-chat-home-dark.png)
+![主界面](docs/screens/guide-chat.png)
 
-## 核心能力
+## 当前版本
 
-### 从一句话到可验收的成品
+`0.2.0`。发布包只保留两个文件：
 
-- **聊天 / 工作 / 计划 / 深度研究 / 长期目标**五种工作方式。聊天模式只读；工作模式可以写文件和执行命令；计划模式先给出可审阅的计划；研究模式会查证并保留来源；目标模式可以跨轮持续推进，直到交付可验证的结果。
-- **审批卡**把“它想做什么、会影响什么”写清楚。只读、询问、完全访问三档权限；危险命令、越界路径和外部副作用动作始终逐次确认。
-- **代码与成品**：文件树、CodeMirror 编辑器、多标签画布、HTML/Markdown/PDF/Office/图片/音视频预览、版本历史、导出与另存为。
-- **可恢复**：每个用户轮次有检查点，写文件前有快照；支持会话回退、文件回退和冲突校验。
+| 文件 | 用途 |
+|---|---|
+| `Morrow-0.2.0-portable.exe` | 单文件便携版；首次运行在 exe 同级解压运行时缓存 |
+| `Morrow-0.2.0-setup.exe` | NSIS 安装包；可选安装目录与快捷方式 |
 
-### 真实终端、Git 与浏览器
-
-- **真实 PTY 终端**：多标签、后台任务、复制粘贴、拖动调高。默认终端是 **Git Bash**；旧版 Windows PowerShell 5.1 和 CMD 选项已移除，仍可选择 PowerShell 7 / WSL。
-- **Git 工作台**：变更、diff、暂存、提交、分支、历史、放弃改动；diff 超长时截断展示。
-- **内置浏览器**：多标签、地址栏、前进后退、真实网页内容；登录窗口与普通浏览共用同一套安全边界。
-
-![终端与工作台](docs/guide/screens/10-terminal-dark.png)
-
-### 模型、订阅与账号元信息
-
-- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta 等）与 Anthropic Claude 接入；也支持任意 OpenAI 兼容网关和本机服务。
-- **官方 Agent 订阅**：ChatGPT/Codex、Qoder、Kimi Code、GLM Coding Plan、MiniMax Code、Step Plan、Command Code、Cline Pass、Google Antigravity、OpenCode，以及第三方 coding plan。
-- **Qoder 账号驱动目录**：登录后读取账号接口返回的模型、200K/400K/1M 上下文档位与真实思考档位；设置页可按模型调整默认上下文。Morrow 不维护 Qoder 静态模型表。
-- **模型能力契约**：选择器只显示原始模型名；思考强度只列模型真实支持的档位；不支持时显示“不支持思考”；未知模型只保留“自动”。DeepSeek 的关闭思考在请求层映射为官方 `none`，Qoder 代理保持自己的 `off`。
-- **本机多媒体**：ComfyUI、llama.cpp、Ollama、LM Studio；图片/视频生成、编辑、抽帧、拼接、审看。媒体审看始终优先当前对话模型，当前模型不支持或失败后才回退到声明视觉能力的本地模型。
-
-### 项目、记忆与自动化
-
-- **项目主页**：项目背景、说明与资料、项目内会话、当前文件夹范围。
-- **记忆中心**：项目记忆、全局长期记忆、任务经验、注入预览与自进化建议。
-- **技能库**：内置技能与工作区 `.morrow/skills`；支持 Markdown 技能包与安全安装。
-- **MCP**：stdio / Streamable HTTP / 旧版 SSE；工具、资源、提示词、OAuth 与工作区信任。
-- **定时任务**：一次/每天/每周，只读或可改文件；无人值守时自动拒绝需要审批的动作。
-- **集群与侧聊**：1–10 个集群成员并行处理独立子任务；`/btw` 侧聊不写主会话。
-
-### 本地优先与稳定性
-
-- 数据、会话、快照、日志与密钥都在本机；密钥用系统加密（Windows DPAPI / safeStorage）保存，渲染层永远拿不到明文。
-- 打包版启用本地崩溃转储；主进程未捕获异常、未处理 Promise、子进程消失与渲染进程崩溃都会记录；主窗口渲染进程崩溃会自动恢复（有频率上限），并记录无响应事件。
-- 应用不内置 Antigravity OAuth secret；使用 Antigravity 订阅时需自行设置 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
+两个 exe 均未配置代码签名，Windows 可能提示“已保护你的电脑”，选择“更多信息 → 仍要运行”。校验值、测试与冒烟记录见 [docs/VERIFICATION.md](docs/VERIFICATION.md)。
 
 ## 快速开始
 
-### 环境
+### 使用发布包
 
-- Windows 10/11 x64
-- Node.js 22+（开发）
-- Git（推荐；默认终端使用 Git Bash）
-- 可选：PowerShell 7、WSL、ComfyUI、llama.cpp、Ollama、LM Studio、ffmpeg
+1. 运行便携版或安装包。
+2. 首次引导三步：认识 Morrow → 连接模型 → 选择工作文件夹；也可以先看离线演示。
+3. 在输入框说清想要的结果；需要写入、命令或外部动作时，Morrow 会先征求同意。
 
 ### 从源码运行
+
+环境：Windows 10/11 x64、Node.js 22+、Git（推荐 Git Bash）。
 
 ```powershell
 npm install
 npm run dev
 ```
 
-构建并运行构建产物：
+常用命令：
 
 ```powershell
-npm run build
-npm start
+npm run typecheck     # 类型检查
+npm run test:unit     # 532 项单元
+npm run test:e2e      # 85 条 Electron 流程（会先构建）
+npm run verify        # 类型、UI、文档、清单、单元与 Electron
+npm run dist:final    # 重建两个交付 exe
+npm run smoke:packaged
 ```
-
-### 使用发布包
-
-发布包提供单文件便携版与 NSIS 安装包：
-
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.1.0-r019`；之后启动更快，运行中不要删除。
-- 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
-- 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
-
-### 首次使用
-
-1. 连接一个模型：设置 → 模型，填 API Key 或选择本地服务；也可以先在设置 → 订阅接入已有账号。
-2. 选择一个工作文件夹；Morrow 只在这个文件夹范围内读写。
-3. 在输入框描述结果，按 Enter 发送。需要审批的动作会显示审批卡。
-4. 需要精确编辑或预览时，使用右侧画布；需要命令时打开底部终端。
 
 ## 文档地图
 
-| 文档 | 适合谁 | 内容 |
-|---|---|---|
-| [用户指南](docs/USER-GUIDE.md) | 所有用户 | 从安装、首次启动到日常任务的完整操作手册 |
-| [功能参考](docs/FEATURES.md) | 所有用户 | 功能清单、入口、限制与状态 |
-| [模型与思考档位](docs/MODELS.md) | 配置模型的人 | 内置模型、上下文、思考档位、Qoder 账号目录、同步规则 |
-| [订阅接入](docs/SUBSCRIPTIONS.md) | 使用官方账号的人 | 10 个 Agent 渠道与第三方 plan 的登录、代理、额度和边界 |
-| [多媒体与本地模型](docs/MEDIA-MODELS.md) | 做图片/视频的人 | 引擎、模型目录、生成/编辑/审看、ffmpeg 与显存 |
-| [架构说明](docs/ARCHITECTURE.md) | 开发者 | 进程、IPC、Agent 循环、权限、持久化、Provider、测试 |
-| [设计系统](docs/DESIGN-SYSTEM.md) | 设计与前端 | 色彩、字体、间距、圆角、组件与可访问性 |
-| [安全与隐私](docs/SECURITY-PRIVACY.md) | 谨慎的用户/审计者 | 数据位置、密钥、权限、网络与已知边界 |
-| [排障指南](docs/TROUBLESHOOTING.md) | 遇到问题的人 | 启动、模型、订阅、媒体、终端、数据恢复 |
-| [评测规范](docs/EVALUATION.md) | 想复现质量的人 | 单测、E2E、Agent 质量指标与真实任务 |
-| [验收记录](docs/verification/VERIFICATION.md) | 发布/验收 | 当前版本的门禁、证据、交付哈希与边界 |
-| [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
-| [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
+文档采用扁平结构，一个主题一个文件：
 
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
+| 文档 | 内容 |
+|---|---|
+| [docs/START-HERE.md](docs/START-HERE.md) | 一页版：打开 Morrow、接模型（含不用 API Key 的订阅路线）、选文件夹、排错 |
+| [docs/v0.3.0-plan.html](docs/v0.3.0-plan.html) | v0.3.0 规划：11 张任务卡、路线图、UI/UX 示意、指标与开发交接（HTML） |
+| [docs/GUIDE.md](docs/GUIDE.md) | 安装、界面、工作模式、审批、文件/终端/Git/浏览器/电脑操作、模型、订阅、记忆、协作任务 |
+| [docs/STUDIO.md](docs/STUDIO.md) | 创作台三条链路、协作者、时间线、交付、质量、数据与回收站 |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | 模型与订阅清单、媒体引擎、内置技能、快捷键、数据路径、环境变量 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 进程模型、扁平源码结构、数据、IPC、Agent/协作任务、压缩、Studio、设计系统、安全、去重记录 |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发环境、测试、质量门槛、打包、第三方许可、文档截图流程 |
+| [docs/VERIFICATION.md](docs/VERIFICATION.md) | 当前交付哈希、冒烟、测试结果与截图清单 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 提交前检查与协作约定 |
+| [SECURITY.md](SECURITY.md) | 漏洞报告与安全边界 |
 
-## 架构一览
+## 核心能力
 
-```text
-┌──────────────────────────── renderer (React 19) ────────────────────────────┐
-│ TitleBar · Sidebar · Transcript · Composer · Canvas · Workbench · Island    │
-│ Zustand store ── window.morrow 白名单 API ── preload（contextIsolation）     │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │ IPC / feature:*
-┌───────────────────────────────────▼─────────────────────────────────────────┐
-│ main (Electron)                                                             │
-│ AgentService ─ core/agent ─ providers（OpenAI 兼容 / Anthropic / demo）      │
-│ tools（文件/命令/终端/搜索/技能/MCP/浏览器/媒体） · permissions · snapshots  │
-│ session/settings/secrets/projects/memory/skills/schedules · 订阅代理        │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │
-                  工作区文件 / 本机引擎 / 模型 API / 本机数据目录
-```
+### Agent：从一句话到可验收的成品
 
-更细的进程边界、事件流、数据格式和重要不变量见 [架构说明](docs/ARCHITECTURE.md)。
+- 九类工作区工具：读写、搜索、编辑、命令、网页、媒体、记忆、成品、任务。
+- 工作 / 聊天 / 计划三种基础方式，叠加深度研究与长期目标。
+- 权限三档（只读 / 询问 / 完全访问）与危险动作审批；拒绝优先于允许。
+- 真实 PTY 终端、Git 工作台、多标签内置浏览器与 Windows UI Automation。
+- 协作任务：简单工作主代理直接完成，需要并行时派发成员；支持独立工作副本、成果版本、独立验收、重试、并发上限与卡住提醒。
 
-## 项目规模
+![审批卡](docs/screens/guide-permission.png)
 
-> 统计口径：`wc -l`；代码包含 `src/`、`tests/`（含 E2E）、`scripts/`、`build/`；文档为根目录与 `docs/` 下的 Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
+### Studio：从一句话到可交付作品
 
-| 范围 | 文件 | 行数 |
-|---|---:|---:|
-| 生产源码 `src/` | 314 | 125,812 |
-| 测试 `tests/`（含 E2E） | 66 | 43,456 |
-| 其中 E2E 套组 `tests/e2e/` | 20 | 19,236 |
-| 构建脚本 `scripts/` + `build/` | 11 | 2,896 |
-| **代码合计** | **391** | **172,164** |
-| Markdown 文档 | 15 | 2,142 |
+![创作台时间线](docs/screens/studio-timeline.png)
 
-## 测试与质量
+- 中短篇、长篇、漫剧；蓝图确认后才开始产生费用。
+- 写作、分镜、时间线、漫剧画布、配音、配乐、检查与交付。
+- 协作者先把大白话改成可审阅的修改计划，确认后才改，可撤销。
+- 本地确定性检查 + 真实模型审稿；没有模型/引擎时明确失败，不用假候选冒充。
 
-```powershell
-npm run typecheck     # 主进程 + 渲染层
-npm run audit:ui      # 设计 token / 裸排版值审计
-npm run test:unit     # Vitest
-npm run test:e2e      # Playwright（完整套件约 11 分钟）
-```
+## 项目规模与质量
 
-当前基线：单元 **14 个套件 / 952 个用例**（944 passed + 8 skipped）；E2E **17 个套件 / 209 个用例**。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量评测定义与结果见 [评测规范](docs/EVALUATION.md)。
+- `src/`：92 个 TS/TSX 源文件（不含 `.d.ts`），152,443 行；含 CSS/HTML 共 125 个文件，195,705 行。
+- 代码合计（统一口径：生产源码 + 测试 + 构建脚本 + 启动器，按 `wc -l` 换行计）：194 个文件，238,321 行；运行 `node scripts/count-code.mjs` 可复现。
+- 核心回归：532 项单元 + 85 条 Electron 流程；41 个功能域。
+- 质量门槛：类型检查、UI token 审计、核心清单、单元、Electron 与打包冒烟。
+- 文档截图：29 张主文档截图，全部 2100×1200 原始 PNG，不缩放、不压缩。
 
 ## 开发与打包
 
 ```powershell
-npm run build          # 类型检查 + electron-vite build
-npm run dist           # 单文件便携版
-npm run dist:all       # 便携版 + 安装包
-npm run pack:source    # 从当前提交生成源码包
+npm run build        # 类型检查 + electron-vite 构建
+npm run dist:final   # 两个交付 exe → deliver/
+npm run docs:capture # 重拍 docs/screens 的 2100×1200 截图
+npm run docs:check   # 检查文档链接与截图尺寸
 ```
 
-打包脚本会把 Electron 缓存、临时解包目录与交付暂存放到可清理目录；交付目录保留五个分发文件、源码包和用户数据 `Morrow Data`。详细约定见 [贡献指南](CONTRIBUTING.md)。
+源码按职责扁平放在 `src/main`、`src/core`、`src/renderer/features`、`src/shared`；协作域已合并为 `src/core/collaboration.ts` 与 `src/main/collaboration.ts`。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ## 安全与隐私
 
-- 默认不把工作区内容上传到 Morrow 服务器；模型请求直接发往你选择的模型服务。
-- API Key 与订阅凭据使用系统加密保存；渲染层只看到“已保存”状态。
-- 文件路径必须落在已登记工作区内；外部 URL 只允许 http(s)；网页、MCP 与浏览器内容按不可信数据处理。
-- 不内置第三方 OAuth secret；Antigravity 需要 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
-- 详细威胁模型与已知边界见 [安全与隐私](docs/SECURITY-PRIVACY.md)。
+- 数据默认保存在本机；发送给模型的内容由你选择的服务商处理。
+- 密钥由系统安全存储加密，界面不回显明文。
+- 工作区外读取只在你明确选择作为附件时发生；写操作仍受权限与审批约束。
+- 浏览器、网页、MCP 与桌面内容均按不可信数据处理。
+- 报告问题见 [SECURITY.md](SECURITY.md)；详细边界见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#安全边界)。
 
 ## 已知限制
 
-- Windows 10/11 x64 是唯一正式交付平台；WSL 需系统已安装发行版。
-- 便携版/安装包未签名，SmartScreen 可能提示。
-- 终端默认 Git Bash；在受限令牌/低完整性环境中 Git Bash 的 MSYS 共享内存可能不可用，可在设置里切 PowerShell 7。
-- 真实本地模型、ffmpeg、ComfyUI 与视频生成依赖本机硬件和模型是否就绪；未配置时会如实报错，不会伪造结果。
-- 订阅渠道的服务端接口可能变化；Morrow 会在登录/额度/模型目录失败时明确提示。
+- 仅提供 Windows x64 构建；两个 exe 未签名。
+- ComfyUI、llama.cpp、Ollama、LM Studio、FFmpeg、配音引擎不随包内置，缺失时真实失败并提示。
+- 订阅渠道的登录态与额度取决于服务商；未完成实测的渠道不会显示为“已连接”。
+- 真实模型质量、外部引擎速度与长媒体表现由你的环境决定。
 
-## License
+## 许可
 
-MIT。见 [LICENSE](LICENSE)。
+MIT。第三方组件与内置技能来源见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#第三方组件与许可)。

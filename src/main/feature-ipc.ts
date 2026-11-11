@@ -1,14 +1,4 @@
-/**
- * R10 功能扩展的窄 IPC 注册中心。
- *
- * 设计目的：文件树 / 编辑器历史 / 浏览器 / 记忆 / 项目 / MCP / 技能 / 全局搜索
- * 分属不同队友，如果每人都改 src/main/ipc.ts 和 preload 会产生大量冲突。
- * 这里统一用 `feature:<name>:<action>` 频道：
- *   - 功能模块在 src/main/features/<name>.ts 里 registerFeatureHandler(...)
- *   - Lead 在 src/main/features/index.ts 统一 import 模块（触发注册）
- *   - preload 只暴露 window.morrow.features.invoke(channel, payload)
- *   - 主进程只接受已注册的精确频道，并统一返回 Result<T>。
- */
+// R10 功能扩展的窄 IPC 注册中心。
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import type { Result } from '../shared/types'
 
@@ -27,8 +17,22 @@ export function registerFeatureHandler(channel: string, handler: FeatureHandler)
   handlers.set(channel, handler)
 }
 
+/**
+ * 带领域错误码的异常（如 WorkspaceFileError 的 NOT_FOUND）保留自己的 code，
+ * 渲染层才能按语义分支处理，而不是去匹配中文文案。
+ */
+function domainErrorCode(err: unknown): { code: string; hint?: string } | null {
+  if (!err || typeof err !== 'object') return null
+  const raw = (err as { code?: unknown }).code
+  if (typeof raw !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(raw)) return null
+  const hint = (err as { hint?: unknown }).hint
+  return typeof hint === 'string' && hint ? { code: raw, hint } : { code: raw }
+}
+
 function featureError(err: unknown): Result<never> {
   const message = err instanceof Error ? err.message : String(err)
+  const domain = domainErrorCode(err)
+  if (domain) return { ok: false, error: { code: domain.code, message, ...(domain.hint ? { hint: domain.hint } : {}) } }
   return { ok: false, error: { code: 'FEATURE_ERROR', message } }
 }
 

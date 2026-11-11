@@ -2,6 +2,7 @@ node_modules/
 out/
 release/
 deliver/
+deliver-clean/
 dist/
 test-results/
 playwright-report/
@@ -15,6 +16,7 @@ Thumbs.db
 probe/
 
 tmp/
+.morrow/
 *.tsbuildinfo
 .qoder/
 docs/audit/
@@ -23,3 +25,9 @@ docs/verification/logs/
 docs/verification/media/
 
 release-*/
+deliver-latest/
+release-latest/
+deliver-composer-fix/
+release-composer-fix/
+
+deliver-test/
