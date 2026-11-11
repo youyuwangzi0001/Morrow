@@ -1,7 +1,7 @@
 {
   "name": "morrow",
   "productName": "Morrow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Morrow — 住在你电脑里的 AI 工作伙伴",
   "author": "Morrow Studio",
   "license": "MIT",
@@ -13,18 +13,26 @@
     "postinstall": "node scripts/ensure-electron.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "build": "npm run typecheck && electron-vite build",
+    "test": "npm run test:unit",
+    "test:suite": "node scripts/check-test-suite.mjs",
+    "bench:compaction": "node scripts/compaction-benchmark.mjs",
+    "bench:collaboration": "node scripts/collaboration-benchmark.mjs",
     "test:unit": "vitest run",
-    "test:eval": "vitest run tests/unit/core/agent.test.ts -t \"agent-quality\"",
+    "pretest:e2e": "node scripts/build-for-tests.mjs",
     "test:e2e": "playwright test",
-    "probe:live": "node scripts/probe-live.mjs",
     "dist": "npm run build && node scripts/dist-portable.mjs --portable",
     "dist:all": "npm run build && node scripts/dist-portable.mjs",
+    "dist:final": "npm run build && node scripts/dist-portable.mjs --two-files",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "pack:source": "node scripts/pack-source.mjs",
-    "verify": "npm run typecheck && npm run audit:ui && npm run test:unit && npm run test:e2e",
-    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs",
-    "audit:ui": "node scripts/ui-token-audit.mjs"
+    "verify": "npm run typecheck && npm run audit:ui && npm run audit:flex && npm run docs:check && npm run test:suite && npm run test:unit && npm run test:e2e",
+    "audit:ui": "node scripts/ui-token-audit.mjs",
+    "audit:flex": "node scripts/audit-flex-tail.mjs",
+    "produce:demo-film": "node scripts/produce-demo-film.mjs",
+    "docs:capture": "playwright test --config playwright.docs.config.ts",
+    "docs:check": "node scripts/check-docs.mjs",
+    "predocs:capture": "npm run build"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -67,7 +75,7 @@
     "zustand": "5.0.8"
   },
   "build": {
-    "appId": "studio.morrow.agent",
+    "appId": "studio.morrow.agent.desktop",
     "productName": "Morrow",
     "copyright": "Copyright © 2026 Morrow Studio",
     "directories": {
@@ -109,12 +117,24 @@
         "to": "icon-light.png"
       },
       {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "build/icon-light.ico",
+        "to": "icon-light.ico"
+      },
+      {
         "from": "build/tray-dark.png",
         "to": "tray-dark.png"
       },
       {
         "from": "build/tray-light.png",
         "to": "tray-light.png"
+      },
+      {
+        "from": "resources/tts",
+        "to": "tts"
       }
     ],
     "compression": "maximum",
@@ -136,7 +156,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

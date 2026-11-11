@@ -1,38 +1,45 @@
-import { app, BrowserWindow, Menu, Tray, crashReporter, globalShortcut, nativeImage, protocol, screen, session } from 'electron'
+import { app, BrowserWindow, Menu, Tray, crashReporter, nativeImage, protocol, screen, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { disposeAgentRuntime, registerIpcHandlers } from './ipc'
 import { installFeatureIpc } from './feature-ipc'
 import { registerFeatureModules } from './features'
-import { getSubscriptionService } from './services/subscriptions'
-import { getQoderSubscriptionService } from './services/qoder-subscription'
-import { allAgentServices } from './services/agent-subscriptions'
-import { openExternalQuiet } from './services/external-open'
-import { handlePreviewProtocol } from './services/file-preview'
-import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './services/artifact-preview'
-import { ensureDataDirs, resolveDataDir } from './services/paths'
-import { installMcpRuntimeEnv } from './services/mcp-service'
-import { configureMemoryRuntime } from './services/memory-service'
-import { configureProjectsRuntime } from './services/project-service'
-import { getTerminalManager } from './services/terminal-manager'
-import { configurePermissionRulesRuntime } from './services/permission-rules'
-import { initializeTokenActivity } from './services/runtime'
-import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland } from './services/island'
-import { disposeScheduleRuntime, initializeScheduleRuntime } from './services/schedule-runtime'
+import { getSubscriptionService } from './subscriptions'
+import { getQoderSubscriptionService } from './subscriptions'
+import { allAgentServices } from './subscriptions'
+import { openExternalQuiet } from './workspace'
+import { handlePreviewProtocol } from './workspace'
+import { ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview } from './artifacts'
+import { ensureDataDirs, resolveDataDir } from './workspace'
+import { getWorkspaceIsolationService } from './workspace-isolation'
+import { installMcpRuntimeEnv } from './memory'
+import { configureMemoryRuntime } from './memory'
+import { configureCollaborationStoreRuntime } from './collaboration'
+import { configureProjectsRuntime } from './runtime'
+import { getCommandSandboxService } from './sandbox'
+import { disposeGlobalShortcut, refreshGlobalShortcut } from './shortcuts'
+import { getTerminalManager } from './terminal-manager'
+import { stopLocalTts } from './tts-local'
+import { setSystemProxyResolver } from '../core/web-proxy'
+import { configurePermissionRulesRuntime } from './runtime'
+import { initializeTokenActivity } from './runtime'
+import { configureIsland, createIsland, hideIsland, markIslandRead, toggleIsland, currentAppUserModelId, configureWindowFocus, queueFocusSession, focusSession } from './runtime'
+import { consumeFocusIntent, peekFocusIntent } from './launch-intent'
+import { disposeScheduleRuntime, initializeScheduleRuntime } from './schedules'
 import {
-  appIconPath,
   attachIconTray,
   attachIconWindow,
   configureLifecycle,
   currentIconTheme,
   handleMainWindowClose,
   isAppQuitting,
+  loadAppIcon,
   markAppQuitting,
   quitApp,
   requestCloseFromIsland
-} from './services/lifecycle'
-import { log } from './services/logger'
-import { isLoginSession } from './services/login-window'
+} from './runtime'
+import { log } from './logger'
+import { isLoginSession } from './workspace'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -68,26 +75,55 @@ process.on('unhandledRejection', (reason) => {
 })
 
 /** 单实例：同一份数据目录双击两次不应开两个窗口 */
-const gotLock = app.requestSingleInstanceLock()
+// 通知点击时 Windows 会另起一个进程（COM 激活器直接跑运行时里的 exe）。先把待聚焦的会话读出来，
+// 再随锁交给主实例；没有意图就只是普通重复启动。
+const launchFocusSession = peekFocusIntent()
+const gotLock = app.requestSingleInstanceLock(launchFocusSession ? { focusSession: launchFocusSession } : {})
 if (!gotLock) {
+  // 无论是否带着意图，都直接退出：接管界面是主实例的事，绝不能让第二个 Morrow 显现。
+  // 意图留着不清：主实例已通过 additionalData 收到，清理由它负责。
   app.quit()
 } else {
+  if (launchFocusSession) consumeFocusIntent()
   bootstrap(dataDir)
+  if (launchFocusSession) queueFocusSession(launchFocusSession)
 }
 
 function bootstrap(dataDir: string): void {
   // 便携版：数据目录跟随 exe，做到「拷走就能用」
-  app.setAppUserModelId('studio.morrow.agent')
+  // 便携版与安装版使用不同 AUMID：Windows 按 AUMID 缓存任务栏图标，旧 ID 的空白缓存换图表也不会刷新。
+  const appUserModelId = currentAppUserModelId()
+  app.setAppUserModelId(appUserModelId)
+  log.info('app user model id', { appUserModelId, execPath: process.execPath })
   ensureDataDirs()
   configureMemoryRuntime(dataDir)
   configureProjectsRuntime(dataDir)
   configurePermissionRulesRuntime(dataDir)
+  configureCollaborationStoreRuntime(dataDir)
   installMcpRuntimeEnv(process.env, dataDir)
 
-  app.on('second-instance', () => showMainWindow())
+  app.on('second-instance', (_event, _argv, _workingDirectory, additionalData) => {
+    const focus = (additionalData as { focusSession?: unknown } | null | undefined)?.focusSession
+    if (typeof focus === 'string' && focus) {
+      // 用户点的是「任务完成」这类通知：直接落到那轮任务，而不是停在默认会话。
+      log.info('second instance focus request', { sessionId: focus })
+      focusSession(focus)
+      return
+    }
+    showMainWindow()
+  })
 
   app.whenReady().then(() => {
     log.info('app ready', { dataDir, version: app.getVersion(), packaged: app.isPackaged })
+    // Node 侧的 http/https 不读系统代理（只有 Chromium 会），把 Electron 的代理判定
+    // 注入给 web_fetch / 内置搜索，让「浏览器能打开」的地址 Morrow 也能打开。
+    setSystemProxyResolver(async (url) => {
+      try {
+        return await session.defaultSession.resolveProxy(url)
+      } catch {
+        return null
+      }
+    })
     installSecurityPolicy()
     protocol.handle('morrow-file', handlePreviewProtocol)
     protocol.handle(ARTIFACT_PREVIEW_SCHEME, handleArtifactPreview)
@@ -99,13 +135,32 @@ function bootstrap(dataDir: string): void {
     void getQoderSubscriptionService().restore()
     for (const service of allAgentServices()) void service.restore()
     initializeTokenActivity()
+    void getCommandSandboxService().refresh()
     configureLifecycle(() => mainWindow)
+    configureWindowFocus(showMainWindow)
     createWindow()
     configureIsland({ openMain: showMainWindow, requestClose: () => void requestCloseFromIsland() })
     createIsland()
     createTray()
     initializeScheduleRuntime()
-    registerIslandShortcut()
+    refreshGlobalShortcut()
+
+    // 协作副本只在任务进行中才有意义。旧版本从不释放，强制回收一次；
+    // 放到 ready 之后异步做，避免拖慢首屏。
+    setTimeout(() => {
+      void getWorkspaceIsolationService()
+        .pruneAll()
+        .then((result) => {
+          if (result.removedCopies > 0 || result.removedBases > 0) {
+            log.info('collaboration workspace cleanup', {
+              removedCopies: result.removedCopies,
+              removedBases: result.removedBases,
+              freedMB: Math.round(result.freedBytes / (1024 * 1024))
+            })
+          }
+        })
+        .catch((err) => log.warn('collaboration workspace cleanup failed', { error: String(err) }))
+    }, 15_000).unref?.()
 
     app.on('activate', () => {
       if (!mainWindow || mainWindow.isDestroyed()) createWindow()
@@ -119,14 +174,14 @@ function bootstrap(dataDir: string): void {
   app.on('will-quit', () => {
     disposeScheduleRuntime()
     disposeAgentRuntime()
+    stopLocalTts()
     void getSubscriptionService().dispose()
     void getQoderSubscriptionService().dispose()
     for (const service of allAgentServices()) void service.dispose()
-    globalShortcut.unregisterAll()
+    disposeGlobalShortcut()
     try {
       getTerminalManager().dispose()
     } catch {
-      // ignore
     }
     hideIsland(true)
     if (tray && !tray.isDestroyed()) tray.destroy()
@@ -224,8 +279,8 @@ export function showMainWindow(): void {
 
 function createTray(): void {
   if (tray && !tray.isDestroyed()) return
-  const iconPath = appIconPath()
-  let image = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+  const trayImage = loadAppIcon('tray-dark.png') ?? loadAppIcon('icon-dark.png') ?? nativeImage.createEmpty()
+  let image = trayImage
   if (!image.isEmpty()) image = image.resize({ width: 16, height: 16 })
   tray = new Tray(image)
   attachIconTray(tray)
@@ -233,7 +288,7 @@ function createTray(): void {
   const menu = Menu.buildFromTemplate([
     { label: '打开 Morrow', click: () => showMainWindow() },
     { label: '显示 / 隐藏桌面小伙伴', click: () => toggleIsland() },
-    { label: '快捷键：Ctrl+Shift+M', enabled: false },
+    { label: '桌面伙伴快捷键：设置 → 快捷键', enabled: false },
     { type: 'separator' },
     {
       label: '退出',
@@ -247,18 +302,7 @@ function createTray(): void {
   tray.on('double-click', () => showMainWindow())
 }
 
-/** 桌面快速唤起：无论主窗口在托盘还是别的应用前面，都能把小伙伴叫出来。 */
-function registerIslandShortcut(): void {
-  const isTest = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
-  if (isTest) return
-  try {
-    const ok = globalShortcut.register('CommandOrControl+Shift+M', () => toggleIsland())
-    if (!ok) log.warn('global shortcut Ctrl+Shift+M is already taken')
-  } catch (err) {
-    log.warn('global shortcut registration failed', String(err))
-  }
-}
-
+/** 桌面快速唤起：快捷键由设置 → 快捷键管理，主进程启动时统一注册。 */
 export function createWindow(): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
 
@@ -275,7 +319,8 @@ export function createWindow(): BrowserWindow {
   const windowWidth = toDip(targetPhysicalWidth)
   const windowHeight = toDip(targetPhysicalHeight)
   log.info('window sizing', { scaleFactor, windowWidth, windowHeight, targetPhysicalWidth, targetPhysicalHeight })
-  const windowIcon = appIconPath(currentIconTheme())
+  const windowIconImage = loadAppIcon(`icon-${currentIconTheme()}.png`)
+  const windowIcon = windowIconImage ? windowIconImage.resize({ width: 256, height: 256 }) : null
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
@@ -307,6 +352,8 @@ export function createWindow(): BrowserWindow {
     win.webContents.setBackgroundThrottling(false)
     win.show()
     win.focus()
+    // 窗口显示后任务栏按钮才创建，再应用一次主题图标，避免 Windows 使用默认 Electron 图标。
+    attachIconWindow(win)
     // 构造参数的 DIP 取整可能造成 ±1 物理像素偏差；等窗口完成首帧后再校正一次内容尺寸。
     setTimeout(() => {
       if (!win || win.isDestroyed()) return
@@ -322,7 +369,6 @@ export function createWindow(): BrowserWindow {
     try {
       mainWindow?.flashFrame(false)
     } catch {
-      // ignore
     }
     markIslandRead()
   })

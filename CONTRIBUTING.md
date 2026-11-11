@@ -1,87 +1,94 @@
 # 贡献指南
 
-感谢参与 Morrow。提交前请先理解边界：这是本地桌面 Agent，任何新增能力都必须遵守工作区、权限与密钥边界。
+## 环境
 
-## 1. 开发环境
-
-- Windows 10/11 x64
-- Node.js 22+
-- Git（默认终端使用 Git Bash）
-- 可选：PowerShell 7、WSL、ComfyUI、llama.cpp、Ollama、LM Studio、ffmpeg
+Windows 10/11 x64、Node.js 22.12+、Git（默认 Git Bash）。可选 PowerShell 7、WSL、ComfyUI、llama.cpp、Ollama、LM Studio、FFmpeg。
 
 ```powershell
 npm install
 npm run dev
 ```
 
-构建产物：
+详细说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-```powershell
-npm run build
-npm start
-```
+## 结构
 
-## 2. 目录
+| 目录 | 内容 |
+|---|---|
+| `src/main/` | Electron 主进程、窗口、Agent/Session/Studio/媒体/订阅 |
+| `src/core/` | Agent 循环、Provider、工具、权限、上下文、协作 |
+| `src/renderer/` | React 界面、features、样式、store |
+| `src/shared/` | IPC/数据契约、共享工具 |
+| `tests/unit/` | Vitest 单元；按功能域合并入口 |
+| `tests/e2e/` | Playwright Electron 流程 |
+| `docs/` | 扁平文档与 `screens/` 原图 |
+| `scripts/` | 构建、测试、打包、冒烟、截图、文档检查 |
 
-```text
-src/main/        Electron 主进程、服务、IPC
-src/core/        Agent 循环、工具、权限、Provider
-src/preload/     白名单 contextBridge
-src/renderer/    React UI 与 Zustand store
-src/shared/      共享类型、模型、命令、协议常量
-tests/unit/      Vitest
-tests/e2e/       Playwright 真实 Electron
-docs/            用户/架构/设计/验收文档
-scripts/         构建、打包、截图、审计
-build/           图标、启动器、安装器资源
-```
+源码按职责扁平放置；不要重新引入多层 `studio/`、`core/agent/` 目录。协作域已合并为 `src/core/collaboration.ts` 与 `src/main/collaboration.ts`；测试辅助平铺为 `tests/unit/helpers.ts`、`tests/e2e/helpers.ts`。
 
-## 3. 开发边界
+## 开发边界
 
-- 文件工具、终端、媒体输入输出必须在工作区内；新增路径 API 要 realpath 校验。
-- 渲染层不能直接访问 Node/fs/child_process；通过 preload 白名单与 `Result<T>` IPC。
-- 密钥只进主进程加密存储；不要在日志、错误、渲染层或测试快照中出现明文。
-- 新增工具必须声明权限/风险/大小限制，并补单元测试；高风险操作走审批。
-- 不要为“让测试绿”而放宽路径、权限、网络或密钥边界。
-- 不要提交 `deliver/`、`tmp/`、构建产物、用户数据或真实 token。
+- 创作台不重新引入本地创作手法库、七维权重、六条门禁或固定故事模板；创作判断只来自内嵌三套大师方法，本地只做可计算检查。
+- 三套大师方法的运行时来源只有 `src/main/creative-prompts.generated.ts`；不要恢复桌面读取、`resources/prompts` 或 `MORROW_CREATIVE_PROMPTS`。
+- 没有真实文本模型/ComfyUI/ACE-Step/FFmpeg/TTS 时明确失败；不用占位图、假候选、假额度或本地模板冒充。
+- 删除/回收站、数据目录迁移、密钥存储等高风险逻辑必须先看现有测试与边界。
+- 交付只保留两个单文件 exe；文件夹版/zip/源码包是中间产物。
 
-## 4. 提交前检查
+## 提交前检查
 
 ```powershell
 npm run typecheck
 npm run audit:ui
+npm run docs:check
+npm run test:suite
 npm run test:unit
 ```
 
-UI/桌面行为改动请跑受影响 E2E；发布前再跑全量：
+涉及 UI/真实链路时跑受影响的 E2E；完整门槛见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#提交前检查)。
+
+文档改动：
 
 ```powershell
-npx playwright test
-npm run dist:all
-npx playwright test tests/e2e/13-packaged.spec.ts
+npm run docs:capture   # 重拍 docs/screens，全部 2100×1200 原图
+npm run docs:check     # 链接、尺寸、引用与废弃目录
 ```
 
-## 5. 代码风格
+## 代码风格
 
-- TypeScript strict；共享类型优先；避免 `any` 和无意义抽象。
-- 注释只解释“为什么/隐藏约束”，不复述代码；不要写多段 docstring。
-- UI 只引用顶层 token；新增字号/圆角/颜色先加到 tokens，再改组件。
-- 视觉改动同时检查深/浅主题与窄屏。
-- 一个 PR 聚焦一个边界清晰的问题；不要混入无关格式化。
+- 2 空格缩进、无分号、单引号；TypeScript strict。
+- 不引入未使用的依赖或抽象；能复用现有工具就不新增。
+- 新功能必须有真实行为与回归保护；不要用占位入口或假成功冒充。
+- 提交信息用 `type(scope): 说明`，一个提交只做一件事。
 
-## 6. 提交与 PR
+## 提交与 PR
 
-- 提交信息用祈使句，说明“为什么/影响”，例如 `fix: 修正终端滚动条按需显示`。
-- PR 描述包含：问题、方案、测试证据、风险/回滚。
-- 涉及 UI 的 PR 附截图；涉及协议/模型的 PR 附真实或 mock 断言。
-- 不要 force-push 已发布分支，不要修改 Git 配置或跳过 hooks。
+- 先确认改动范围与验证结果；PR 描述写清“为什么”和“怎么验证”。
+- 不提交密钥、用户数据、日志原文或打包产物。
+- 不在公开 issue 披露安全细节；见 [SECURITY.md](SECURITY.md)。
 
-## 7. 安全
+## 版本与发布
 
-- 发现漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。
-- 不要提交或打印 Antigravity OAuth secret；该凭据需通过 `MORROW_ANTIGRAVITY_CLIENT_SECRET` 注入。
-- 不要在 issue/PR 中粘贴真实 API Key、订阅 token、工作区隐私内容。
+- 版本号只写在 `package.json` 的 `version`；当前发布版本为 `0.2.0`。
+- 每个发布版本对应一条发布提交：`release: Morrow vX.Y.Z`，以及 `vX.Y.Z` 分支与标签。
+- 发布后的纯文档修订（不改变二进制、源码包与安装行为）单独提交为 `docs: ...`，直接推送到对应版本分支；不改写已发布的提交、标签与 Release 附件。
+- 需要替换二进制、重打包或刷新验证证据时，才按发布流程重跑并说明产物变化；不要在文档提交里夹带构建产物。
+- 只有升级到新发布版本（如 `0.2.0` → `0.3.0`）时，才新建发布提交、分支与 `vX.Y.Z` 标签。
+- 发布流程：
 
-## 8. License
+```powershell
+npm run dist:final      # 构建 + 两个单文件 exe 到 deliver/，并刷新 docs/verification.json
+npm run smoke:packaged  # 冒烟打包产物，刷新 docs/smoke-packaged.json
+npm run docs:capture    # 界面有改动时重拍 docs/screens
+git add -A
+git commit -m "release: Morrow vX.Y.Z"
+git tag vX.Y.Z
+git push origin <分支> refs/tags/vX.Y.Z
+```
 
-贡献即同意以 MIT License 发布。见 [LICENSE](LICENSE)。
+## 文档
+
+文档按任务拆分，一个主题一个文件；`README.md` 是英文主文件，`README.zh.md` 是中文镜像。截图放 `docs/screens/`，全部 2100×1200 原图；README 封面放 `docs/cover.png`。新增页时先更新 `scripts/docs-capture.spec.ts`，再写文档引用，最后跑 `npm run docs:check`。
+
+## License
+
+MIT。第三方组件与内置技能来源见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#第三方组件与许可)。

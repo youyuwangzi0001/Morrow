@@ -1,0 +1,59 @@
+name: Quality gates
+
+# L1：只需要 node_modules、几秒钟就能跑完的门槛，在每次 push / PR 上执行。
+# 对应 docs/DEVELOPMENT.md「持续集成」一节与 README「质量门槛」。
+#
+# 为什么是 ubuntu-latest：这四道门槛都是纯 Node 脚本（tsc / 脚本审计 / 文档检查 /
+# 测试清单解析），与平台无关；而实测本仓库账号拿不到 hosted Windows runner
+# （windows-latest 任务长时间排队后被取消，ubuntu-latest 45 秒内就绪）。
+# 真正与 Windows 绑定的验证——node-pty、2100×1200 窗口、Git Bash、管理员 icacls——
+# 属于 L2 自托管 runner，不在本工作流里：
+#   - test:unit   （node-pty + 真实控制台会话）
+#   - test:e2e    （tests/e2e/helpers.ts 等主窗口稳定在 2100×1200 物理像素）
+#   - dist:final / smoke:packaged
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # 下面四个门槛都不启动 Electron；不设置的话 postinstall 每次都会下载 ~368MB 运行时。
+      MORROW_SKIP_ELECTRON_BINARY: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # electron 44 要求 >= 22.12.0，vite 7 要求 ^20.19.0 || >=22.12.0，
+          # 所以 README 里的「Node 22+」不够精确，这里钉到 22.12.0。
+          node-version: '22.12.0'
+          cache: npm
+
+      # .npmrc 里 audit=false / fund=false；npm ci 仍会校验 package-lock.json 的完整性哈希。
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: UI token audit
+        run: npm run audit:ui
+
+      - name: Docs and screenshot check
+        run: npm run docs:check
+
+      - name: Core test registry
+        run: npm run test:suite

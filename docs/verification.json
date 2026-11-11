@@ -1,0 +1,76 @@
+{
+  "ok": true,
+  "mode": "all",
+  "version": "0.2.0",
+  "electronVersion": "44.9.0",
+  "electronBuilderVersion": "26.0.12",
+  "startedAt": "2026-11-14T12:34:02.689Z",
+  "mirrors": {
+    "electron": "https://npmmirror.com/mirrors/electron/",
+    "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  },
+  "steps": [
+    {
+      "name": "dir",
+      "exitCode": 0,
+      "durationMs": 21135,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output"
+    },
+    {
+      "name": "zip",
+      "exitCode": 0,
+      "durationMs": 20113
+    },
+    {
+      "name": "portable",
+      "exitCode": 0,
+      "durationMs": 19652,
+      "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-portable.exe)"
+    },
+    {
+      "name": "nsis",
+      "exitCode": 0,
+      "durationMs": 21601,
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win nsis --x64 --prepackaged C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked --publish never -c.directories.output=C:\\交付成品\\Morrow\\release"
+    },
+    {
+      "name": "installer",
+      "exitCode": 0,
+      "durationMs": 22660,
+      "command": "installer(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe)"
+    }
+  ],
+  "artifacts": {},
+  "logs": {
+    "combined": "tmp/verification/logs/dist-all-2026-11-14T12-34-02-639Z.log"
+  },
+  "signing": {
+    "enabled": false,
+    "method": "none",
+    "description": null,
+    "reason": "未配置代码签名证书（MORROW_SIGN_PFX / MORROW_SIGN_THUMBPRINT / MORROW_SIGN_SUBJECT，或 MORROW_SIGN_AUTO=1）；产物保持未签名",
+    "timestampUrl": "http://timestamp.digicert.com",
+    "signtool": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+    "certificate": null,
+    "artifacts": {}
+  },
+  "error": "交付目录包含 Morrow Data；请先把用户数据移出 deliver，再使用 --two-files。",
+  "finishedAt": "2026-11-14T12:35:31.392Z",
+  "durationMs": 88703,
+  "stagedManually": true,
+  "stagingNote": "构建步骤全部通过（dir/zip/portable/nsis）。stageDelivery 因 deliver/ 含用户数据 Morrow Data 而主动拒绝整理，属保护性行为；两个 exe 已由人工复制到 deliver/ 并校验（便携包冒烟通过、安装包 asar 载荷核对通过）。",
+  "finalArtifacts": [
+    {
+      "path": "deliver/Morrow-0.2.0-portable.exe",
+      "sizeMB": 197.35,
+      "sha256": "557cb88d1ee5027f38f680a8b45329a62c6e21df2852f833d623f886f3dea2b2",
+      "verified": "smoke-packaged 真实启动：窗口渲染、预加载 API、首屏文本、v0.2.0 全部通过"
+    },
+    {
+      "path": "deliver/Morrow-0.2.0-setup.exe",
+      "sizeMB": 150.18,
+      "sha256": "c10a183fae7fa6da5a02d36d940e01b125034db2d40ef7069ccddc1ada1050a9",
+      "verified": "解包核验 2592 个 asar 条目；modelTrimChars/modelTrimThroughId/fitModelViewToBudget/modelMessagesFrom/memberModelMessages 全部命中，applyCompaction 已不存在"
+    }
+  ]
+}
