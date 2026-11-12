@@ -1,6 +1,8 @@
 # 贡献指南
 
-感谢参与 Morrow。提交前请先理解边界：这是本地桌面 Agent，任何新增能力都必须遵守工作区、权限与密钥边界。
+> 本文为中文文档；英文概览见 [README.md](README.md)。
+
+感谢参与 Morrow。提交前请先理解边界：这是本地桌面 Agent，任何新增能力都必须遵守工作区、权限与密钥边界。完整的开发与打包说明见 [开发指南](docs/DEVELOPMENT.md)。
 
 ## 1. 开发环境
 
@@ -18,7 +20,7 @@ npm run dev
 
 ```powershell
 npm run build
-npm start
+npm run preview
 ```
 
 ## 2. 目录
@@ -31,7 +33,7 @@ src/renderer/    React UI 与 Zustand store
 src/shared/      共享类型、模型、命令、协议常量
 tests/unit/      Vitest
 tests/e2e/       Playwright 真实 Electron
-docs/            用户/架构/设计/验收文档
+docs/            用户、参考、架构、开发与验收文档
 scripts/         构建、打包、截图、审计
 build/           图标、启动器、安装器资源
 ```
