@@ -51,7 +51,7 @@
 
 持续集成：
 
-- `.github/workflows/quality-gates.yml` 在每次 push / PR 上跑 L1 门槛：`typecheck` → `audit:ui` → `docs:check` → `test:suite`（约 20s，`windows-latest`，安装时用 `MORROW_SKIP_ELECTRON_BINARY=1` 跳过 368MB 运行时下载）。
+- `.github/workflows/quality-gates.yml` 在每次 push / PR 上跑 L1 门槛：`typecheck` → `audit:ui` → `docs:check` → `test:suite`，安装时用 `MORROW_SKIP_ELECTRON_BINARY=1` 跳过 368MB 运行时下载。运行在 `ubuntu-latest`：这四道门槛都是纯 Node 脚本，与平台无关；实测本仓库账号拿不到 hosted Windows runner（`windows-latest` 长时间排队后被取消，`ubuntu-latest` 45 秒内就绪）。
 - L2（`test:unit`、`test:e2e`、`dist:final`、`smoke:packaged`）需要自托管 Windows runner：E2E 等主窗口稳定在 2100×1200 物理像素（`tests/e2e/helpers.ts`），并有两条用例要管理员权限执行 `icacls`。未接入前这两项仍以本地 `npm run verify` 为准。
 
 测试截图写 `tmp/e2e-screens`，不进入文档；文档截图单独生成。

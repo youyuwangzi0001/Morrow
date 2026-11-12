@@ -3,9 +3,13 @@ name: Quality gates
 # L1：只需要 node_modules、几秒钟就能跑完的门槛，在每次 push / PR 上执行。
 # 对应 docs/DEVELOPMENT.md「持续集成」一节与 README「质量门槛」。
 #
-# 不在本工作流里的三项，需要自托管 Windows runner：
+# 为什么是 ubuntu-latest：这四道门槛都是纯 Node 脚本（tsc / 脚本审计 / 文档检查 /
+# 测试清单解析），与平台无关；而实测本仓库账号拿不到 hosted Windows runner
+# （windows-latest 任务长时间排队后被取消，ubuntu-latest 45 秒内就绪）。
+# 真正与 Windows 绑定的验证——node-pty、2100×1200 窗口、Git Bash、管理员 icacls——
+# 属于 L2 自托管 runner，不在本工作流里：
 #   - test:unit   （node-pty + 真实控制台会话）
-#   - test:e2e    （tests/e2e/helpers.ts 等主窗口稳定在 2100×1200 物理像素，且要 Git Bash 与管理员 icacls）
+#   - test:e2e    （tests/e2e/helpers.ts 等主窗口稳定在 2100×1200 物理像素）
 #   - dist:final / smoke:packaged
 
 on:
@@ -23,9 +27,7 @@ permissions:
 
 jobs:
   gates:
-    # windows-latest 而不是 ubuntu-latest：这是 Windows 产品，docs:check 要校验
-    # 2100×1200 截图尺寸、test:suite 要解析真实测试树，应该在实际交付平台上验证。
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       # 下面四个门槛都不启动 Electron；不设置的话 postinstall 每次都会下载 ~368MB 运行时。
