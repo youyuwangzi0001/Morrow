@@ -1,0 +1,61 @@
+name: Quality gates
+
+# L1 of the gate split proposed in #2: everything that needs only node_modules and
+# finishes in seconds, on the platform the product actually ships.
+#
+# Not in this workflow, because they need a self-hosted Windows runner with a real
+# 2100x1200 display, Git Bash and an elevated `icacls`:
+#   - test:unit   (node-pty + PTY shells)
+#   - test:e2e    (tests/e2e/helpers.ts waits for a 2100x1200 window)
+#   - dist:final / smoke:packaged
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    # windows-latest, not ubuntu-latest: this is a Windows-only product, and the
+    # checks below read paths, screenshots and manifests that should be validated
+    # on the shipping platform.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      # None of the gates below launch Electron. Without this the postinstall step
+      # downloads the ~368 MB binary on every run.
+      MORROW_SKIP_ELECTRON_BINARY: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # electron 44 requires >= 22.12.0 and vite 7 requires ^20.19.0 || >=22.12.0,
+          # so "Node 22+" in the README is not precise enough on its own.
+          node-version: '22.12.0'
+          cache: npm
+
+      # `.npmrc` sets audit=false and fund=false; `npm ci` still verifies the
+      # integrity hashes recorded in package-lock.json.
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: UI token audit
+        run: npm run audit:ui
+
+      - name: Docs and screenshot check
+        run: npm run docs:check
+
+      - name: Core test registry
+        run: npm run test:suite
