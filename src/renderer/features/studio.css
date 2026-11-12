@@ -5747,7 +5747,9 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 .studio-findbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* 输入框可以收缩（min-width: 0），按钮不换行：换行会让「全部替换」跳到第二行左侧，
+     与「替换」分开，容易点错。 */
+  flex-wrap: nowrap;
   gap: 5px;
   min-height: 38px;
   padding: 5px 12px;
@@ -11960,14 +11962,23 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
     right: 7px;
     top: 7px;
   }
+  .studio-body.has-assistant {
+    /* 协作者面板在这一档脱离栅格改成浮层；宽度只在这里定义一次，正文让位处复用。 */
+    --studio-assistant-overlay: 380px;
+  }
   .studio-assistant {
     position: fixed;
     top: var(--titlebar-h);
     right: 0;
     bottom: 0;
     z-index: 30;
-    width: 380px;
+    width: var(--studio-assistant-overlay, 380px);
     box-shadow: -30px 0 70px -36px rgba(0, 0, 0, 0.9);
+  }
+  /* 面板一旦 fixed 就不再占栅格第三列，正文区必须让出同样的宽度，
+     否则稿纸与查找替换条的后半截会压到面板下面（替换/全部替换点不到）。 */
+  .studio-body.has-assistant > .studio-center {
+    padding-right: var(--studio-assistant-overlay, 380px);
   }
   .studio-hero,
   .studio-library {

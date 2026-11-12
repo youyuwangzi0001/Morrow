@@ -78,8 +78,8 @@
 
 ```bash
 npm run typecheck
-npm run test:unit                    # 532 passed（其中 15 项云端多媒体协议测试）
-npm run test:suite                   # 532 unit / 85 e2e
+npm run test:unit                    # 539 passed（其中 15 项云端多媒体协议测试）
+npm run test:suite                   # 539 unit / 86 e2e
 npx playwright test tests/e2e/ui.spec.ts -g "国内与海外云端多媒体"   # 1 passed
 npx playwright test tests/e2e/studio.spec.ts -g "Seedream 国内服务"  # 1 passed
 ```

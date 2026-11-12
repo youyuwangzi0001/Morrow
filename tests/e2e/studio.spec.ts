@@ -572,19 +572,77 @@ test('@core:studio-writing 写作台具备查找替换、撤销、排版、字�
 
     await page.getByRole('button', { name: '文本替换' }).click()
     await expect(page.getByLabel('替换为')).toBeFocused()
+
+    // `.studio-manuscript .cm-content` 是 CodeMirror 的**渲染窗口**，只含当前视口里的行，
+    // 不是文档本身（#8 的「760 → 329 字符」就是这么量出来的误报）。
+    // 替换/撤销的结果一律读主进程里的真实章节，才能判断有没有截断正文。
+    const projectId = (await action<{ projects: Array<{ id: string; title: string }> }>('list')).projects.find(
+      (item) => item.title === '雨停之前'
+    )!.id
+    const chapterTexts = async (): Promise<Record<string, string>> => {
+      const detail = await action<{ project: { chapters: Array<{ id: string; content: string }> } }>('get', { projectId })
+      return Object.fromEntries(detail.project.chapters.map((chapter) => [chapter.id, chapter.content]))
+    }
+    const changedChapters = async (baseline: Record<string, string>): Promise<Array<[string, string]>> => {
+      const now = await chapterTexts()
+      return Object.entries(now).filter(([id, text]) => baseline[id] !== text)
+    }
+
+    const beforeReplace = await chapterTexts()
     await page.getByLabel('查找正文').fill('雨')
     await expect(page.locator('.studio-find-count')).not.toHaveText('—')
     await page.getByLabel('替换为').fill('春雨')
     await page.screenshot({ path: join(outDir, 'studio-writing-replace.png') })
     await page.getByRole('button', { name: '全部替换', exact: true }).click()
-    await page.waitForTimeout(300)
-    const replaced = await page.locator('.studio-manuscript .cm-content').innerText()
-    expect(replaced).toContain('春雨')
+    // 自动保存停笔约 900ms 后落盘；等到恰好一章发生变化
+    await expect.poll(async () => (await changedChapters(beforeReplace)).length, { timeout: 20_000 }).toBe(1)
+    const [[chapterId, replacedText]] = await changedChapters(beforeReplace)
+    const originalText = beforeReplace[chapterId] ?? ''
+    // 只替换命中的字符，其余正文逐字保留（长度按 雨→春雨 每条 +1）
+    expect(originalText.length).toBeGreaterThan(500)
+    expect(replacedText).toBe(originalText.split('雨').join('春雨'))
+    expect(replacedText.length).toBeGreaterThanOrEqual(originalText.length)
+
     await page.getByRole('button', { name: '撤销', exact: true }).click()
+    // 撤销要回到原文，而不是回到另一个长度（#8 里「撤销后 1393 字符」同样是测量假象）
+    await expect.poll(async () => (await chapterTexts())[chapterId], { timeout: 20_000 }).toBe(originalText)
+
+    // #3 回归：窗口窄于 1120px 时协作者面板脱离栅格改成 380px 浮层，
+    // 正文必须让出同样宽度，否则查找条右半截（含「全部替换」）被面板盖住、真实鼠标点不到。
+    const originalBounds = await morrow.app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.webContents.getURL().includes('#island'))!
+      const bounds = win.getContentBounds()
+      win.setContentSize(820, 720)
+      return { width: bounds.width, height: bounds.height }
+    })
     await page.waitForTimeout(400)
-    const afterUndo = await page.locator('.studio-manuscript .cm-content').innerText()
-    expect(afterUndo).not.toContain('春雨')
-    expect(afterUndo).toContain('修到一半')
+    // 有的显示器最小窗口宽度大于 1120 CSS px，这时用页面缩放把 CSS 视口一起压下去
+    // （媒体查询看的是 CSS px，不是 DIP）。
+    await morrow.app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.webContents.getURL().includes('#island'))!
+      const cssWidth = win.getContentBounds().width / win.webContents.getZoomFactor()
+      if (cssWidth > 1120) win.webContents.setZoomFactor(cssWidth / 1000)
+    })
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: '文本替换' }).click()
+    await page.getByLabel('查找正文').fill('雨')
+    const replaceAllHit = await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll<HTMLElement>('.studio-findbar button')).find((item) =>
+        (item.textContent ?? '').includes('全部替换')
+      )
+      if (!button) return 'missing'
+      const rect = button.getBoundingClientRect()
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return hit === button || button.contains(hit) ? 'self' : String(hit?.className ?? hit?.tagName ?? 'none')
+    })
+    expect(replaceAllHit).toBe('self')
+    await page.getByRole('button', { name: '关闭查找' }).click()
+    await morrow.app.evaluate(async ({ BrowserWindow }, bounds) => {
+      const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.webContents.getURL().includes('#island'))!
+      win.webContents.setZoomFactor(1)
+      win.setContentSize(bounds.width, bounds.height)
+    }, originalBounds)
+    await page.waitForTimeout(400)
 
     // Office 习惯：Ctrl+H 直接聚焦“替换为”，不必先点“查找”。
     await page.locator('.studio-manuscript .cm-content').click()
@@ -619,8 +677,6 @@ test('@core:studio-writing 写作台具备查找替换、撤销、排版、字�
     await expect(countDialog).toContainText('分钟')
 
     await page.getByRole('button', { name: '导出 Word' }).click()
-    const library = await action<{ projects: Array<{ id: string; title: string }> }>('list')
-    const projectId = library.projects.find((item) => item.title === '雨停之前')!.id
     await expect.poll(async () => {
       const jobs = await action<{ jobs: any[] }>('list-jobs', { projectId })
       return jobs.jobs.find((job) => job.retry?.action === 'export')?.status ?? ''

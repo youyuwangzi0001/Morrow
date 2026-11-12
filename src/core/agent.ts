@@ -904,16 +904,170 @@ const DANGER_RULES: DangerRule[] = [
   { pattern: /\b(?:\.ssh[\\/]|id_rsa|\.dsh[\\/]|credentials(?:\.yaml|\.json)?\b|login\s+data|keychain|\.aws[\\/])/i, reason: '读取凭据/密钥目录属于敏感操作' }
 ]
 
+/* ── 危险命令归一化 ───────────────────────────────────────────── */
+
+/**
+ * cmdlet 别名 → 规范名。
+ *
+ * PowerShell 把别名当成一等公民（`ri`、`rm`、`del`、`rd` 都是 `Remove-Item`，
+ * `spps` 是 `Stop-Process`），只匹配全名的正则会被一行别名直接绕过。
+ */
+const CMDLET_ALIASES: Record<string, string> = {
+  ri: 'Remove-Item',
+  rm: 'Remove-Item',
+  rmo: 'Remove-Item',
+  del: 'Remove-Item',
+  erase: 'Remove-Item',
+  rd: 'Remove-Item',
+  rmdir: 'Remove-Item',
+  // 结束进程同样会丢未保存的数据，危险规则对 stop-process 一律按高风险处理
+  spps: 'Stop-Process',
+  kill: 'Stop-Process'
+}
+
+/**
+ * PowerShell 接受参数名的任意唯一前缀（`-e` / `-en` / `-enc` 都等于 `-EncodedCommand`），
+ * 另有若干官方别名（`-ec` 是 `-EncodedCommand` 的注册别名，`-r` / `-fo` 同理）。
+ * 这里只登记危险规则实际用到的参数。
+ */
+const PARAM_ALIASES: Record<string, string[]> = {
+  EncodedCommand: ['e', 'ec', 'encodedcommand'],
+  Recurse: ['r', 'recurse'],
+  Force: ['fo', 'force']
+}
+
+/** 判断 `-name` 是否指向某个完整参数：注册别名，或该完整名的唯一前缀。 */
+function resolveParamName(name: string): string | null {
+  const lower = name.toLowerCase()
+  for (const [full, aliases] of Object.entries(PARAM_ALIASES)) {
+    if (aliases.includes(lower)) return full
+    const matches = Object.keys(PARAM_ALIASES).filter((candidate) => candidate.toLowerCase().startsWith(lower))
+    if (full.toLowerCase().startsWith(lower) && matches.length === 1) return full
+  }
+  return null
+}
+
+/** 归一化只用于补充匹配，原命令仍会再匹配一次；因此改写产生误报才是唯一风险，长度上限兜住极端输入。 */
+const NORMALIZE_CHAR_LIMIT = 20_000
+
+/** 去掉行尾续行符，让 `Remove-Item x \`` + 换行 + `-Recurse` 落在同一段里。 */
+function joinLineContinuations(command: string): string {
+  return command
+    .replace(/`[ \t]*\r?\n/g, ' ')
+    .replace(/\\[ \t]*\r?\n/g, ' ')
+}
+
+interface ShellWord {
+  text: string
+  /** 引号包裹的词不参与别名/参数改写，避免改动数据本身。 */
+  quoted: boolean
+}
+
+/** 按空白切词，保留引号内容；引号内允许出现空格。 */
+function scanShellWords(segment: string): ShellWord[] {
+  const words: ShellWord[] = []
+  let current = ''
+  let opened = false
+  let quoted = false
+  let quote: string | null = null
+  for (const char of segment) {
+    if (quote) {
+      if (char === quote) quote = null
+      else current += char
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      opened = true
+      quoted = true
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (current || opened) words.push({ text: current, quoted })
+      current = ''
+      opened = false
+      quoted = false
+      continue
+    }
+    current += char
+  }
+  if (current || opened) words.push({ text: current, quoted })
+  return words
+}
+
+/**
+ * 把一段命令改写成规则能识别的规范形式：别名词还原、参数前缀展开、cmd 块开关转 PowerShell 参数。
+ * 只用于「补充命中」，不会替换原文本，所以不会让原本命中的命令漏判。
+ */
+function normalizeDangerSegment(segment: string): string {
+  if (segment.length > NORMALIZE_CHAR_LIMIT) return segment
+  const words = scanShellWords(segment)
+  const out: string[] = []
+  let verb: string | null = null
+  for (const { text, quoted } of words) {
+    if (quoted || !text) {
+      out.push(text)
+      continue
+    }
+    const lower = text.toLowerCase()
+    const alias = CMDLET_ALIASES[lower]
+    if (!verb && alias) {
+      verb = alias
+      out.push(alias)
+      continue
+    }
+    // 段内第一个裸词就是动词（管道后的命令另算一段，这里只需覆盖段首）
+    if (!verb && /^[A-Za-z][A-Za-z0-9_-]*$/.test(text)) verb = text
+    const param = /^-([A-Za-z]+)$/.exec(text)
+    if (param) {
+      const full = resolveParamName(param[1])
+      if (full) {
+        out.push(`-${full}`)
+        continue
+      }
+    }
+    // cmd 的 `del /s /q`：块开关改写成等价 PowerShell 参数，交给同一条递归删除规则
+    if (verb === 'Remove-Item' && /^\/[A-Za-z]+$/.test(text)) {
+      const flags = text.slice(1).toLowerCase()
+      if (flags.includes('s') || flags.includes('r')) {
+        out.push('-Recurse')
+        continue
+      }
+      if (flags.includes('q') || flags.includes('f')) {
+        out.push('-Force')
+        continue
+      }
+    }
+    out.push(text)
+  }
+  return out.join(' ')
+}
+
+/** 下载到文件：curl -o / wget -O / iwr -OutFile 等。 */
+const DOWNLOAD_TO_FILE =
+  /\b(?:curl|wget|iwr|invoke-webrequest|invoke-restmethod)\b[^\n|;]*(?:-o(?:utfile)?|--output|-outfile)\b\s+(\S+)/i
+
+/** 执行本机脚本文件：`.\a.ps1`、`./a.sh`、`bash a.sh`、`powershell -File a.ps1` 等。 */
+const RUN_LOCAL_SCRIPT =
+  /(?:^|[\s&|;])(?:\.{1,2}[\\/]|sh\s+|bash\s+|zsh\s+|pwsh\s+-file\s+|powershell(?:\.exe)?\s+(?:-\S+\s+)*-file\s+)[^\s]*\.(?:ps1|bat|cmd|sh|zsh|vbs)\b/i
+
+/** 落盘的下载结果只有本身就是可执行脚本时，才谈得上「下载即执行」。 */
+const SCRIPT_EXTENSION = /\.(?:ps1|bat|cmd|sh|zsh|vbs)$/i
+
 /**
  * 命中危险规则返回原因；否则 null。
  *
  * R8 审计修复：按命令段（`;` / `&&` / `||` / 换行）分别匹配，避免
  * 「Remove-Item out/a.py; Get-ChildItem -Recurse ...」这类无害组合被跨段误报为递归删除。
  * 单段内仍用完整正则（例如 `curl ... | iex` 必须整段匹配）。
+ *
+ * 别名与参数前缀修复：PowerShell 的 `ri -r -fo`、`powershell -e <base64>` 不长成规则
+ * 认识的样子，所以每段先归一化一遍再匹配；原文本仍然参与匹配，保证既有命中不会因为
+ * 归一化而漏掉。
  */
 export function detectDangerousCommand(command: string): DangerousCommandInfo | null {
   if (!command) return null
-  const segments = command
+  const segments = joinLineContinuations(command)
     .split(/\r?\n|;|&&|\|\|/)
     .map((segment) => segment.trim())
     .filter(Boolean)
@@ -921,6 +1075,25 @@ export function detectDangerousCommand(command: string): DangerousCommandInfo | 
   for (const rule of DANGER_RULES) {
     for (const segment of candidates) {
       if (rule.pattern.test(segment)) return { level: 'high', reason: rule.reason }
+    }
+  }
+  for (const rule of DANGER_RULES) {
+    for (const segment of candidates) {
+      if (rule.pattern.test(normalizeDangerSegment(segment))) return { level: 'high', reason: rule.reason }
+    }
+  }
+  // 下载脚本到文件、再单独执行该文件：两次调用各自无害，连起来是「下载即执行」。
+  // 只有落盘文件本身是可执行脚本时才判定，避免 `curl -o data.json ...; bash build.sh` 误报。
+  const downloadedScript = candidates.some((segment) => {
+    const target = DOWNLOAD_TO_FILE.exec(segment)?.[1] ?? ''
+    return SCRIPT_EXTENSION.test(target.replace(/["'`]/g, ''))
+  })
+  if (downloadedScript) {
+    for (const segment of candidates) {
+      if (DOWNLOAD_TO_FILE.test(segment)) continue
+      if (RUN_LOCAL_SCRIPT.test(segment)) {
+        return { level: 'high', reason: '从网络下载脚本并直接执行，可能运行恶意代码' }
+      }
     }
   }
   return null

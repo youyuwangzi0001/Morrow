@@ -14,6 +14,13 @@ if (!existsSync(installScript)) {
   process.exit(0)
 }
 
+// 只跑不需要 Electron 的门槛（类型检查、UI 审计、文档检查、清单校验）时，
+// 由调用方显式跳过 ~368MB 的二进制下载；默认仍然下载，避免 E2E 缺运行时。
+if (process.env.MORROW_SKIP_ELECTRON_BINARY === '1') {
+  console.log('[morrow] MORROW_SKIP_ELECTRON_BINARY=1, skip electron binary download')
+  process.exit(0)
+}
+
 let installed = false
 if (existsSync(pathTxt)) {
   const { readFileSync } = await import('node:fs')

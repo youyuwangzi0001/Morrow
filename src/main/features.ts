@@ -10,7 +10,7 @@ import { getSettingsStore } from './settings'
 import { getSessionStore } from './session'
 import type { IpcMainInvokeEvent } from 'electron'
 import { app, nativeImage, BrowserWindow, dialog } from 'electron'
-import { registerFeatureHandler, sendFeatureEvent } from './feature-ipc'
+import { registerFeatureHandler, sendFeatureEvent, setReadOnlyProbe } from './feature-ipc'
 import { BrowserService, browserService } from './artifacts'
 import type { BrowserBridge } from '../core/util'
 import { setBrowserBridge } from '../core/util'
@@ -1341,12 +1341,17 @@ function globalReadOnly(): boolean {
   }
 }
 
+// 只读档的通道级门禁在 feature-ipc 的统一包装层执行（见 READ_ACTIONS）：
+// 逐个 handler 手写 assertWritable 会漏掉 git / terminal / history 这类写通道，
+// 而它们此前确实没有门禁——只读档点「放弃改动」依然会删掉工作区文件。
+setReadOnlyProbe(globalReadOnly)
+
 function assertWritable(): void {
   if (globalReadOnly()) {
     throw new WorkspaceFileError(
       'READ_ONLY',
       '当前是只读模式，不能修改文件。',
-      '把权限切换为「询问」或「自动」后再试。'
+      '把权限切换为「询问」或「完全访问」后再试。'
     )
   }
 }

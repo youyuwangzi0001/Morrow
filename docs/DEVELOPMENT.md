@@ -45,9 +45,14 @@
 
 1. 每个独立用例直接使用 `@core:功能域` 标题，并在 `tests/core-coverage.json` 登记；禁止 `.only`、整组标记或用参数化隐藏数量。
 2. 优先在现有核心流程补断言；独立的数据安全、权限或主链路行为才新增核心用例。
-3. 当前基线 539 单元 / 86 Electron；新增前先消除重复，确需扩展时说明覆盖并同步基线。0.2.0 这批新增用于自定义服务的模型设置（`knownModelSpec` 家族兜底、`fallbackModelWindow` 优先级、`resolveRetryPolicy` 与两个 Provider 的重试行为、设置存储对 1M/384K/思考档位/协议/重试的持久化），共 7 条单元用例，已按「同一主题只留一个入口」合并。
+3. 当前基线 539 单元 / 86 Electron；`tests/core-coverage.json` 的维护预算为 560 / 96，只拦失控增长，不要求「加一条先删一条」。新增前先消除重复，确需扩展时说明覆盖并同步基线。0.2.0 这批新增用于自定义服务的模型设置（`knownModelSpec` 家族兜底、`fallbackModelWindow` 优先级、`resolveRetryPolicy` 与两个 Provider 的重试行为、设置存储对 1M/384K/思考档位/协议/重试的持久化），共 7 条单元用例，已按「同一主题只留一个入口」合并。
 4. 同一功能域用例合并到单一入口；测试共用辅助平铺，不恢复 `helpers/` 子目录。
 5. 修改模块可先跑对应文件，完成后跑 `npm run verify`；涉及 UI/真实链路时跑受影响的 E2E。
+
+持续集成：
+
+- `.github/workflows/quality-gates.yml` 在每次 push / PR 上跑 L1 门槛：`typecheck` → `audit:ui` → `docs:check` → `test:suite`（约 20s，`windows-latest`，安装时用 `MORROW_SKIP_ELECTRON_BINARY=1` 跳过 368MB 运行时下载）。
+- L2（`test:unit`、`test:e2e`、`dist:final`、`smoke:packaged`）需要自托管 Windows runner：E2E 等主窗口稳定在 2100×1200 物理像素（`tests/e2e/helpers.ts`），并有两条用例要管理员权限执行 `icacls`。未接入前这两项仍以本地 `npm run verify` 为准。
 
 测试截图写 `tmp/e2e-screens`，不进入文档；文档截图单独生成。
 

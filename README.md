@@ -41,8 +41,8 @@ npm run dev
 
 ```powershell
 npm run typecheck     # 类型检查
-npm run test:unit     # 532 项单元
-npm run test:e2e      # 85 条 Electron 流程（会先构建）
+npm run test:unit     # 539 项单元
+npm run test:e2e      # 86 条 Electron 流程（会先构建）
 npm run verify        # 类型、UI、文档、清单、单元与 Electron
 npm run dist:final    # 重建两个交付 exe
 npm run smoke:packaged
@@ -90,8 +90,8 @@ npm run smoke:packaged
 
 - `src/`：92 个 TS/TSX 源文件（不含 `.d.ts`），152,443 行；含 CSS/HTML 共 125 个文件，195,705 行。
 - 代码合计（统一口径：生产源码 + 测试 + 构建脚本 + 启动器，按 `wc -l` 换行计）：194 个文件，238,321 行；运行 `node scripts/count-code.mjs` 可复现。
-- 核心回归：532 项单元 + 85 条 Electron 流程；41 个功能域。
-- 质量门槛：类型检查、UI token 审计、核心清单、单元、Electron 与打包冒烟。
+- 核心回归：539 项单元 + 86 条 Electron 流程；41 个功能域。
+- 质量门槛：类型检查、UI token 审计、文档检查、核心清单、单元、Electron 与打包冒烟；其中前四项由 `.github/workflows/quality-gates.yml` 在每次 push / PR 上自动执行。
 - 文档截图：29 张主文档截图，全部 2100×1200 原始 PNG，不缩放、不压缩。
 
 ## 开发与打包

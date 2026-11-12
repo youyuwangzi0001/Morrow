@@ -4,6 +4,8 @@
 
 ## 1. 当前交付
 
+> 2026-11-12（issue 修复轮）：按仓库 5 个开放 issue 修复，并复核已关闭的 #8。① 危险命令先归一化（续行、cmdlet 别名、参数前缀、cmd 块开关）再匹配原有 27 条规则，原文本仍参与匹配，`ri -r -fo`、`powershell -e/-en/-ec`、`del out /s /q`、续行拆段、下载后执行等九条绕过路径不再漏判，`spps`/`kill` 也归一到 `Stop-Process`；② 新增 `.github/workflows/quality-gates.yml`，push/PR 自动跑类型检查、UI 审计、文档检查与测试清单（L1，`windows-latest`），`MORROW_SKIP_ELECTRON_BINARY=1` 让 `npm ci` 跳过 368MB 运行时；③ 1120px 以下协作者面板改成浮层后，`.studio-center` 让出同宽 380px，查找条不换行，「替换/全部替换/关闭查找」不再被盖住；④ 只读档改为按功能域登记读动作、域内未登记动作默认拒绝（fail-closed），`git:discard`、`git:stage`、`terminal:start-task`、`history:record`、`studio:action` 的写动作在只读档返回 `READ_ONLY` 且无副作用，读通道与创作台照常；⑤ 单元基线恢复 539/539，用例预算改为 560 / 96。复核 #8：用落盘正文重测「全部替换」，1374 → 1381 与 `before.split('雨').join('春雨')` 逐字相等、撤销回到 1374，原报告的「760 → 329」是 CodeMirror 虚拟化渲染窗口造成的测量假象；`replaceAll` 改为按编辑器真实文档重算区间，e2e 改读落盘正文。验证：类型检查、UI token 审计（28 CSS / 30 TSX）、文档检查、测试套组 539 单元 / 86 Electron、单元 539/539、Electron 全量 86/86（7.5m）、打包冒烟通过。重新打包覆盖本机 `deliver/` 与 GitHub v0.2.0。
+
 > 2026-11-12（字号可读性）：Agent 模式字号下限收敛。顶层阶梯把 9 / 9.5 / 10 / 10.5px 四级合并为 11px 下限，`sm` 与 `sm-plus` 合并为 11.5px，12px 以上保持原值；12px 应用字号下也不会出现字号倒挂。Super-Agent 成员卡片不再自备小字，改为直接复用权限卡语义令牌（标题 14 / 说明 12.5 / 摘要 12 / 辅助 11.75 / 按钮 12.5），停止与插话按钮高度 22→24px。全功能 DOM 扫描 15 个界面（主界面、设置首屏/外观/更多功能、记忆、项目、技能、外部工具、定时任务、版本记录、全局搜索、终端、命令面板、创作台首页/编辑器）均无低于 11px 的可见文字；创作台正文仍为 13.5px。验证：类型检查、UI token 审计（31 个可缩放令牌）、针对性 E2E 通过。
 
 > 2026-11-12：Super-Agent 精简优化。删除右侧协作任务面板与输入框旁「协作」入口，把总目标、成员用量、进度跟盯、停止/继续/插话、重试、验收、冲突与成果全部内联到主对话的成员卡片；历史协作保留静态摘要，恢复型会话在对话末尾兜底显示驾驶舱。新增 `SuperAgentState.toolUseId` 把完整状态精确挂回最近一次 swarm 调用，并修复并行工作区共享基线在副本记录落盘前被提前释放的竞态。验证：类型检查、UI token 审计、文档检查、测试套组登记、协作/核心单测 121 项、工作区隔离单测 11 项、Electron 全量 e2e 85/85 通过，生产构建通过。本轮未重新打包 `deliver/` 便携版与安装包。
@@ -32,9 +34,9 @@
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `Morrow-0.2.0-portable.exe` | 206,924,288 B / 197.34 MiB | `627028a73c1498b0aab13a7c8a694ef2137063937b09541637c60f8994a80244` |
-| `Morrow-0.2.0-setup.exe` | 157,471,503 B / 150.18 MiB | `c92a4773776e4a970c4dfe5a9dcc77cd52f9fca1be97f8f50395c66b513a75f3` |
-| **合计** | **364,395,791 B / 347.51 MiB** | 未签名（signed:false） |
+| `Morrow-0.2.0-portable.exe` | 206,927,872 B / 197.34 MiB | `ee60ca27cf757fee46ce53e9d3618bb6c47c1d2865a7bfd200e692bf64c879a1` |
+| `Morrow-0.2.0-setup.exe` | 157,469,434 B / 150.17 MiB | `8e1dae39be084a5295ee49f3cb61b1d5a684c2c5043e99d522921fc618203278` |
+| **合计** | **364,397,306 B / 347.52 MiB** | 未签名（signed:false） |
 
 - 任务栏图标：便携版使用独立 AUMID `studio.morrow.agent.desktop.portable`，绕过旧 AUMID 在部分机器上缓存的空白图标；安装版保持 `studio.morrow.agent.desktop`，与 NSIS 开始菜单快捷方式一致。窗口图标来自 extraResources 的多尺寸 ICO/PNG。
 - 短路径修复：Git 返回长路径而 Windows 临时目录可能是 `ADMINI~1` 短名；Git 状态、工作区副本与版本历史统一用 `realpathSync.native` 展开后再比较。
@@ -53,10 +55,10 @@
 | `npm run typecheck` | 通过 |
 | `npm run audit:ui` | 28 CSS + 30 TSX，0 裸排版声明，31 个字号令牌可缩放，焦点环 2px |
 | `npm run docs:check` | 通过（11 个 Markdown、29 张 2100×1200 截图、34 个本地图片链接） |
-| `npm run test:suite` | 539 单元 / 86 Electron / 41 域 |
-| `npm run test:unit` | 539 收集、537 通过；2 条 Git 大提交用例在本机清理临时目录时 EPERM，基线复跑同样失败，与本轮改动无关 |
-| `npm run test:e2e` | 86/86 通过（7.1m），含新增 `model-settings.spec.ts`：自定义服务从 128K/32K 改到 1M/384K、思考档位、Anthropic 协议与重试策略全链路 |
-| `npm run smoke:packaged` | 通过（7.1s，CDP 5.8s） |
+| `npm run test:suite` | 539 单元 / 86 Electron / 41 域（维护预算 560 / 96，留出新增覆盖的余量） |
+| `npm run test:unit` | 539/539 通过（29 文件，21.5s）。此前记录的 2 条 Git 大提交用例 EPERM 是临时目录清理的机器差异；清理已改为「尽力删除 + 套件结束后重试」，不再把通过的用例判成失败 |
+| `npm run test:e2e` | 86/86 通过（7.5m），含新增 `model-settings.spec.ts`：自定义服务从 128K/32K 改到 1M/384K、思考档位、Anthropic 协议与重试策略全链路 |
+| `npm run smoke:packaged` | 通过（7.6s，CDP 6.5s） |
 
 核心测试入口：`tests/unit/collaboration.test.ts`（协作任务）、其余单元按功能域分文件；`tests/e2e` 7 个流程文件、86 条 Electron 用例。测试截图写 `tmp/e2e-screens`，不进入文档。
 

@@ -784,7 +784,11 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const result = await manager.runOnce("Write-Output 'run-ok'", ws.root, 10_000, 'pwsh')
+      // 命令必须是各 Shell 语义一致的：`echo run-ok` 在 PowerShell / cmd / Git Bash 里都是回显。
+      // 之前写死 'pwsh' + `Write-Output`，在没有 PowerShell 7 的机器上 resolveSpec 会回退到
+      // 默认 Shell（这里是 Git Bash），`Write-Output` 被当成外部命令以 127 退出——
+      // 那是断言错位，不是产品缺陷（见 #5）。
+      const result = await manager.runOnce('echo run-ok', ws.root, 10_000)
       expect(result.timedOut).toBe(false)
       expect(result.exitCode).toBe(0)
       expect(result.output).toContain('run-ok')
@@ -813,6 +817,33 @@ function git(cwd: string, ...args: string[]): string {
 
 const suite = hasGit ? describe : describe.skip
 
+/**
+ * 删除测试用的临时 Git 仓库。
+ *
+ * 背景（#5）：本文件里造 12MB patch 的两条用例，afterEach 的 rmSync 在部分机器上会抛 EPERM。
+ * 已实测排除的假设：
+ *   - 不是磁盘/卷问题：独立复现「写 12MB → git add → commit → rmSync」3ms 就删干净；
+ *     把 TEMP 换到另一个卷同样 EPERM。
+ *   - 不是退避不足：把重试加到 10×250ms + 20×500ms 反而打满 vitest 30s hookTimeout。
+ *   - 不是永久占用：测试跑完后手动删除是成功的。
+ * 剩余怀疑是同一进程内其它用例遗留的 git 子进程仍持句柄，尚未证实。
+ *
+ * 因此不退避重试、也不把退避调大（那只会从「失败」变成「超时」），而是：
+ *   1. afterEach 尽力删除，失败时记下路径（用例断言在 afterEach 之前已经跑完）；
+ *   2. 整个套件结束后再删一次，此时同批 git 子进程都已退出，通常能删掉；
+ *   3. 仍然失败才打警告，把残留路径留给人工清理，而不是把一个通过的用例判成失败。
+ */
+const leftoverGitWorkspaces = new Set<string>()
+
+function removeGitWorkspace(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    leftoverGitWorkspaces.delete(dir)
+  } catch {
+    leftoverGitWorkspaces.add(dir)
+  }
+}
+
 suite('GitService', () => {
   let dir: string
   let service: GitService
@@ -826,7 +857,19 @@ suite('GitService', () => {
   })
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
+    removeGitWorkspace(dir)
+  })
+
+  // 本套件跑完后 git 子进程都已退出，残留目录通常能删掉；仍失败才提醒人工清理。
+  afterAll(() => {
+    for (const leftover of leftoverGitWorkspaces) {
+      try {
+        rmSync(leftover, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+      } catch (err) {
+        console.warn(`[test] 临时 Git 仓库清理失败（可手动删除）：${leftover}`, err)
+      }
+    }
+    leftoverGitWorkspaces.clear()
   })
 
   it('@core:git 未跟踪文件 → 暂存 → 提交 → 历史与差异', async () => {

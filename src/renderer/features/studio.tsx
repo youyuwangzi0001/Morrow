@@ -5993,9 +5993,12 @@ export function WritingView(): React.JSX.Element {
 
   const replaceOne = (): void => {
     const view = editorRef.current
-    const match = findMatches[Math.min(matchIndex, Math.max(0, findMatches.length - 1))]
-    if (!view || !match) return
+    if (!view) return
     const current = view.state.doc.toString()
+    // 区间以编辑器里的真实文档为准重算：findMatches 来自 React state，理论上可能落后一帧。
+    const matches = findTextRanges(current, findText)
+    if (!matches.length) return
+    const match = matches[Math.min(matchIndex, matches.length - 1)]
     const next = `${current.slice(0, match.from)}${replaceText}${current.slice(match.to)}`
     const nextMatches = findTextRanges(next, findText)
     const cursor = match.from + replaceText.length
@@ -6009,15 +6012,19 @@ export function WritingView(): React.JSX.Element {
 
   const replaceAll = (): void => {
     const view = editorRef.current
-    if (!view || !findMatches.length) return
-    let next = content
-    for (let index = findMatches.length - 1; index >= 0; index -= 1) {
-      const match = findMatches[index]
-      next = `${next.slice(0, match.from)}${replaceText}${next.slice(match.to)}`
+    if (!view) return
+    // 只在命中的区间上做最小改动，并且区间从「正在编辑的文档」重算（不是从 React state）。
+    // 整篇重写成 next 会：① 依赖 state 与编辑器严格同步；② 让撤销退化成一次整篇替换。
+    const doc = view.state.doc.toString()
+    const ranges = findTextRanges(doc, findText)
+    if (!ranges.length) {
+      setFindOpen(false)
+      notify('info', '当前内容里已经没有匹配项。')
+      return
     }
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } })
+    view.dispatch({ changes: ranges.map((match) => ({ from: match.from, to: match.to, insert: replaceText })) })
     setFindOpen(false)
-    notify('success', `已替换 ${findMatches.length} 处。`)
+    notify('success', `已替换 ${ranges.length} 处。`)
   }
 
   const openFind = (mode: 'find' | 'replace'): void => {
