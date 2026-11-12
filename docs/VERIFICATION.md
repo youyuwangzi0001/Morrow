@@ -16,7 +16,7 @@
 
 ## 结论
 
-门禁记录日期 2026-10-26，对应版本 `0.1.0`、运行时 `r019`、平台 Windows 10/11 x64。对外资产是 2026-11-05 的清理后重发包（功能不变），哈希以下表为准。
+2026-10-24 首发，2026-11-05 清理死代码与空行后重发（功能不变，资产已替换，旧哈希作废）。门禁记录日期 2026-10-26，对应版本 `0.1.0`、运行时 `r019`、平台 Windows 10/11 x64。交付校验以下表的 11-05 重发包为准。
 
 | 门禁 | 结果 |
 |---|---|
@@ -29,7 +29,7 @@
 | 指南截图 | 11 个截图用例全部通过，生成 12 张图 |
 | 交付 | 两个 exe 与源码包；Release 另附 `LICENSE`、`Morrow-0.1.0-usage.txt`、`SHA256SUMS.txt` 等 |
 
-机器证据：[`verification/packaging.json`](verification/packaging.json)、[`verification/smoke-packaged.json`](verification/smoke-packaged.json) 对应 2026-11-05 重发包；[`verification/artifacts.json`](verification/artifacts.json) 与 [`verification/eval-results.json`](verification/eval-results.json) 是 2026-10-26 验收轮记录，其中的资产哈希是旧基线，不用于校验当前 Release 附件。
+机器证据：[`packaging.json`](evidence/packaging.json)、[`smoke-packaged.json`](evidence/smoke-packaged.json) 对应 2026-11-05 重发包；[`artifacts.json`](evidence/artifacts.json) 与 [`eval-results.json`](evidence/eval-results.json) 是 2026-10-26 验收轮记录，`artifacts.json` 里的资产哈希已标为旧基线（`legacyArtifacts`），不用于校验当前 Release 附件。
 
 ## 交付物与校验
 
@@ -57,7 +57,7 @@
 | 启动器 `build/launcher/` | 1 | 625 |
 | **代码合计** | **351** | **171,550** |
 
-单元测试 14 个套件 / 952 个用例（944 passed + 8 skipped）；E2E 17 个套件 / 209 个用例，沿用上一轮基线，记录为 197 passed + 11 skipped；打包冒烟 5/5。Agent 质量评测四项指标与结果见 [开发指南](DEVELOPMENT.md#质量门槛与评测) 与 [`eval-results.json`](verification/eval-results.json)。
+单元测试 14 个套件 / 952 个用例（944 passed + 8 skipped）；E2E 17 个套件 / 209 个用例，沿用上一轮基线，记录为 197 passed + 11 skipped；打包冒烟 5/5。Agent 质量评测四项指标与结果见 [开发指南](DEVELOPMENT.md#质量门槛与评测) 与 [`eval-results.json`](evidence/eval-results.json)。
 
 ## 本版能力状态
 
@@ -84,7 +84,24 @@
 
 ## 截图证据
 
-12 张指南截图来自当前构建的真实 Electron E2E，覆盖首次启动、主界面、审批卡、编辑器与画布、模型/订阅/外观/多媒体设置、浏览器、终端、记忆中心与项目主页。来源 spec、尺寸与替代文本记录在 [`guide/screens/manifest.json`](guide/screens/manifest.json)。文档只引用这些图片，不手工伪造界面。
+12 张指南截图来自当前构建的真实 Electron E2E，覆盖首次启动、主界面、审批卡、编辑器与画布、模型/订阅/外观/多媒体设置、浏览器、终端、记忆中心与项目页。文档只引用这些图片，不手工伪造界面；替代文本写在各文档的引用处。
+
+| 文件 | 实际尺寸 | 引用于 |
+|---|---:|---|
+| `screens/guide-onboarding.png` | 2100×1200 | [README](../README.md)、[README.zh](../README.zh.md)、[快速开始](GETTING-STARTED.md) |
+| `screens/guide-chat.png` | 2100×1200 | [README](../README.md)、[README.zh](../README.zh.md)、[用户指南](USER-GUIDE.md) |
+| `screens/guide-permission.png` | 2102×1203 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-editor.png` | 2102×1203 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-settings-models.png` | 1320×966 | [快速开始](GETTING-STARTED.md) |
+| `screens/guide-subscriptions.png` | 1322×969 | [README](../README.md)、[README.zh](../README.zh.md)、[模型与订阅](MODELS.md) |
+| `screens/guide-settings-appearance.png` | 1320×966 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-settings-media.png` | 1320×966 | [多媒体](MEDIA.md) |
+| `screens/guide-browser.png` | 2100×1200 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-terminal.png` | 2100×1200 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-memory.png` | 2100×1200 | [用户指南](USER-GUIDE.md) |
+| `screens/guide-projects.png` | 1560×990 | [用户指南](USER-GUIDE.md) |
+
+尺寸是抓图时的实际像素：多数主窗口图为 2100×1200，设置页为 1320×966；03/04 为 2102×1203、06 为 1322×969、12 为 1560×990。本版没有重拍，也没有缩放或裁剪，因此不是每张都恰好 2100×1200。`guide-browser.png` 抓取时页面内容区为空，图只展示标签页、地址栏与前进/后退按钮，不代表浏览器只能显示空白。
 
 ## 验证边界
 

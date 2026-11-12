@@ -41,7 +41,7 @@ It is built for people who work on local files: writing and editing, data analys
 - Official agent subscriptions for ChatGPT/Codex, Qoder, Kimi Code, GLM Coding Plan, MiniMax Code, Step Plan, Command Code, Cline Pass, Google Antigravity, and OpenCode, plus third-party coding plans. Credentials are encrypted locally and proxied through a loopback server.
 - Model capabilities are runtime metadata: the picker shows the real model name, thinking effort only lists levels the model declares, and context tiers (for example Qoder 200K / 400K / 1M) are selectable per session.
 
-<p align="center"><img src="docs/guide/screens/06-subscriptions-dark.png" alt="Settings · Subscriptions showing ChatGPT/Codex account connection options" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-subscriptions.png" alt="Settings · Subscriptions with the ChatGPT/Codex account options: import the local Codex CLI login, sign in through the browser, or pick an auth.json" width="100%"></p>
 - Local media through ComfyUI, llama.cpp, Ollama, and LM Studio: image and video generation, short films, animations, editing and inspection with ffmpeg, and `describe_media` review that prefers the current chat model and falls back only to a model that declares vision.
 
 ## Installation
@@ -54,7 +54,7 @@ Morrow 0.1.0 ships as two Windows x64 executables plus a source archive on the [
 | `Morrow-0.1.0-setup.exe` | You want Start menu and desktop shortcuts and a per-user install. Data defaults to `%APPDATA%\Morrow`. |
 | `Morrow-0.1.0-source.zip` | You want to read or build the exact source of this release. |
 
-<p align="center"><img src="docs/guide/screens/01-onboarding-dark.png" alt="Morrow first-run onboarding with the three setup steps and the offline demo entry" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-onboarding.png" alt="Morrow first-run onboarding: the three setup steps on the left and the offline demo and setup buttons on the right" width="100%"></p>
 
 The executables are not code-signed, so Windows SmartScreen may warn on first launch: choose **More info → Run anyway** after verifying the download. Compare the file hash with `SHA256SUMS.txt` attached to the Release:
 
@@ -83,7 +83,7 @@ npm run preview
 3. Describe the outcome in the composer and press Enter. Choose a mode first when you want a plan, a research brief, or a long-running goal.
 4. Review approval cards and file diffs as they appear. Finished artifacts open in the canvas; commands run in the terminal panel.
 
-<p align="center"><img src="docs/guide/screens/02-chat-home-dark.png" alt="Morrow home screen with the session sidebar, mode and permission controls, and the composer" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-chat.png" alt="Morrow home screen with the session sidebar, the welcome prompt, the artifact panel on the right, and the composer with mode and permission controls" width="100%"></p>
 
 The full walkthrough, including the three-step first-run guide, is in [Getting started](docs/GETTING-STARTED.md).
 

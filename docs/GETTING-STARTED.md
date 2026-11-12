@@ -30,7 +30,7 @@ Get-Content .\SHA256SUMS.txt
 2. 连接一个模型；
 3. 选择工作文件夹。
 
-![首次启动：认识 Morrow、连接模型、选择工作文件夹](guide/screens/01-onboarding-dark.png)
+![首次启动：左侧三步引导（认识 Morrow、连接模型、选择工作文件夹），右侧演示与设置入口](screens/guide-onboarding.png)
 
 引导可以关闭，但模型与工作区没配好时无法执行真实任务。模型下拉为空、侧栏显示“未连接”，通常就是这一步没完成。
 
@@ -42,7 +42,7 @@ Get-Content .\SHA256SUMS.txt
 - **本机服务**：设置 → 模型 → llama.cpp / Ollama / LM Studio，填真实的模型 ID；本机或局域网地址允许空 Key。
 - **订阅账号**：设置 → 订阅 → 选择渠道登录，或只读导入本机已有的官方客户端凭据。
 
-![设置 · 模型：服务商、API Key、当前默认模型与思考档位](guide/screens/05-settings-models-dark.png)
+![设置 · 模型：服务商下拉、API Key 与服务地址、连接按钮，以及当前可用的模型列表](screens/guide-settings-models.png)
 
 保存后回到输入框，模型选择器应出现该 Provider 下的模型。若仍为空，检查 Provider 是否启用、模型 ID 是否为空、Key 是否保存成功。
 

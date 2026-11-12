@@ -41,7 +41,7 @@ Morrow 是一个 Windows 桌面应用，把 AI Agent 放进你自己的文件夹
 - 官方 Agent 订阅覆盖 ChatGPT/Codex、Qoder、Kimi Code、GLM Coding Plan、MiniMax Code、Step Plan、Command Code、Cline Pass、Google Antigravity、OpenCode，以及第三方 coding plan。凭据加密保存在本机，请求经过回环代理。
 - 模型能力是运行时元数据：选择器显示真实模型名，思考档位只列出模型声明的级别，上下文档位（例如 Qoder 的 200K / 400K / 1M）可按会话选择。
 
-<p align="center"><img src="docs/guide/screens/06-subscriptions-dark.png" alt="设置 · 订阅：ChatGPT / Codex 账号连接选项" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-subscriptions.png" alt="设置 · 订阅：ChatGPT / Codex 账号连接选项，包括导入本机 Codex CLI 登录、浏览器登录与选择 auth.json" width="100%"></p>
 - 通过 ComfyUI、llama.cpp、Ollama、LM Studio 使用本机多媒体：图片与视频生成、短片、动画、基于 ffmpeg 的剪辑与检查，以及 `describe_media` 审看；审看优先当前对话模型，只回退到声明视觉能力的模型。
 
 ## 安装
@@ -54,7 +54,7 @@ Morrow 0.1.0 以两个 Windows x64 可执行文件和一份源码包发布，见
 | `Morrow-0.1.0-setup.exe` | 想要开始菜单与桌面快捷方式、按当前用户安装。数据默认在 `%APPDATA%\Morrow`。 |
 | `Morrow-0.1.0-source.zip` | 想阅读或构建这一版的完整源码。 |
 
-<p align="center"><img src="docs/guide/screens/01-onboarding-dark.png" alt="首次启动引导：认识 Morrow、连接模型、选择文件夹，以及离线演示入口" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-onboarding.png" alt="首次启动引导：左侧三步设置步骤，右侧“先看一场演示”与“开始设置”入口" width="100%"></p>
 
 可执行文件未做代码签名，首次运行可能触发 Windows SmartScreen：核对下载后选择 **更多信息 → 仍要运行**。请与 Release 附带的 `SHA256SUMS.txt` 比对文件哈希：
 
@@ -83,7 +83,7 @@ npm run preview
 3. 在输入框描述想要的结果并按 Enter。需要计划、研究报告或长任务时先切换对应模式。
 4. 出现审批卡与文件 diff 时逐项审阅。完成的成品在画布中打开，命令在终端面板执行。
 
-<p align="center"><img src="docs/guide/screens/02-chat-home-dark.png" alt="主界面：会话侧栏、模式与权限控件，以及底部输入框" width="100%"></p>
+<p align="center"><img src="docs/screens/guide-chat.png" alt="主界面：会话侧栏、右侧成品面板，以及带模式与权限控件的底部输入框" width="100%"></p>
 
 包括三步首次启动引导在内的完整流程见 [快速开始](docs/GETTING-STARTED.md)。
 

@@ -92,7 +92,7 @@ Step、Command Code、OpenCode 与自定义 OpenAI 兼容网关优先使用真�
 
 ## 订阅渠道
 
-![设置 · 订阅：ChatGPT/Codex 与 Qoder 等官方账号接入](guide/screens/06-subscriptions-dark.png)
+![设置 · 订阅：ChatGPT/Codex 详情页，提供导入本机 Codex CLI 登录、浏览器登录与选择 auth.json](screens/guide-subscriptions.png)
 
 | 渠道 | 登录或导入 | 模型目录 | 额度 |
 |---|---|---|---|

@@ -1,6 +1,8 @@
 {
   "product": "Morrow",
   "version": "0.1.0",
+  "status": "legacy-baseline",
+  "statusNote": "2026-10-26 验收轮的机器记录，保留作历史对照。交付资产的哈希与大小以 docs/evidence/packaging.json 和 Release 附带的 SHA256SUMS.txt 为准；legacyArtifacts 内的哈希属于旧构建，不用于校验当前 Release 附件。",
   "builtAt": "2026-10-25T19:53:32.500Z",
   "platform": "win32-x64",
   "source": {
@@ -170,16 +172,15 @@
   "docs": {
     "files": 15,
     "markdown": 15,
-    "lines": 2142,
-    "guideScreens": 12,
-    "manifest": "docs/guide/screens/manifest.json"
+    "screens": 12,
+    "screensDir": "docs/screens/"
   },
-  "delivery": {
+  "legacyDelivery": {
     "fileCount": 5,
     "bytes": 362613074,
     "mib": 345.81
   },
-  "artifacts": [
+  "legacyArtifacts": [
     {
       "name": "LICENSE",
       "bytes": 1070,

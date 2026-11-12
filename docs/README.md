@@ -28,7 +28,7 @@
 | 这一版交付了什么、测试结果与哈希在哪 | [交付验证](VERIFICATION.md) |
 | 想贡献代码或报告漏洞 | [贡献指南](../CONTRIBUTING.md)、[安全策略](../SECURITY.md) |
 
-截图目录是 [`guide/screens/`](guide/screens/manifest.json)：12 张深色主题截图由 E2E 在真实 Electron 窗口中生成，`manifest.json` 记录来源、尺寸与替代文本。文档只引用这些图片，不手工拼界面。
+截图放在 `docs/screens/`，文件名为 `guide-<语义名>.png`：12 张深色主题截图由 E2E 在真实 Electron 窗口中生成。每张图的尺寸与引用位置记录在 [交付验证](VERIFICATION.md#截图证据)；文档只引用这些图片，不手工拼界面。
 
 ## 文档约定
 
@@ -45,7 +45,7 @@
 ## 版本与证据
 
 - 产品版本：`0.1.0`；平台：Windows 10/11 x64；交付形态：单文件便携版、NSIS 安装包、源码包。
-- 机器证据：[`verification/artifacts.json`](verification/artifacts.json)（2026-10-26 验收轮的代码规模与资产旧基线）、[`verification/packaging.json`](verification/packaging.json)（2026-11-05 重发包记录）、[`verification/smoke-packaged.json`](verification/smoke-packaged.json)（便携包冒烟）、[`verification/eval-results.json`](verification/eval-results.json)（Agent 质量评测）。
+- 机器证据：[`artifacts.json`](evidence/artifacts.json)（2026-10-26 验收轮的代码规模与资产旧基线，不用于校验当前 Release 附件）、[`packaging.json`](evidence/packaging.json)（2026-11-05 重发包记录）、[`smoke-packaged.json`](evidence/smoke-packaged.json)（便携包冒烟）、[`eval-results.json`](evidence/eval-results.json)（Agent 质量评测）。这些文件是机器记录，不进入人类阅读路径。
 - 人类可读的结论、门禁与已知边界：[VERIFICATION.md](VERIFICATION.md)。
 
 ## 维护规则
@@ -59,6 +59,6 @@
 | 媒体工具、引擎或审看顺序 | [多媒体](MEDIA.md) |
 | 进程、权限、持久化、IPC | [架构说明](ARCHITECTURE.md) |
 | 脚本、测试、打包、UI token | [开发指南](DEVELOPMENT.md) |
-| 发布门禁、截图、交付哈希 | [VERIFICATION.md](VERIFICATION.md) 与 `guide/screens/manifest.json` |
+| 发布门禁、截图、交付哈希 | [VERIFICATION.md](VERIFICATION.md) 与 `docs/screens/`、`docs/evidence/` |
 
-视觉变化需要重跑截图用例并更新 `manifest.json`；不要手绘或拼接界面图。
+视觉变化需要重跑截图用例并按 `guide-<语义名>.png` 更新图片；不要手绘或拼接界面图。

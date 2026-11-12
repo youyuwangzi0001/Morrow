@@ -27,7 +27,7 @@
 
 设置 → 多媒体可以检测引擎、显示版本与显存、填写安装目录与模型目录、指定 ffmpeg、调整超时。ComfyUI 目录为空时会探测常见安装位置，显式填写的目录优先。
 
-![设置 · 多媒体：本机引擎、模型目录与导入模型入口](guide/screens/08-media-models-dark.png)
+![设置 · 多媒体：引擎安装入口、模型列表（Qwen-Image、MiniMax-H3、Coder390）与“添加本机模型 / 导入模型 JSON”入口](screens/guide-settings-media.png)
 
 ## 模型目录与安装方式
 

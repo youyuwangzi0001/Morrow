@@ -10,6 +10,7 @@
 - [脚本](#脚本)
 - [测试分层](#测试分层)
 - [质量门槛与评测](#质量门槛与评测)
+- [文档结构](#文档结构)
 - [打包与交付](#打包与交付)
 - [UI 契约](#ui-契约)
 - [代码与提交约定](#代码与提交约定)
@@ -63,7 +64,7 @@ npm run dev
 | 打包冒烟 | Playwright + 便携包 | 解压启动、PTY、文档工具、原生浏览器、双数据目录 |
 | 真账号与真引擎 | 手动或条件测试 | 登录、真实模型调用、Qoder 模型目录、媒体生成 |
 
-测试在临时数据目录中运行，避免污染用户数据。涉及界面截图时，图由 E2E 在真实窗口中生成并写入 `docs/guide/screens/`，来源记录在 `manifest.json`；不要手工替换或重绘。
+测试在临时数据目录中运行，避免污染用户数据。涉及界面截图时，图由 E2E 在真实窗口中生成并写入 `docs/screens/`，文件名保持 `guide-<语义名>.png`；尺寸与引用位置见 [交付验证](VERIFICATION.md#截图证据)。不要手工替换或重绘。
 
 ## 质量门槛与评测
 
@@ -92,7 +93,36 @@ Agent 质量评测是离线确定性套件（`npm run test:eval`，Mock Provider
 | CKR | 压缩后关键决定保留率 | 2 个场景、预期保留 10 项、实际 10 项 |
 | TSS | Token 曲线斜率 | 80 轮、压缩 12 次，基线斜率 494，管理后 −0.04 |
 
-综合记录为 100/100，结果文件是 [`verification/eval-results.json`](verification/eval-results.json)。这是确定性 Mock 测试的结论，不等同于任意真实模型的表现；真实模型仍需按任务验收。
+综合记录为 100/100，结果文件是 [`evidence/eval-results.json`](evidence/eval-results.json)。这是确定性 Mock 测试的结论，不等同于任意真实模型的表现；真实模型仍需按任务验收。
+
+## 文档结构
+
+文档树按版本固定，改文档时不要新增平行的编号目录：
+
+```text
+README.md / README.zh.md   英文主文件与中文镜像
+CHANGELOG.md               双语版本记录
+CONTRIBUTING.md            提交与协作
+SECURITY.md                安全边界与漏洞报告
+docs/
+  README.md                文档地图
+  GETTING-STARTED.md       安装与首次启动
+  USER-GUIDE.md            日常操作
+  MODELS.md                模型与订阅
+  MEDIA.md                 多媒体与引擎
+  REFERENCE.md             快捷键、路径、变量、技能
+  TROUBLESHOOTING.md       排障
+  ARCHITECTURE.md          架构
+  DEVELOPMENT.md           开发与打包
+  VERIFICATION.md          交付证据
+  screens/guide-*.png      真实界面截图
+  evidence/*.json          机器证据
+  cover.png                README 封面
+```
+
+- 截图放 `docs/screens/`，文件名用 `guide-<语义名>.png`；不重绘、不拼接、不手工缩放。
+- 机器证据放 `docs/evidence/`，不进入人类阅读路径。
+- `docs/cover.png` 故意放在 `screens/` 之外：它是 README 封面，不是界面截图，避免被截图尺寸检查混入。
 
 ## 打包与交付
 

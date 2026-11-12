@@ -76,7 +76,8 @@
     }
   },
   "logs": {
-    "combined": "docs/verification/logs/dist-portable-2026-11-05T04-29-58-230Z.log"
+    "combined": "docs/evidence/logs/dist-portable-2026-11-05T04-29-58-230Z.log",
+    "note": "构建日志未随仓库提交，路径是迁移后 docs/evidence/ 下的相对位置。"
   },
   "signing": {
     "enabled": false,
