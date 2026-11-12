@@ -34,6 +34,7 @@
 - 本机多媒体依赖用户自己的引擎、显卡与 ffmpeg；缺失时返回真实错误。Antigravity 登录需要自行提供 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
 - 2026-11-05 的重发包只清理死代码与空行，功能与文件结构不变；发布资产已替换，旧哈希作废。
 - 源码包内的文档是打包时快照；源码包哈希以同名 `.sha256` 侧车为准。
+- 本版文档体系于 2026-11-12 重构，仅文档变更；发布资产与源码包未重新打包。
 
 ### English
 
@@ -63,3 +64,4 @@ The first public release: conversation, planning, file editing, an artifact canv
 - Local media requires your own engines, GPU, and ffmpeg, and reports a real error when they are missing. Antigravity login requires you to supply `MORROW_ANTIGRAVITY_CLIENT_SECRET`.
 - The 2026-11-05 repack only removed dead code and blank lines; behavior and file structure are unchanged, the release assets were replaced, and old hashes are obsolete.
 - Documentation inside the source archive is a snapshot taken at packaging time; the archive hash is the sidecar `.sha256` file next to it.
+- The documentation set was rebuilt on 2026-11-12 as a documentation-only change; the release assets and source archive were not rebuilt.
