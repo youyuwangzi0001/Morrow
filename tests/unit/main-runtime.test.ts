@@ -784,7 +784,13 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      const result = await manager.runOnce("Write-Output 'run-ok'", ws.root, 10_000, 'pwsh')
+      // 用本机真实可用的 Shell 跑，而不是写死 pwsh：resolveSpec 找不到 pwsh 时会回退到
+      // 默认 Shell，`Write-Output` 被 Git Bash 执行就会以 127 退出，断言错位而不代表产品有问题。
+      const ids = manager.profiles().map((profile) => profile.id)
+      const shellId = ids.includes('pwsh') ? 'pwsh' : ids.includes('gitbash') ? 'gitbash' : undefined
+      // 两种 Shell 语法不同：PowerShell 用 Write-Output，POSIX 用 printf。
+      const command = shellId === 'pwsh' ? "Write-Output 'run-ok'" : "printf 'run-ok\\n'"
+      const result = await manager.runOnce(command, ws.root, 10_000, shellId)
       expect(result.timedOut).toBe(false)
       expect(result.exitCode).toBe(0)
       expect(result.output).toContain('run-ok')
@@ -813,6 +819,29 @@ function git(cwd: string, ...args: string[]): string {
 
 const suite = hasGit ? describe : describe.skip
 
+/**
+ * 删除测试用的临时 Git 仓库。
+ *
+ * 已知问题：本文件里造 12MB patch 的两条用例，afterEach 的 rmSync 在本机稳定抛 EPERM。
+ * 已排除的假设（本次实测）：
+ *   - 不是磁盘/卷问题：同环境下独立复现「写 12MB → git add → commit → rmSync」3ms 就删干净；
+ *     把 TEMP 换到另一个卷同样 EPERM。
+ *   - 不是退避不足：把重试加到 10×250ms + 20×500ms 反而打满 vitest 30s hookTimeout。
+ *   - 不是永久占用：测试跑完后手动删除是成功的。
+ * 剩余怀疑是同一进程内其它用例遗留的 git 子进程仍持句柄，尚未证实。
+ *
+ * 因此这里不改退避数值（那只会掩盖症状），而是把清理失败与用例结果解耦：
+ * 用例断言在 afterEach 之前已经跑完，残留目录只打警告、由调用方另行清理。
+ */
+function removeGitWorkspace(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  } catch (err) {
+    // 用例本身的断言已经结束；把路径打出来，避免「删不掉临时目录」被算成产品失败。
+    console.warn(`[test] 临时 Git 仓库清理失败（可手动删除）：${dir}`, err)
+  }
+}
+
 suite('GitService', () => {
   let dir: string
   let service: GitService
@@ -826,7 +855,7 @@ suite('GitService', () => {
   })
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
+    removeGitWorkspace(dir)
   })
 
   it('@core:git 未跟踪文件 → 暂存 → 提交 → 历史与差异', async () => {
