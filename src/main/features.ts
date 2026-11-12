@@ -10,7 +10,7 @@ import { getSettingsStore } from './settings'
 import { getSessionStore } from './session'
 import type { IpcMainInvokeEvent } from 'electron'
 import { app, nativeImage, BrowserWindow, dialog } from 'electron'
-import { registerFeatureHandler, sendFeatureEvent } from './feature-ipc'
+import { registerFeatureHandler, sendFeatureEvent, setReadOnlyProbe } from './feature-ipc'
 import { BrowserService, browserService } from './artifacts'
 import type { BrowserBridge } from '../core/util'
 import { setBrowserBridge } from '../core/util'
@@ -1340,6 +1340,10 @@ function globalReadOnly(): boolean {
     return false
   }
 }
+
+// 只读档的通道级门禁在 feature-ipc 的统一包装层执行（见 WRITE_ACTIONS）：
+// 逐个 handler 手写会漏掉 git / terminal 这类写通道，而它们此前确实没有门禁。
+setReadOnlyProbe(globalReadOnly)
 
 function assertWritable(): void {
   if (globalReadOnly()) {
