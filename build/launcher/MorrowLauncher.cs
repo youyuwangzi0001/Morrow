@@ -22,6 +22,7 @@ using System.IO.Pipes;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -33,6 +34,7 @@ internal static class MorrowLauncher
     private const string AppExeName = "Morrow-app.exe";
     private const string ZipResourceName = "MorrowApp.zip";
     private const string RuntimeStampFile = ".morrow-runtime-complete";
+    private const string BrokerArgument = "--shell-broker";
     private static string cachedRuntimeStamp;
 #if FOLDER_MODE
     private const bool FolderMode = true;
@@ -43,6 +45,13 @@ internal static class MorrowLauncher
     [MTAThread]
     private static int Main(string[] args)
     {
+        // 受限 Shell 代理进程：只提供命名管道服务，不再解压或启动应用。
+        if (args != null && args.Length >= 2 && args[0] == BrokerArgument)
+        {
+            RunShellBroker(args[1]);
+            return 0;
+        }
+
         string exePath = Assembly.GetExecutingAssembly().Location;
         string exeDir = Path.GetDirectoryName(exePath);
         string exeRuntimeDir = Path.Combine(exeDir, AppFolderName);
@@ -54,6 +63,7 @@ internal static class MorrowLauncher
             if (savedDir != null && RuntimeIsCurrent(savedDir)) appDir = savedDir;
         }
         string appExe = Path.Combine(appDir, AppExeName);
+        string brokerTask = null;
 
         try
         {
@@ -92,15 +102,16 @@ internal static class MorrowLauncher
             string tempDir = Path.Combine(appDir, ".morrow-temp");
             Directory.CreateDirectory(tempDir);
 
-            // 交付目录若带 Low 完整性标签，解压出的应用也会继承 Low：COM 与 Explorer 都会被
-            // 系统拒绝。启动器此时已是 Medium，启动前把应用本体也标成 Medium，子进程才能正常
-            // 使用文件管理器定位/系统程序打开。
-            EnsureMediumIntegrity(appExe);
-
-            // Electron 主进程在某些 Windows 会话/作业对象里无法创建 Explorer 等 GUI 子进程
-            // （0xC0000142）。启动器自己留在应用外部，用主线程（STA）提供文件打开/定位代理。
-            // 不能把代理放在后台线程：部分 Windows 会话会拒绝后台线程创建 Explorer 窗口。
-            string brokerPipe = "morrow-launcher-" + Guid.NewGuid().ToString("N");
+            // Electron 直接创建 explorer.exe 会以 0xC0000142 失败；受限作业对象下即使
+            // PowerShell/Shell COM 也会被拒绝。把代理放进任务计划程序：任务由系统服务
+            // 在自己的进程里拉起，脱离应用的作业与令牌限制，再用现有 Explorer 打开目标。
+            string brokerPipe = NewBrokerPipe();
+            bool externalBroker = StartScheduledShellBroker(brokerPipe, out brokerTask);
+            if (!externalBroker)
+            {
+                // 任务代理不可用时退回进程内代理；普通桌面会话来仍能正常工作。
+                brokerPipe = NewBrokerPipe();
+            }
 
             ProcessStartInfo startInfo = new ProcessStartInfo(appExe);
             startInfo.WorkingDirectory = appDir;
@@ -122,24 +133,36 @@ internal static class MorrowLauncher
             {
                 throw new InvalidOperationException("Morrow-app.exe 未能启动。");
             }
-            // 应用退出后由后台监视线程结束启动器；主线程（STA）继续提供代理服务。
+            // 应用退出后由后台监视线程结束启动器与外部代理；主线程继续提供代理服务。
             Thread monitor = new Thread(() =>
             {
+                int code = 1;
                 try
                 {
                     appProcess.WaitForExit();
-                    Environment.Exit(appProcess.ExitCode);
+                    code = appProcess.ExitCode;
                 }
                 catch
                 {
-                    Environment.Exit(1);
+                    code = 1;
                 }
+                SendBrokerShutdown(brokerPipe);
+                if (!string.IsNullOrEmpty(brokerTask)) DeleteScheduledTask(brokerTask);
+                Environment.Exit(code);
             });
             monitor.IsBackground = true;
             monitor.Name = "MorrowAppMonitor";
             monitor.Start();
 
-            RunShellBroker(brokerPipe, 0);
+            if (externalBroker)
+            {
+                // 外部代理已持有命名管道；等监视线程发送 SHUTDOWN 并删除任务后再退出，
+                // 否则主线程先返回会截断后台清理，留下隐藏任务和孤儿代理进程。
+                appProcess.WaitForExit();
+                monitor.Join(10000);
+                return appProcess.ExitCode;
+            }
+            RunShellBroker(brokerPipe);
             return 0;
         }
         catch (Exception ex)
@@ -155,34 +178,12 @@ internal static class MorrowLauncher
 
     /// <summary>
     /// 启动一个仅服务于本次 Morrow 进程的命名管道代理。
-    /// 命令格式：OPEN/REVEAL + 空格 + UTF-8 路径的 Base64。返回 OK 或 ERR\t原因。
-    /// 路径必须是绝对路径且真实存在；命令通过 Process.Start 参数传递，不经过 shell 拼接。
+    /// 命令格式：OPEN/REVEAL/SHUTDOWN + 空格 + UTF-8 路径的 Base64。返回 OK 或 ERR\t原因。
     /// </summary>
-    private static void RunShellBroker(string pipeName, int parentPid)
+    private static void RunShellBroker(string pipeName)
     {
-        // 父启动器退出后代理必须自行结束，避免留下一个永远等待管道的后台进程。
-        if (parentPid > 0)
-        {
-            Thread watchdog = new Thread(() =>
-            {
-                while (true)
-                {
-                    Thread.Sleep(2000);
-                    try
-                    {
-                        Process.GetProcessById(parentPid);
-                    }
-                    catch
-                    {
-                        Environment.Exit(0);
-                    }
-                }
-            });
-            watchdog.IsBackground = true;
-            watchdog.Name = "MorrowBrokerWatchdog";
-            watchdog.Start();
-        }
-
+        // explorer.exe 启动失败时不要弹出系统错误框（0xC0000142）。
+        SetErrorMode(0x0001 | 0x0002 | 0x4000);
         while (true)
         {
             try
@@ -199,7 +200,13 @@ internal static class MorrowLauncher
                     using (StreamWriter writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true))
                     {
                         string line = reader.ReadLine();
-                        string response = HandleShellRequest(line);
+                        string trimmed = (line ?? string.Empty).Trim();
+                        if (trimmed.Equals("SHUTDOWN", StringComparison.OrdinalIgnoreCase) ||
+                            trimmed.StartsWith("SHUTDOWN ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return;
+                        }
+                        string response = HandleShellRequestWithTimeout(line);
                         writer.Write(response + "\n");
                         writer.Flush();
                     }
@@ -212,79 +219,299 @@ internal static class MorrowLauncher
         }
     }
 
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern int SHParseDisplayName(string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
-
-    [DllImport("shell32.dll")]
-    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr[] apidl, uint dwFlags);
-
-    [DllImport("shell32.dll")]
-    private static extern void ILFree(IntPtr pidl);
-
-    /// <summary>由现有 Explorer 打开文件夹并选中目标；不创建新的 explorer.exe 进程。</summary>
-    private static bool RevealWithShell(string target)
+    private static string HandleShellRequestWithTimeout(string line)
     {
-        IntPtr pidl = IntPtr.Zero;
-        uint attributes;
-        int hr = SHParseDisplayName(target, IntPtr.Zero, out pidl, 0, out attributes);
-        if (hr != 0 || pidl == IntPtr.Zero) return false;
-        try
+        string response = "ERR\t系统 Shell 未响应";
+        Thread worker = new Thread(() =>
         {
-            return SHOpenFolderAndSelectItems(pidl, 0, null, 0) == 0;
-        }
-        finally
-        {
-            ILFree(pidl);
-        }
+            try
+            {
+                response = HandleShellRequest(line);
+            }
+            catch (Exception ex)
+            {
+                response = "ERR\t" + CleanMessage(ex.Message);
+            }
+        });
+        worker.IsBackground = true;
+        worker.Name = "MorrowShellRequest";
+        worker.Start();
+        if (!worker.Join(5000)) return "ERR\t系统 Shell 未响应";
+        return response;
     }
 
-    /// <summary>
-    /// 把应用本体标成 Medium 完整性。目录继承的 Low 标签会让进程无法激活 Shell COM，
-    /// 也无法启动 Explorer；这里只处理 exe 本身，失败时继续启动。
-    /// </summary>
-    private static void EnsureMediumIntegrity(string filePath)
+    private static string NewBrokerPipe()
     {
+        return "morrow-launcher-" + Guid.NewGuid().ToString("N");
+    }
+
+    private const string BrokerTaskPrefix = "MorrowShellBroker-";
+
+    /// <summary>
+    /// 任务计划程序由系统服务拉起代理，进程不继承 Electron/启动器的作业对象。
+    /// 受限会话里 Electron 自己创建 explorer.exe 会 0xC0000142，只有这个入口能稳定打开窗口。
+    /// </summary>
+    private static bool StartScheduledShellBroker(string pipeName, out string taskName)
+    {
+        string candidate = BrokerTaskPrefix + Guid.NewGuid().ToString("N").Substring(0, 12);
+        taskName = null;
+        string self = Assembly.GetExecutingAssembly().Location;
+        string powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        if (!File.Exists(powershell)) return false;
+        string user = WindowsIdentity.GetCurrent().Name;
+        bool started = false;
+
+        Thread setup = new Thread(() =>
+        {
+            object service = null;
+            object folder = null;
+            object task = null;
+            object principal = null;
+            object settings = null;
+            object actions = null;
+            object action = null;
+            object registered = null;
+            try
+            {
+                Type serviceType = Type.GetTypeFromProgID("Schedule.Service");
+                if (serviceType == null) return;
+                service = Activator.CreateInstance(serviceType);
+                InvokeCom(service, "Connect");
+                folder = InvokeCom(service, "GetFolder", "\\");
+                CleanupStaleBrokerTasks(folder);
+                task = InvokeCom(service, "NewTask", 0);
+                principal = GetCom(task, "Principal");
+                SetCom(principal, "UserId", user);
+                SetCom(principal, "LogonType", 3);
+                SetCom(principal, "RunLevel", 0);
+                settings = GetCom(task, "Settings");
+                SetCom(settings, "Hidden", true);
+                SetCom(settings, "AllowDemandStart", true);
+                SetCom(settings, "Enabled", true);
+                SetCom(settings, "DisallowStartIfOnBatteries", false);
+                SetCom(settings, "StopIfGoingOnBatteries", false);
+                SetCom(settings, "ExecutionTimeLimit", "PT0S");
+                actions = GetCom(task, "Actions");
+                action = InvokeCom(actions, "Create", 0);
+                // 直接以中文目录里的 exe 作为任务动作会被计划程序判为找不到文件；
+                // 用 ASCII 的 powershell.exe 作为动作，再由它启动代理，Unicode 路径保持在参数里。
+                string brokerCommand = "-NoProfile -NonInteractive -WindowStyle Hidden -Command \"Start-Process -FilePath '" +
+                    self.Replace("'", "''") + "' -ArgumentList '--shell-broker " + pipeName + "' -WindowStyle Hidden\"";
+                SetCom(action, "Path", powershell);
+                SetCom(action, "Arguments", brokerCommand);
+                SetCom(action, "WorkingDirectory", Environment.SystemDirectory);
+                InvokeCom(folder, "RegisterTaskDefinition", candidate, task, 6, user, null, 3, null);
+                registered = InvokeCom(folder, "GetTask", candidate);
+                InvokeCom(registered, "Run", new object[] { null });
+                started = true;
+            }
+            catch
+            {
+                started = false;
+            }
+            finally
+            {
+                ReleaseCom(registered);
+                ReleaseCom(action);
+                ReleaseCom(actions);
+                ReleaseCom(settings);
+                ReleaseCom(principal);
+                ReleaseCom(task);
+                ReleaseCom(folder);
+                ReleaseCom(service);
+            }
+        });
+        setup.SetApartmentState(ApartmentState.STA);
+        setup.IsBackground = true;
+        setup.Name = "MorrowBrokerTaskSetup";
+        setup.Start();
+        if (!setup.Join(15000) || !started)
+        {
+            DeleteScheduledTask(candidate);
+            return false;
+        }
+        if (!WaitForPipeReady(pipeName, 12000))
+        {
+            DeleteScheduledTask(candidate);
+            return false;
+        }
+        taskName = candidate;
+        return true;
+    }
+
+    private static void CleanupStaleBrokerTasks(object folder)
+    {
+        object tasks = null;
         try
         {
-            ProcessStartInfo info = new ProcessStartInfo(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe"),
-                "\"" + filePath + "\" /setintegritylevel Medium")
+            tasks = InvokeCom(folder, "GetTasks", 1);
+            int count = Convert.ToInt32(GetCom(tasks, "Count"));
+            for (int i = count - 1; i >= 0; i--)
             {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-            using (Process process = Process.Start(info))
-            {
-                if (process != null) process.WaitForExit(5000);
+                object item = null;
+                try
+                {
+                    item = GetComAt(tasks, "Item", i);
+                    string name = Convert.ToString(GetCom(item, "Name"));
+                    if (string.IsNullOrEmpty(name) || !name.StartsWith(BrokerTaskPrefix, StringComparison.Ordinal)) continue;
+                    int state = Convert.ToInt32(GetCom(item, "State"));
+                    if (state == 4) continue; // 运行中的任务可能属于另一个实例
+                    try { InvokeCom(folder, "DeleteTask", name, 0); } catch { }
+                }
+                catch
+                {
+                    // 单个任务读取失败不影响启动
+                }
+                finally
+                {
+                    ReleaseCom(item);
+                }
             }
         }
         catch
         {
-            // 普通目录下应用本来就以 Medium 运行；设置失败不应阻断启动。
+            // 清理失败不阻断代理启动
+        }
+        finally
+        {
+            ReleaseCom(tasks);
         }
     }
 
-    /// <summary>通过 Shell.Application COM 打开文件夹；由已运行的 Explorer 处理，不新建进程。</summary>
-    private static bool ExploreWithShell(string folder)
+    private static void DeleteScheduledTask(string taskName)
     {
-        object shell = null;
+        if (string.IsNullOrEmpty(taskName)) return;
+        Thread cleanup = new Thread(() =>
+        {
+            object service = null;
+            object folder = null;
+            object task = null;
+            try
+            {
+                Type serviceType = Type.GetTypeFromProgID("Schedule.Service");
+                if (serviceType == null) return;
+                service = Activator.CreateInstance(serviceType);
+                InvokeCom(service, "Connect");
+                folder = InvokeCom(service, "GetFolder", "\\");
+                Thread.Sleep(300);
+                try
+                {
+                    task = InvokeCom(folder, "GetTask", taskName);
+                    InvokeCom(task, "Stop", new object[] { null });
+                }
+                catch { }
+                try { InvokeCom(folder, "DeleteTask", taskName, 0); } catch { }
+            }
+            catch { }
+            finally
+            {
+                ReleaseCom(task);
+                ReleaseCom(folder);
+                ReleaseCom(service);
+            }
+        });
+        cleanup.SetApartmentState(ApartmentState.STA);
+        cleanup.IsBackground = true;
+        cleanup.Name = "MorrowBrokerTaskCleanup";
+        cleanup.Start();
+        cleanup.Join(4000);
+    }
+
+    private static object GetCom(object target, string name)
+    {
+        return target.GetType().InvokeMember(name, BindingFlags.GetProperty, null, target, null);
+    }
+
+    private static object GetComAt(object target, string name, params object[] args)
+    {
+        return target.GetType().InvokeMember(name, BindingFlags.GetProperty, null, target, args);
+    }
+
+    private static void SetCom(object target, string name, object value)
+    {
+        target.GetType().InvokeMember(name, BindingFlags.SetProperty, null, target, new object[] { value });
+    }
+
+    private static object InvokeCom(object target, string name, params object[] args)
+    {
+        return target.GetType().InvokeMember(name, BindingFlags.InvokeMethod, null, target, args);
+    }
+
+    private static void ReleaseCom(object value)
+    {
+        if (value != null && Marshal.IsComObject(value))
+        {
+            try { Marshal.ReleaseComObject(value); } catch { }
+        }
+    }
+
+    private static bool WaitForPipeReady(string pipeName, int timeoutMs)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using (NamedPipeClientStream client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out))
+                {
+                    client.Connect(300);
+                    return true;
+                }
+            }
+            catch
+            {
+                Thread.Sleep(100);
+            }
+        }
+        return false;
+    }
+
+    private static void SendBrokerShutdown(string pipeName)
+    {
         try
         {
-            Type type = Type.GetTypeFromProgID("Shell.Application");
-            if (type == null) return false;
-            shell = Activator.CreateInstance(type);
-            if (shell == null) return false;
-            type.InvokeMember("Explore", BindingFlags.InvokeMethod, null, shell, new object[] { folder });
-            return true;
+            using (NamedPipeClientStream client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out))
+            {
+                client.Connect(1000);
+                using (StreamWriter writer = new StreamWriter(client, new UTF8Encoding(false), 1024, true))
+                {
+                    writer.Write("SHUTDOWN\n");
+                    writer.Flush();
+                }
+            }
+        }
+        catch
+        {
+            // 代理未就绪或已退出时无需处理。
+        }
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern uint SetErrorMode(uint mode);
+
+    /// <summary>由现有 Explorer 完成打开/定位；不使用会挂起或拒绝的 Shell COM/ShellExecuteEx。</summary>
+    private static bool StartExplorer(string arguments)
+    {
+        try
+        {
+            ProcessStartInfo info = new ProcessStartInfo("explorer.exe", arguments)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Environment.SystemDirectory
+            };
+            using (Process process = Process.Start(info))
+            {
+                if (process == null) return false;
+                if (!process.WaitForExit(1500)) return true;
+                // explorer.exe 正常把请求转交现有 Shell 后以 1 退出；0xC0000142 表示启动失败。
+                return process.ExitCode != unchecked((int)0xC0000142);
+            }
         }
         catch
         {
             return false;
-        }
-        finally
-        {
-            if (shell != null && Marshal.IsComObject(shell)) Marshal.ReleaseComObject(shell);
         }
     }
 
@@ -311,35 +538,30 @@ internal static class MorrowLauncher
                 return "ERR\t文件不存在";
             }
 
+
             if (command == "OPEN")
             {
-                if (isDirectory)
-                {
-                    // 目录交给现有 Shell 打开；不要 Process.Start 目录，那会新建 explorer.exe。
-                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
-                }
-                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-                return "OK";
+                // 目录打开窗口，文件交给关联程序；两者都由已运行的 Explorer 接单。
+                return StartExplorer("\"" + target + "\"") ? "OK" : "ERR\t系统文件管理器未能打开目标";
             }
 
             if (command == "REVEAL")
             {
-                if (isDirectory)
-                {
-                    return ExploreWithShell(target) ? "OK" : "ERR\t系统 Shell 无法打开文件夹";
-                }
-                if (RevealWithShell(target)) return "OK";
-                string folder = Path.GetDirectoryName(target);
-                if (!string.IsNullOrEmpty(folder) && ExploreWithShell(folder)) return "OK";
-                return "ERR\t系统 Shell 无法打开目标文件夹";
+                if (isDirectory) return StartExplorer("\"" + target + "\"") ? "OK" : "ERR\t系统文件管理器未能打开文件夹";
+                return StartExplorer("/select,\"" + target + "\"") ? "OK" : "ERR\t系统文件管理器未能定位目标";
             }
 
             return "ERR\t未知命令";
         }
         catch (Exception ex)
         {
-            return "ERR\t" + ex.Message.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+            return "ERR\t" + CleanMessage(ex.Message);
         }
+    }
+
+    private static string CleanMessage(string message)
+    {
+        return (message ?? string.Empty).Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
     }
 
     /// <summary>内嵌应用 zip 的 SHA-256；用作运行时缓存的版本指纹。</summary>

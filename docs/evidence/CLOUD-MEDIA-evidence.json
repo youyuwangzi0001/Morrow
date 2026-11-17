@@ -1,0 +1,66 @@
+{
+  "schema": "morrow.repair-evidence/v1",
+  "task": "CLOUD-MEDIA",
+  "capturedAt": "2026-11-06T07:15:00.000000+00:00",
+  "kind": "Official HTTP protocols + full Electron E2E",
+  "implementation": {
+    "modelsPage": "云端文本 Provider + 云端多媒体生成（图片/视频/配音/配乐）；国内/海外服务均有标记，本地 Provider 不再出现",
+    "localPage": "改名「本地」；ComfyUI/FFmpeg/本地 TTS/配乐草稿 + Ollama/llama.cpp/LM Studio 文本模型",
+    "providers": [
+      "Seedream 5.0 Pro (doubao-seedream-5-0-pro-260628)",
+      "Seedream 5.0 Flash (doubao-seedream-5-0-flash-260915)",
+      "Qwen-Image 2.1 Pro (qwen-image-2.1-pro)",
+      "OpenAI Images 2.6 Sunburst / Flare",
+      "Gemini Nano Banana 2.1 (gemini-nano-banana-2.1)",
+      "Stability SD3.5",
+      "Seedance 2.5 / 2.0 (doubao-seedance-2-5-260628 / doubao-seedance-2-0-260128)",
+      "MiniMax H3 (MiniMax-H3)",
+      "Google Veo 3.1 稳定版 (veo-3.1-generate-001)",
+      "Qwen3-TTS-Flash (qwen3-tts-flash)",
+      "MiniMax Speech 2.8 HD (speech-2.8-hd)",
+      "OpenAI TTS (gpt-4o-mini-tts)",
+      "ElevenLabs TTS (eleven_v4)",
+      "Mureka V9.5 配乐 (auto → instrumental)",
+      "ElevenLabs Music (music_v2_5)"
+    ],
+    "storage": "独立 mediaProviders/mediaDefaults；API Key 走本机加密 secrets，前缀 media:；旧默认模型读取时自动迁移",
+    "voices": "OpenAI 13 个、Qwen3-TTS 48 个、MiniMax Speech 2.8 327 个官方系统音色全部列入声线选择；仍可粘贴自定义/复刻音色 ID；ElevenLabs 使用账号 Voice ID",
+    "studioRoutes": "云端图片优先于 ComfyUI；Seedance/MiniMax 走首帧 base64；Veo 走首帧图生视频；云端配音优先；ElevenLabs Music 优先于本地 ACE-Step",
+    "honesty": "未配置 Key 不发起云端调用；不加入没有公开官方 API 的平台；Veo 限制 4/6/8 秒，Seedance/MiniMax 限制 4–15 秒；Seedance 关闭原生音频避免与后续配音重复"
+  },
+  "unit": {
+    "files": [
+      "tests/unit/media-cloud.test.ts"
+    ],
+    "count": 15,
+    "passed": true
+  },
+  "e2e": {
+    "titles": [
+      "模型页接入国内与海外云端多媒体，本地模型统一在本地页",
+      "云端图片服务接入创作台并生成分镜画面",
+      "Seedream 国内服务接入创作台并生成分镜画面"
+    ],
+    "passed": true,
+    "assertions": [
+      "模型页显示四个云端多媒体类型、国内/海外标记与官方服务卡片",
+      "图片页包含 Seedream Pro/Flash、Qwen-Image、OpenAI Images 2.6、Gemini Nano Banana",
+      "视频页包含 Seedance 2.5/2.0、MiniMax H3、Veo 3.1",
+      "配乐页包含 Mureka V9.5 与 ElevenLabs Music；多媒体类型使用分段切换",
+      "Qwen3-TTS 声线默认 Cherry，官方 48 个音色全部出现在选择器",
+      "保存 Qwen3-TTS Key 后写入 mediaProviders 且显示 Key 已保存",
+      "本地页显示 Ollama/llama.cpp/LM Studio；模型页不再出现本地 Provider",
+      "云端图片服务经真实 Studio job 生成 asset，origin=cloud-image；Seedream 链路模型与鉴权正确"
+    ],
+    "screenshots": [
+      "docs/screens/settings-cloud-media.png",
+      "docs/screens/settings-local.png"
+    ]
+  },
+  "regression": {
+    "unit": "509 passed",
+    "e2e": "86 passed",
+    "domains": 41,
+    "docs": "CLOUD-MEDIA.md"
+  }
+}

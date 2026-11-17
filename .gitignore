@@ -2,6 +2,8 @@ node_modules/
 out/
 release/
 deliver/
+deliver-new/
+deliver-clean/
 dist/
 test-results/
 playwright-report/
@@ -15,6 +17,11 @@ Thumbs.db
 probe/
 
 tmp/
+.morrow/
+
+# 便携版在本目录运行时解压出的自身运行时缓存与用户数据；不能提交，也不能在打包时带入
+Morrow-0.2.0/
+.morrow-runtime-*
 *.tsbuildinfo
 .qoder/
 docs/audit/
@@ -23,3 +30,12 @@ docs/verification/logs/
 docs/verification/media/
 
 release-*/
+deliver-latest/
+release-latest/
+deliver-composer-fix/
+release-composer-fix/
+
+deliver-test/
+
+# 提示词内嵌产物：构建期生成，不进仓库、不进源码包
+src/generated/

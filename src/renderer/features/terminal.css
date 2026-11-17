@@ -1,0 +1,428 @@
+/* terminal 功能域样式：由 1 个样式表按原引用顺序合并。 */
+
+/* 集成终端：底部停靠、标签页、真实 PTY 输出。 */
+
+.terminal-dock {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: var(--app-sidebar-width, 0px);
+  z-index: var(--z-overlay);
+  display: none;
+  flex-direction: column;
+  min-height: 190px;
+  max-height: 72vh;
+  border-top: 0;
+  background: var(--code-bg);
+  box-shadow: 0 -22px 60px rgba(0, 0, 0, 0.28);
+  color: var(--text);
+}
+
+.terminal-dock.is-open {
+  display: flex;
+}
+
+.terminal-dock[aria-hidden='true'] {
+  pointer-events: none;
+}
+
+.terminal-resizer {
+  position: relative;
+  flex: 0 0 auto;
+  height: 5px;
+  margin-bottom: calc(-1 * var(--divider-size));
+  cursor: ns-resize;
+  background: transparent;
+  outline: none;
+}
+
+/* 终端顶边始终是一条 1px 香槟金线；悬浮或按住时提亮，移开恢复基准。 */
+.terminal-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--divider-size);
+  background: var(--divider-idle);
+  opacity: var(--divider-idle-opacity);
+  pointer-events: none;
+  transition: var(--divider-transition);
+}
+
+.terminal-resizer.is-hovered::after,
+.terminal-resizer.is-dragging::after,
+.terminal-resizer:focus-visible::after {
+  background: var(--divider-active);
+  box-shadow: var(--divider-glow);
+  opacity: 1;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-elev);
+}
+
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--tab-gap);
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: var(--tab-max-width);
+  height: var(--tab-height);
+  border: var(--tab-border);
+  border-radius: var(--tab-radius);
+  color: var(--tab-color);
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.terminal-tab:hover {
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-color);
+}
+
+.terminal-tab.is-active {
+  border-color: var(--tab-active-border);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-color);
+}
+
+.terminal-tab-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px 0 9px;
+  color: inherit;
+  text-align: left;
+}
+
+.terminal-tab-main svg {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.terminal-tab.is-active .terminal-tab-main svg {
+  color: var(--gold);
+}
+
+.terminal-tab-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.terminal-tab-dot.is-running {
+  background: var(--patina);
+  box-shadow: 0 0 0 2px var(--patina-dim);
+}
+
+.terminal-tab-title {
+  max-width: 132px;
+  font-size: var(--tab-font-size);
+  line-height: var(--lh-none);
+}
+
+.terminal-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--tab-close-size);
+  height: var(--tab-close-size);
+  margin-right: var(--tab-pad-right);
+  border-radius: var(--tab-close-radius);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease, background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab.is-active .terminal-tab-close,
+.terminal-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.terminal-tab-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.terminal-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.terminal-tool:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.terminal-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.terminal-tool.is-danger {
+  color: var(--rust);
+}
+
+.terminal-tool.is-danger:hover:not(:disabled) {
+  border-color: var(--rust-dim);
+  background: var(--rust-dim);
+  color: var(--rust);
+}
+
+.terminal-new {
+  margin-left: 2px;
+}
+
+.terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-left: 7px;
+  border-left: 1px solid var(--line);
+}
+
+.terminal-dock-close {
+  margin-left: 4px;
+}
+
+.terminal-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rust-dim);
+  background: var(--rust-dim);
+  color: var(--rust);
+  font-size: var(--fs-xs-plus);
+}
+
+.terminal-error span {
+  flex: 1 1 auto;
+}
+
+.terminal-error button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-xs);
+  color: inherit;
+}
+
+.terminal-error button:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.terminal-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background:
+    radial-gradient(120% 90% at 20% 0%, rgba(255, 255, 255, 0.015), transparent 60%),
+    var(--code-bg);
+}
+
+.terminal-xterm {
+  position: absolute;
+  inset: 0;
+  padding: 4px 6px 0 8px;
+}
+
+.terminal-xterm[hidden] {
+  display: none;
+}
+
+.terminal-xterm .xterm {
+  height: 100%;
+}
+
+/* viewport 原生滚动条只由 xterm 用来同步滚动，隐藏它，避免与自定义
+   scrollbar 的滑块/箭头叠在一起；实际可视滚动条走下面的 xterm 自定义 DOM。 */
+.terminal-xterm .xterm .xterm-viewport {
+  background: transparent !important;
+  scrollbar-width: none;
+}
+
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar,
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-button,
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-track,
+.terminal-xterm .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* xterm 6 使用自己的滚动条 DOM（不是 viewport 原生滚动条）：
+   宽度/圆角/颜色全部使用顶层 --scrollbar-* 令牌；显隐交给 xterm 的
+   visible/invisible 类，只有内容超出当前高度时才出现。 */
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: var(--scrollbar-size) !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical.visible {
+  opacity: 1 !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar.vertical.invisible {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  /* 与主区域原生滑块一致：居中 6px、实心、上下全圆角，不做渐变高光。 */
+  left: calc((var(--scrollbar-size) - var(--scrollbar-thumb-width)) / 2) !important;
+  width: var(--scrollbar-thumb-width) !important;
+  border: 0;
+  border-radius: var(--scrollbar-radius);
+  background: var(--scrollbar-thumb-color) !important;
+}
+
+/* 与应用滚动条一致：无箭头按钮、无边框 */
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .scra {
+  display: none !important;
+}
+
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
+.terminal-xterm .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+  background: var(--scrollbar-thumb-hover-color) !important;
+}
+
+.terminal-xterm .xterm .xterm-screen {
+  outline: none;
+}
+
+.terminal-xterm .xterm .xterm-helper-textarea:focus {
+  outline: none;
+}
+
+.terminal-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.terminal-empty > svg {
+  color: var(--gold);
+  opacity: 0.75;
+}
+
+.terminal-empty p {
+  margin: 0;
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-readable);
+}
+
+.terminal-empty .btn {
+  margin-top: 2px;
+}
+
+.terminal-empty-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs) !important;
+}
+
+.terminal-task-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terminal-task-output {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  color: var(--text);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-ui);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal-task-stdin {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-elev);
+  color: var(--text-3);
+}
+
+.terminal-task-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  outline: none;
+}
+
+.terminal-task-input:focus {
+  border-color: var(--line-gold);
+}
+
+@media (max-width: 760px) {
+  .terminal-dock {
+    max-height: 78vh;
+  }
+
+  .terminal-tab {
+    max-width: 150px;
+  }
+}

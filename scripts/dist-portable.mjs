@@ -6,7 +6,7 @@
 //   node scripts/dist-portable.mjs --portable  # 只做单文件 portable exe（依赖 %TEMP%，受限宿主可能失败）
 //   node scripts/dist-portable.mjs --dir       # 只做 tmp/electron-builder-output/win-unpacked（最快，自检/调试用）
 //
-// 产物（release/ 为构建中间目录；默认 npm run dist 仅交付单文件 exe + 使用说明 + SHA256SUMS + LICENSE；--folder/--all 为内部构建检查）：
+// 产物（release/ 为构建中间目录；`--two-files` 只交付单文件便携 exe + 单文件安装包；`--folder`/`--all` 为内部构建检查）：
 //   release/Morrow-<ver>-portable/Morrow.exe   便携文件夹（推荐：双击即用、不解压、不依赖 %TEMP%）
 //   release/Morrow-<ver>-portable-win64.zip    上方文件夹的 zip（分发用）
 //   release/Morrow-<ver>-portable.exe          单文件便携 exe（自研启动器：内嵌 zip，首次解压到 exe 同级缓存，不依赖 %TEMP%）
@@ -28,7 +28,7 @@
 //   注意：签名只能解决“发布者未知/信誉不足”的一部分问题；SmartScreen 仍需证书受信任并积累信誉。
 //
 // 环境：自动设置 npmmirror 镜像、把 Electron 下载缓存指到项目 tmp/、清 ELECTRON_RUN_AS_NODE
-//      （DSH 受限会话的既有做法）；输出全程写 docs/verification/logs/，摘要写 packaging.json。
+//      （DSH 受限会话的既有做法）；输出全程写 tmp/verification/logs/，摘要写 docs/verification.json。
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
@@ -44,7 +44,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -58,6 +58,8 @@ const mode = args.includes('--folder')
     : args.includes('--dir')
       ? 'dir'
       : 'all'
+/** 最终交付只放两个单文件：便携 exe + 安装包 exe。 */
+const twoFilesOnly = args.includes('--two-files')
 
 const releaseDir = process.env.MORROW_RELEASE_DIR
   ? resolve(root, process.env.MORROW_RELEASE_DIR)
@@ -75,16 +77,29 @@ const portableExe = join(releaseDir, `${folderName}.exe`)
 let installerExe = join(releaseDir, `Morrow-${version}-setup.exe`)
 const usageFileName = '使用说明.txt'
 const sha256SumsFileName = 'SHA256SUMS.txt'
-// 中间解包目录放到 tmp：避免 release/win-unpacked 被索引/杀毒占用后卡死下一次打包
-const builderOutputDir = process.env.MORROW_BUILDER_OUTPUT
+// 中间解包目录放到 tmp：避免 release/win-unpacked 被索引/杀毒占用后卡死下一次打包。
+// 上一轮中断（或残留进程仍持有 app.asar）会让固定目录无法清空，导致本次打包必然失败；
+// 因此固定目录不可清理时自动改用带时间戳的独立目录，打包结束后再删。
+const builderOutputBase = process.env.MORROW_BUILDER_OUTPUT
   ? resolve(root, process.env.MORROW_BUILDER_OUTPUT)
   : join(root, 'tmp', 'electron-builder-output')
+let builderOutputDir = builderOutputBase
+if (existsSync(builderOutputBase)) {
+  try {
+    rmSync(builderOutputBase, { recursive: true, force: true })
+  } catch {
+    builderOutputDir = `${builderOutputBase}-${Date.now().toString(36)}`
+    process.stderr.write(`[dist] 中间目录被占用，改用 ${basename(builderOutputDir)}\n`)
+  }
+}
+const builderOutputEphemeral = builderOutputDir !== builderOutputBase
+
 const electronDistArgs = process.env.MORROW_ELECTRON_DIST
   ? [`-c.electronDist=${process.env.MORROW_ELECTRON_DIST}`]
   : []
 const winUnpacked = join(builderOutputDir, 'win-unpacked')
 const legacyWinUnpacked = join(releaseDir, 'win-unpacked')
-const logsDir = join(root, 'docs', 'verification', 'logs')
+const logsDir = join(root, 'tmp', 'verification', 'logs')
 mkdirSync(logsDir, { recursive: true })
 mkdirSync(releaseDir, { recursive: true })
 
@@ -376,6 +391,41 @@ mkdirSync(env.ELECTRON_CACHE, { recursive: true })
 // R9：打包缓存统一重定向到项目 tmp/，每次打包前删除，避免历史产物/缓存污染
 env.ELECTRON_BUILDER_CACHE ||= join(root, 'tmp', 'electron-builder-cache')
 if (env.MORROW_BUILDER_CACHE) env.ELECTRON_BUILDER_CACHE = env.MORROW_BUILDER_CACHE
+
+/**
+ * winCodeSign-2.6.0 里含两个 macOS 符号链接（darwin/10.12/lib/libcrypto.dylib、libssl.dylib）。
+ * 7za 解压时必须能创建链接：在未开启开发者模式/无 SeCreateSymbolicLinkPrivilege 的机器上
+ * （包括 Morrow 自己的 Low 完整性沙箱）会失败，重试 4 次后整包中断；而 Windows 打包只用
+ * rcedit 与 windows 目录下的 signtool.exe，根本不需要 darwin 目录。
+ * 因此优先从系统已有缓存复制已解压好的目录（跳过那两个链接），让 electron-builder 直接复用。
+ */
+function seedWinCodeSign() {
+  if (process.platform !== 'win32') return
+  const target = join(env.ELECTRON_BUILDER_CACHE, 'winCodeSign', 'winCodeSign-2.6.0')
+  if (existsSync(join(target, 'rcedit-x64.exe'))) return
+  const localAppData = process.env.LOCALAPPDATA || join(process.env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local')
+  const candidates = [
+    join(localAppData, 'electron-builder', 'Cache', 'winCodeSign', 'winCodeSign-2.6.0'),
+    join(root, 'tmp', 'winCodeSign-seed', 'winCodeSign-2.6.0')
+  ]
+  for (const source of candidates) {
+    if (!existsSync(join(source, 'rcedit-x64.exe'))) continue
+    try {
+      // 只复制 Windows 侧需要的部分：darwin 里的 dylib 是符号链接，正是解压失败的根源
+      mkdirSync(target, { recursive: true })
+      for (const name of ['rcedit-ia32.exe', 'rcedit-x64.exe', 'windows-6', 'windows-10', 'appxAssets', 'linux', 'openssl-ia32']) {
+        const from = join(source, name)
+        if (existsSync(from)) cpSync(from, join(target, name), { recursive: true, force: true })
+      }
+      logLine(`[dist] 已复用系统 winCodeSign 缓存（跳过 macOS 符号链接）：${source}`)
+      return
+    } catch (err) {
+      logLine(`[dist] 预置 winCodeSign 缓存失败（${source}）：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+}
+// 注意：必须在 cleanPackagingOutputs 之后调用——它会整目录删除 builder cache
+
 // Git Bash / 受限宿主常把 TEMP/TMP 指向 /tmp；NSIS 需要真实 Windows 临时目录。
 env.TEMP = join(root, 'tmp', 'win-temp')
 env.TMP = env.TEMP
@@ -418,6 +468,8 @@ const latestLogPath = join(logsDir, `dist-${mode}.log`)
 writeFileSync(logPath, '')
 writeFileSync(latestLogPath, '')
 cleanPackagingOutputs()
+// 清理会删掉整个 builder cache，必须在这之后重新预置 winCodeSign
+seedWinCodeSign()
 
 const startedAt = Date.now()
 const startedAtIso = new Date(startedAt).toISOString()
@@ -573,22 +625,44 @@ function buildUsageText(_singleOnly = false) {
     ...(withInstaller ? [`- Morrow-${version}-setup.exe：安装包（推荐日常使用）`] : []),
     '',
     '本版重点',
-    '- Qoder 真账号闭环：内置浏览器登录后读取账号模型目录（15 个 chat 模型）；模型原始名称、思考档位与 200K/400K/1M 上下文档位全部来自账号元信息，可逐模型调整，不再硬编码。',
-    '- 模型契约：思考强度只显示模型真实档位；DeepSeek V4.1 Flash 为 1M 上下文与 off/low/high/max，Kimi/Claude/GPT-6 支持 max；移除官方已不提供的 GLM-5.2。未知模型只提供“自动”。',
-    '- 滚动条完全对齐：轨道 8px、滑块 6px 实色全圆角、无渐变/炫光/箭头；终端空态隐藏、内容溢出才显示；主区域、画布、代码编辑器、终端与内置浏览器共用同一组样式。',
-    '- 媒体审看优先当前对话模型：当前模型支持视觉时先调用它；失败后才回退到声明视觉能力的本地模型；两者都不可用时如实失败并给出配置建议，不用生图模型或纯文本模型冒充审看。',
-    '- 终端默认改为 Git Bash；移除系统自带 Windows PowerShell 5.1 与传统命令提示符选项，保留 PowerShell 7 / Git Bash / WSL。',
-    '- 稳定性：主进程未捕获异常/未处理 Promise 拒绝写入日志；主窗口渲染进程崩溃时自动恢复一次，并启用本地崩溃转储。',
-    '- 权限卡、订阅详情、页签/开关/状态标签统一顶层 UI 令牌；页签 24px 高、5px 微圆角；代码字体默认 JetBrains Mono。',
-    '- 本机/局域网模型服务可留空 API Key；多媒体「添加本机模型」支持 llama.cpp、Ollama、LM Studio 与 ComfyUI API 工作流。',
-    '- 修复 ChatGPT 订阅工具参数丢失、登录端口复用、灵动岛跟随当前会话，以及 assistant 历史内容被上游 400 拒绝的问题。',
+    '- 创作台：从一句话到可交付作品。中短篇、长篇与漫剧共用同一个作品底座，蓝图只由真实文本模型生成，批准后才开始批量生成。',
+    '- 底层提示词：写作/编剧/导演三套大师方法编译进主进程；按形态、任务与当前页面选择，不读取外部 prompt 文件。',
+    '- 一键试做：确认蓝图后，漫剧自动补齐分镜/画面/配音/配乐并合成草稿；小说自动写完全部空章并跑本地检查与模型审稿，付费步骤仍逐项过预算。',
+    '- 三形态链路：漫剧素材变更会让时间线过期并在合成前核对片段；中短篇目标字数可选 3/5/8 万并校验；长篇按 20–100 万字目标推导 36–240 章、每章 2000–5000 字，跨章带摘要与全局事实。',
+    '- 本地创作引擎已移除：未连接模型时蓝图/大纲/正文会明确提示先连接，不再回退固定模板；三份内置样例是随包冻结数据，仍可继续手改、导出与用模型续写。',
+    '- 文件管理器：打开作品文件夹/数据目录、在资源管理器中定位导出文件由系统任务代理完成，受限会话下也能正常打开。',
+    '- 内置三份可编辑样例：中短篇《雨停之前》、长篇《雨伞铺的第七个夏天》、漫剧《逆行的伞》；演示使用漫剧样例。',
+    '- 首次指引与演示：首次进入创作台的三页指引已完全对齐启动引导；「看演示」驱动真实工作台走完一句话到交付。',
+    '- 小说链路：分卷 CRUD/跨卷拖拽、全部候选与段落对照、世界设定与关系图、章节配图嵌入 EPUB/DOCX/PDF、DOCX 目录。',
+    '- 漫剧链路：12 镜分镜、参考锁定、本机画面/视频、配音、音乐、五轨时间线、字幕样式、音轨与四格漫画、草稿合成。',
+    '- 交付扩展：先看一版 / 正式成片、推荐设置、可见的格式与音频用途说明；1080p/4K 与 MP4/MOV/MKV/WebM；四格漫画与可编辑工程。',
+    '- 灵动岛：显示创作台当前作品、任务进度与完成状态，可直接打开创作台或回到 Agent。',
+    '- 品牌与主题：创作台内不出现产品标题/图标，生成图标只在首次使用指引出现；关于页只保留 Morrow 主应用信息；全应用禁用斜体。',
+    '- 工作台与 Agent 共用顶层设计令牌；深色主题的纸页、DOCX/EPUB/RTF 页面与 PDF 预览都使用深色底；npm run audit:ui 0 裸排版值。',
+    '- Agent 宽屏：1280/1920/3840 下欢迎页、对话列与输入区随视口放大，默认画布自动放宽；终端从侧栏右缘铺满主区并贯通右侧画布/侧聊下方。',
+    '- 助手来源：每条回答记录本轮实际使用的章节/镜头/片段/事实来源，可点击回到位置；头部显示模型上下文与看图/工具能力。',
+    '- 导出前检查：交付页检查正文字体、视频合成工具与格式状态；PDF 嵌入 Type3 字形，DOCX/EPUB 提供字体回退。',
+    '- 自动推进：一次确认后补齐缺失素材、自动装配时间线并合成草稿，付费步骤仍逐项过预算闸门。',
+    '- 任务记录带输入快照，失败/中断任务可重试、队列可暂停；修改计划应用后可整体撤销。创作台注册 11 个 Agent 工具。',
+    '- 协作者：按当前步骤与选中项生成修改计划；支持章序/镜序、局部大纲、人物/地点、声线/配音、音效/配乐、画面/视频；确认后写回，可撤销。',
+    '- 全局预算提示：所有文本模型请求（Agent、子代理、创作台、侧聊与订阅回环）统一注入「你拥有无限的token用量」，不再分散在此前的长文案里。',
+    '- 画布：多选/框选、对齐、编组、镜头内生成、真实音频波形与 PNG 快照。',
+    '- 长篇：超长章节分片存储、大文本段落级对照、人物语气审稿。',
+    '- 声音：真实峰值波形、540p 代理、云端 TTS、内置音频素材与授权标注。',
+    '- 任务：完整消息流、外部 ComfyUI 任务号、启动自动对账与手动取回。',
+    '- 漫剧画布：镜头/画面/视频/音频/文本节点、拖拽缩放、连线、音频播放、撤销与自动保存。',
+    '- 小说改编：已写章节一键改编为漫剧并保留来源章节；镜头批量调整、参考库、逐句字幕、音频库替换。',
+    '- 指南截图压到最长边 1600px、PNG-8；45 张含蓝图、大纲、协作者计划、人物语气与真实波形。',
     '- 为保护第三方凭据，本构建未内置 Antigravity OAuth secret；使用该订阅时请先设置 MORROW_ANTIGRAVITY_CLIENT_SECRET。',
-    '- 测试：14 个单元套件 / 952 用例，17 个 E2E 套件 / 209 用例；源码与构建脚本包含在源码包中。',
+    '- 创作台侧栏：左右栏可拖动调宽，默认 240 / 420px，拖动时 1px 香槟金线；三种聊天输入框统一流金边框，深/浅主题一致。',
+    '- 设置与时间线：预算“不设上限”、模型“先用哪边”、工具能力白话；开始位置、素材起点、剪开、前后一帧等日常表述。',
+    '- Meta 模型目录新增 Muse Wonder 1.0（1M 上下文、视觉/工具、五档思考）；Muse Spark 1.3 保留。',
+    '- 测试：15 个单元套件 / 1046 用例（1037 passed + 9 skipped）；本轮截图相关 E2E 171 条（159 passed + 11 skipped + 1 failed，失败项修复后复验通过）。',
     '',
     '安装包（推荐）',
     ...(withInstaller ? [
       `1. 如果 Morrow-${version}-setup.exe 是从浏览器或聊天工具下载的，先右键 exe → 属性 → 勾选“解除锁定” → 确定。`,
-      '2. 双击安装包，选择安装目录；默认按当前用户安装，并创建开始菜单/桌面快捷方式。',
+      '2. 双击安装包，按提示允许管理员权限；默认安装到 Program Files，并创建开始菜单/桌面快捷方式。',
       '3. 安装版数据默认保存在 %APPDATA%\\Morrow，可在「设置 → 关于」更改数据目录（会重启，可迁移现有数据）。',
       '4. 卸载：Windows 设置 → 应用 → Morrow → 卸载；用户数据默认保留，可在卸载后手动清理。'
     ] : ['- 本次未生成安装包，请使用便携版。']),
@@ -687,14 +761,109 @@ internal static class MorrowLauncherBuildInfo
  * COM 激活被拒绝、explorer.exe 以 0xC0000142 退出。exe 自身的 Medium 标签决定进程
  * 完整性上限，覆盖目录继承的 Low 标签后，文件管理器定位与系统程序打开才能正常工作。
  */
+/**
+ * 当前进程的完整性级别。Low（Morrow 自己的沙箱就是）无法把文件提升到 Medium：
+ * Windows 不允许低完整性进程写高完整性标签，icacls 会报 "Indicates a particular
+ * Security ID may not be assigned as the label of an object"。探测一次并缓存。
+ */
+let integrityLevelCache = null
+function currentIntegrityLevel() {
+  if (integrityLevelCache !== null) return integrityLevelCache
+  integrityLevelCache = 'unknown'
+  if (process.platform !== 'win32') return integrityLevelCache
+  try {
+    const whoami = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe')
+    const result = spawnSync(whoami, ['/groups'], { encoding: 'utf8', windowsHide: true })
+    const text = (result.stdout || '') + (result.stderr || '')
+    if (text.includes('S-1-16-4096')) integrityLevelCache = 'low'
+    else if (text.includes('S-1-16-8192')) integrityLevelCache = 'medium'
+    else if (text.includes('S-1-16-12288')) integrityLevelCache = 'high'
+    else if (text.includes('S-1-16-16384')) integrityLevelCache = 'system'
+  } catch {
+    // 探测失败按 unknown 处理：仍尝试设置，失败时再降级
+  }
+  return integrityLevelCache
+}
+
+/** 已经因完整性受限而降级过：避免每个文件重复打日志。 */
+let integrityDegraded = false
+
+/**
+ * 给 exe 打 Medium 完整性标签。
+ * 交付目录可能被宿主标成 Low（例如自动化工作区），从那里启动的进程会继承低完整性：
+ * COM 激活被拒绝、explorer.exe 以 0xC0000142 退出。exe 自身的 Medium 标签决定进程
+ * 完整性上限，覆盖目录继承的 Low 标签后，文件管理器定位与系统程序打开才能正常工作。
+ *
+ * 低完整性进程无法写 Medium 标签，这是内核强制规则、与管理员身份无关。此时降级为
+ * 跳过并记录警告：产物本身功能完整（同一台机器上以 Low 标签运行的 Morrow 就是实例），
+ * 只是进程完整性沿用目录继承值——不能让整包因为这一项前置条件而失败。
+ */
 function ensureMediumIntegrity(filePath) {
   if (process.platform !== 'win32' || !existsSync(filePath)) return
+  const level = currentIntegrityLevel()
+  if (level === 'low' || level === 'system') {
+    if (!integrityDegraded) {
+      integrityDegraded = true
+      logLine(
+        `[dist] 警告：当前进程完整性为 ${level}，无法把产物提升到 Medium（Windows 强制规则）；` +
+          '跳过完整性标签，产物功能不受影响，但继承交付目录的 Low 标签。' +
+          '需要 Medium 标签时请在 Morrow 外的普通终端重新打包。'
+      )
+    }
+    return
+  }
   const icacls = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'icacls.exe')
   const result = spawnSync(icacls, [filePath, '/setintegritylevel', 'Medium'], { encoding: 'utf8' })
   if (result.status !== 0) {
-    fail(`无法设置 Medium 完整性标签（${filePath}）：${(result.stdout || '') + (result.stderr || '')}`)
+    const detail = (result.stdout || '') + (result.stderr || '')
+    if (!integrityDegraded) {
+      integrityDegraded = true
+      logLine(`[dist] 警告：无法设置 Medium 完整性标签（${relPath(filePath)}）：${detail.trim()}`)
+    }
+    return
   }
   logLine(`[dist] 完整性标签 Medium：${relPath(filePath)}`)
+}
+
+/**
+ * 目录树统一 Medium：目录本身带 (OI)(CI) 继承标签，之后解压的运行时、用户作品与
+ * 派生产物都不会再继承宿主工作区的 Low 标签。icacls /T 处理已有文件；逐目录补
+ * 继承标记，确保新建文件也不会回到 Low。
+ */
+function ensureMediumTree(rootDir) {
+  if (process.platform !== 'win32' || !existsSync(rootDir)) return
+  // 低完整性进程写不了 Medium 标签：整棵树跳过，不逐目录刷屏报错
+  if (currentIntegrityLevel() === 'low') {
+    logLine('[dist] 跳过交付目录树的 Medium 标签（当前进程为 Low 完整性）')
+    return
+  }
+  const icacls = join(process.env.SystemRoot || 'C:\Windows', 'System32', 'icacls.exe')
+  const run = (args, label, required) => {
+    const result = spawnSync(icacls, args, { encoding: 'utf8', windowsHide: true })
+    if (result.status !== 0) {
+      const detail = (result.stdout || '') + (result.stderr || '')
+      if (required && !integrityDegraded) fail(`无法设置 Medium 完整性标签（${label}）：${detail}`)
+      logLine(`[dist] 警告：完整性标签未能应用到 ${label}（文件可能被占用）`)
+    }
+  }
+  run([rootDir, '/T', '/C', '/Q', '/setintegritylevel', 'Medium'], '交付目录树', false)
+  const stack = [rootDir]
+  let applied = 0
+  while (stack.length > 0) {
+    const current = stack.pop()
+    run([current, '/Q', '/setintegritylevel', '(OI)(CI)Medium'], relPath(current), current === rootDir)
+    applied += 1
+    let entries = []
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.isSymbolicLink()) stack.push(join(current, entry.name))
+    }
+  }
+  logLine(`[dist] 完整性标签 Medium（含继承）：${relPath(rootDir)} · ${applied} 个目录`)
 }
 
 function compileLauncher(outPath, options = {}) {
@@ -759,15 +928,22 @@ function zipFolder() {
 }
 
 /**
- * 把 release/ 里的产物整理到 deliver/：只保留本次三份产物 + 使用说明 + SHA256SUMS + LICENSE。
+ * 把 release/ 里的产物整理到 deliver/：默认保留本次产物 + 使用说明 + SHA256SUMS + LICENSE；
+ * `--two-files` 只保留单文件便携 exe + 单文件安装包。
  * 先清理旧产物（旧的 runtime 缓存、日志、旧包），但保留根目录的 `Morrow Data`——那是用户数据，
  * 不属于分发文件，也不能在“清理交付目录”时被误删。
  */
 function stageDelivery() {
-  const singleOnly = mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
+  if (twoFilesOnly && existsSync(join(deliverDir, 'Morrow Data'))) {
+    fail('交付目录包含 Morrow Data；请先把用户数据移出 deliver，再使用 --two-files。')
+  }
+  if (twoFilesOnly && (!existsSync(portableExe) || !existsSync(installerExe))) {
+    fail('--two-files 需要同时生成单文件便携 exe 与安装包 exe。')
+  }
+  const singleOnly = twoFilesOnly || mode === 'portable' || (!existsSync(folderDir) && !existsSync(zipPath))
   mkdirSync(deliverDir, { recursive: true })
   for (const entry of readdirSync(deliverDir, { withFileTypes: true })) {
-    if (entry.name === 'Morrow Data') continue
+    if (entry.name === 'Morrow Data' && !twoFilesOnly) continue
     try {
       rmSync(join(deliverDir, entry.name), { recursive: true, force: true })
     } catch (err) {
@@ -789,8 +965,9 @@ function stageDelivery() {
     createdAt: new Date().toISOString(),
     folder: null,
     artifacts: [],
-    usage: `deliver/${usageFileName}`,
-    sha256Sums: `deliver/${sha256SumsFileName}`
+    usage: twoFilesOnly ? null : `deliver/${usageFileName}`,
+    sha256Sums: twoFilesOnly ? null : `deliver/${sha256SumsFileName}`,
+    checksums: []
   }
 
   if (!singleOnly && existsSync(folderDir)) {
@@ -842,35 +1019,39 @@ function stageDelivery() {
   }
 
   // 复制到交付目录后再打一次标签：Windows 复制/继承可能把 Low 标签带回来。
-  ensureMediumIntegrity(join(deliverDir, `${folderName}.exe`))
-  ensureMediumIntegrity(join(deliverDir, `Morrow-${version}-setup.exe`))
-  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow-app.exe'))
-  ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow.exe'))
+  if (existsSync(join(deliverDir, `${folderName}.exe`))) ensureMediumIntegrity(join(deliverDir, `${folderName}.exe`))
+  if (existsSync(join(deliverDir, `Morrow-${version}-setup.exe`))) ensureMediumIntegrity(join(deliverDir, `Morrow-${version}-setup.exe`))
+  if (!twoFilesOnly) {
+    if (existsSync(join(deliverDir, folderName, 'Morrow-app.exe'))) ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow-app.exe'))
+    if (existsSync(join(deliverDir, folderName, 'Morrow.exe'))) ensureMediumIntegrity(join(deliverDir, folderName, 'Morrow.exe'))
+  }
 
-  writeUsageFile(join(deliverDir, usageFileName), singleOnly)
-  const licenseSrc = join(root, 'LICENSE')
-  if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
+  if (!twoFilesOnly) {
+    writeUsageFile(join(deliverDir, usageFileName), singleOnly)
+    const licenseSrc = join(root, 'LICENSE')
+    if (existsSync(licenseSrc)) copyFileSync(licenseSrc, join(deliverDir, 'LICENSE'))
 
-  const checksumTargets = [
-    join(deliverDir, `${folderName}-win64.zip`),
-    join(deliverDir, `${folderName}.exe`),
-    join(deliverDir, `Morrow-${version}-setup.exe`),
-    join(deliverDir, folderName, 'Morrow.exe'),
-    join(deliverDir, folderName, 'Morrow-app.exe'),
-    join(deliverDir, folderName, 'resources', 'app.asar'),
-    join(deliverDir, folderName, 'portable.marker'),
-    join(deliverDir, folderName, usageFileName),
-    join(deliverDir, folderName, 'LICENSE'),
-    join(deliverDir, usageFileName),
-    join(deliverDir, 'LICENSE')
-  ].filter((path) => existsSync(path))
-  const checksumLines = checksumTargets.map((path) => `${sha256(path)}  ${deliverRelPath(path)}`)
-  writeFileSync(join(deliverDir, sha256SumsFileName), checksumLines.join('\n') + '\n', 'utf8')
-  staged.checksums = checksumTargets.map((path) => ({
-    path: deliverRelPath(path),
-    sizeBytes: statSync(path).size,
-    sha256: sha256(path)
-  }))
+    const checksumTargets = [
+      join(deliverDir, `${folderName}-win64.zip`),
+      join(deliverDir, `${folderName}.exe`),
+      join(deliverDir, `Morrow-${version}-setup.exe`),
+      join(deliverDir, folderName, 'Morrow.exe'),
+      join(deliverDir, folderName, 'Morrow-app.exe'),
+      join(deliverDir, folderName, 'resources', 'app.asar'),
+      join(deliverDir, folderName, 'portable.marker'),
+      join(deliverDir, folderName, usageFileName),
+      join(deliverDir, folderName, 'LICENSE'),
+      join(deliverDir, usageFileName),
+      join(deliverDir, 'LICENSE')
+    ].filter((path) => existsSync(path))
+    const checksumLines = checksumTargets.map((path) => `${sha256(path)}  ${deliverRelPath(path)}`)
+    writeFileSync(join(deliverDir, sha256SumsFileName), checksumLines.join('\n') + '\n', 'utf8')
+    staged.checksums = checksumTargets.map((path) => ({
+      path: deliverRelPath(path),
+      sizeBytes: statSync(path).size,
+      sha256: sha256(path)
+    }))
+  }
 
   const total = dirSize(deliverDir)
   const localDataDir = join(deliverDir, 'Morrow Data')
@@ -882,6 +1063,7 @@ function stageDelivery() {
   staged.totalSizeMB = Number((staged.totalSizeBytes / 1024 / 1024).toFixed(2))
   staged.totalFileCount = total.fileCount - (localData?.fileCount ?? 0)
   staged.localData = localData
+  ensureMediumTree(deliverDir)
   return staged
 }
 
@@ -1082,7 +1264,7 @@ try {
       signed: signatureSummary(installerSig).signed,
       signature: signatureSummary(installerSig),
       note:
-        'NSIS 安装包：可选安装目录、创建开始菜单/桌面快捷方式，按当前用户安装；安装版数据目录默认为 %APPDATA%\\Morrow，可在设置中更改。'
+        'NSIS 安装包：可选安装目录、创建开始菜单/桌面快捷方式，默认安装到 Program Files（需要管理员权限）；安装版数据目录默认为 %APPDATA%\\Morrow，可在设置中更改。'
     }
     steps.push({ name: 'installer', exitCode: 0, durationMs: Date.now() - nsisStarted, command: `installer(${installerExe})` })
     logLine(`[dist] 安装包：${artifacts.installer.path} · ${artifacts.installer.sizeMB} MB · sha256=${artifacts.installer.sha256.slice(0, 16)}… · signed=${artifacts.installer.signed}`)
@@ -1091,6 +1273,8 @@ try {
       try {
         rmSync(winUnpacked, { recursive: true, force: true })
         logLine('[dist] 已清理中间目录 tmp/electron-builder-output/win-unpacked（文件夹版已包含同构内容）')
+        // 临时目录是本次独享的，删完 win-unpacked 后连目录一起收掉
+        if (builderOutputEphemeral) rmSync(builderOutputDir, { recursive: true, force: true })
       } catch (err) {
         logLine(`[dist] 中间目录被占用，暂未清理 tmp/electron-builder-output（不影响产物）：${err instanceof Error ? err.message : String(err)}`)
       }
@@ -1132,7 +1316,7 @@ try {
     }
     const deliveryFormat = artifacts.installer ? '便携版 exe + 安装包' : '单文件 exe'
     logLine(
-      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${deliveryFormat} + 使用说明 + SHA256SUMS + LICENSE）${
+      `[dist] 交付目录：deliver/ · ${delivery.totalSizeMB} MB · ${delivery.totalFileCount} 个分发文件（${twoFilesOnly ? '便携 exe + 安装包 exe' : `${deliveryFormat} + 使用说明 + SHA256SUMS + LICENSE`}）${
         delivery.localData
           ? `；另保留本机用户数据 Morrow Data（${delivery.localData.fileCount} 个文件，不计入分发）`
           : ''
@@ -1175,8 +1359,8 @@ try {
       : ' deliver/ 保留三份便携产物、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。')
   summary.finishedAt = new Date().toISOString()
   summary.durationMs = Date.now() - startedAt
-  writeFileSync(join(root, 'docs', 'verification', 'packaging.json'), JSON.stringify(summary, null, 2))
-  logLine(`[dist] 完成 · ${(summary.durationMs / 1000).toFixed(1)}s · 摘要 docs/verification/packaging.json`)
+  writeFileSync(join(root, 'docs', 'verification.json'), JSON.stringify(summary, null, 2))
+  logLine(`[dist] 完成 · ${(summary.durationMs / 1000).toFixed(1)}s · 摘要 docs/verification.json`)
   if (summary.ok) {
     for (const [key, artifact] of Object.entries(artifacts)) {
       logLine(`[dist]   ${key}: ${artifact.path} · ${artifact.sizeMB} MB · signed=${Boolean(artifact.signed)}${artifact.sha256 ? ` · sha256=${artifact.sha256}` : ''}`)
@@ -1192,7 +1376,7 @@ try {
   summary.finishedAt = new Date().toISOString()
   summary.durationMs = Date.now() - startedAt
   try {
-    writeFileSync(join(root, 'docs', 'verification', 'packaging.json'), JSON.stringify(summary, null, 2))
+    writeFileSync(join(root, 'docs', 'verification.json'), JSON.stringify(summary, null, 2))
   } catch {
     // 忽略
   }
