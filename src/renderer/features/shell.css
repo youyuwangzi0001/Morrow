@@ -1034,6 +1034,29 @@ body.is-resizing-panel[data-resize-target='sidebar-resizer'] .sidebar-resizer::a
   right: 416px;
 }
 
+/* 进展挂窗占据右下角时，通知让到挂窗左侧，避免盖住实时动态（toast 是 body 级 portal） */
+body.has-progress-dock .toasts {
+  right: calc(clamp(240px, 19vw, 300px) + 22px);
+  top: 64px;
+  bottom: auto;
+  flex-direction: column;
+}
+
+body.has-progress-rail .toasts {
+  right: 57px;
+  top: 64px;
+  bottom: auto;
+  flex-direction: column;
+}
+
+/* 电脑操作栏展开时挂窗已让位，通知恢复右下角 */
+body.is-browser-dock-open .toasts {
+  right: 22px;
+  top: auto;
+  bottom: 104px;
+  flex-direction: column-reverse;
+}
+
 .toast-item {
   position: relative;
   display: flex;

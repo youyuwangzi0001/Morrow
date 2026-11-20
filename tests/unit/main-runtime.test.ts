@@ -343,7 +343,7 @@ describe('K1 浏览器自动化工具（fake bridge）', () => {
     expect(bridge.calls.at(-1)).toMatchObject({ method: 'closeTab', args: ['tab_1'] })
   })
 
-  it('@core:browser 只读上下文（集群成员）一律拒绝浏览器操作', async () => {
+  it('@core:browser 只读上下文（协作成员）一律拒绝浏览器操作', async () => {
     for (const name of ['browser_open', 'browser_screenshot', 'browser_back']) {
       const result = await tool(name).execute(
         name === 'browser_open' ? { url: 'https://example.com' } : {},
@@ -780,6 +780,57 @@ describe('TerminalManager', () => {
     }
   })
 
+  it('@core:terminal readAndWait 会在慢任务上等待输出，而不是立刻返回空快照', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const manager = makeManager()
+      // 先睡 1.2 秒再输出：模拟长任务刚启动、日志还没出来的真实场景。
+      // 旧实现 read 立刻返回「running / 暂无输出」，模型只好反复重读，最终被死循环守卫掐断。
+      const task = manager.startTask('sleep 1.2; echo slow-output-ready', ws.root, 'slow')
+      const startedAt = Date.now()
+      const result = await manager.readAndWait(task.id, 40_000, 5_000)
+      const elapsed = Date.now() - startedAt
+      expect(result.output).toContain('slow-output-ready')
+      expect(elapsed).toBeGreaterThan(800)
+      expect(result.waitedMs).toBeGreaterThan(0)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('@core:terminal readAndWait 在进程快速结束时立刻返回，不空等到超时', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const manager = makeManager()
+      const task = manager.startTask('echo fast-done', ws.root, 'fast')
+      const startedAt = Date.now()
+      const result = await manager.readAndWait(task.id, 40_000, 10_000)
+      const elapsed = Date.now() - startedAt
+      expect(result.output).toContain('fast-done')
+      expect(elapsed).toBeLessThan(5_000)
+    } finally {
+      ws.cleanup()
+    }
+  })
+
+  it('@core:terminal 一次性任务结束后自动收起窗口，但仍可回读最终输出', async () => {
+    const ws = makeTempWorkspace()
+    try {
+      const manager = makeManager()
+      const task = manager.startTask('echo auto-close-ok', ws.root, 'auto-close')
+      await waitFor(() => manager.get(task.id)?.status === 'exited')
+      // 窗口从列表消失（渲染层收到 removed 事件后关闭标签）。
+      await waitFor(() => manager.list().every((item) => item.id !== task.id))
+      // 记录仍保留：Agent 可以继续 read / readAndWait 拿最终输出。
+      expect(manager.get(task.id)?.status).toBe('exited')
+      expect(manager.read(task.id).output).toContain('auto-close-ok')
+      const reread = await manager.readAndWait(task.id, 40_000, 1_000)
+      expect(reread.output).toContain('auto-close-ok')
+    } finally {
+      ws.cleanup()
+    }
+  })
+
   it('@core:terminal runOnce returns output and exit code', async () => {
     const ws = makeTempWorkspace()
     try {
@@ -801,10 +852,10 @@ describe('TerminalManager', () => {
     const ws = makeTempWorkspace()
     try {
       const manager = makeManager()
-      // 造出 32 条已退出记录：以前它们和运行中的进程共用 32 个名额，
-      // 于是「停止成功」之后仍然报「同时最多保留 32 个」，只能回退 run_command。
+      // 造出 16 条已退出记录：以前它们和运行中的进程共用 16 个名额，
+      // 于是「停止成功」之后仍然报「同时最多保留 16 个」，只能回退 run_command。
       const created: string[] = []
-      for (let i = 0; i < 32; i += 1) {
+      for (let i = 0; i < 16; i += 1) {
         created.push(manager.startTask('echo slot-probe', ws.root, `probe-${i}`).id)
       }
       await waitFor(() => created.every((id) => manager.get(id)?.status === 'exited'), 30_000)
@@ -835,14 +886,14 @@ describe('TerminalManager', () => {
     }
   })
 
-  it('@core:terminal 运行中的进程仍然受 32 个上限约束', async () => {
+  it('@core:terminal 运行中的进程仍然受 16 个上限约束', async () => {
     const ws = makeTempWorkspace()
     const manager = makeManager()
     try {
       const ids: string[] = []
-      for (let i = 0; i < 32; i += 1) ids.push(manager.createShell(ws.root, `hold-${i}`).id)
-      expect(manager.list().filter((item) => item.status === 'running')).toHaveLength(32)
-      expect(() => manager.createShell(ws.root, 'overflow')).toThrow(/同时最多运行 32 个/)
+      for (let i = 0; i < 16; i += 1) ids.push(manager.createShell(ws.root, `hold-${i}`).id)
+      expect(manager.list().filter((item) => item.status === 'running')).toHaveLength(16)
+      expect(() => manager.createShell(ws.root, 'overflow')).toThrow(/同时最多运行 16 个/)
     } finally {
       manager.dispose()
       ws.cleanup()
@@ -2149,7 +2200,7 @@ describe('checkpoint.test.ts', () => {
  * - 冲突检测拒绝覆盖外部修改；
  * - 对话回退截断消息并恢复 todos/artifacts/plan；
  * - 只回退代码保留对话且幂等；
- * - 保留策略最多 30 轮；集群成员 changedFiles 批量登记。
+ * - 保留策略最多 30 轮；协作成员 changedFiles 批量登记。
  */
 
 const MODEL = { providerId: 'mock', modelId: 'mock' }
@@ -2296,7 +2347,7 @@ describe('Super-Agent session persistence', () => {
       const at = Date.now()
       session.superAgent = {
         runId: 'super_plan_persist',
-        toolUseId: 'call_swarm_planpersist',
+        toolUseId: 'call_super_agent_planpersist',
         projectId: 'project_planpersist',
         revision: 4,
         planRevision: 2,
@@ -2344,7 +2395,7 @@ describe('Super-Agent session persistence', () => {
       h.store.save(session)
       const loaded = h.store.get(h.sessionId)!
       expect(loaded.superAgent?.planRevision).toBe(2)
-      expect(loaded.superAgent?.toolUseId).toBe('call_swarm_planpersist')
+      expect(loaded.superAgent?.toolUseId).toBe('call_super_agent_planpersist')
       expect(loaded.superAgent?.planHistory).toHaveLength(1)
       expect(loaded.superAgent?.planHistory?.[0].tasks[0]).toMatchObject({
         key: 'service',
@@ -2602,7 +2653,7 @@ describe('Super-Agent session persistence', () => {
     }
   })
 
-  it('@core:sessions Worker 用量与失败次数可跨重启保留', () => {
+  it('@core:sessions 协作成员用量与失败次数可跨重启保留', () => {
     const h = setup()
     try {
       const session = h.store.get(h.sessionId)!
@@ -2647,7 +2698,7 @@ describe('Super-Agent session persistence', () => {
             status: 'blocked',
             dependsOn: [],
             attempts: 0,
-            error: 'Worker 没有给出可采用的结论'
+            error: '协作成员没有给出可采用的结论'
           }
         ]
       }
@@ -2900,7 +2951,7 @@ describe('checkpoint rewind', () => {
     const h = setup()
     try {
       const session = h.store.get(h.sessionId)!
-      const u1 = message('u1', 'user', '交给集群成员')
+      const u1 = message('u1', 'user', '交给协作成员')
       const a1 = message('a1', 'assistant', '完成')
       session.messages = [u1, a1]
       h.store.save(session)
@@ -3642,7 +3693,7 @@ describe('collaboration-store.test.ts', () => {
       expect(sync.projection.nextAction?.id).toBe(`action_${attemptId}`)
       expect(sync.projection.nextAction?.status).toBe('running')
 
-      // 应用在 Worker 执行中被关闭：重开后 running 动作不得自动重放
+      // 应用在协作成员执行中被关闭：重开后 running 动作不得自动重放
       const reopened = new CollaborationStore(dir)
       expect(reopened.recoverInterruptedActions()).toMatchObject({ projects: 1, actions: 1 })
       const uncertain = reopened.projection(projectId)

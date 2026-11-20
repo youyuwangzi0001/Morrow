@@ -60,7 +60,7 @@
 }
 
 .btn-gold {
-  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  background: linear-gradient(180deg, var(--gold-fill, var(--gold-bright)), var(--gold-fill-deep, var(--gold)));
   color: var(--text-on-gold);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 6px 24px -10px rgba(200, 174, 125, 0.55);
@@ -646,6 +646,25 @@
   padding: 18px 22px;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* 设置页里直接嵌入的功能面板：没有遮罩和标题，内容和页脚沿用原面板。 */
+.modal-inline {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-inline-body {
+  min-height: 0;
+}
+
+.modal-inline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
 }
 
 .modal-foot {

@@ -1007,7 +1007,7 @@ html.island-root[data-theme='light'] {
   gap: 5px;
   color: var(--text-on-gold);
   font-size: var(--fs-xs);
-  background: var(--gold);
+  background: var(--gold-fill, var(--gold));
 }
 
 /* 创作台模式的主操作与 Agent 顶栏保持一致，使用微圆角矩形。 */

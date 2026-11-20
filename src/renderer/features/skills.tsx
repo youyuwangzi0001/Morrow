@@ -13,6 +13,7 @@ export type { InstallResult, SkillDetail, SkillFileEntry, SkillsSnapshot, SkillV
 export interface SkillsPanelProps {
   open: boolean
   onClose: () => void
+  inline?: boolean
 }
 
 const FILTER_OPTIONS: Array<{ value: SkillFilter; label: string }> = [
@@ -53,7 +54,7 @@ function shortenPath(path: string): string {
   return parts.length <= 3 ? path : `…/${parts.slice(-2).join('/')}`
 }
 
-export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Element {
+export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps): React.JSX.Element {
   const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
   const notify = useAppStore((s) => s.notify)
   const copyText = useAppStore((s) => s.copyText)
@@ -313,6 +314,7 @@ export function SkillsPanel({ open, onClose }: SkillsPanelProps): React.JSX.Elem
       description="技能是给 Morrow 的任务说明。启用后，做相关任务时会参考；只从本地安装，不上网、不执行代码。"
       width={980}
       layer="overlay"
+      inline={inline}
       ariaLabel="技能"
     >
       <div className="skills-panel" data-testid="skills-panel">

@@ -91,7 +91,7 @@ Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法�
 - 渲染层不直接使用 `ipcRenderer`，只通过 `window.morrow` 白名单调用。
 - `RuntimeEvent` 带 `seq/runId/sessionId/at`；主进程先脱敏、持久化、登记检查点、更新灵动岛，再广播 `morrow:event`。
 - 消息增量在主流式路径按 40ms 合并后广播，渲染层再按 24ms 兜底合并；`sessionLoad` 合并内存中的进行中消息并返回 `liveMessageId`，切回运行中的会话不会从下一个分片重新开始。
-- 工具执行前校验执行身份（主代理 / Router / Worker）的 token、工具白名单、会话与运行、有效期和写入目录；“始终允许”按身份与尝试隔离并过期。允许/拒绝写入 `collaboration/tool-audit.jsonl`，不含工具参数或文件内容。
+- 工具执行前校验执行身份（主代理 / 分发层 / 协作成员）的 token、工具白名单、会话与运行、有效期和写入目录；“始终允许”按身份与尝试隔离并过期。允许/拒绝写入 `collaboration/tool-audit.jsonl`，不含工具参数或文件内容。
 
 ## Agent 循环
 
@@ -119,23 +119,23 @@ Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法�
 
 ## 协作任务
 
-工作模式没有独立的协作开关：主代理保留完整工具，简单工作直接完成；需要并行、隔离或独立验收时调用 `swarm` 派发成员。协作状态由 `core/agent`、`core/collaboration` 与 `main/collaboration` 驱动：
+工作模式没有独立的协作开关：主代理保留完整工具，简单工作直接完成；需要并行、隔离或独立验收时调用 `super_agent` 派发协作成员。协作状态由 `core/agent`、`core/collaboration` 与 `main/collaboration` 驱动：
 
 - **固定编号**：每次协作使用固定 `projectId` / `taskId`，每次重试生成新的 `attemptId`；状态记录来源（worker/verifier/user/system/legacy）、`revision` 与 `createdAt`，拒绝重复通知和晚到的旧 run。
 - **执行前落盘**：协作动作在执行前写入 `collaboration/projects/<projectId>.json`；`pending` 可恢复，崩溃后遗留的 `running/executed` 转为 `uncertain` 等待人工核对，`done` 不会再次领取。会话文件只保存项目/任务编号。
-- **独立工作副本**：Worker 在隔离副本中读写，结束后按任务文件清单合并；同文件同处冲突保留两版交给用户选择；用户未提交的改动保留。
+- **独立工作副本**：协作成员在隔离副本中读写，结束后按任务文件清单合并；同文件同处冲突保留两版交给用户选择；用户未提交的改动保留。
 - **成果版本**：发布时把文件复制到用户数据目录的只读快照；依赖成员读取快照，不受发布者后续修改影响；记录谁用了哪一版，新版本让旧使用记录过期。
 - **独立验收**：verifier 在候选版本上运行安全命令并检查必需文件；失败退回作者返工，超过次数交负责人；验收后交付文件变化会作废旧结论并重新验收。
-- **并发与用量**：Worker 名额受本机并发限制；用量只统计展示，不设硬预算或自动停止。
+- **并发与用量**：协作成员名额受本机并发限制；用量只统计展示，不设硬预算或自动停止。
 - **卡住判断**：只有重复无成果、审批等待或稳定产出等有依据的情况才提醒；停止或继续等待不影响其他成员。
 - **补充与重试**：成员卡片可向运行中成员发送补充要求；失败/停滞任务可单项重试或带新指令重新激活。
-- **主界面驾驶舱**：`SuperAgentState.toolUseId` 记录最近一次派发的 swarm 工具调用，渲染层据此把完整状态挂回主对话里的成员卡片；历史协作只保留静态摘要。
+- **主界面驾驶舱**：`SuperAgentState.toolUseId` 记录最近一次派发的 super_agent 工具调用，渲染层据此把完整状态挂回主对话里的成员卡片；历史协作只保留静态摘要。
 
 实现位置：`core/collaboration.ts`（成果、计划、验收、资源探测、卡住判断）与 `main/collaboration.ts`（存储、运行时、验收、共享资源、成员名额、工具审计）。
 
 ## 上下文与压缩
 
-- **两层结构**：`Session.messages` / `RunContext.messages` 是**完整记录**（界面、落盘、导出、搜索、分叉都读它，永不裁剪）；`RunContext.modelMessages` 只承载发给模型的那一份，压缩只作用于它。集群成员循环（`runSwarmMemberLoop`）同样维护独立模型侧数组。
+- **两层结构**：`Session.messages` / `RunContext.messages` 是**完整记录**（界面、落盘、导出、搜索、分叉都读它，永不裁剪）；`RunContext.modelMessages` 只承载发给模型的那一份，压缩只作用于它。协作成员循环（`runMemberLoop`）同样维护独立模型侧数组。
 - **压缩只插入标记**：完整记录里在真实切点插入一条 `role=system` 摘要标记（带 `preservedMessageIds`、轮次、节省量），原文一条不删；模型侧由 `modelMessagesFrom()` 从最后一条标记处重建，旧会话（无标记）原样作为模型视图，无需迁移。
 - **折叠预算随标记持久化**：单条工具结果常比整个目标预算还大，压缩时会按 `targetRatio`（默认 0.15，范围 0.10–0.30）逐级收紧工具输出，并把实际截断长度写进标记的 `modelTrimChars`；`modelTrimThroughId` 限定只折叠压缩当时已有的内容，压缩后新增的消息保持原文。
 - **规划必须基于模型侧**：`planCompaction` 的输入是 `modelMessages`。用完整记录规划会因记录只增不减而每步重复触发压缩，且 `cutIndex` 与模型侧索引错位会清空当前窗口。
@@ -240,6 +240,6 @@ npm run dist:final
 npm run smoke:packaged
 ```
 
-- 核心套组：658 项单元加 93 条 Electron 流程，42 个功能域；清单在 `tests/core-coverage.json`（维护预算 662 / 96）。
+- 核心套组：670 项单元加 94 条 Electron 流程，42 个功能域；清单在 `tests/core-coverage.json`（维护预算 672 / 96）。
 - 测试截图写 `tmp/e2e-screens`；文档截图由 `npm run docs:capture` 生成到 `docs/screens`，全部 2100×1200 原图。
 - 打包：`dist:final` 产出便携 exe 与安装包；流程见 [DEVELOPMENT.md](DEVELOPMENT.md)，交付证据见 [VERIFICATION.md](VERIFICATION.md)。

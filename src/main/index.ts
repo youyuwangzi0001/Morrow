@@ -39,6 +39,7 @@ import {
   requestCloseFromIsland
 } from './runtime'
 import { log } from './logger'
+import { applyRelaySettings, shutdownRelay } from '../relay'
 import { isLoginSession } from './workspace'
 
 protocol.registerSchemesAsPrivileged([
@@ -145,6 +146,8 @@ function bootstrap(dataDir: string): void {
     createTray()
     initializeScheduleRuntime()
     refreshGlobalShortcut()
+    // 手机远程通道：默认关闭，开关打开时才真正监听回环端口。
+    void applyRelaySettings().catch((err) => log.warn('relay start failed', String(err)))
 
     // 协作副本只在任务进行中才有意义。旧版本从不释放，强制回收一次；
     // 放到 ready 之后异步做，避免拖慢首屏。
@@ -173,6 +176,7 @@ function bootstrap(dataDir: string): void {
   })
 
   app.on('will-quit', () => {
+    void shutdownRelay()
     disposeScheduleRuntime()
     disposeAgentRuntime()
     stopLocalTts()

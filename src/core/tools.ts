@@ -238,8 +238,9 @@ export const terminalTool: ToolImpl = {
     description:
       '使用持久终端/后台任务。长任务（dev server、watch、构建、下载）用 action=start 启动后台任务，' +
       '再用 action=read 看日志、action=write 写 stdin、action=stop 停止；短命令用 action=run 等待结果。' +
-      'action=list 查看所有进程。stop/close 结束后会释放名额（同时最多 32 个运行中的进程），' +
+      'action=list 查看所有进程。一次性后台任务结束会自动收起窗口（输出仍可短暂回读）。stop/close 结束后会释放名额（同时最多 16 个运行中的进程），' +
       '名额满时先用 list 找出不再需要的进程再 stop。' +
+      'action=read 会等到有新输出或进程结束才返回（最长等 timeout_ms，默认 120 秒），所以一次 read 就够，不要连续重复读同一个任务。' +
       '终端会话在应用运行期间保持 cwd/变量。不要用它读取工作区外文件或执行危险操作。',
     parameters: {
       type: 'object',
@@ -317,9 +318,23 @@ export const terminalTool: ToolImpl = {
         )
       }
       if (action === 'read') {
+        const output = response.output?.trim()
+        const status = response.process?.status ?? 'unknown'
+        const running = status === 'running'
+        const waitedMs = typeof response.waitedMs === 'number' ? response.waitedMs : 0
+        // 进程还在跑且这一轮没有新输出时，要明确告诉模型「等过了、没新东西」，
+        // 否则它会以为读取失败而立刻重读，进而触发死循环守卫。
+        if (!output && running) {
+          return okResult(
+            `进程：${response.process?.id ?? id}（running）\n\n` +
+              `（已等待 ${Math.round(waitedMs / 1000)} 秒但没有新输出，任务仍在运行）\n` +
+              '不要重复 read 同一个任务：等它自己结束，或先用 run_command 做别的事，稍后再看。',
+            { process: response.process, output: response.output, waiting: true, waitedMs }
+          )
+        }
         return okResult(
-          `进程：${response.process?.id ?? id}（${response.process?.status ?? 'unknown'}）\n\n${response.output?.trim() || '（暂无输出）'}`,
-          { process: response.process, output: response.output }
+          `进程：${response.process?.id ?? id}（${status}）\n\n${output || '（暂无输出）'}`,
+          { process: response.process, output: response.output, waitedMs }
         )
       }
       return okResult(response.summary, { process: response.process })
@@ -720,7 +735,7 @@ export const PLAN_TOOL_DEFINITION: ToolDefinition = submitPlanTool.definition
 
 /**
  * 计划模式工具集：只读工具 + 计划/提问/任务面板。
- * 不包含写入、执行、记忆、集群、外发与目标工具，权限层同时固定只读。
+ * 不包含写入、执行、记忆、成员协作、外发与目标工具，权限层同时固定只读。
  */
 export const PLAN_MODE_TOOL_DEFINITIONS: ToolDefinition[] = [
   ...TOOL_DEFINITIONS.filter(
@@ -757,7 +772,7 @@ export function toolDefinitionsForRun(
   return withGoal
 }
 
-/** 只读类工具清单：聊天模式过滤与审计参考（集群成员与主代理共用完整工具集） */
+/** 只读类工具清单：聊天模式过滤与审计参考（协作成员与主代理共用完整工具集） */
 export const READ_ONLY_TOOL_DEFINITIONS: ToolDefinition[] = TOOL_DEFINITIONS.filter((definition) => definition.category === 'read')
 
 export function getToolDefinition(name: string): ToolDefinition | undefined {
@@ -813,7 +828,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
     const available = [...TOOL_BY_NAME.keys()].join('、')
     return errResult(`没有名为「${name}」的工具。`, `本次可用工具：${available}。请使用正确的工具名。`)
   }
-  // 计划模式白名单兜底：未暴露的 meta 工具（swarm/update_goal 等）也不能被模型偷偷调用
+  // 计划模式白名单兜底：未暴露的 meta 工具（super_agent/update_goal 等）也不能被模型偷偷调用
   if (ctx.planMode && !PLAN_MODE_TOOL_NAMES.has(name)) {
     return errResult(
       '计划模式只能使用只读工具、ask_user、todo_write 和 submit_plan。',

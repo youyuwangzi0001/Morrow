@@ -890,23 +890,9 @@ test('@core:git Git 工作台：初始化、差异、暂存提交、放弃、分
     })
 
     await openToolPanel(page, 'Git')
-    const dialog = page.getByRole('dialog', { name: '版本历史' })
-    await expect(dialog).toBeVisible()
-
-    // 页脚必须完整落在模态可视区内（高缩放下曾因固定高度被挤出）
-    const layout = await dialog.evaluate((panel) => {
-      const body = panel.querySelector<HTMLElement>('.modal-body')
-      const foot = panel.querySelector<HTMLElement>('.git-foot')
-      if (!body || !foot) return null
-      return {
-        overflow: body.scrollHeight - body.clientHeight,
-        footBottom: foot.getBoundingClientRect().bottom,
-        bodyBottom: body.getBoundingClientRect().bottom
-      }
-    })
-    expect(layout).not.toBeNull()
-    expect(layout!.overflow).toBeLessThanOrEqual(1)
-    expect(layout!.footBottom).toBeLessThanOrEqual(layout!.bodyBottom + 1)
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await expect(settings.locator('.git-panel')).toBeVisible()
+    await expect(settings.getByRole('tab', { name: '版本记录' })).toHaveAttribute('aria-selected', 'true')
 
     // 非仓库 → 初始化
     await expect(page.getByText('这里还不是 Git 仓库')).toBeVisible()
@@ -1102,3 +1088,91 @@ test('@core:terminal Git Bash 在 MSYS 共享内存冲突下仍真实可用', as
   }
 })
 }
+
+test('@core:terminal 一次性任务结束自动收起标签与空的终端面板，且不横跨画布', async () => {
+  test.setTimeout(150_000)
+  const workspace = join(root, 'tmp', `terminal-autoclose-${Date.now()}`)
+  mkdirSync(workspace, { recursive: true })
+  const morrow = await launchMorrow({ name: 'terminal-autoclose', timeoutMs: 90_000 })
+  const { page } = morrow
+  try {
+    await waitForStoreReady(page)
+    await dismissOnboarding(page)
+    await page.evaluate(async (ws) => {
+      const store = (window as unknown as { __morrowStore: { getState: () => Record<string, any> } }).__morrowStore
+      const state = store.getState()
+      const created = await window.morrow.session.create({
+        workspace: ws,
+        model: state.settings.defaultModel,
+        permissionMode: 'auto',
+        title: '终端自动收起'
+      })
+      if (!created.ok) throw new Error(created.error.message)
+      await store.getState().selectSession(created.data.id)
+      window.dispatchEvent(new CustomEvent('morrow:workbench', { detail: { panel: 'terminal' } }))
+    }, workspace)
+
+    // 打开终端会自动建一个真实 Shell；先关掉它，留下一个空面板。
+    await expect(page.locator('.terminal-tab')).toHaveCount(1, { timeout: 30_000 })
+    await expect(page.locator('.progress-dock')).toBeVisible()
+
+    // 打开画布：右侧栏展开，进展挂窗让位；终端只能贴在 Agent 对话列下方，不能伸到画布下面。
+    await page.evaluate(() => {
+      const store = (window as unknown as { __morrowStore: { getState: () => { openCanvas: () => void } } }).__morrowStore
+      store.getState().openCanvas()
+    })
+    await expect(page.locator('.canvas-root')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.progress-dock')).toHaveCount(0)
+    const layout = await page.evaluate(() => {
+      const read = (selector: string): { left: number; right: number; width: number } | null => {
+        const element = document.querySelector(selector)
+        if (!element) return null
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, right: rect.right, width: rect.width }
+      }
+      return {
+        dock: read('.terminal-dock'),
+        conversation: read('.app-conversation'),
+        canvas: read('.canvas-root')
+      }
+    })
+    expect(layout.dock).not.toBeNull()
+    expect(layout.conversation).not.toBeNull()
+    expect(layout.canvas).not.toBeNull()
+    expect(layout.dock!.width).toBeGreaterThan(0)
+    expect(layout.dock!.left).toBeGreaterThanOrEqual(layout.conversation!.left - 1)
+    expect(layout.dock!.right).toBeLessThanOrEqual(layout.conversation!.right + 1)
+    // 画布在对话列右侧，终端右边界不得越过画布左边界。
+    expect(layout.canvas!.left).toBeGreaterThanOrEqual(layout.conversation!.right - 1)
+    expect(layout.dock!.right).toBeLessThanOrEqual(layout.canvas!.left + 1)
+
+    await page.locator('.terminal-tab-close').first().click()
+    await expect(page.locator('.terminal-tab')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('.terminal-dock')).toHaveClass(/is-open/)
+
+    // 启动一个能观察到的后台任务：标签先出现，结束后自动收起。
+    const task = await page.evaluate(async (ws) => {
+      const result = await window.morrow.features.invoke('feature:terminal:start-task', {
+        cwd: ws,
+        command: 'sleep 1; echo AUTOCLOSE_OK',
+        title: '自动收起探针'
+      })
+      if (!result.ok) throw new Error(result.error.message)
+      return result.data as { id: string }
+    }, workspace)
+    await expect(page.locator('.terminal-tab')).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator('.terminal-tab')).toHaveCount(0, { timeout: 30_000 })
+    // 最后一个标签自动消失后，空终端面板也一起关闭。
+    await expect(page.locator('.terminal-dock')).not.toHaveClass(/is-open/, { timeout: 15_000 })
+
+    // 窗口收起不影响 Agent 回读最终输出。
+    const output = await page.evaluate(async (id) => {
+      const result = await window.morrow.features.invoke('feature:terminal:read', { id, tail: 40_000 })
+      return result.ok ? (result.data as { output: string }).output : ''
+    }, task.id)
+    expect(output).toContain('AUTOCLOSE_OK')
+  } finally {
+    await morrow.close()
+    rmSync(workspace, { recursive: true, force: true, maxRetries: 5 })
+  }
+})

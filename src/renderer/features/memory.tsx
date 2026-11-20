@@ -833,6 +833,7 @@ export interface MemoryCenterProps {
   onClose: () => void
   /** 可选：覆盖当前文件夹；不传时自动取当前对话文件夹 / 最近文件夹 */
   workspace?: string | null
+  inline?: boolean
 }
 
 const SCOPE_OPTIONS: { value: MemoryScope; label: string; description: string }[] = [
@@ -860,7 +861,7 @@ function shortenPath(path: string): string {
   return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`
 }
 
-export function MemoryCenter({ open, onClose, workspace: workspaceProp }: MemoryCenterProps): React.JSX.Element {
+export function MemoryCenter({ open, onClose, workspace: workspaceProp, inline = false }: MemoryCenterProps): React.JSX.Element {
   const storeWorkspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace)
   const workspace = workspaceProp !== undefined ? workspaceProp : storeWorkspace
   const lastUserQuery = useAppStore((s) => {
@@ -1189,13 +1190,14 @@ export function MemoryCenter({ open, onClose, workspace: workspaceProp }: Memory
       description="长期记忆会一直参考；任务经验只在相关任务里出现；建议要你采纳后才会保存。"
       width={900}
       ariaLabel="记忆"
-      footer={
+      inline={inline}
+      footer={inline ? null : (
         <footer className="mc-foot">
           <Button variant="ghost" size="sm" onClick={onClose}>
             关闭
           </Button>
         </footer>
-      }
+      )}
     >
       <div className="mc-root">
         <div className="mc-top">

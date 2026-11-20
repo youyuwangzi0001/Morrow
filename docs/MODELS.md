@@ -47,7 +47,7 @@ Morrow 不自带模型。这一页说明三条接入路线、订阅渠道、上�
 | GLM Coding Plan | 中国区 / 国际区 | 区分 z.ai 与 bigmodel.cn |
 | MiniMax Code | 中国区 / 国际区 | 区分 minimax.cn 与 minimax.io |
 | Step Plan | 中国区 / 国际区 / 开放平台 Key | 以官方渠道为准 |
-| Command Code | Claude / 通用模型目录 | 使用订阅 Key |
+| Command Code | 浏览器授权 / 订阅 Key（Claude / 通用模型目录） | 浏览器授权会把本机回环回调交给 Morrow；若内置页仍拦截自动交接，可从登录窗口菜单转到系统浏览器完成 |
 | Cline Pass | API Key | 账号信息按 token 读取 |
 | OpenCode | OpenCode Zen API Key | 模型目录以服务商为准 |
 | Google Antigravity | OAuth | 不内置 OAuth secret；需设置 `MORROW_ANTIGRAVITY_CLIENT_SECRET` |

@@ -1,5 +1,5 @@
 // 应用级契约：模型、订阅、连接器、研究、定时任务、记忆、命令与 IPC。
-import type { ModelInfo, ModelRef, ProviderConfig, ProviderRetryPolicy, ReasoningEffort, Settings, Artifact, ChatMessage, CollaborationAttempt, CollaborationAttemptStatus, CollaborationStatusChange, CollaborationStatusSource, CollaborationTaskStatus, ResearchDepth, ResearchState, ArtifactExportFormat, ArtifactVersionInfo, AskUserAnswer, Attachment, Bootstrap, CloseAction, CreateSessionInput, FileSearchResult, PermissionDecision, PermissionMode, ProviderTestResult, Result, RuntimeEventListener, SendMessageInput, SendMessageResult, Session, SessionMeta, SessionMode, StuckAlert, SuperAgentState, SuperTask, SuperTaskStatus, SwarmOperation, TokenActivitySummary, WindowState, WorkspaceInfo } from './types'
+import type { ModelInfo, ModelRef, ProviderConfig, ProviderRetryPolicy, ReasoningEffort, Settings, Artifact, ChatMessage, CollaborationAttempt, CollaborationAttemptStatus, CollaborationStatusChange, CollaborationStatusSource, CollaborationTaskStatus, ResearchDepth, ResearchState, ArtifactExportFormat, ArtifactVersionInfo, AskUserAnswer, Attachment, Bootstrap, CloseAction, CreateSessionInput, FileSearchResult, PermissionDecision, PermissionMode, ProviderTestResult, Result, RuntimeEventListener, SendMessageInput, SendMessageResult, Session, SessionMeta, SessionMode, StuckAlert, SuperAgentState, SuperTask, SuperTaskStatus, MemberOperation, TokenActivitySummary, WindowState, WorkspaceInfo, PairIssueResult, PairDeviceView } from './types'
 import { DEFAULT_SHORTCUTS } from './shortcuts'
 
 /**
@@ -793,7 +793,11 @@ export function defaultSettings(): Settings {
     terminalShell: '',
     shortcuts: { ...DEFAULT_SHORTCUTS },
     mediaProviders: [],
-    mediaDefaults: {}
+    mediaDefaults: {},
+    // 手机远程通道默认关闭：用户必须主动开启，才可能被配对设备访问。
+    relayEnabled: false,
+    // 0 = 由系统分配端口，避免与用户机器上的其他服务撞车。
+    relayPort: 0
   }
 }
 
@@ -1516,31 +1520,42 @@ function assistantTextSince(messages: ChatMessage[], since: number): string {
 }
 
 /** 一条消息/成品是否具备「带来源章节 + 至少两个链接」的报告结构。 */
-function hasSourceEvidence(text: string): boolean {
+function hasSourceEvidence(text: string, allowedSources?: ReadonlySet<string>): boolean {
   if (!text) return false
-  const links = text.match(/https?:\/\/[^\s)\]>"']+/g)?.length ?? 0
-  if (links < 2) return false
+  const links = text.match(/https?:\/\/[^\s)\]>"']+/g) ?? []
+  const cited = new Set<string>()
+  for (const raw of links) {
+    const key = sourceKey(raw)
+    if (!key) continue
+    if (allowedSources && !allowedSources.has(key)) continue
+    cited.add(key)
+  }
+  if (cited.size < 2) return false
   return /(?:^|\n)\s{0,3}(?:#{1,6}\s*)?(?:\*\*)?\s*(?:参考来源|参考資料|参考资料|来源|sources?|references?)\s*(?:\*\*)?\s*[:：]?\s*(?=\n|$)/i.test(
     text
   )
 }
 
-/** 最终报告：有研究/报告标题的文本成品，或正文具备来源章节与两个链接的成品/回复。 */
+/** 最终报告：有研究/报告标题的文本成品，或正文具备来源章节与两个可核对链接的成品/回复。 */
 export function hasResearchReport(
   messages: ChatMessage[],
   artifacts: Artifact[],
-  startedAt: number
+  startedAt: number,
+  sources: ResearchSource[] = []
 ): { present: boolean; artifactId?: string } {
+  // 引用必须能回到真实搜索/读取到的来源。只数「文本里有两个 URL」会让编造的
+  // 链接也通过完成门槛；这里用 collectResearchSources 的归一化结果做交叉核对。
+  const allowedSources = new Set(sources.map((source) => sourceKey(source.url)).filter((key): key is string => Boolean(key)))
   const artifact = [...artifacts]
     .reverse()
     .find(
       (item) =>
         item.updatedAt >= startedAt &&
         (item.kind === 'markdown' || item.kind === 'html' || item.kind === 'text') &&
-        (/研究|报告|research|report/i.test(item.title) || hasSourceEvidence(item.content ?? ''))
+        (/研究|报告|research|report/i.test(item.title) || hasSourceEvidence(item.content ?? '', allowedSources))
     )
   if (artifact) return { present: true, artifactId: artifact.id }
-  return { present: hasSourceEvidence(assistantTextSince(messages, startedAt)) }
+  return { present: hasSourceEvidence(assistantTextSince(messages, startedAt), allowedSources) }
 }
 
 export interface ResearchDecision {
@@ -1564,7 +1579,7 @@ export function decideResearchNextStep(
 ): ResearchDecision {
   const sources = collectResearchSources(messages, state.startedAt)
   const sourceCount = sources.length
-  const report = hasResearchReport(messages, artifacts, state.startedAt)
+  const report = hasResearchReport(messages, artifacts, state.startedAt, sources)
   if (sourceCount >= state.minSources && report.present) {
     return {
       status: 'completed',
@@ -2085,7 +2100,7 @@ export const RESERVED_COMMAND_NAMES: ReadonlySet<string> = new Set([
   'plan',
   'settings',
   'btw',
-  'swarm',
+  'super-agent',
   'goal',
   'init',
   'clear',
@@ -2598,6 +2613,15 @@ export const IPC = {
   settingsSyncModels: 'settings:sync-models',
   settingsSaveWebSearch: 'settings:save-web-search',
   settingsTestWebSearch: 'settings:test-web-search',
+
+  // 手机配对：设置页「手机配对」区块用。
+  // 三个通道刻意分开而不是合成一个「配对操作」：
+  // 它们的失败原因完全不同（没开启 / 没票据 / 设备不存在），
+  // 合并会让界面只能报一句含糊的「操作失败」。
+  relayPairIssue: 'relay:pair-issue',
+  relayPairList: 'relay:pair-list',
+  relayPairRevoke: 'relay:pair-revoke',
+
   goalStart: 'goal:start',
   goalPause: 'goal:pause',
   goalResume: 'goal:resume',
@@ -2779,13 +2803,13 @@ export interface MorrowApi {
   collaboration: {
     /** 用户核对后确认一条 uncertain/executed 动作，避免重复执行 */
     confirmAction(input: { projectId: string; actionId: string }): Promise<Result<import('./types').CollaborationProjection>>
-    /** 单独停止一个后台 Worker 任务；其他任务继续 */
+    /** 单独停止一个后台协作成员任务；其他任务继续 */
     stopTask(input: { projectId: string; taskId: string }): Promise<Result<{ stopped: boolean }>>
-    /** 关闭“可能卡住”的提醒，保留该 Worker 继续工作 */
+    /** 关闭“可能卡住”的提醒，保留该协作成员继续工作 */
     dismissStuck(input: { projectId: string; taskId: string }): Promise<Result<{ dismissed: boolean }>>
     /** 从本机记录单独重试一项未完成任务；已完成的任务不会重跑 */
     retryTask(input: { sessionId: string; projectId: string; taskId: string }): Promise<Result<{ started: boolean }>>
-    /** 带原线程与新指令重新激活一个已结束的 Worker */
+    /** 带原线程与新指令重新激活一个已结束的协作成员 */
     reactivate(input: {
       sessionId: string
       projectId: string
@@ -2810,7 +2834,7 @@ export interface MorrowApi {
     }): Promise<Result<{ revoked: boolean }>>
     /** 当前桌面/端口租约，说明谁正在使用共享资源 */
     resources(): Promise<Result<import('./types').SharedResourceView[]>>
-    /** 向指定运行中任务投递补充要求；先保存，Worker 在安全步读取 */
+    /** 向指定运行中任务投递补充要求；先保存，协作成员在安全步读取 */
     sendMessage(input: {
       sessionId: string
       projectId?: string
@@ -2994,6 +3018,20 @@ export interface MorrowApi {
   tokenActivity: {
     get(): Promise<Result<TokenActivitySummary>>
   }
+  /**
+   * 手机配对（设置 → 手机配对）。
+   *
+   * 三条通道都对着**正在运行的** `PairingService`。远程通道没开时
+   * 一律返回 `RELAY_DISABLED`，而不是悄悄启动一个只存在于内存里的服务 ——
+   * 那会让用户配上之后永远连不上，且找不到原因。
+   */
+  relayPair: {
+    /** 签发一张新票据。同一时间可以有多张在途（不同手机各扫各的）。 */
+    issue(input: { deviceId: string; phonePubKey: string }): Promise<Result<PairIssueResult>>
+    list(): Promise<Result<PairDeviceView[]>>
+    /** 撤销设备。成功后下一次请求立即抛 DEVICE_REVOKED（同一请求内生效）。 */
+    revoke(deviceId: string): Promise<Result<{ revoked: boolean }>>
+  }
   features: {
     /** 扩展功能统一入口；仅接受已注册的 feature:<name>:<action> 频道 */
     invoke<T = unknown>(channel: string, payload?: unknown): Promise<Result<T>>
@@ -3041,7 +3079,7 @@ export function collaborationProjectId(workspace: string | null, sessionId: stri
   return `project_${stableCollaborationHash(key).slice(0, 12)}`
 }
 
-/** 任务编号：项目 + 本轮 run + Router 节点 id 决定，跨重试保持不变。 */
+/** 任务编号：项目 + 本轮 run + 分发层节点 id 决定，跨重试保持不变。 */
 export function collaborationTaskId(projectId: string, runId: string, nodeId: string): string {
   return `task_${stableCollaborationHash(`${projectId}|${runId}|${nodeId}`).slice(0, 12)}`
 }
@@ -3150,7 +3188,7 @@ function validArtifact(value: unknown): value is import('./types').Collaboration
  * 旧任务没有历史时按 attempts 次数生成 legacy 尝试，最后一次保留原状态；
  * 不把历史中的 running 自动当成新的工作，只把它标成 legacy 记录。
  */
-const STUCK_TOOL_STATUSES = new Set<SwarmOperation['status']>([  'running',
+const STUCK_TOOL_STATUSES = new Set<MemberOperation['status']>([  'running',
   'success',
   'error',
   'denied',
@@ -3167,7 +3205,7 @@ const STUCK_RESOLUTIONS = new Set<NonNullable<StuckAlert['resolution']>>([
   'superseded'
 ])
 
-function normalizeStuckEvidence(raw: unknown): SwarmOperation[] | undefined {
+function normalizeStuckEvidence(raw: unknown): MemberOperation[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const evidence = raw.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return []
@@ -3176,7 +3214,7 @@ function normalizeStuckEvidence(raw: unknown): SwarmOperation[] | undefined {
       typeof operation.id !== 'string' ||
       typeof operation.title !== 'string' ||
       typeof operation.status !== 'string' ||
-      !STUCK_TOOL_STATUSES.has(operation.status as SwarmOperation['status'])
+      !STUCK_TOOL_STATUSES.has(operation.status as MemberOperation['status'])
     ) {
       return []
     }
@@ -3185,7 +3223,7 @@ function normalizeStuckEvidence(raw: unknown): SwarmOperation[] | undefined {
         id: operation.id.slice(0, 80),
         name: typeof operation.name === 'string' ? operation.name.slice(0, 80) : 'tool',
         title: operation.title.slice(0, 160),
-        status: operation.status as SwarmOperation['status'],
+        status: operation.status as MemberOperation['status'],
         ...(typeof operation.input === 'string' ? { input: operation.input.slice(0, 240) } : {}),
         ...(typeof operation.output === 'string' ? { output: operation.output.slice(0, 320) } : {}),
         ...(typeof operation.error === 'string' ? { error: operation.error.slice(0, 320) } : {}),
@@ -3198,7 +3236,7 @@ function normalizeStuckEvidence(raw: unknown): SwarmOperation[] | undefined {
         ...(typeof operation.finishedAt === 'number' && Number.isFinite(operation.finishedAt)
           ? { finishedAt: operation.finishedAt }
           : {})
-      } satisfies SwarmOperation
+      } satisfies MemberOperation
     ]
   })
   return evidence.length > 0 ? evidence.slice(-5) : undefined
@@ -3479,7 +3517,7 @@ export function reconcileSuperAgentAfterRestart(
       continue
     }
     if (task.status !== 'running') continue
-    const reason = '应用重启，Worker 已停止；本次执行结果未确认，请核对后单独重试。'
+    const reason = '应用重启，协作成员已停止；本次执行结果未确认，请核对后单独重试。'
     const taskId = task.taskId ?? task.id
     if (task.currentAttemptId) {
       finishCollaborationAttempt(task, task.currentAttemptId, 'cancelled', 'cancelled', 'system', {

@@ -4,6 +4,7 @@ release/
 deliver/
 deliver-new/
 deliver-clean/
+deliver-r2/
 dist/
 test-results/
 playwright-report/

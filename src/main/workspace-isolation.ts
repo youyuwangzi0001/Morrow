@@ -254,7 +254,7 @@ function samePath(a: string, b: string): boolean {
 }
 
 /**
- * 给每个写文件的 Worker 一份独立工作副本：
+ * 给每个写文件的协作成员一份独立工作副本：
  * - Git 仓库根目录优先使用 detached worktree（保留 Git 元数据），否则普通复制；
  * - 基线包含用户当前未提交的修改；
  * - 合并时逐份比对，整文件冲突保留主版本与成员版本，不静默覆盖。
@@ -476,7 +476,7 @@ export class WorkspaceIsolationService implements WorkspaceIsolationPort {
     }
   }
 
-  /** 同一工作区并发 prepare 时共用一次源清单计算，避免 N 个 Worker 各扫一遍全量文件。 */
+  /** 同一工作区并发 prepare 时共用一次源清单计算，避免 N 个协作成员各扫一遍全量文件。 */
   private readonly sourceManifests = new Map<string, Promise<Manifest>>()
 
   private async sourceManifest(source: string): Promise<Manifest> {
@@ -512,7 +512,7 @@ export class WorkspaceIsolationService implements WorkspaceIsolationPort {
       try {
         renameSync(staging, basePath)
       } catch {
-        // 另一个 Worker 抢先发布了同一基线：直接复用它的结果
+        // 另一个协作成员抢先发布了同一基线：直接复用它的结果
         rmSync(staging, { recursive: true, force: true })
         if (!existsSync(basePath)) throw new WorkspaceIsolationError('基线目录创建失败，已拒绝。', '请清理磁盘后重试。')
       }
@@ -559,7 +559,7 @@ export class WorkspaceIsolationService implements WorkspaceIsolationPort {
     let worktreeCreated = false
     let preparingBaseKey: string | null = null
     try {
-      // 先算源清单：同一基线只需落盘一次，后续 Worker 复用同一份 base
+      // 先算源清单：同一基线只需落盘一次，后续协作成员复用同一份 base
       const baseManifest = await this.sourceManifest(source)
       const baseKey = baseManifest.hash.slice(0, 32)
       basePath = await this.ensureBase(source, input.projectId, baseKey, baseManifest)

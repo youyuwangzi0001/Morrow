@@ -65,7 +65,7 @@ afterEach(() => {
 })
 
 describe('worker-collaboration.test.ts', () => {
-  it('@core:swarm 协作消息区分主代理指令、Worker 汇报与提问，安全步只投递指令', () => {
+  it('@core:superagent 协作消息区分主代理指令、协作成员汇报与提问，安全步只投递指令', () => {
     store.enqueueMessage({
       projectId: PROJECT,
       taskId: 'task_a',
@@ -104,7 +104,7 @@ describe('worker-collaboration.test.ts', () => {
     expect(reloaded.messages.find((message) => message.kind === 'note')?.direction).toBe('worker')
   })
 
-  it('@core:swarm Worker 提问可等待主代理答复，答复后问题标记已采用', async () => {
+  it('@core:superagent 协作成员提问可等待主代理答复，答复后问题标记已采用', async () => {
     const posted = runtime.postTaskMessage({
       projectId: PROJECT,
       taskId: 'task_a',
@@ -134,7 +134,7 @@ describe('worker-collaboration.test.ts', () => {
     expect(projection.messages.find((message) => message.id === posted.message.id)?.status).toBe('adopted')
   })
 
-  it('@core:swarm Worker 专用工具可回消息、提问和更新自己的待办', async () => {
+  it('@core:superagent 协作成员专用工具可回消息、提问和更新自己的待办', async () => {
     const emitted: string[] = []
     const ctx = context({
       emit: (event) => {
@@ -180,12 +180,12 @@ describe('worker-collaboration.test.ts', () => {
     expect(emitted).toContain('collaboration_updated')
   })
 
-  it('@core:swarm 重新激活带原线程和新指令进入 Worker', async () => {
-    const { swarmTool } = await import('../../src/core/tool-extra')
-    let seen: import('../../src/core/types').SwarmMemberRequest | null = null
+  it('@core:superagent 重新激活带原线程和新指令进入协作成员', async () => {
+    const { superAgentTool } = await import('../../src/core/tool-extra')
+    let seen: import('../../src/core/types').MemberRunRequest | null = null
     const base = context({
       collaborationRuntime: runtime,
-      runSwarmMember: async (request) => {
+      runMemberTask: async (request) => {
         seen = request
         return {
           status: 'completed',
@@ -219,7 +219,7 @@ describe('worker-collaboration.test.ts', () => {
         { role: 'assistant' as const, text: '旧结论', at: 2 }
       ]
     }
-    const result = await swarmTool.execute(
+    const result = await superAgentTool.execute(
       {
         goal: '登录流程',
         tasks: [{ id: 'task_a', title: '补测试', prompt: '补登录测试', deliverable: '测试通过' }],
@@ -228,7 +228,7 @@ describe('worker-collaboration.test.ts', () => {
       context({
         ...base,
         depth: 0,
-        resumeSwarmTask: {
+        resumeMemberTask: {
           projectId: PROJECT,
           runId: 'super_run',
           goal: '登录流程',
@@ -243,16 +243,16 @@ describe('worker-collaboration.test.ts', () => {
     expect(seen!.instruction).toBe('这次补测试')
   })
 
-  it('@core:swarm 共享工作区按声明文件加租约，同一文件不会被两个 Worker 同时写', async () => {
+  it('@core:superagent 共享工作区按声明文件加租约，同一文件不会被两个协作成员同时写', async () => {
     const events: string[] = []
-    const runSwarmMember = async (request: import('../../src/core/types').SwarmMemberRequest) => {
+    const runMemberTask = async (request: import('../../src/core/types').MemberRunRequest) => {
       events.push(`${request.description}:start`)
       await new Promise((resolve) => setTimeout(resolve, 60))
       events.push(`${request.description}:end`)
       return { status: 'completed' as const, summary: `${request.description} 完成`, steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }
     }
-    const { swarmTool } = await import('../../src/core/tool-extra')
-    const result = await swarmTool.execute(
+    const { superAgentTool } = await import('../../src/core/tool-extra')
+    const result = await superAgentTool.execute(
       {
         goal: '改同一个文件',
         max_parallel: 2,
@@ -261,22 +261,22 @@ describe('worker-collaboration.test.ts', () => {
           { id: 'b', title: 'B', prompt: '写 B', deliverable: 'B', files: ['src/shared.ts'] }
         ]
       },
-      context({ depth: 0, runSwarmMember })
+      context({ depth: 0, runMemberTask })
     )
     expect(result.ok).toBe(true)
     expect(events.slice(0, 4)).toEqual(['A:start', 'A:end', 'B:start', 'B:end'])
   })
 
-  it('@core:swarm 不同文件可以真正并行启动', async () => {
+  it('@core:superagent 不同文件可以真正并行启动', async () => {
     const events: string[] = []
-    const runSwarmMember = async (request: import('../../src/core/types').SwarmMemberRequest) => {
+    const runMemberTask = async (request: import('../../src/core/types').MemberRunRequest) => {
       events.push(`${request.description}:start`)
       await new Promise((resolve) => setTimeout(resolve, 60))
       events.push(`${request.description}:end`)
       return { status: 'completed' as const, summary: `${request.description} 完成`, steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }
     }
-    const { swarmTool } = await import('../../src/core/tool-extra')
-    const result = await swarmTool.execute(
+    const { superAgentTool } = await import('../../src/core/tool-extra')
+    const result = await superAgentTool.execute(
       {
         goal: '并行改两个文件',
         max_parallel: 2,
@@ -285,7 +285,7 @@ describe('worker-collaboration.test.ts', () => {
           { id: 'b', title: 'B', prompt: '写 B', deliverable: 'B', files: ['src/b.ts'] }
         ]
       },
-      context({ depth: 0, runSwarmMember })
+      context({ depth: 0, runMemberTask })
     )
     expect(result.ok).toBe(true)
     expect(events.slice(0, 2)).toEqual(['A:start', 'B:start'])

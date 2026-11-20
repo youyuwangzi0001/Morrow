@@ -72,7 +72,7 @@
 | `brainstorm-and-scope` | 把模糊需求变成可执行任务简报 |
 | `plan-and-execute` | 多步骤计划、目标契约与持续推进 |
 | `verify-before-delivery` | 用新鲜证据验证再声称完成 |
-| `parallel-work` | 用 swarm 拆分并派发独立任务 |
+| `parallel-work` | 用 super_agent 拆分并派发独立任务 |
 | `code-review` | 只读审查改动，按 P0–P3 报告风险 |
 | `debugging` | 稳定复现、定位根因、最小修复 |
 | `test-writer` | 补高价值自动化测试与回归保护 |

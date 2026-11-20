@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { replaceUserMessageText, planStepsCompleted, swarmTasksFromMeta, estimateUsageCost, ToolProtocolStreamFilter, parseTextToolCalls, stripToolProtocol, parseFilePath, type ChatMessage, type SessionPlan, type SuperAgentState, type TodoItem } from '../../src/shared/types'
+import { replaceUserMessageText, planStepsCompleted, memberTasksFromMeta, estimateUsageCost, ToolProtocolStreamFilter, parseTextToolCalls, stripToolProtocol, parseFilePath, type ChatMessage, type SessionPlan, type SuperAgentState, type TodoItem } from '../../src/shared/types'
 import { buildOpenAIRequestBody, buildAnthropicRequestBody } from '../../src/core/providers'
 import { ProviderStreamRequest } from '../../src/core/types'
 import { buildResearchPlanPrompt, buildResearchPromptSection, collaborationAttemptId, collaborationProjectId, collaborationTaskId, collectResearchSources, createResearchState, decideResearchNextStep, normalizeSuperAgentCollaboration, reconcileSuperAgentAfterRestart, recordCollaborationStatus, shouldApplySuperAgentState, computeNextRun, validateScheduleSpec, type ScheduleSpec } from '../../src/shared/contracts'
@@ -375,6 +375,14 @@ describe('research.test.ts', () => {
       const done = decideResearchNextStep(state, enoughMessages, [])
       expect(done).toMatchObject({ status: 'completed', sourceCount: 4 })
 
+      const fabricatedMessages = [
+        ...enoughMessages.slice(0, -1),
+        textMessage('## 参考来源\n[1] https://fake.example/1\n[2] https://fake.example/2', at(50))
+      ]
+      const fabricated = decideResearchNextStep(state, fabricatedMessages, [])
+      expect(fabricated.status).toBe('searching')
+      expect(fabricated.gap).toContain('报告')
+
       const maxed = decideResearchNextStep({ ...state, round: state.maxRounds }, messages, [])
       expect(maxed.status).toBe('stopped')
       expect(maxed.gap).toContain('已到研究轮次上限')
@@ -571,7 +579,7 @@ describe('file-path.test.ts', () => {
   })
 })
 
-describe('swarm 任务操作回放', () => {
+describe('super_agent 任务操作回放', () => {
   it('@core:interface 成员操作不再截断到 30 条，重新加载会话也能全部展开', () => {
     const operations = Array.from({ length: 35 }, (_, index) => ({
       id: `op-${index}`,
@@ -579,7 +587,7 @@ describe('swarm 任务操作回放', () => {
       title: `读取第 ${index + 1} 个文件`,
       status: 'success'
     }))
-    const tasks = swarmTasksFromMeta({
+    const tasks = memberTasksFromMeta({
       tasks: [{ index: 0, title: '检查', agent: 'explore', status: 'completed', operations }]
     })
     expect(tasks).toHaveLength(1)

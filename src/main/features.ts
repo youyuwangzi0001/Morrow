@@ -2974,7 +2974,7 @@ function requestedWorkspace(input: Record<string, unknown>): string {
 registerFeatureHandler('feature:agents:list', (payload) => {
   const requested = requestedWorkspace(featurePayloadOf(payload))
   const workspace = requested
-    ? resolveWorkspaceDir(requested, '集群成员角色只能读取已登记工作区内的配置。')
+    ? resolveWorkspaceDir(requested, '协作成员角色只能读取已登记工作区内的配置。')
     : null
   return summarizeAgentRoles(loadAgentRoles(workspace))
 })
@@ -3174,7 +3174,7 @@ function toolDomain(name: string): string {
   if (name.startsWith('memory') || name === 'remember' || name.startsWith('skill')) return '记忆与技能'
   if (name === 'web_search' || name === 'web_fetch' || name === 'http_request') return '联网与 API'
   if (name === 'run_command' || name === 'terminal' || name.startsWith('terminal_')) return '命令与终端'
-  if (name === 'swarm' || name === 'task' || name === 'update_goal' || name === 'ask_user' || name === 'todo_write' || name === 'submit_plan') return '任务与协作'
+  if (name === 'super_agent' || name === 'update_goal' || name === 'ask_user' || name === 'todo_write' || name === 'submit_plan') return '任务与协作'
   if (name === 'artifact' || name === 'trace' || name === 'open_artifact') return '成果与追溯'
   if (name.startsWith('read_') || name === 'list_dir' || name === 'glob' || name === 'grep') return '读取与搜索'
   if (name.startsWith('write_') || name.startsWith('edit_') || name.startsWith('delete_') || name === 'apply_patch') return '文件改动'

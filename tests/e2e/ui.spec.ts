@@ -650,6 +650,32 @@ test('@core:modes 计划模式：/plan 生成 → 拒绝 → 修订 → 批准�
     expect((await getPlan(page))?.status).toBe('executing')
     await expect(planCard).toContainText('继续执行')
     expect((await readStore(page)).session?.todos.filter((todo) => todo.status === 'completed')).toHaveLength(2)
+    // 画布展开时挂窗让位；关闭画布后恢复，并显示真实待办进度。
+    const canvasArtifactId = await page.evaluate(
+      () =>
+        (window as unknown as { __morrowStore: { getState: () => { canvas: { artifactId: string | null } } } }).__morrowStore.getState()
+          .canvas.artifactId
+    )
+    await page.evaluate(() => {
+      ;(window as unknown as { __morrowStore: { getState: () => { closeCanvas: () => void } } }).__morrowStore.getState().closeCanvas()
+    })
+    const progressDock = page.locator('.progress-dock')
+    await expect(progressDock).toBeVisible()
+    await expect(progressDock.locator('.progress-status')).toHaveText('等待你')
+    await expect(progressDock.locator('.progress-now-text')).toContainText('待继续')
+    await expect(progressDock.locator('.progress-todo')).toHaveCount(3)
+    await expect(progressDock.locator('.progress-todo-meta')).toContainText('待办 2/3')
+    const toastBox = await page.locator('.toasts').boundingBox()
+    const dockBox = await progressDock.boundingBox()
+    expect(toastBox).not.toBeNull()
+    expect(dockBox).not.toBeNull()
+    expect(toastBox!.x + toastBox!.width).toBeLessThanOrEqual(dockBox!.x + 1)
+    await page.screenshot({ path: screenshotPath('progress-todos.png') })
+    await page.evaluate((artifactId) => {
+      ;(window as unknown as { __morrowStore: { getState: () => { openCanvas: (id?: string) => void } } }).__morrowStore.getState().openCanvas(artifactId ?? undefined)
+    }, canvasArtifactId)
+    await expect(page.locator('.canvas-root')).toBeVisible()
+    await expect(page.locator('.progress-dock')).toHaveCount(0)
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
     })
@@ -1023,7 +1049,7 @@ test.describe('R8 #5 显式聊天 / 工作模式', () => {
       expect(requests[0].toolNames).not.toContain('remove_file')
       expect(requests[0].toolNames).not.toContain('run_command')
       expect(requests[0].toolNames).not.toContain('update_goal')
-      // 泛化断言：聊天模式工具列表里不允许出现任何写入/执行/记忆/目标/计划/集群成员类工具
+      // 泛化断言：聊天模式工具列表里不允许出现任何写入/执行/记忆/目标/计划/协作成员类工具
       for (const name of requests[0].toolNames) {
         expect(name, `聊天模式不应下发 ${name}`).not.toMatch(
           /^(write_|edit_|run_command|remember$|update_goal$|todo_write$|task$|open_artifact$)/
@@ -1308,7 +1334,7 @@ test.describe('A2 定时任务', () => {
       title: 'A2 定时任务基础会话'
     })
 
-    await openToolPanel(page, '定时任务')
+    await page.getByRole('button', { name: '打开定时任务' }).click()
     await expect(page.locator('.sch-root')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('.sch-title')).toHaveText('安排一件新事情')
     await page.getByLabel('任务名称').fill('每周项目周报')
@@ -1709,7 +1735,7 @@ test.describe('r10-connectors.spec.ts', () => {
  * R10-G 连接器管理面板 E2E（真实 Electron + 真实主进程 feature IPC + 真实文件/加密）。
  *
  * 无 LLM、不联网、不产生费用：
- * 1. 从设置 → 更多功能打开连接器面板；
+ * 1. 从设置左侧的「外部工具」分页打开连接器面板；
  * 2. 通过面板 UI 添加 Streamable HTTP MCP 连接器（本地 mock server），测试连接 → 工具列表；
  * 3. 保存后验证真实落盘：`<dataDir>/mcp.json` 只有 `$MORROW_SECRET:` 标记，密钥加密文件无明文；
  * 4. 再次测试已保存连接器：解密后的 Authorization 请求头真实发到 mock server；
@@ -1847,15 +1873,9 @@ async function openConnectorsPanel(morrow: MorrowApp): Promise<void> {
   await waitForStoreReady(page)
   await openToolPanel(page, '连接器')
   await expect(page.getByTestId('connectors-panel')).toBeVisible({ timeout: 15_000 })
-  // 外层模态不滚动；左右两栏各自在面板内部滚动
-  const bodyOverflow = await page
-    .getByRole('dialog', { name: '外部工具' })
-    .evaluate((panel) => {
-      const body = panel.querySelector<HTMLElement>('.modal-body')
-      return body ? body.scrollHeight - body.clientHeight : null
-    })
-  expect(bodyOverflow).not.toBeNull()
-  expect(bodyOverflow!).toBeLessThanOrEqual(1)
+  // 外部工具已经是设置左侧的独立分页，不再盖一层模态。
+  await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '外部工具' })).toHaveCount(0)
   const pathFits = await page.locator('.conn-path').evaluate((element) => {
     return element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + 1
   })
@@ -1980,7 +2000,10 @@ test.describe('R10-G 连接器管理面板', () => {
     await page.waitForTimeout(300)
     await page.screenshot({ path: screenshotPath('r10-connectors-tools.png') })
 
-    // 截图证据 1（面板 + 已保存连接器）：把编辑区滚回顶部，保证截图完整
+    // 截图证据 1（面板 + 已保存连接器）：把编辑区与设置页都滚回顶部，保证截图完整
+    await page.locator('.st-panel').evaluate((element) => {
+      element.scrollTop = 0
+    })
     await page.locator('.conn-detail').evaluate((element) => {
       element.scrollTop = 0
     })
@@ -2290,10 +2313,10 @@ test.describe('R10-H 技能库（真实主进程 feature IPC）', () => {
 })
 
 test.describe("12-command-ipc", () => {
-// ── 原文件：swarm.spec.ts ──────────────────────────────────────────────
-test.describe('swarm.spec.ts', () => {
+// ── 原文件：super_agent.spec.ts ──────────────────────────────────────────────
+test.describe('super_agent.spec.ts', () => {
 /**
- * 集群 E2E：/swarm 触发模型拆解 → swarm 工具并行派发 10 个成员 → 汇总。
+ * 成员协作 E2E：/super_agent 触发模型拆解 → super_agent 工具并行派发 10 个成员 → 汇总。
  * 离线 mock LLM 按系统提示区分主代理与探索/审查成员。
  */
 
@@ -2303,7 +2326,7 @@ function workspaceAt(name: string): string {
   return path
 }
 
-test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async () => {
+test('@core:superagent 成员协作：拆解为十个成员并行执行并汇总', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
   const tasks = Array.from({ length: 10 }, (_, index) => ({
@@ -2315,10 +2338,10 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown; lastUserMessageText?: string }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (raw.includes('你是代码侦察型集群成员')) {
+      if (raw.includes('你是代码侦察型协作成员')) {
         return { text: '探索完成：登录入口在 src/auth/login.ts。', delayMs: 400 }
       }
-      if (raw.includes('你是代码审查型集群成员')) {
+      if (raw.includes('你是代码审查型协作成员')) {
         return { text: '审查完成：未发现高危问题，建议补一个锁定测试。', delayMs: 400 }
       }
       mainCalls += 1
@@ -2327,7 +2350,7 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
           text: '我把任务拆成十块并行检查。',
           toolCalls: [
             {
-              name: 'swarm',
+              name: 'super_agent',
               arguments: {
                 goal: '检查登录流程的安全性与实现位置',
                 tasks
@@ -2339,8 +2362,8 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
       return { text: '十个子任务都完成：登录入口已定位，未发现高危问题。' }
     }
   })
-  const workspace = workspaceAt('e2e-swarm')
-  const morrow = await launchMorrow({ name: 'swarm', timeoutMs: 90_000 })
+  const workspace = workspaceAt('e2e-super_agent')
+  const morrow = await launchMorrow({ name: 'super_agent', timeoutMs: 90_000 })
   try {
     const { page } = morrow
     await waitForStoreReady(page)
@@ -2350,19 +2373,19 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
       workspace,
       ...provider,
       permissionMode: 'auto',
-      title: '集群测试'
+      title: '成员协作测试'
     })
 
     const input = page.locator('.composer-input')
     await input.click()
-    await input.fill('/swarm 检查登录流程')
+    await input.fill('/super_agent 检查登录流程')
     await page.keyboard.press('Enter')
 
     // 实时任务板：不等整批结束就能看到每个子任务在做什么
-    const swarmRow = page.locator('.spine-row').filter({ hasText: '成员协作' }).first()
-    await expect(swarmRow).toBeVisible({ timeout: 15_000 })
-    await expect(swarmRow.locator('.super-board .super-task')).toHaveCount(10, { timeout: 20_000 })
-    await expect(swarmRow.locator('.super-board .super-task.is-running').first()).toBeVisible({ timeout: 15_000 })
+    const memberRow = page.locator('.spine-row').filter({ hasText: '成员协作' }).first()
+    await expect(memberRow).toBeVisible({ timeout: 15_000 })
+    await expect(memberRow.locator('.super-board .super-task')).toHaveCount(10, { timeout: 20_000 })
+    await expect(memberRow.locator('.super-board .super-task.is-running').first()).toBeVisible({ timeout: 15_000 })
 
     await waitUntil(
       async () => {
@@ -2371,19 +2394,19 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
         return state.run === null && last?.role === 'assistant' && last.text.includes('十个子任务都完成') ? true : null
       },
       90_000,
-      'swarm 运行结束'
+      'super_agent 运行结束'
     )
 
     const bodies = mock.requests.map((request: { body?: unknown }) => JSON.stringify(request.body ?? {}))
-    expect(bodies.some((body: string) => body.includes('你是代码侦察型集群成员'))).toBe(true)
-    expect(bodies.some((body: string) => body.includes('你是代码审查型集群成员'))).toBe(true)
-    expect(bodies.some((body: string) => body.includes('"name":"swarm"') || body.includes('"name": "swarm"'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('你是代码侦察型协作成员'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('你是代码审查型协作成员'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('"name":"super_agent"') || body.includes('"name": "super_agent"'))).toBe(true)
 
-    await expect(swarmRow).toBeVisible()
-    await expect(swarmRow.getByText('协作成员', { exact: true })).toBeVisible()
-    await expect(swarmRow.locator('.super-board .super-task')).toHaveCount(10)
-    await expect(swarmRow.locator('.super-board .super-task.is-completed')).toHaveCount(10)
-    const memberRows = swarmRow.locator('.super-board .super-task')
+    await expect(memberRow).toBeVisible()
+    await expect(memberRow.getByText('协作成员', { exact: true })).toBeVisible()
+    await expect(memberRow.locator('.super-board .super-task')).toHaveCount(10)
+    await expect(memberRow.locator('.super-board .super-task.is-completed')).toHaveCount(10)
+    const memberRows = memberRow.locator('.super-board .super-task')
     await expect(memberRows.nth(0)).toContainText('并行检查 1')
     await expect(memberRows.nth(0)).toContainText('代码侦察')
     await expect(memberRows.nth(1)).toContainText('并行检查 2')
@@ -2393,33 +2416,33 @@ test('@core:swarm 集群：拆解为十个成员并行执行并汇总', async ()
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
     })
-    await swarmRow.scrollIntoViewIfNeeded()
+    await memberRow.scrollIntoViewIfNeeded()
     await setThemeViaStore(page, 'dark')
     await page.waitForTimeout(300)
-    await page.screenshot({ path: screenshotPath('swarm-dark.png') })
+    await page.screenshot({ path: screenshotPath('super_agent-dark.png') })
     await setThemeViaStore(page, 'light')
     await page.waitForTimeout(350)
-    await page.screenshot({ path: screenshotPath('swarm-light.png') })
+    await page.screenshot({ path: screenshotPath('super_agent-light.png') })
   } finally {
     await morrow.close()
     await mock.close()
   }
 })
 
-test('@core:swarm Super-Agent：Router 派发 DAG Worker 并在主界面成员卡片展示', async () => {
+test('@core:superagent Super-Agent：分发层派发 DAG 协作成员并在主界面成员卡片展示', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown; lastUserMessageText?: string }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
-            text: '我把任务拆成两个 Worker：先定位登录入口，再审查风险。',
+            text: '我把任务拆成两个协作成员：先定位登录入口，再审查风险。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '检查登录流程',
                   max_parallel: 2,
@@ -2449,9 +2472,9 @@ test('@core:swarm Super-Agent：Router 派发 DAG Worker 并在主界面成员�
         }
         return { text: 'Super-Agent 完成：入口已定位，未发现高危问题。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         return {
-          text: raw.includes('你是代码侦察型集群成员')
+          text: raw.includes('你是代码侦察型协作成员')
             ? '探索完成：入口在 src/auth/login.ts。'
             : '审查完成：未发现高危问题，建议补一个锁定测试。',
           delayMs: 2500
@@ -2561,9 +2584,9 @@ test('@core:swarm Super-Agent：Router 派发 DAG Worker 并在主界面成员�
     )
 
     const bodies = mock.requests.map((request: { body?: unknown }) => JSON.stringify(request.body ?? {}))
-    expect(bodies.some((body: string) => body.includes('"name":"swarm"') || body.includes('"name": "swarm"'))).toBe(true)
-    expect(bodies.some((body: string) => body.includes('你是代码侦察型集群成员'))).toBe(true)
-    const workerBodies = bodies.filter((body: string) => body.includes('## 集群成员'))
+    expect(bodies.some((body: string) => body.includes('"name":"super_agent"') || body.includes('"name": "super_agent"'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('你是代码侦察型协作成员'))).toBe(true)
+    const workerBodies = bodies.filter((body: string) => body.includes('## 协作成员'))
     expect(workerBodies.length).toBeGreaterThan(0)
     expect(workerBodies.some((body: string) => body.includes('write_file'))).toBe(true)
 
@@ -2588,21 +2611,21 @@ test('@core:swarm Super-Agent：Router 派发 DAG Worker 并在主界面成员�
   }
 })
 
-test('@core:swarm Super-Agent：单项重试只重跑失败任务，已完成任务不重复执行', async () => {
+test('@core:superagent Super-Agent：单项重试只重跑失败任务，已完成任务不重复执行', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
   let bAttempts = 0
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
             text: '派两个任务，其中 B 第一次会失败。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '单项重试验收',
                   max_parallel: 2,
@@ -2618,7 +2641,7 @@ test('@core:swarm Super-Agent：单项重试只重跑失败任务，已完成任
         }
         return { text: '第一轮结束：A 完成，B 失败。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         if (prompt.includes('任务 B')) {
           bAttempts += 1
@@ -2698,12 +2721,12 @@ test('@core:swarm Super-Agent：单项重试只重跑失败任务，已完成任
     const firstRoundProjectId = persistedBefore?.superAgent?.projectId
     const aCallsBefore = mock.requests.filter(
       (request: { body?: unknown }) =>
-        JSON.stringify(request.body ?? {}).includes('## 集群成员') &&
+        JSON.stringify(request.body ?? {}).includes('## 协作成员') &&
         (request as { lastUserMessageText?: string }).lastUserMessageText?.includes('任务 A')
     ).length
     const bCallsBefore = mock.requests.filter(
       (request: { body?: unknown }) =>
-        JSON.stringify(request.body ?? {}).includes('## 集群成员') &&
+        JSON.stringify(request.body ?? {}).includes('## 协作成员') &&
         (request as { lastUserMessageText?: string }).lastUserMessageText?.includes('任务 B')
     ).length
     expect(aCallsBefore).toBeGreaterThan(0)
@@ -2732,17 +2755,17 @@ test('@core:swarm Super-Agent：单项重试只重跑失败任务，已完成任
     expect(finalState.session?.superAgent?.status).toBe('completed')
     const aCallsAfter = mock.requests.filter(
       (request: { body?: unknown }) =>
-        JSON.stringify(request.body ?? {}).includes('## 集群成员') &&
+        JSON.stringify(request.body ?? {}).includes('## 协作成员') &&
         (request as { lastUserMessageText?: string }).lastUserMessageText?.includes('任务 A')
     ).length
     const bCallsAfter = mock.requests.filter(
       (request: { body?: unknown }) =>
-        JSON.stringify(request.body ?? {}).includes('## 集群成员') &&
+        JSON.stringify(request.body ?? {}).includes('## 协作成员') &&
         (request as { lastUserMessageText?: string }).lastUserMessageText?.includes('任务 B')
     ).length
     expect(aCallsAfter).toBe(aCallsBefore)
     expect(bCallsAfter).toBeGreaterThan(bCallsBefore)
-    // 单项重试不经过 Router，只调用失败任务的 Worker。
+    // 单项重试不经过分发层，只调用失败任务的协作成员。
     expect(mainCalls).toBe(2)
     const persistedAfter = (() => {
       const sessionId = finalState.session?.id
@@ -2779,7 +2802,7 @@ test('@core:swarm Super-Agent：单项重试只重跑失败任务，已完成任
   }
 })
 
-test('@core:swarm Super-Agent：后台 Worker 等审批不误判，单独取消后其他成员继续', async () => {
+test('@core:superagent Super-Agent：后台协作成员等审批不误判，单独取消后其他成员继续', async () => {
   test.setTimeout(180_000)
   const stamp = Date.now()
   const outsideName = `e2e-approval-${stamp}.txt`
@@ -2787,14 +2810,14 @@ test('@core:swarm Super-Agent：后台 Worker 等审批不误判，单独取消�
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
             text: '派两个任务，其中一个需要用户批准。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '审批等待验收',
                   max_parallel: 2,
@@ -2815,7 +2838,7 @@ test('@core:swarm Super-Agent：后台 Worker 等审批不误判，单独取消�
         }
         return { text: '第一轮结束：A 完成，B 在等批准。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         if (prompt.includes(outsideName)) {
           return {
@@ -2864,7 +2887,7 @@ test('@core:swarm Super-Agent：后台 Worker 等审批不误判，单独取消�
           : null
       },
       90_000,
-      'Worker 等审批（主代理本轮被占用）'
+      '协作成员等审批（主代理本轮被占用）'
     )
     const rows = page.locator('.super-board .super-task')
     const aRow = rows.filter({ hasText: '任务 A' })
@@ -2898,7 +2921,7 @@ test('@core:swarm Super-Agent：后台 Worker 等审批不误判，单独取消�
   }
 })
 
-test('@core:swarm Super-Agent：规则变更只重排受影响项，无关任务不重跑', async () => {
+test('@core:superagent Super-Agent：规则变更只重排受影响项，无关任务不重跑', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
   const workerCalls = new Map<string, number>()
@@ -2965,14 +2988,14 @@ test('@core:swarm Super-Agent：规则变更只重排受影响项，无关任务
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
             text: '把登录功能拆成规则、服务、页面、测试和说明。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: { goal: '实现登录功能', max_parallel: 4, watchdog_ms: 0, tasks: baseTasks }
               }
             ]
@@ -2984,7 +3007,7 @@ test('@core:swarm Super-Agent：规则变更只重排受影响项，无关任务
             text: '登录规则改为锁定 30 分钟，只重排受影响项。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '实现登录功能（规则 v2）',
                   revision_of: 'current',
@@ -2998,7 +3021,7 @@ test('@core:swarm Super-Agent：规则变更只重排受影响项，无关任务
         }
         return { text: '第二轮完成：只重跑了受影响项。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         const key =
           ['rules', 'service', 'page', 'test', 'docs'].find((id) => prompt.includes(`【任务：${id}】`)) ?? 'unknown'
@@ -3126,21 +3149,21 @@ test('@core:swarm Super-Agent：规则变更只重排受影响项，无关任务
   }
 })
 
-test('@core:swarm Super-Agent：两个成员改同一文件同一行，保留两版并按选择合并', async () => {
+test('@core:superagent Super-Agent：两个成员改同一文件同一行，保留两版并按选择合并', async () => {
   test.setTimeout(180_000)
   let routerCalls = 0
   const workerSteps = new Map<string, number>()
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
             text: '派两个成员改同一个文件，稍后合并。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '并发改同一行',
                   max_parallel: 2,
@@ -3166,7 +3189,7 @@ test('@core:swarm Super-Agent：两个成员改同一文件同一行，保留两
         }
         return { text: '第一轮结束：两位成员都已完成，等待合并结果。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         const key = prompt.includes('【任务：a】') ? 'a' : 'b'
         const step = (workerSteps.get(key) ?? 0) + 1
@@ -3290,7 +3313,7 @@ test('@core:swarm Super-Agent：两个成员改同一文件同一行，保留两
   }
 })
 
-test('@core:swarm Super-Agent：成果版本可提前交接，第 2 版只让使用旧版的成员重测', async () => {
+test('@core:superagent Super-Agent：成果版本可提前交接，第 2 版只让使用旧版的成员重测', async () => {
   test.setTimeout(240_000)
   let routerCalls = 0
   let serviceSteps = 0
@@ -3298,14 +3321,14 @@ test('@core:swarm Super-Agent：成果版本可提前交接，第 2 版只让使
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
             text: '服务先发布接口说明，页面和测试可先用它开工。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '按版本化接口说明完成页面和测试',
                   max_parallel: 4,
@@ -3351,7 +3374,7 @@ test('@core:swarm Super-Agent：成果版本可提前交接，第 2 版只让使
         }
         return { text: '已派发：服务先发布成果，页面和测试按版本开工。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         if (prompt.includes('【任务：service】')) {
           serviceSteps += 1
@@ -3630,7 +3653,7 @@ test('@core:swarm Super-Agent：成果版本可提前交接，第 2 版只让使
   }
 })
 
-test('@core:swarm Super-Agent：独立验收失败退回作者返工，修复后在新候选版本通过', async () => {
+test('@core:superagent Super-Agent：独立验收失败退回作者返工，修复后在新候选版本通过', async () => {
   test.setTimeout(240_000)
   let routerCalls = 0
   let loginSteps = 0
@@ -3638,14 +3661,14 @@ test('@core:swarm Super-Agent：独立验收失败退回作者返工，修复后
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
             text: '先写登录接口说明，再由独立验收员检查；失败就退回返工。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '先写交付文件，再由独立验收员验收',
                   max_parallel: 3,
@@ -3686,7 +3709,7 @@ test('@core:swarm Super-Agent：独立验收失败退回作者返工，修复后
         }
         return { text: '已派发：验收失败会自动退回作者返工。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         if (prompt.includes('【任务：login】')) {
           loginSteps += 1
@@ -3863,7 +3886,7 @@ test('login doc is final', () => {
   }
 })
 
-test('@core:swarm 项目进度页：一眼看清谁在做、谁在等、能帮什么，并用键盘暂停单项', async () => {
+test('@core:superagent 项目进度页：一眼看清谁在做、谁在等、能帮什么，并用键盘暂停单项', async () => {
   test.setTimeout(240_000)
   const stamp = Date.now()
   const outsideName = `e2e-progress-outside-${stamp}.txt`
@@ -3871,14 +3894,14 @@ test('@core:swarm 项目进度页：一眼看清谁在做、谁在等、能帮�
   const mock = await startMockLLM({
     respond: async (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
             text: '派四项任务：执行中、等批准、失败和待验收各一项。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '项目进度页四态验证',
                   max_parallel: 4,
@@ -3922,7 +3945,7 @@ test('@core:swarm 项目进度页：一眼看清谁在做、谁在等、能帮�
         }
         return { text: '已派发四项任务，完整进度在主对话的成员卡片里。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const prompt = ctx.lastUserMessageText ?? ''
         if (prompt.includes('【任务：A】')) {
           await new Promise<void>((resolve) => {
@@ -4107,20 +4130,20 @@ test('accept placeholder', () => assert.equal(1, 1))
   }
 })
 
-test('@core:swarm 旧会话项目进度只读：历史可查，已完成项不触发实际执行', async () => {
+test('@core:superagent 旧会话项目进度只读：历史可查，已完成项不触发实际执行', async () => {
   test.setTimeout(180_000)
   let routerCalls = 0
   const mock = await startMockLLM({
     respond: (ctx) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
             text: '派一个会快速完成的任务。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '旧会话只读验证',
                   max_parallel: 1,
@@ -4140,7 +4163,7 @@ test('@core:swarm 旧会话项目进度只读：历史可查，已完成项不�
         }
         return { text: '任务已完成，进度在主对话的成员卡片里。' }
       }
-      if (raw.includes('## 集群成员')) return { text: '旧会话任务完成，结论可查。' }
+      if (raw.includes('## 协作成员')) return { text: '旧会话任务完成，结论可查。' }
       return { text: '收到。' }
     }
   })
@@ -4243,19 +4266,19 @@ test('@core:swarm 旧会话项目进度只读：历史可查，已完成项不�
   }
 })
 
-test('@core:swarm 协作卡片在主对话自动出现，并按本机并发上限排队', async () => {
+test('@core:superagent 协作卡片在主对话自动出现，并按本机并发上限排队', async () => {
   test.setTimeout(120_000)
   let mainCalls = 0
   const mock = await startMockLLM({
     respond: ({ raw }: { raw: string }) => {
-      if (raw.includes('## 集群成员')) return { text: '成员已完成这一块。', delayMs: 1_200 }
+      if (raw.includes('## 协作成员')) return { text: '成员已完成这一块。', delayMs: 1_200 }
       mainCalls += 1
       if (mainCalls === 1) {
         return {
           text: '派五个成员并行处理。',
           toolCalls: [
             {
-              name: 'swarm',
+              name: 'super_agent',
               arguments: {
                 goal: '本机并发上限验证',
                 max_parallel: 4,
@@ -4360,13 +4383,13 @@ test('@core:swarm 协作卡片在主对话自动出现，并按本机并发上�
   }
 })
 
-test('@core:swarm 卡住提醒只在有依据时提示，停止或继续等待都不影响其他成员', async () => {
+test('@core:superagent 卡住提醒只在有依据时提示，停止或继续等待都不影响其他成员', async () => {
   test.setTimeout(120_000)
   let routerCalls = 0
   const memberSteps = new Map<string, number>()
   const mock = await startMockLLM({
     respond: ({ raw }: { raw: string }) => {
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         const title = ['重复成员 A', '重复成员 B', '稳定成员'].find((entry) => raw.includes(entry))
         if (!title) return { text: '成员完成。', delayMs: 200 }
         const step = (memberSteps.get(title) ?? 0) + 1
@@ -4400,7 +4423,7 @@ test('@core:swarm 卡住提醒只在有依据时提示，停止或继续等待�
           text: '已派发三个成员。',
           toolCalls: [
             {
-              name: 'swarm',
+              name: 'super_agent',
               arguments: {
                 goal: '卡住提醒界面验证',
                 max_parallel: 3,
@@ -4667,7 +4690,8 @@ test('@core:interface 侧边聊天输入框只有流金外框，没有内部高�
     const input = page.locator('.sidechat-input')
     await expect(input).toBeVisible({ timeout: 10_000 })
     await input.focus()
-    await page.waitForTimeout(250)
+    // 流金外框的 border-color 过渡为 --dur-base（240ms）；多等一个帧区间，避免读到过渡中间色。
+    await page.waitForTimeout(400)
     const frame = await page.evaluate(() => {
       const field = document.querySelector('.sidechat-input') as HTMLElement | null
       const shell = document.querySelector('.sidechat-composer') as HTMLElement | null
@@ -4780,7 +4804,7 @@ test('@core:interface 输入框底栏在窄窗下保持单行', async () => {
   }
 })
 
-test('@core:swarm Super-Agent：真实开发任务写文件、执行 node --test 并独立复核', async () => {
+test('@core:superagent Super-Agent：真实开发任务写文件、执行 node --test 并独立复核', async () => {
   test.setTimeout(180_000)
   let routerCalls = 0
   let implCalls = 0
@@ -4788,14 +4812,14 @@ test('@core:swarm Super-Agent：真实开发任务写文件、执行 node --test
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown; lastUserMessageText?: string }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         routerCalls += 1
         if (routerCalls === 1) {
           return {
-            text: '这是真实开发任务，我分派实现与独立复核两个 Worker。',
+            text: '这是真实开发任务，我分派实现与独立复核两个协作成员。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '实现一个带测试的 Node 数学模块，并真实验证',
                   max_parallel: 2,
@@ -4825,7 +4849,7 @@ test('@core:swarm Super-Agent：真实开发任务写文件、执行 node --test
         }
         return { text: '真实开发任务完成：模块、测试与运行结果均已验证。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         if (raw.includes('在 src/math.js 实现 add/subtract')) {
           implCalls += 1
           if (implCalls === 1) {
@@ -5099,7 +5123,7 @@ test.describe('collaboration-review.spec.ts', () => {
     }
   })
 
-  test('@core:swarm 重开只恢复待办任务：完成项不重跑、执行项转核对、排队项可继续', async () => {
+  test('@core:superagent 重开只恢复待办任务：完成项不重跑、执行项转核对、排队项可继续', async () => {
     test.setTimeout(180_000)
     const dataDir = join(root, 'tmp', `data-collab-restart-${Date.now()}`)
     const projectId = 'project_restartabcd'
@@ -5386,21 +5410,21 @@ test.describe('collaboration-review.spec.ts', () => {
 })
 
 test.describe('member-message.spec.ts', () => {
-  test('@core:swarm 补充要求只送到测试成员，送达/已读/已采用可追踪，界面成员继续原工作', async () => {
+  test('@core:superagent 补充要求只送到测试成员，送达/已读/已采用可追踪，界面成员继续原工作', async () => {
     test.setTimeout(180_000)
     let routerCalls = 0
     const workerSteps = new Map<string, number>()
     const mock = await startMockLLM({
       respond: (ctx: { body: unknown }) => {
         const raw = JSON.stringify(ctx.body ?? {})
-        if (!raw.includes('## 集群成员')) {
+        if (!raw.includes('## 协作成员')) {
           routerCalls += 1
           if (routerCalls === 1) {
             return {
               text: '已派发界面成员和测试成员。',
               toolCalls: [
                 {
-                  name: 'swarm',
+                  name: 'super_agent',
                   arguments: {
                     goal: '补充要求分派',
                     max_parallel: 2,
@@ -5416,7 +5440,7 @@ test.describe('member-message.spec.ts', () => {
           }
           return { text: '两位成员已收到任务，测试成员的补充要求会单独投递。' }
         }
-        if (raw.includes('## 集群成员')) {
+        if (raw.includes('## 协作成员')) {
           if (raw.includes('界面成员 A')) {
             return { text: '界面工作已完成。', delayMs: 300 }
           }
@@ -5522,10 +5546,15 @@ test.describe('member-message.spec.ts', () => {
 
       const workerBodies = mock.requests
         .map((request: { body?: unknown }) => JSON.stringify(request.body ?? {}))
-        .filter((body: string) => body.includes('## 集群成员'))
+        .filter((body: string) => body.includes('## 协作成员'))
       const testBodies = workerBodies.filter((body: string) => body.includes('测试成员 B'))
       const uiBodies = workerBodies.filter((body: string) => body.includes('界面成员 A'))
       expect(testBodies.some((body: string) => body.includes('锁定账户时返回 423'))).toBe(true)
+      expect(
+        testBodies.some(
+          (body: string) => body.includes('【你的交付物】') && body.includes('测试结果与结论')
+        )
+      ).toBe(true)
       expect(uiBodies.every((body: string) => !body.includes('锁定账户时返回 423'))).toBe(true)
     } finally {
       await morrow.close()
@@ -5880,20 +5909,20 @@ test('@core:memory 记忆中心支持相关度排序、语义搜索与重要性�
   }
 })
 
-test('@core:swarm Worker 可向主代理提问、回消息、维护待办并重新激活', async () => {
+test('@core:superagent 协作成员可向主代理提问、回消息、维护待办并重新激活', async () => {
   test.setTimeout(180_000)
   let mainCalls = 0
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
-            text: '我派一个 Worker 定位登录入口。',
+            text: '我派一个协作成员定位登录入口。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '定位登录入口',
                   max_parallel: 1,
@@ -5913,14 +5942,14 @@ test('@core:swarm Worker 可向主代理提问、回消息、维护待办并重�
             ]
           }
         }
-        return { text: 'Super-Agent 完成：Worker 已定位入口。' }
+        return { text: 'Super-Agent 完成：协作成员已定位入口。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         if (raw.includes('【主代理新指令】')) {
           return { text: '重新激活完成：已按新指令补了回归测试。' }
         }
         if (raw.includes('主代理答复：')) {
-          return { text: '收到答复，Worker 完成：保留旧接口并补了测试。' }
+          return { text: '收到答复，协作成员完成：保留旧接口并补了测试。' }
         }
         return {
           text: '我先确认兼容策略。',
@@ -5950,7 +5979,7 @@ test('@core:swarm Worker 可向主代理提问、回消息、维护待办并重�
     await waitForStoreReady(page)
     await dismissOnboarding(page)
     const provider = await configureMockProvider(page, mock.openaiBaseUrl)
-    await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: 'Worker 协作测试' })
+    await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '协作成员协作测试' })
     await page.evaluate(async () => {
       const result = await window.morrow.settings.update({ collaborationMaxWorkers: 4 })
       if (!result.ok) throw new Error(result.error.message)
@@ -5993,11 +6022,11 @@ test('@core:swarm Worker 可向主代理提问、回消息、维护待办并重�
         return state.run === null && task?.status === 'completed' && (task.attempts ?? 0) >= 2
       },
       90_000,
-      'Worker 重新激活完成'
+      '协作成员重新激活完成'
     )
     const bodies = mock.requests.map((request: { body?: unknown }) => JSON.stringify(request.body ?? {}))
     expect(bodies.some((body: string) => body.includes('【主代理新指令】再补一个回归测试'))).toBe(true)
-    expect(bodies.some((body: string) => body.includes('收到答复，Worker 完成'))).toBe(true)
+    expect(bodies.some((body: string) => body.includes('收到答复，协作成员完成'))).toBe(true)
     await expect(page.locator('.super-task')).toContainText('第 2 次尝试')
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
@@ -6090,7 +6119,7 @@ test('@core:memory 任务完成后自动沉淀经验，可查看/撤销', async 
   }
 })
 
-test('@core:tools 更多功能中的全部功能子页展示真实工具清单与审批方式', async () => {
+test('@core:tools 全部功能是设置左侧独立分页，展示真实工具清单与审批方式', async () => {
   test.setTimeout(90_000)
   const morrow = await launchMorrow({ name: 'tool-catalog', waitForSelector: '.sidebar' })
   try {
@@ -6103,27 +6132,26 @@ test('@core:tools 更多功能中的全部功能子页展示真实工具清单�
     })
     const settings = page.getByRole('dialog', { name: '设置' })
     await expect(settings).toBeVisible({ timeout: 10_000 })
-    await settings.getByRole('tab', { name: '更多功能' }).click()
 
-    const toolsPage = settings.locator('.st-tools')
-    await expect(toolsPage).toBeVisible({ timeout: 10_000 })
-    await expect(settings.locator('.st-tool-catalog')).toHaveCount(0)
-    const entry = toolsPage.getByRole('button', { name: /全部功能/ })
-    await expect(entry).toBeVisible()
-    await expect(entry).toHaveClass(/st-tool-row/)
-    await expect(entry.locator('.st-tool-open')).toContainText('打开')
-    await entry.scrollIntoViewIfNeeded()
-    for (let index = 0; index < 6; index += 1) {
-      if ((await page.locator('.toast-close').count()) === 0) break
-      await page.locator('.toast-close').first().click().catch(() => undefined)
-      await page.waitForTimeout(80)
+    // 旧的「更多功能」聚合页已拆开；项目/定时任务/浏览器只在主页出现。
+    await expect(settings.getByRole('tab', { name: '更多功能' })).toHaveCount(0)
+    await expect(settings.getByRole('tab', { name: '项目' })).toHaveCount(0)
+    await expect(settings.getByRole('tab', { name: '定时任务' })).toHaveCount(0)
+    await expect(settings.getByRole('tab', { name: '浏览器' })).toHaveCount(0)
+    expect(await settings.getByRole('tab').evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim()))).toEqual([
+      '模型', '订阅', '本地', '联网搜索',
+      '记忆', '技能', '外部工具', '全部功能', '全局搜索', '版本记录',
+      '上下文', '回答', '用量', '归档',
+      '权限', '自动运行', '手机配对', '终端',
+      '外观', '快捷键', '关于'
+    ])
+    for (const name of ['记忆', '技能', '外部工具', '全部功能', '全局搜索', '版本记录']) {
+      await expect(settings.getByRole('tab', { name })).toBeVisible()
     }
-    await waitForDefaultWindowSize(morrow.app)
-    await page.screenshot({ path: screenshotPath('tool-catalog-entry.png') })
-    await entry.click()
+
+    await settings.getByRole('tab', { name: '全部功能' }).click()
     const catalog = settings.locator('.st-capability-page')
     await expect(catalog).toBeVisible({ timeout: 10_000 })
-    await expect(catalog).toContainText('全部功能')
     await expect(catalog).toContainText('http_request')
     await expect(catalog).toContainText('browser_tab')
     await expect(catalog).toContainText('每次询问')
@@ -6140,15 +6168,28 @@ test('@core:tools 更多功能中的全部功能子页展示真实工具清单�
     await expect(catalog.locator('li')).toContainText('http_request')
     await expect(catalog.locator('li')).toContainText('需要确认')
     await catalog.getByRole('button', { name: '清除功能搜索' }).click()
-    await catalog.locator('.st-sub-back').click()
-    await expect(toolsPage).toBeVisible()
-    await expect(settings.locator('.st-capability-page')).toHaveCount(0)
 
-    await entry.click()
-    await expect(catalog).toBeVisible()
-    await catalog.evaluate((element) => element.scrollIntoView({ block: 'start' }))
+    await page.locator('.st-panel').evaluate((element) => {
+      element.scrollTop = 0
+    })
     await page.waitForTimeout(250)
     await page.screenshot({ path: screenshotPath('tool-catalog.png') })
+
+    // 技能也直接显示在设置页内，不再弹第二层模态。
+    await settings.getByRole('tab', { name: '技能' }).click()
+    await expect(settings.locator('.skills-panel')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('dialog', { name: '技能' })).toHaveCount(0)
+
+    // 全局搜索用内联样式，不能铺满整个应用。
+    await settings.getByRole('tab', { name: '全局搜索' }).click()
+    const inlineSearch = settings.locator('.search-overlay.is-inline')
+    await expect(inlineSearch).toBeVisible({ timeout: 10_000 })
+    await expect(settings.locator('.st-page-title')).toHaveText('全局搜索')
+    await expect(inlineSearch).toContainText('搜索整个 Morrow')
+    expect(await inlineSearch.evaluate((element) => getComputedStyle(element).position)).toBe('static')
+    await inlineSearch.getByRole('textbox', { name: '全局搜索' }).fill('morrow')
+    await expect(inlineSearch.locator('.search-meta')).toContainText('本地搜索', { timeout: 15_000 })
+    await page.screenshot({ path: screenshotPath('settings-global-search.png') })
   } finally {
     await morrow.close()
   }
@@ -6213,13 +6254,59 @@ test('@core:shortcuts 快捷键可录制改键、冲突提示并实际生效', a
   }
 })
 
-test('@core:typography 字号设置驱动侧栏、创作台协作者与代码字号', async () => {
+test('@core:typography 字号设置与素纸暗金对比度', async () => {
   test.setTimeout(120_000)
   const morrow = await launchMorrow({ name: 'font-scale', timeoutMs: 90_000 })
   try {
     const { page } = morrow
     await waitForStoreReady(page)
     await dismissOnboarding(page)
+    await setThemeViaStore(page, 'light')
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    const paperContrast = await page.evaluate(() => {
+      const tokens = getComputedStyle(document.documentElement)
+      const value = (name: string): string => tokens.getPropertyValue(name).trim()
+      const luminance = (hex: string): number => {
+        const rgb = [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16) / 255)
+        const linear = rgb.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+      }
+      const ratio = (foreground: string, background: string): number => {
+        const first = luminance(foreground)
+        const second = luminance(background)
+        return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+      }
+      const bg = value('--bg')
+      const text = value('--text')
+      const gold = value('--gold')
+      const goldBright = value('--gold-bright')
+      const goldFill = value('--gold-fill')
+      const goldFillDeep = value('--gold-fill-deep')
+      const textOnGold = value('--text-on-gold')
+      return {
+        bg,
+        text,
+        gold,
+        goldBright,
+        goldFill,
+        goldFillDeep,
+        textOnGold,
+        goldOnPaper: ratio(gold, bg),
+        goldBrightOnPaper: ratio(goldBright, bg),
+        textOnPaper: ratio(text, bg),
+        labelOnFill: ratio(textOnGold, goldFill),
+        labelOnFillDeep: ratio(textOnGold, goldFillDeep)
+      }
+    })
+    expect(paperContrast.text).toBe('#1b1a17')
+    expect(paperContrast.gold).toBe('#7a5418')
+    expect(paperContrast.goldBright).toBe('#86602a')
+    expect(paperContrast.textOnPaper).toBeGreaterThanOrEqual(12)
+    expect(paperContrast.goldOnPaper).toBeGreaterThanOrEqual(4.5)
+    expect(paperContrast.goldBrightOnPaper).toBeGreaterThanOrEqual(4.5)
+    expect(paperContrast.labelOnFill).toBeGreaterThanOrEqual(4.5)
+    expect(paperContrast.labelOnFillDeep).toBeGreaterThanOrEqual(4.5)
+    await setThemeViaStore(page, 'dark')
     const readTokens = () =>
       page.evaluate(() => {
         const resolve = (name: string): string => {
@@ -6329,22 +6416,11 @@ test('@core:accessibility 焦点环统一、读屏播报、焦点陷阱与减少
     const settings = page.getByRole('dialog', { name: '设置' })
     await expect(settings).toBeVisible({ timeout: 10_000 })
 
-    await settings.evaluate((panel) => {
-      const nodes = Array.from(
-        panel.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-      ) as HTMLElement[]
-      nodes[nodes.length - 1]?.focus()
-    })
-    await page.keyboard.press('Tab')
-    expect(await settings.evaluate((panel) => panel.contains(document.activeElement))).toBe(true)
-    for (let index = 0; index < 80; index += 1) {
-      const active = await page.evaluate(() => ({
-        tag: document.activeElement?.tagName ?? '',
-        text: document.activeElement?.textContent?.trim() ?? ''
-      }))
-      if (active.tag === 'BUTTON' && active.text.includes('刷新可用模型')) break
-      await page.keyboard.press('Tab')
-    }
+    // 从弹窗第一个可聚焦元素按 Shift+Tab，焦点陷阱应回到最后一个可聚焦元素（底部“完成”按钮）。
+    // 这样不依赖异步模型列表的 Tab 顺序，也能稳定验证键盘焦点环。
+    await page.waitForTimeout(400)
+    await settings.locator('.modal-close').focus()
+    await page.keyboard.press('Shift+Tab')
     const activeElement = await page.evaluate(() => ({
       tag: document.activeElement?.tagName ?? '',
       className: String((document.activeElement as HTMLElement | null)?.className ?? '')

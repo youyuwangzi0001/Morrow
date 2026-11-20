@@ -723,7 +723,14 @@ export class SettingsStore {
             : fallback.collaborationStuckAlerts,
         shortcuts: normalizeShortcutMap(parsed.shortcuts),
         mediaProviders,
-        mediaDefaults: normalizeMediaDefaults(parsed.mediaDefaults, mediaProviders)
+        mediaDefaults: normalizeMediaDefaults(parsed.mediaDefaults, mediaProviders),
+        // 默认必须是关闭：旧配置没有这两项时，不能因为 undefined 就当作开启。
+        // 端口收敛到 0–65535 的整数，非法值回落到系统分配。
+        relayEnabled: parsed.relayEnabled === true,
+        relayPort:
+          typeof parsed.relayPort === 'number' && Number.isInteger(parsed.relayPort) && parsed.relayPort >= 0 && parsed.relayPort <= 65535
+            ? parsed.relayPort
+            : fallback.relayPort
       }
     } catch (err) {
       log.warn('settings parse failed, using defaults', String(err))
@@ -975,6 +982,8 @@ export class SettingsStore {
       'hooks',
       'terminalShell',
       'mediaEngine',
+      'relayEnabled',
+      'relayPort',
       'shortcuts'
     ])
     for (const key of Object.keys(patch)) {
@@ -1021,6 +1030,18 @@ export class SettingsStore {
     if (Object.prototype.hasOwnProperty.call(patch, 'sendKey')) {
       if (patch.sendKey !== 'enter' && patch.sendKey !== 'ctrl+enter') failValidation('发送键设置不合法。')
       next.sendKey = patch.sendKey
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'relayEnabled')) {
+      // 只接受布尔值：字符串 'true' 这类真值不能被当作开启，否则等于绕过开关。
+      if (typeof patch.relayEnabled !== 'boolean') failValidation('远程通道开关需为布尔值。')
+      next.relayEnabled = patch.relayEnabled
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'relayPort')) {
+      const value = patch.relayPort
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 65535) {
+        failValidation('远程通道端口需为 0–65535 的整数。')
+      }
+      next.relayPort = value
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'shortcuts')) {
       try {
@@ -1096,7 +1117,7 @@ export class SettingsStore {
     if (Object.prototype.hasOwnProperty.call(patch, 'collaborationMaxWorkers')) {
       const value = patch.collaborationMaxWorkers
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 8) {
-        failValidation('同时运行的 Worker 上限需在 0–8 之间（0=自动）。')
+        failValidation('同时运行的协作成员上限需在 0–8 之间（0=自动）。')
       }
       next.collaborationMaxWorkers = Math.round(value)
     }

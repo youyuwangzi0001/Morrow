@@ -1,11 +1,11 @@
 import { errResult, getNumber, getString, okResult, type ToolImpl } from './tool-kit'
 import { truncateText } from './util'
-import { CollaborationArtifact, CollaborationArtifactUsage, PlanNeed, SuperAgentState, SuperTask, PlanRevisionSnapshot, PlanVerification, CollaborationVerification, CollaborationVerificationFile, SwarmOperation } from '../shared/types'
+import { CollaborationArtifact, CollaborationArtifactUsage, PlanNeed, SuperAgentState, SuperTask, PlanRevisionSnapshot, PlanVerification, CollaborationVerification, CollaborationVerificationFile, MemberOperation } from '../shared/types'
 import { collaborationTaskId, recordCollaborationStatus, stableCollaborationHash, superTaskCollaborationStatus } from '../shared/contracts'
 export const ARTIFACT_NAME_MAX = 80
 export const ARTIFACT_SUMMARY_MAX = 600
 export const ARTIFACT_CONTENT_MAX = 6_000
-/** Worker 上下文只放短预览；完整内容留在只读快照里按需读取。 */
+/** 协作成员上下文只放短预览；完整内容留在只读快照里按需读取。 */
 export const ARTIFACT_HANDOFF_PREVIEW = 1_200
 
 function taskKey(task: SuperTask): string {
@@ -202,7 +202,7 @@ export function revokeArtifactVersion(
   }
 }
 
-/** 为 Worker 注入依赖成果的交接说明；内容来自只读快照，不受成员副本限制。 */
+/** 为协作成员注入依赖成果的交接说明；内容来自只读快照，不受成员副本限制。 */
 export function formatArtifactHandoff(input: {
   artifact: CollaborationArtifact
   content: string
@@ -293,7 +293,7 @@ export const artifactTool: ToolImpl = {
     if (!port || !projectId) {
       return errResult(
         '成果版本只在协作项目里可用。',
-        '先在工作模式派发一次 swarm 任务，再由主代理或成员发布、读取成果。'
+        '先在工作模式派发一次 super_agent 任务，再由主代理或成员发布、读取成果。'
       )
     }
     const action = typeof input.action === 'string' ? input.action : ''
@@ -404,8 +404,8 @@ export const artifactTool: ToolImpl = {
     if (action === 'revoke') {
       if (ctx.taskId) {
         return errResult(
-          'Worker 不能撤回成果版本。',
-          '请把问题写在结论里，由 Router 或用户在面板撤回这一版；旧成果和使用记录会保留。'
+          '协作成员不能撤回成果版本。',
+          '请把问题写在结论里，由分发层或用户在面板撤回这一版；旧成果和使用记录会保留。'
         )
       }
       let name: string
@@ -651,7 +651,7 @@ export function validatePlanInput(tasks: PlanTaskInput[], revision: boolean): vo
       if (task.verify.command && !isSafeVerificationCommand(task.verify.command)) {
         throw new PlanCompileError(
           `验收任务「${task.title}」的命令不在安全测试命令范围内。`,
-          '验收命令只允许 node --test、npm test、pytest、cargo test、go test 等测试运行器；可以写 cd <项目目录> && node --test，或追加 2>&1；不要用验收绕过 Worker 的命令权限。'
+          '验收命令只允许 node --test、npm test、pytest、cargo test、go test 等测试运行器；可以写 cd <项目目录> && node --test，或追加 2>&1；不要用验收绕过协作成员的命令权限。'
         )
       }
       const maxReworks = task.verify.maxReworks ?? 2
@@ -1176,7 +1176,7 @@ export class StuckTracker {
     now: number
     stepCount?: number
     waitingApproval: boolean
-    operations?: SwarmOperation[]
+    operations?: MemberOperation[]
   }): StuckDecision {
     const stepCount = Math.max(0, Math.round(input.stepCount ?? 0))
     if (input.waitingApproval) {

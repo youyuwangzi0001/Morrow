@@ -3,13 +3,13 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, afterEach } from 'vitest'
 import { AgentToolGrant, AskUserAnswer, ChatMessage, ModelInfo, PermissionDecision, PermissionRequest, RuntimeEvent, ProviderConfig, ToolAuditEntry, ToolUseBlock, Goal, ToolCategory, SuperAgentState } from '../../src/shared/types'
-import { Provider, ProviderStreamEvent, ProviderStreamRequest, ToolDefinition, SwarmMemberRequest, SwarmMemberResult, ToolContext } from '../../src/core/types'
+import { Provider, ProviderStreamEvent, ProviderStreamRequest, ToolDefinition, MemberRunRequest, MemberRunResult, ToolContext } from '../../src/core/types'
 import { compactSession, resetAllPermissionGrants, runAgent, buildSystemPrompt, estimateMessagesTokens, hasDanglingToolUse, applyModelCompaction, planCompaction, estimateMessageTokens, evaluatePermission, detectOutsidePathInCommand, permissionSignature, authorizeActorToolCall, ScopedPermissionGrants, BUILTIN_AGENT_ROLES, type RunAgentOptions, type RunAgentResult, type PermissionPolicyContext, type PermissionTarget } from '../../src/core/agent'
-import { OpenAICompatProvider, ProviderError, AnthropicProvider, testProviderConnection, ToolProtocolProvider, SSEParser, iterateSSE, STRUCTURED_TOOL_NAME, buildAnthropicRequestBody, buildOpenAIRequestBody, structuredOutputCapability, resolveRetryPolicy, DEFAULT_RETRY } from '../../src/core/providers'
+import { OpenAICompatProvider, ProviderError, AnthropicProvider, testProviderConnection, ToolProtocolProvider, SSEParser, iterateSSE, fetchWithDeadline, streamWithContinuation, STRUCTURED_TOOL_NAME, buildAnthropicRequestBody, buildOpenAIRequestBody, structuredOutputCapability, resolveRetryPolicy, DEFAULT_RETRY } from '../../src/core/providers'
 import { ScriptedProvider, collectEvents, makeTempWorkspace, makeToolContext, anthropicTextFrames, anthropicToolFrames, openAITextFrames, openAIToolFrames, startMockLLM, expectValidAnthropicSequence, expectValidOpenAISequence, type ScriptStep, type TempWorkspace, type MockLLM } from './helpers'
 import { collaborationProjectId } from '../../src/shared/contracts'
 import { createHash } from 'node:crypto'
-import { swarmTool } from '../../src/core/tool-extra'
+import { superAgentTool } from '../../src/core/tool-extra'
 import { GoalProgressTracker } from '../../src/main/agent'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { gzipSync } from 'node:zlib'
@@ -288,9 +288,168 @@ describe('agent.test.ts', () => {
         ws.cleanup()
       }
     })
+
+    /** 连续用完全相同的参数读同一个文件：输出稳定，用来验证死循环守卫的松紧 */
+    function repeatedReadScript(ws: TempWorkspace, times: number): ScriptStep[] {
+      writeFileSync(join(ws.root, 'stable.txt'), '固定内容\n')
+      return [
+        ...Array.from({ length: times }, () => ({
+          toolCalls: [{ name: 'read_file' as const, input: { path: 'stable.txt' } }]
+        })),
+        { text: '做完了。' }
+      ]
+    }
+
+    it('@core:agent 连续 4 次完全相同调用仍继续（阈值已放宽到 5，且先提醒）', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        const harness = await runScript(ws, repeatedReadScript(ws, 4))
+        expect(harness.result.reason).toBe('complete')
+        // 4 次重复应触发自纠提醒，但不终止本轮
+        const notices = harness.events.filter((event) => event.type === 'notice')
+        expect(notices.some((event) => String((event as { message?: string }).message).includes('提醒模型换一种做法'))).toBe(true)
+        expect(harness.events.some((event) => event.type === 'error')).toBe(false)
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('@core:agent 连续 5 次完全相同调用才判定死循环并停止', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        const harness = await runScript(ws, repeatedReadScript(ws, 5))
+        expect(harness.result.reason).toBe('error')
+        expect(harness.result.error?.code).toBe('LOOP_DETECTED')
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('@core:agent 参数相同的轮询/等待调用不会被误判为死循环', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        // terminal(action=read) 是轮询类：上限更高（8 次），长任务里反复看日志不该被掐断
+        const harness = await runScript(ws, [
+          ...Array.from({ length: 7 }, () => ({
+            toolCalls: [{ name: 'terminal' as const, input: { action: 'read', id: 'job-1' } }]
+          })),
+          { text: '轮询结束。' }
+        ])
+        expect(harness.result.error?.code).not.toBe('LOOP_DETECTED')
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('@core:agent 真正等待过的 terminal read 连续多次不会被判死循环', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        // 复现 Planwright-v0.3.0 会话：长任务启动后模型反复 read 等输出。
+        // 现在 read 会真的等待（waitedMs > 0），这属于有意义的长任务等待，
+        // 连续 8 次（超过轮询阈值）也不该被掐断。
+        let reads = 0
+        const waitingProvider: Provider = {
+          async *stream() {
+            reads += 1
+            if (reads <= 8) {
+              yield { type: 'tool_call_start', index: 0, id: `w-${reads}`, name: 'terminal' }
+              yield {
+                type: 'tool_call_end',
+                index: 0,
+                id: `w-${reads}`,
+                name: 'terminal',
+                input: { action: 'read', id: 'job-1', timeout_ms: 240000 }
+              }
+              yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
+              return
+            }
+            yield { type: 'text_delta', text: '任务跑完了。' }
+            yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
+          }
+        }
+        // 让 terminal 处理器返回「等过了但没新输出」，与真实长任务一致
+        const terminalCalls: number[] = []
+        const result = await runAgent({
+          runId: 'run_wait',
+          sessionId: 'session_wait',
+          provider: waitingProvider,
+          model: MODEL,
+          systemPrompt: '你是测试助手。',
+          history: [],
+          userMessage: userMessage('盯着构建'),
+          workspace: ws.root,
+          permissionMode: 'auto',
+          snapshotDir: ws.snapshotDir,
+          signal: new AbortController().signal,
+          emit: () => undefined,
+          onPermission: async () => 'once',
+          onAskUser: async () => ({ value: 'A', label: 'A' }),
+          terminal: async (input) => {
+            terminalCalls.push(Date.now())
+            return {
+              ok: true,
+              summary: '读取终端输出。',
+              process: { id: 'job-1', title: 'build', status: 'running' } as never,
+              output: '',
+              waitedMs: 30_000
+            }
+          },
+          maxSteps: 20
+        })
+        expect(terminalCalls.length).toBe(8)
+        expect(result.reason).toBe('complete')
+        expect(result.error?.code).not.toBe('LOOP_DETECTED')
+      } finally {
+        ws.cleanup()
+      }
+    })
+
+    it('@core:agent 参数相同但每次结果都在变的调用不算死循环', async () => {
+      const ws = makeTempWorkspace()
+      try {
+        // 同一份日志越读越长：参数没变，但每次观察到的内容不同，说明还在推进
+        let reads = 0
+        const growingProvider: Provider = {
+          async *stream() {
+            reads += 1
+            if (reads <= 6) {
+              writeFileSync(join(ws.root, 'growing.txt'), `第 ${reads} 行\n`.repeat(reads))
+              yield { type: 'tool_call_start', index: 0, id: `read-${reads}`, name: 'read_file' }
+              yield { type: 'tool_call_end', index: 0, id: `read-${reads}`, name: 'read_file', input: { path: 'growing.txt' } }
+              yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
+              return
+            }
+            yield { type: 'text_delta', text: '日志读到末尾，结束。' }
+            yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } }
+          }
+        }
+        const events: RuntimeEvent[] = []
+        const result = await runAgent({
+          runId: 'run_growing',
+          sessionId: 'session_growing',
+          provider: growingProvider,
+          model: MODEL,
+          systemPrompt: '你是测试助手。',
+          history: [],
+          userMessage: userMessage('盯着日志'),
+          workspace: ws.root,
+          permissionMode: 'auto',
+          snapshotDir: ws.snapshotDir,
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          onPermission: async () => 'once',
+          onAskUser: async () => ({ value: 'A', label: 'A' }),
+          maxSteps: 20
+        })
+        expect(result.reason).toBe('complete')
+        expect(result.error?.code).not.toBe('LOOP_DETECTED')
+      } finally {
+        ws.cleanup()
+      }
+    })
   })
 
-  describe('ask_user / 集群成员 / 状态透传', () => {
+  describe('ask_user / 协作成员 / 状态透传', () => {
     it('@core:agent ask_user 走 question_asked/answered 并回填答案', async () => {
       const ws = makeTempWorkspace()
       try {
@@ -1039,7 +1198,7 @@ describe('context.test.ts', () => {
 })
 describe('subagent-interactive.test.ts', () => {
   /**
-   * 并行集群成员的交互卡必须串行：一个成员在等待审批时，
+   * 并行协作成员的交互卡必须串行：一个成员在等待审批时，
    * 另一个成员不能同时弹出审批卡或提问卡（否则后一张会覆盖前一张，任务悬挂）。
    */
 
@@ -1052,15 +1211,15 @@ describe('subagent-interactive.test.ts', () => {
 
     async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
       this.calls.push(request)
-      if (!request.system.includes('## 集群成员')) {
+      if (!request.system.includes('## 协作成员')) {
         this.parentCalls += 1
         if (this.parentCalls === 1) {
-          yield { type: 'tool_call_start', index: 0, id: 'swarm-ab', name: 'swarm' }
+          yield { type: 'tool_call_start', index: 0, id: 'super_agent-ab', name: 'super_agent' }
           yield {
             type: 'tool_call_end',
             index: 0,
-            id: 'swarm-ab',
-            name: 'swarm',
+            id: 'super_agent-ab',
+            name: 'super_agent',
             input: {
               goal: '并行处理 A/B',
               tasks: [
@@ -1108,8 +1267,8 @@ describe('subagent-interactive.test.ts', () => {
     return message.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
   }
 
-  describe('并行集群成员交互串行', () => {
-    it('@core:swarm 审批卡与提问卡不会同时出现，两个成员都能完成且拥有完整工具', async () => {
+  describe('并行协作成员交互串行', () => {
+    it('@core:superagent 审批卡与提问卡不会同时出现，两个成员都能完成且拥有完整工具', async () => {
       const ws = makeTempWorkspace()
       try {
         const provider = new ParallelTaskProvider()
@@ -1121,11 +1280,11 @@ describe('subagent-interactive.test.ts', () => {
           maxOpen = Math.max(maxOpen, open)
         }
         const result = await runAgent({
-          runId: 'run_parallel_swarm_members',
-          sessionId: 'session_parallel_swarm_members',
+          runId: 'run_parallel_super_agent_members',
+          sessionId: 'session_parallel_super_agent_members',
           provider,
           model: MODEL,
-          systemPrompt: '你是并行集群协作测试助手。',
+          systemPrompt: '你是并行成员协作协作测试助手。',
           history: [],
           userMessage: { id: 'u-parallel', role: 'user', content: [{ type: 'text', text: '并行派两个子任务。' }], createdAt: Date.now() },
           workspace: ws.root,
@@ -1157,18 +1316,18 @@ describe('subagent-interactive.test.ts', () => {
         expect(open).toBe(0)
         expect(existsSync(join(ws.root, '..', 'a.txt'))).toBe(true)
 
-        const swarmBlocks = result.messages
+        const memberBlocks = result.messages
           .flatMap((message) => message.content)
-          .filter((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-        expect(swarmBlocks).toHaveLength(1)
-        expect(swarmBlocks[0]?.result?.ok).toBe(true)
-        const swarmMeta = swarmBlocks[0]?.result?.meta as { tasks?: Array<{ status: string }> } | undefined
-        expect(swarmMeta?.tasks?.map((task) => task.status)).toEqual(['completed', 'completed'])
+          .filter((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+        expect(memberBlocks).toHaveLength(1)
+        expect(memberBlocks[0]?.result?.ok).toBe(true)
+        const memberMeta = memberBlocks[0]?.result?.meta as { tasks?: Array<{ status: string }> } | undefined
+        expect(memberMeta?.tasks?.map((task) => task.status)).toEqual(['completed', 'completed'])
         expect(result.messages.map(textOf).join('\n')).toContain('两个子任务都已完成')
 
-        const memberCalls = provider.calls.filter((call) => call.system.includes('## 集群成员'))
+        const memberCalls = provider.calls.filter((call) => call.system.includes('## 协作成员'))
         const memberTools = new Set(memberCalls.flatMap((call) => call.tools.map((tool) => tool.name)))
-        expect(memberTools.has('swarm')).toBe(false)
+        expect(memberTools.has('super_agent')).toBe(false)
         expect(memberTools.has('update_goal')).toBe(false)
         expect(memberTools.has('todo_write')).toBe(false)
         for (const name of ['write_file', 'edit_file', 'run_command', 'terminal', 'mcp_call']) {
@@ -1180,10 +1339,10 @@ describe('subagent-interactive.test.ts', () => {
     })
   })
 })
-describe('cluster-swarm.test.ts', () => {
+describe('cluster-super_agent.test.ts', () => {
   const MODEL: ModelInfo = { id: 'mock-model', label: 'Mock', contextWindow: 32_000, supportsTools: true }
 
-  it('@core:swarm 显式修订当前计划：旧批次不会和新批次并行', async () => {
+  it('@core:superagent 显式修订当前计划：旧批次不会和新批次并行', async () => {
     const ws = makeTempWorkspace()
     try {
       const at = Date.now()
@@ -1209,7 +1368,7 @@ describe('cluster-swarm.test.ts', () => {
             status: 'failed',
             dependsOn: [],
             attempts: 1,
-            error: 'Worker 没有产出文件'
+            error: '协作成员没有产出文件'
           }
         ]
       }
@@ -1221,12 +1380,12 @@ describe('cluster-swarm.test.ts', () => {
           registerTask: () => undefined,
           unregisterTask: () => undefined
         } as unknown as ToolContext['collaborationRuntime'],
-        runSwarmMember: async () => ({ status: 'completed', summary: '新任务完成', steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }),
+        runMemberTask: async () => ({ status: 'completed', summary: '新任务完成', steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }),
         emit: (event) => {
           if (event.type === 'super_updated' && event.state) emitted.push(event.state)
         }
       })
-      const result = await swarmTool.execute(
+      const result = await superAgentTool.execute(
         {
           goal: '新目标',
           revision_of: 'current',
@@ -1246,14 +1405,14 @@ describe('cluster-swarm.test.ts', () => {
     }
   })
 
-  it('@core:swarm auto 父任务：单个集群成员拥有完整工作区权限，写入直接生效并登记 changedFiles', async () => {
+  it('@core:superagent auto 父任务：单个协作成员拥有完整工作区权限，写入直接生效并登记 changedFiles', async () => {
     const ws = makeTempWorkspace()
     try {
       const provider = new ScriptedProvider([
         {
           toolCalls: [
             {
-              name: 'swarm',
+              name: 'super_agent',
               input: { goal: '写文件', tasks: [{ title: '写文件', prompt: '创建 out.txt，内容为 ok', deliverable: 'out.txt' }] }
             }
           ]
@@ -1264,13 +1423,13 @@ describe('cluster-swarm.test.ts', () => {
       ])
       const events: RuntimeEvent[] = []
       const result = await runAgent({
-        runId: 'run_swarm_full_access',
-        sessionId: 'session_swarm_full_access',
+        runId: 'run_super_agent_full_access',
+        sessionId: 'session_super_agent_full_access',
         provider,
         model: MODEL,
-        systemPrompt: '你是集群协作测试助手。',
+        systemPrompt: '你是成员协作协作测试助手。',
         history: [],
-        userMessage: { id: 'u-swarm', role: 'user', content: [{ type: 'text', text: '派一个成员写文件。' }], createdAt: Date.now() },
+        userMessage: { id: 'u-super_agent', role: 'user', content: [{ type: 'text', text: '派一个成员写文件。' }], createdAt: Date.now() },
         workspace: ws.root,
         permissionMode: 'auto',
         snapshotDir: ws.snapshotDir,
@@ -1284,13 +1443,13 @@ describe('cluster-swarm.test.ts', () => {
       })
       expect(result.reason).toBe('complete')
       expect(readFileSync(join(ws.root, 'out.txt'), 'utf8')).toBe('ok')
-      const swarmBlock = result.messages
+      const memberBlock = result.messages
         .flatMap((message) => message.content)
-        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-      expect(swarmBlock?.result?.ok).toBe(true)
-      const meta = swarmBlock?.result?.meta as { changedFiles?: Array<{ absolutePath?: string }> } | undefined
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+      expect(memberBlock?.result?.ok).toBe(true)
+      const meta = memberBlock?.result?.meta as { changedFiles?: Array<{ absolutePath?: string }> } | undefined
       expect(meta?.changedFiles?.some((file) => String(file.absolutePath).endsWith('out.txt'))).toBe(true)
-      const memberCall = provider.calls.find((call) => call.system.includes('## 集群成员'))
+      const memberCall = provider.calls.find((call) => call.system.includes('## 协作成员'))
       const memberTools = new Set(memberCall?.tools.map((tool) => tool.name) ?? [])
       for (const name of ['write_file', 'edit_file', 'run_command', 'terminal', 'mcp_call', 'browser_open']) {
         expect(memberTools.has(name), name).toBe(true)
@@ -1305,28 +1464,28 @@ describe('cluster-swarm.test.ts', () => {
     }
   })
 
-  it('@core:swarm 只读父任务不能启动集群，成员不能获得比主代理更高的权限', async () => {
+  it('@core:superagent 只读父任务不能启动成员协作，成员不能获得比主代理更高的权限', async () => {
     const ws = makeTempWorkspace()
     try {
       const provider = new ScriptedProvider([
         {
           toolCalls: [
             {
-              name: 'swarm',
+              name: 'super_agent',
               input: { goal: '写文件', tasks: [{ title: '写文件', prompt: '创建 out.txt', deliverable: 'out.txt' }] }
             }
           ]
         },
-        { text: '只读模式不能启动集群。' }
+        { text: '只读模式不能启动成员协作。' }
       ])
       const result = await runAgent({
-        runId: 'run_swarm_readonly',
-        sessionId: 'session_swarm_readonly',
+        runId: 'run_super_agent_readonly',
+        sessionId: 'session_super_agent_readonly',
         provider,
         model: MODEL,
-        systemPrompt: '你是集群协作测试助手。',
+        systemPrompt: '你是成员协作协作测试助手。',
         history: [],
-        userMessage: { id: 'u-swarm-ro', role: 'user', content: [{ type: 'text', text: '派成员写文件。' }], createdAt: Date.now() },
+        userMessage: { id: 'u-super_agent-ro', role: 'user', content: [{ type: 'text', text: '派成员写文件。' }], createdAt: Date.now() },
         workspace: ws.root,
         permissionMode: 'read-only',
         snapshotDir: ws.snapshotDir,
@@ -1338,18 +1497,18 @@ describe('cluster-swarm.test.ts', () => {
       })
       expect(result.reason).toBe('complete')
       expect(existsSync(join(ws.root, 'out.txt'))).toBe(false)
-      const swarmBlock = result.messages
+      const memberBlock = result.messages
         .flatMap((message) => message.content)
-        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-      expect(swarmBlock?.result?.ok).toBe(false)
-      expect(swarmBlock?.result?.error).toContain('只读上下文')
-      expect(provider.calls.some((call) => call.system.includes('## 集群成员'))).toBe(false)
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+      expect(memberBlock?.result?.ok).toBe(false)
+      expect(memberBlock?.result?.error).toContain('只读上下文')
+      expect(provider.calls.some((call) => call.system.includes('## 协作成员'))).toBe(false)
     } finally {
       ws.cleanup()
     }
   })
 
-  it('@core:swarm 集群成员不再有 12 步上限：长任务可以持续执行到给出结论', async () => {
+  it('@core:superagent 协作成员不再有 12 步上限：长任务可以持续执行到给出结论', async () => {
     const ws = makeTempWorkspace({ 'a.txt': 'value=12\n' })
     try {
       class LongMemberProvider implements Provider {
@@ -1358,15 +1517,15 @@ describe('cluster-swarm.test.ts', () => {
         private memberSteps = 0
         async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
           this.calls.push({ ...request, messages: [...request.messages] })
-          if (!request.system.includes('## 集群成员')) {
+          if (!request.system.includes('## 协作成员')) {
             this.parentCalls += 1
             if (this.parentCalls === 1) {
-              yield { type: 'tool_call_start', index: 0, id: 'task-long', name: 'swarm' }
+              yield { type: 'tool_call_start', index: 0, id: 'task-long', name: 'super_agent' }
               yield {
                 type: 'tool_call_end',
                 index: 0,
                 id: 'task-long',
-                name: 'swarm',
+                name: 'super_agent',
                 input: { goal: '长任务', tasks: [{ title: '长任务', prompt: '反复读取 a.txt 15 次，统计 value，然后给出结论。', deliverable: 'value 统计结论' }] }
               }
               yield { type: 'usage', usage: { inputTokens: 60, outputTokens: 20 } }
@@ -1394,7 +1553,7 @@ describe('cluster-swarm.test.ts', () => {
         sessionId: 'session_long_member',
         provider,
         model: MODEL,
-        systemPrompt: '你是集群协作测试助手。',
+        systemPrompt: '你是成员协作协作测试助手。',
         history: [],
         userMessage: { id: 'u-long-member', role: 'user', content: [{ type: 'text', text: '派一个成员完成长任务。' }], createdAt: Date.now() },
         workspace: ws.root,
@@ -1407,20 +1566,20 @@ describe('cluster-swarm.test.ts', () => {
         maxSteps: 10
       })
       expect(result.reason).toBe('complete')
-      const swarmBlock = result.messages
+      const memberBlock = result.messages
         .flatMap((message) => message.content)
-        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-      expect(swarmBlock?.result?.ok).toBe(true)
-      const meta = swarmBlock?.result?.meta as { tasks?: Array<{ status: string; steps?: number }> } | undefined
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+      expect(memberBlock?.result?.ok).toBe(true)
+      const meta = memberBlock?.result?.meta as { tasks?: Array<{ status: string; steps?: number }> } | undefined
       expect(meta?.tasks?.[0]?.status).toBe('completed')
       expect(meta?.tasks?.[0]?.steps ?? 0).toBeGreaterThan(12)
-      expect(JSON.stringify(swarmBlock?.result)).not.toContain('最大步数')
+      expect(JSON.stringify(memberBlock?.result)).not.toContain('最大步数')
     } finally {
       ws.cleanup()
     }
   })
 
-  it('@core:swarm 成员重复读取无成果时记录卡住依据，持续写入则不误报', async () => {
+  it('@core:superagent 成员重复读取无成果时记录卡住依据，持续写入则不误报', async () => {
     const ws = makeTempWorkspace({ 'a.txt': 'value=12\n' })
     try {
       class StuckAwareProvider implements Provider {
@@ -1430,15 +1589,15 @@ describe('cluster-swarm.test.ts', () => {
         private steadySteps = 0
         async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
           this.calls.push({ ...request, messages: [...request.messages] })
-          if (!request.system.includes('## 集群成员')) {
+          if (!request.system.includes('## 协作成员')) {
             this.parentCalls += 1
             if (this.parentCalls === 1) {
-              yield { type: 'tool_call_start', index: 0, id: 'stuck-swarm', name: 'swarm' }
+              yield { type: 'tool_call_start', index: 0, id: 'stuck-super_agent', name: 'super_agent' }
               yield {
                 type: 'tool_call_end',
                 index: 0,
-                id: 'stuck-swarm',
-                name: 'swarm',
+                id: 'stuck-super_agent',
+                name: 'super_agent',
                 input: {
                   goal: '卡住判断',
                   max_parallel: 2,
@@ -1499,7 +1658,7 @@ describe('cluster-swarm.test.ts', () => {
         sessionId: 'session_stuck_member',
         provider,
         model: MODEL,
-        systemPrompt: '你是集群协作测试助手。',
+        systemPrompt: '你是成员协作协作测试助手。',
         history: [],
         userMessage: { id: 'u-stuck-member', role: 'user', content: [{ type: 'text', text: '检查卡住判断。' }], createdAt: Date.now() },
         workspace: ws.root,
@@ -1521,11 +1680,11 @@ describe('cluster-swarm.test.ts', () => {
         maxSteps: 10
       })
       expect(result.reason).toBe('complete')
-      const swarmBlock = result.messages
+      const memberBlock = result.messages
         .flatMap((message) => message.content)
-        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-      expect(swarmBlock?.result?.ok).toBe(true)
-      const state = (swarmBlock?.result?.meta as { superAgent: SuperAgentState }).superAgent
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+      expect(memberBlock?.result?.ok).toBe(true)
+      const state = (memberBlock?.result?.meta as { superAgent: SuperAgentState }).superAgent
       const repeatTask = state.tasks.find((task) => task.title === '重复成员')!
       const steadyTask = state.tasks.find((task) => task.title === '稳定成员')!
       expect(repeatTask.status).toBe('completed')
@@ -1736,7 +1895,7 @@ describe('mode.test.ts', () => {
    *
    * 覆盖审计报告第 5 项的验收点：
    * 1) 聊天模式系统提示：明确「只讨论、不执行」、只列只读工具、Goal 段不注入；
-   * 2) 工具白名单：只读工具 + ask_user；写入/执行/记忆/目标/计划/集群成员一律不可用；
+   * 2) 工具白名单：只读工具 + ask_user；写入/执行/记忆/目标/计划/协作成员一律不可用；
    * 3) 权限层硬拦截：即使 permission=auto，chat 下 write_file / run_command / remember 也 denied，
    *    **工具不会真正执行**、文件与命令产物不变（不是只靠提示词）；
    * 4) 主进程自带 systemPrompt 缺聊天段时由内核补上（防止绕过）；
@@ -1846,7 +2005,7 @@ describe('mode.test.ts', () => {
 describe('plan-mode.test.ts', () => {
   /**
    * P0-2 计划模式 —— 内核验收：
-   * 1) 工具白名单：只读 + ask_user/todo_write/submit_plan，写入/执行/记忆/集群成员/目标一律不暴露；
+   * 1) 工具白名单：只读 + ask_user/todo_write/submit_plan，写入/执行/记忆/协作成员/目标一律不暴露；
    * 2) 即使模型强行调用写入工具，权限层也只读拒绝（不是只靠提示词）；
    * 3) submit_plan 生成 pending 计划、plan_updated 事件与 Markdown 产物；
    * 4) 计划模式可带历史 goal 运行，但不会注入目标段/update_goal；
@@ -1924,7 +2083,7 @@ describe('plan-mode.test.ts', () => {
         expect(names).toEqual(
           expect.arrayContaining(['list_dir', 'glob', 'grep', 'read_file', 'ask_user', 'todo_write', 'submit_plan'])
         )
-        expect(names).not.toEqual(expect.arrayContaining(['write_file', 'edit_file', 'run_command', 'swarm', 'remember', 'update_goal', 'web_fetch', 'mcp_call', 'terminal']))
+        expect(names).not.toEqual(expect.arrayContaining(['write_file', 'edit_file', 'run_command', 'super_agent', 'remember', 'update_goal', 'web_fetch', 'mcp_call', 'terminal']))
         expect(run.provider.calls[0].system).toContain('## 计划模式')
         expect(run.provider.calls[0].system).toContain('submit_plan')
         // 计划模式不注入 Goal 段，即使会话里曾有 active 目标
@@ -2136,7 +2295,7 @@ describe('answer-style.test.ts', () => {
       expect(fallback).toContain('当前风格：平衡')
     })
 
-    it('@core:swarm Router 提示词带当前计划：交付物、文件与等待理由', () => {
+    it('@core:superagent 分发层提示词带当前计划：交付物、文件与等待理由', () => {
       const state: SuperAgentState = {
         runId: 'super_prompt',
         projectId: 'project_prompt01',
@@ -2178,7 +2337,7 @@ describe('answer-style.test.ts', () => {
 })
 
 describe('tool-authority.test.ts', () => {
-  it('@core:permissions 工具执行前核对身份：主代理正常写入、Worker 正常写入、伪造/过期授权与借工具绕行被拦', async () => {
+  it('@core:permissions 工具执行前核对身份：主代理正常写入、协作成员正常写入、伪造/过期授权与借工具绕行被拦', async () => {
     const ws = makeTempWorkspace()
     try {
       const audits: ToolAuditEntry[] = []
@@ -2187,7 +2346,7 @@ describe('tool-authority.test.ts', () => {
       let workerStep = 0
       const provider: Provider = {
         async *stream(request) {
-          if (!request.system.includes('## 集群成员：')) {
+          if (!request.system.includes('## 协作成员：')) {
             mainStep += 1
             if (mainStep === 1) {
               yield {
@@ -2203,8 +2362,8 @@ describe('tool-authority.test.ts', () => {
               yield {
                 type: 'tool_call_end',
                 index: 0,
-                id: 'swarm-authority',
-                name: 'swarm',
+                id: 'super_agent-authority',
+                name: 'super_agent',
                 input: {
                   goal: '写入成员文件',
                   max_parallel: 1,
@@ -2420,6 +2579,35 @@ describe('providers.test.ts', () => {
         input: { path: 'a.txt', content: '你好世界' }
       })
       expect(events.filter((e) => e.type === 'tool_call_start')).toHaveLength(1)
+    })
+
+    it('@core:providers 参数里的 Windows 路径反斜杠与裸换行会被修好，不再报「不是合法 JSON」', async () => {
+      // 模型把路径按纯文本写：单个反斜杠在 JSON 里是非法转义；多行命令里的换行也没转义
+      const brokenArgs = '{"path":"C:\\交付成品\\报告.md","command":"cd Morrow &&\nls -la"}'
+      const server = await serve(() => ({ frames: openAIToolFrames('call_fix', 'run_command', brokenArgs) }))
+      const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1] })
+      const events = await collectEvents(
+        provider.stream({ system: '', messages: [userMessage('跑命令')], tools: [], signal: new AbortController().signal })
+      )
+      const end = events.find((e) => e.type === 'tool_call_end')
+      if (end?.type !== 'tool_call_end') throw new Error('缺少 tool_call_end')
+      expect(end.parseError).toBeUndefined()
+      expect(end.input).toEqual({ path: 'C:\\交付成品\\报告.md', command: 'cd Morrow &&\nls -la' })
+    })
+
+    it('@core:providers 修不好的参数给出具体原因与出错片段，而不是一句「不是合法 JSON」', async () => {
+      const truncated = '{"command":"cd Morrow && sed -n \'1,120p\' src/renderer/styles.css'
+      const server = await serve(() => ({ frames: openAIToolFrames('call_bad', 'run_command', truncated) }))
+      const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1] })
+      const events = await collectEvents(
+        provider.stream({ system: '', messages: [userMessage('跑命令')], tools: [], signal: new AbortController().signal })
+      )
+      const end = events.find((e) => e.type === 'tool_call_end')
+      if (end?.type !== 'tool_call_end') throw new Error('缺少 tool_call_end')
+      // 截断必须说明是截断（而不是含糊的「不是合法 JSON」），并把模型自己写坏的片段带回去
+      expect(end.parseError).toContain('截断')
+      expect(end.parseError).toContain('src/renderer/styles.css')
+      expect(events.some((e) => e.type === 'notice')).toBe(true)
     })
 
     it('@core:providers 429 自动退避重试并发出 notice', async () => {
@@ -2641,7 +2829,7 @@ describe('sse.test.ts', () => {
 
   describe('iterateSSE', () => {
 
-    it('@core:providers 流长时间没有新数据时按空闲超时中断，并释放底层迭代器', async () => {
+    it('@core:providers 流长时间没有新数据时按超时中断并释放底层迭代器，首帧前后错误码不同', async () => {
       let returned = 0
       const stalled: AsyncIterable<string> = {
         [Symbol.asyncIterator]: () => ({
@@ -2657,9 +2845,23 @@ describe('sse.test.ts', () => {
         for await (const _frame of iterateSSE(stalled, 20)) count += 1
         return count
       }
-      await expect(consume()).rejects.toThrow(/没有数据，已中断/)
+      // 一帧都没收到：属于「上游没开始响应」，文案要指向上游/代理而不是「流中途断了」
+      await expect(consume()).rejects.toThrow(/没有开始返回内容/)
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(returned).toBe(1)
+
+      // 收到过心跳再静默：属于中途静默，错误码必须与首帧超时区分开
+      const halfSilent: AsyncIterable<string> = {
+        async *[Symbol.asyncIterator]() {
+          yield ': ping\n\n'
+          await new Promise<void>(() => undefined)
+        }
+      }
+      await expect(
+        (async () => {
+          for await (const chunk of iterateSSE(halfSilent, 30)) void chunk
+        })()
+      ).rejects.toMatchObject({ code: 'stream_timeout', retryable: true })
     })
   })
 })
@@ -2696,7 +2898,7 @@ describe('index.test.ts', () => {
         'todo_write',
         'ask_user',
         'remember',
-        'swarm',
+        'super_agent',
         'open_artifact',
         'artifact',
         'web_search',
@@ -2781,7 +2983,7 @@ describe('index.test.ts', () => {
       expect(writeFileDef?.parameters).toMatchObject({ type: 'object', properties: { append: { type: 'boolean' } } })
       expect(writeFileDef?.titleFor({ path: 'a.html', append: true })).toContain('追加')
 
-      // 集群成员只读工具集
+      // 协作成员只读工具集
       expect(core.READ_ONLY_TOOL_DEFINITIONS.every((tool) => tool.category === 'read')).toBe(true)
       expect(core.READ_ONLY_TOOL_DEFINITIONS.map((tool) => tool.name)).toEqual([
         'read_file',
@@ -3085,13 +3287,13 @@ describe('shell.test.ts', () => {
     })
   })
 })
-describe('swarm.test.ts', () => {
+describe('super_agent.test.ts', () => {
   /**
-   * Swarm：多角色并行子任务。
+   * SuperAgent：多角色并行子任务。
    * 验证角色解析、并行派发、部分失败不伪装完成、task 单任务角色。
    */
 
-  function makeCtx(runSwarmMember: (request: SwarmMemberRequest) => Promise<SwarmMemberResult>): ToolContext {
+  function makeCtx(runMemberTask: (request: MemberRunRequest) => Promise<MemberRunResult>): ToolContext {
     return {
       sessionId: 's',
       runId: 'r',
@@ -3117,21 +3319,21 @@ describe('swarm.test.ts', () => {
       addArtifact: () => undefined,
       askUser: async () => ({ value: 'A', label: 'A' }),
       progress: () => undefined,
-      runSwarmMember,
+      runMemberTask,
       agents: BUILTIN_AGENT_ROLES
     }
   }
 
   const usage = { inputTokens: 0, outputTokens: 0 }
 
-  describe('swarm', () => {
-    it('@core:swarm 并行派发不同角色，返回每个子任务摘要', async () => {
-      const seen: SwarmMemberRequest[] = []
+  describe('super_agent', () => {
+    it('@core:superagent 并行派发不同角色，返回每个子任务摘要', async () => {
+      const seen: MemberRunRequest[] = []
       const ctx = makeCtx(async (request) => {
         seen.push(request)
         return { status: 'completed', summary: `${request.role?.name}:${request.description}`, steps: 2, usage }
       })
-      const result = await swarmTool.execute(
+      const result = await superAgentTool.execute(
         {
           goal: '并行检查',
           tasks: [
@@ -3149,7 +3351,7 @@ describe('swarm.test.ts', () => {
       expect(result.meta).toMatchObject({ completed: 2, failed: 0 })
     })
 
-    it('@core:swarm 任一子任务未完成时返回错误，不伪装全部完成', async () => {
+    it('@core:superagent 任一子任务未完成时返回错误，不伪装全部完成', async () => {
       let index = 0
       const ctx = makeCtx(async (_request) => {
         index += 1
@@ -3157,7 +3359,7 @@ describe('swarm.test.ts', () => {
           ? { status: 'completed', summary: '完成 A', steps: 1, usage }
           : { status: 'failed', summary: '部分结果', steps: 1, usage, error: '模型超时' }
       })
-      const result = await swarmTool.execute(
+      const result = await superAgentTool.execute(
         {
           goal: '并行检查',
           tasks: [
@@ -3341,7 +3543,7 @@ describe('web-tools.test.ts', () => {
       addArtifact: () => undefined,
       askUser: async () => ({ value: 'A', label: 'A' }),
       progress: () => undefined,
-      runSwarmMember: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
+      runMemberTask: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
       ...overrides
     }
   }
@@ -3703,17 +3905,72 @@ describe('provider-continuation.test.ts', () => {
     expect(calls).toBe(4)
   })
 
-  it('@core:providers 流空闲超时转为可重试错误', async () => {
-    const silent = {
-      async *[Symbol.asyncIterator](): AsyncGenerator<string> {
-        await new Promise<void>(() => undefined)
-      }
-    }
+  it('@core:providers 等响应头也受首字节预算约束，超时/中断分别报 stream_start_timeout 与 aborted', async () => {
+    // 上游卡在「还没回响应头」时，流超时计时器根本没机会启动：
+    // 旧实现会永久 await，用户只看到一直转圈、没有任何报错。
+    let calls = 0
+    const hanging = (async (_url: string, init?: RequestInit) => {
+      calls += 1
+      // 与真 fetch 一样：signal 中断时以 AbortError 拒绝
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted.')
+          err.name = 'AbortError'
+          reject(err)
+        })
+      })
+    }) as typeof fetch
+
+    const started = Date.now()
     await expect(
-      (async () => {
-        for await (const chunk of iterateSSE(silent, 20)) void chunk
-      })()
-    ).rejects.toMatchObject({ code: 'stream_timeout', retryable: true })
+      fetchWithDeadline(hanging, 'https://example.invalid/v1/chat/completions', {}, 40, 'mock')
+    ).rejects.toMatchObject({ code: 'stream_start_timeout', retryable: true })
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(calls).toBe(1)
+
+    // 用户点停止不能被翻译成「上游超时」，否则界面会把主动中断显示成故障
+    const caller = new AbortController()
+    const pending = fetchWithDeadline(
+      hanging,
+      'https://example.invalid/v1/chat/completions',
+      { signal: caller.signal },
+      30_000,
+      'mock'
+    )
+    setTimeout(() => caller.abort(), 20)
+    await expect(pending).rejects.toThrow(/aborted|中断/)
+
+    // 首字节预算用完后不该再排一轮重试：否则用户每分钟都在看同一个转圈
+    let attempts = 0
+    const stalled = async function* (): AsyncGenerator<ProviderStreamEvent> {
+      attempts += 1
+      throw new ProviderError('模型服务在 180 秒内没有开始返回内容，已中断本次请求。', {
+        code: 'stream_start_timeout',
+        retryable: true
+      })
+    }
+    const consume = async (): Promise<unknown> => {
+      for await (const _event of streamWithContinuation(
+        { system: '', messages: [userMessage('hi')], tools: [], signal: new AbortController().signal },
+        stalled,
+        {
+          policy: DEFAULT_RETRY,
+          signal: new AbortController().signal,
+          buildContinuation: (base) => base,
+          firstByteDeadline: Date.now()
+        }
+      )) {
+        // 不该走到这里：预算已用尽，一次都不该重试
+      }
+      return null
+    }
+    const exhausted = await consume().then(
+      () => null,
+      (err: unknown) => err as ProviderError
+    )
+    expect(attempts).toBe(1)
+    expect(exhausted?.code).toBe('stream_start_timeout')
+    expect(exhausted?.message).toContain('首字节预算')
   })
 })
 })

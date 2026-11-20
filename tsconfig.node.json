@@ -31,6 +31,7 @@
     "src/preload/**/*.ts",
     "src/core/**/*.ts",
     "src/shared/**/*.ts",
+    "src/relay/**/*.ts",
     "src/generated/**/*.ts",
     "tests/unit/**/*.ts",
     "tests/fixtures/**/*.ts"

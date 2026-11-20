@@ -40,8 +40,7 @@ test('@core:git 超大提交在版本历史里可读取并提示截断', async (
     await createSession(page, { workspace, ...provider, permissionMode: 'auto', title: '大提交测试' })
 
     await openToolPanel(page, 'Git')
-    const dialog = page.getByRole('dialog', { name: '版本历史' })
-    await expect(dialog).toBeVisible()
+    await expect(page.locator('.git-panel')).toBeVisible()
     await page.getByRole('tab', { name: '历史' }).click()
 
     const item = page.locator('.git-commit-item').first()

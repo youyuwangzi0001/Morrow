@@ -4,12 +4,121 @@
 import type { WebSearchSource } from '../shared/types'
 import { httpGet } from '../core/web-proxy'
 
-export const BUILTIN_SEARCH_TIMEOUT_MS = 9_000
+export const BUILTIN_SEARCH_TIMEOUT_MS = 6_000
 
 /** DDG 在部分网络需要代理；给主引擎一个率先机会，超时后并行启动备用引擎。 */
-const HEDGE_DELAY_MS = 2_500
+const HEDGE_DELAY_MS = 1_500
 
 const MAX_RESULTS = 10
+
+/** 查询里的停用词不参与相关性判断，避免“如何/最新/the”把垃圾结果判成相关。 */
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'for',
+  'from',
+  'how',
+  'in',
+  'is',
+  'it',
+  'of',
+  'on',
+  'or',
+  'that',
+  'the',
+  'to',
+  'what',
+  'when',
+  'where',
+  'which',
+  'who',
+  'why',
+  'with',
+  '如何',
+  '怎么',
+  '怎样',
+  '什么',
+  '哪些',
+  '哪个',
+  '为什么',
+  '是否',
+  '可以',
+  '以及',
+  '最新',
+  '现在',
+  '目前'
+])
+
+/**
+ * 把查询拆成用于相关性核对的关键词。
+ * - 拉丁词按词边界匹配，避免 `morrow` 命中 `tomorrow`；
+ * - 中文没有空格，按连续汉字的二元组匹配（“智能体” → “智能”“能体”）；
+ * - 去掉常见停用词，最多 12 个，避免长句把所有结果都判成相关。
+ */
+export function searchQueryTerms(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/["'“”‘’]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+  const terms = new Set<string>()
+  for (const word of normalized.split(/\s+/)) {
+    if (word.length < 2 || STOP_WORDS.has(word)) continue
+    terms.add(word)
+  }
+  for (const run of normalized.match(/\p{Script=Han}{2,}/gu) ?? []) {
+    for (let index = 0; index < run.length - 1; index += 1) {
+      const bigram = run.slice(index, index + 2)
+      if (!STOP_WORDS.has(bigram)) terms.add(bigram)
+    }
+  }
+  return [...terms].slice(0, 12)
+}
+
+function matchesTerm(haystack: string, term: string): boolean {
+  if (!haystack.includes(term)) return false
+  // 拉丁词要求完整词边界；“morrow” 不能因为出现在 “tomorrow” 里就算命中。
+  if (/^[a-z0-9]+$/i.test(term)) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(haystack)
+  }
+  return true
+}
+
+/**
+ * 按查询相关性排序并过滤明显无关的结果。
+ * Bing 在部分网络会返回与查询完全无关的缓存结果；只数“有没有结果”会把
+ * 座头鲸/学习通当成 “Morrow AI agent” 的搜索结果。这里要求标题或摘要至少
+ * 命中一个查询关键词，全都不命中时返回空数组，让上层明确报告失败。
+ */
+export function rankSearchSources(
+  sources: WebSearchSource[],
+  query: string,
+  limit = MAX_RESULTS
+): WebSearchSource[] {
+  const terms = searchQueryTerms(query)
+  if (terms.length === 0) return sources.slice(0, limit)
+  const scored = sources.map((source) => {
+    const haystack = `${source.title} ${source.snippet}`.toLowerCase()
+    const score = terms.reduce((count, term) => count + (matchesTerm(haystack, term) ? 1 : 0), 0)
+    return { source, score }
+  })
+  // 多词查询至少命中两个不同关键词。否则 “TypeScript 5.7 release notes”
+  // 会被只提到 TypeScript 的泛教程占满，看起来有结果、实际答非所问。
+  const required = terms.length >= 2 ? 2 : 1
+  const relevant = scored.filter((item) => item.score >= required)
+  relevant.sort((a, b) => b.score - a.score || a.source.rank - b.source.rank)
+  return relevant.slice(0, Math.max(1, Math.min(MAX_RESULTS, Math.round(limit)))).map((item, index) => ({
+    ...item.source,
+    rank: index + 1
+  }))
+}
 
 const ENTITIES: Record<string, string> = {
   amp: '&',
@@ -246,11 +355,24 @@ async function runEngine(
   try {
     const response = await fetchImpl(engine.url(query), { method: 'GET', signal: engineSignal, redirect: 'follow' })
     if (!response.ok) return { sources: [], engine: engine.name, failure: `${engine.name} 返回 HTTP ${response.status}` }
-    const sources = engine.parse(await response.text(), limit)
-    if (sources.length === 0) return { sources, engine: engine.name, failure: `${engine.name} 没有可解析的结果` }
+    const parsed = engine.parse(await response.text(), limit)
+    const sources = rankSearchSources(parsed, query, limit)
+    if (sources.length === 0) {
+      return {
+        sources,
+        engine: engine.name,
+        failure:
+          parsed.length > 0
+            ? `${engine.name} 返回的 ${parsed.length} 条结果与查询无关`
+            : `${engine.name} 没有可解析的结果`
+      }
+    }
     return { sources, engine: engine.name }
   } catch (err) {
     if (signal?.aborted) throw new BuiltinSearchError('搜索已取消。')
+    if (engineSignal.aborted) {
+      return { sources: [], engine: engine.name, failure: `${engine.name} 请求超时（${timeoutMs}ms）` }
+    }
     return { sources: [], engine: engine.name, failure: `${engine.name} 请求失败（${err instanceof Error ? err.message : String(err)}）` }
   }
 }
@@ -289,7 +411,9 @@ export async function builtinWebSearch(input: BuiltinSearchInput): Promise<Built
         timers.forEach(clearTimeout)
         reject(
           new BuiltinSearchError(
-            failures.length > 0 ? `内置搜索没有拿到结果：${failures.join('；')}。` : '内置搜索没有拿到结果。'
+            failures.length > 0
+              ? `内置搜索没有拿到结果：${failures.join('；')}。如果经常超时或结果与需求不符，请在设置 → 联网搜索配置 Tavily / Brave / Serper / SearXNG。`
+              : '内置搜索没有拿到结果。'
           )
         )
       }

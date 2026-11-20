@@ -558,6 +558,53 @@
   outline: none;
 }
 
+/* 嵌入的工作台面板：页头固定，面板自己占满剩余高度并内部滚动。 */
+.st-panel.is-embedded {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.st-panel.is-embedded .st-page-head {
+  flex: 0 0 auto;
+}
+
+.st-panel.is-embedded .modal-inline,
+.st-panel.is-embedded .modal-inline-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.st-panel.is-embedded .modal-inline-body > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.st-panel.is-embedded .conn,
+.st-panel.is-embedded .skills-panel,
+.st-panel.is-embedded .git-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.st-panel.is-embedded .mc-root {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.st-panel.is-embedded .search-overlay.is-inline {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.st-panel.is-embedded .search-overlay.is-inline .search-dialog {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}
+
 .st-panel:focus-visible {
   outline: none;
 }
@@ -2577,7 +2624,7 @@
   }
 }
 
-/* 集群成员类型（Swarm） */
+/* 协作成员类型 */
 .st-agent-list {
   display: flex;
   flex-direction: column;

@@ -261,9 +261,15 @@ test.describe('Morrow 完整旅程', () => {
       expect(await page.evaluate(() => document.activeElement?.classList.contains('perm-btn-deny'))).toBe(true)
       await expect(page.locator('[data-a11y="assertive"]')).toContainText('需要你确认工具操作：run_command', { timeout: 5_000 })
       await page.waitForTimeout(250)
+      const progressDock = page.locator('.progress-dock')
+      await expect(progressDock).toBeVisible()
+      await expect(progressDock.locator('.progress-item').filter({ hasText: '等待你确认' })).toBeVisible()
+      await expect(progressDock.locator('.progress-item').filter({ hasText: '运行命令' })).toBeVisible()
       await page.screenshot({ path: screenshotPath('command-sandbox-unavailable.png') })
       await clickPermissionCard(page, 'deny')
       await waitForRunFinished(page, 60_000)
+      await expect(progressDock.locator('.progress-status')).toHaveText('已完成')
+      await expect(progressDock.locator('.progress-item').filter({ hasText: '确认完成' })).toBeVisible()
     } finally {
       await morrow.close()
       await mock.close()
@@ -669,10 +675,43 @@ test('@core:memory 强信号任务自动复盘，建议可采纳为真实记忆�
       }).__morrowStore
       await store.getState().updateSettings({ evolutionEnabled: true })
     })
+
+    // 右栏未展开时，右侧常驻「进展更新」；可收起成细轨，再展开恢复。
+    const progressDock = page.locator('.progress-dock')
+    await expect(progressDock).toBeVisible()
+    await expect(progressDock.getByRole('heading', { name: '进展更新' })).toBeVisible()
+    await progressDock.getByRole('button', { name: '收起进展更新' }).click()
+    await expect(page.locator('.progress-dock')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '展开进展更新' })).toBeVisible()
+    const railGeometry = await page.evaluate(() => {
+      const rail = document.querySelector('.progress-rail')?.getBoundingClientRect()
+      const main = document.querySelector('.app-main')?.getBoundingClientRect()
+      const conversation = document.querySelector('.app-conversation')?.getBoundingClientRect()
+      return {
+        viewport: window.innerWidth,
+        rail: rail ? { left: rail.left, right: rail.right, width: rail.width } : null,
+        main: main ? { left: main.left, right: main.right, width: main.width } : null,
+        conversation: conversation ? { left: conversation.left, right: conversation.right } : null
+      }
+    })
+    expect(railGeometry.rail).not.toBeNull()
+    expect(railGeometry.main).not.toBeNull()
+    expect(railGeometry.conversation).not.toBeNull()
+    expect(railGeometry.rail!.right).toBeCloseTo(railGeometry.main!.right, 0)
+    expect(railGeometry.conversation!.right).toBeLessThanOrEqual(railGeometry.rail!.left + 1)
+    await page.screenshot({ path: screenshotPath('progress-rail.png') })
+    await page.getByRole('button', { name: '展开进展更新' }).click()
+    await expect(page.locator('.progress-dock')).toBeVisible()
     await installEventCollector(page)
 
     await sendMessageViaStore(page, '帮我整理一份清单。')
     await waitForRunFinished(page, 60_000)
+    await expect(progressDock.locator('.progress-item').first()).toBeVisible({ timeout: 15_000 })
+    await expect(progressDock.locator('.progress-item').filter({ hasText: '开始执行任务' })).toBeVisible()
+    await page.screenshot({ path: screenshotPath('progress-dock.png') })
+    await setThemeViaStore(page, 'light')
+    await page.screenshot({ path: screenshotPath('progress-dock-light.png') })
+    await setThemeViaStore(page, 'dark')
     await clearEvents(page)
     await sendMessageViaStore(page, '不要用表格，改成纯文本；以后都按季度口径。')
     await waitForRunFinished(page, 60_000)
@@ -694,7 +733,7 @@ test('@core:memory 强信号任务自动复盘，建议可采纳为真实记忆�
     )
     expect(list.suggestions).toHaveLength(2)
 
-    // 设置 → 更多功能里的「记忆」入口显示待处理数量，避免建议被藏起来。
+    // 设置左侧的「记忆」分页直接显示建议，避免建议被“更多功能”折叠藏起来。
     await page.evaluate(() => {
       const store = (window as unknown as { __morrowStore: { getState: () => { openSettings: () => void } } })
         .__morrowStore
@@ -702,8 +741,8 @@ test('@core:memory 强信号任务自动复盘，建议可采纳为真实记忆�
     })
     const settingsDialog = page.getByRole('dialog', { name: '设置' })
     await expect(settingsDialog).toBeVisible({ timeout: 15_000 })
-    await settingsDialog.getByRole('tab', { name: '更多功能' }).click()
-    await expect(page.locator('.st-tool-row', { hasText: '记忆' }).locator('.st-tool-badge')).toHaveText('2')
+    await settingsDialog.getByRole('tab', { name: '记忆' }).click()
+    await expect(page.locator('.evo-card')).toHaveCount(2)
     await page.screenshot({ path: screenshotPath('r19-evolution-badge-dark.png') })
     await page.keyboard.press('Escape')
     await expect(settingsDialog).toBeHidden()

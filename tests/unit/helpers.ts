@@ -371,7 +371,7 @@ export function makeToolContext(
     progress: (note) => {
       state.progressNotes.push(note)
     },
-    runSwarmMember: async () => ({ status: 'completed', summary: '集群成员已完成', steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }),
+    runMemberTask: async () => ({ status: 'completed', summary: '协作成员已完成', steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }),
     ...overrides
   }
 }

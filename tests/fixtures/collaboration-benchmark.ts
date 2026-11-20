@@ -1,5 +1,5 @@
 /**
- * T01 协作基准：用真实 runAgent / swarm 调度器 + 离线脚本模型，
+ * T01 协作基准：用真实 runAgent / super_agent 调度器 + 离线脚本模型，
  * 在隔离的登录样例上跑「必须串行」与「可同时开工」两种调度，
  * 导出脱敏时间线，供后续任务卡对照耗时、返工和用量。
  *
@@ -205,7 +205,7 @@ function workerTitle(request: ProviderStreamRequest): string {
 }
 
 function isWorkerPrompt(request: ProviderStreamRequest): boolean {
-  return request.system.includes('## 集群成员：')
+  return request.system.includes('## 协作成员：')
 }
 
 class ScriptedProvider implements Provider {
@@ -223,8 +223,8 @@ class ScriptedProvider implements Provider {
     if (!isWorkerPrompt(request)) {
       this.routerCalls += 1
       if (this.routerCalls === 1) {
-        this.mark('router.dispatch', 'Router 派发 A/B/C')
-        yield toolEvent('bench-swarm', 'swarm', {
+        this.mark('router.dispatch', '分发层派发 A/B/C')
+        yield toolEvent('bench-super_agent', 'super_agent', {
           goal: '在隔离登录样例上完成服务、页面与锁定测试',
           max_parallel: this.maxParallel,
           retry: 0,
@@ -258,7 +258,7 @@ class ScriptedProvider implements Provider {
         })
         return
       }
-      this.mark('router.final', 'Router 汇总结果')
+      this.mark('router.final', '分发层汇总结果')
       yield { type: 'text_delta', text: '登录样例由三名成员完成；现在运行验收检查。' }
       return
     }
@@ -305,11 +305,11 @@ function prepareWorkspace(root: string, scenario: string): string {
 }
 
 function findSuperState(result: RunAgentResult, events: RuntimeEvent[], label: string): SuperAgentState {
-  let swarmResult: { ok?: boolean; error?: string; meta?: unknown } | null = null
+  let memberResult: { ok?: boolean; error?: string; meta?: unknown } | null = null
   for (const message of result.messages) {
     for (const block of message.content) {
-      if (block.type !== 'tool_use' || block.name !== 'swarm') continue
-      swarmResult = block.result as { ok?: boolean; error?: string; meta?: unknown } | undefined ?? null
+      if (block.type !== 'tool_use' || block.name !== 'super_agent') continue
+      memberResult = block.result as { ok?: boolean; error?: string; meta?: unknown } | undefined ?? null
       const meta = block.result?.meta as Record<string, unknown> | undefined
       const state = meta?.superAgent as SuperAgentState | undefined
       if (state) return state
@@ -325,7 +325,7 @@ function findSuperState(result: RunAgentResult, events: RuntimeEvent[], label: s
       .map((block) => `${block.name}:${block.result?.ok === true ? 'ok' : block.result?.error ?? 'no-result'}`)
       .join(' | ')
     throw new Error(
-      `${label} 没有产生 super_updated 状态（reason=${result.reason}，swarm=${JSON.stringify(swarmResult?.meta ?? null)}，error=${swarmResult?.error ?? ''}，工具=${tools}）。`
+      `${label} 没有产生 super_updated 状态（reason=${result.reason}，super_agent=${JSON.stringify(memberResult?.meta ?? null)}，error=${memberResult?.error ?? ''}，工具=${tools}）。`
     )
   }
   return fallback.state

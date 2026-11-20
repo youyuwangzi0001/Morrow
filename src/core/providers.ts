@@ -1,7 +1,7 @@
 // Provider 实现与协议适配：由 core/providers/* 扁平合并，一个文件承载全部供应商逻辑。
 import type { ResultError, ChatMessage, ProviderConfig, Usage, ProviderTestResult, StructuredOutputStatus } from '../shared/types'
 import type { ProviderStreamEvent, Provider, ProviderStreamRequest, ToolDefinition, ConnectionTestOptions } from './types'
-import { isAbortError, sleep, parseToolArgs, newId } from './util'
+import { isAbortError, sleep, parseToolArgsDetailed, newId, type ToolArgsIssue } from './util'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { ToolProtocolStreamFilter, parseTextToolCalls } from '../shared/types'
@@ -165,8 +165,13 @@ export function toProviderError(err: unknown, providerId?: string): ProviderErro
 /**
  * 读取错误响应文本（失败不抛错）。
  * 限制读取字节数：有些网关出错时返回整页 HTML/日志，全部读进内存只会拖慢报错。
+ * 限时：网关常见「先回 5xx 响应头、正文一直不结束」，没有截止时间就会永久卡住。
  */
-export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Promise<string> {
+export async function readTextSafe(
+  response: Response,
+  maxBytes = 64 * 1024,
+  timeoutMs = 10_000
+): Promise<string> {
   const body = response.body
   if (!body) {
     try {
@@ -179,9 +184,15 @@ export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Pr
   const decoder = new TextDecoder('utf-8', { fatal: false })
   let text = ''
   let bytes = 0
+  let timer: NodeJS.Timeout | null = null
+  const expired = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs)
+  })
   try {
     while (bytes < maxBytes) {
-      const { done, value } = await reader.read()
+      const read = await Promise.race([reader.read(), expired])
+      if (read === 'timeout') break
+      const { done, value } = read
       if (done) break
       const previous = bytes
       bytes += value.byteLength
@@ -193,9 +204,12 @@ export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Pr
     }
   } catch {
     // 读取失败：返回已经读到的部分
+  } finally {
+    if (timer) clearTimeout(timer)
   }
   try {
-    await reader.cancel()
+    // 不等待：中断后 cancel 可能一直挂着，等它会把超时变成永久挂起
+    void reader.cancel().catch(() => undefined)
   } catch {
     // 流已关闭
   }
@@ -203,37 +217,54 @@ export async function readTextSafe(response: Response, maxBytes = 64 * 1024): Pr
   return text
 }
 
-/** 重试等待：指数间隔加 20% 抖动，避免多个 Worker 同一秒一起重连。 */
+/** 重试等待：指数间隔加 20% 抖动，避免多个协作成员同一秒一起重连。 */
 function retryDelay(policy: RetryPolicy, attempt: number): number {
   const base = policy.delays[Math.min(attempt, policy.delays.length - 1)] ?? 800
   return Math.max(50, Math.round(base * (0.8 + Math.random() * 0.4)))
 }
 
 /**
+ * 打开一次流：firstByteMs 是本次尝试还剩多少「首字节预算」（已扣掉等响应头的时间）。
+ * Provider 把继续传给 iterateSSEData，让 180 秒覆盖「等响应头 + 等首帧」整段。
+ */
+type StreamOpener = (
+  req: ProviderStreamRequest,
+  firstByteMs: number
+) => AsyncGenerator<ProviderStreamEvent>
+
+/** 已绑定请求的打开函数：重试/续接包装只需要传本次剩余的首字节预算。 */
+type Opener = (firstByteMs: number) => AsyncGenerator<ProviderStreamEvent>
+
+/**
  * 流式续接：已产出文本后连接中断时，不丢掉已收到的内容。
  * - Anthropic 用 assistant 预填继续同一条回复；
  * - OpenAI 兼容接口把已收到文本作为 assistant 前缀，再请模型接着写；
  * - 新流开头若重复了旧文本，按最长后缀/前缀重叠去掉，避免重复段落。
+ *
+ * 收到过数据说明上游是活的，续接时重算预算。
  */
 export async function* streamWithContinuation(
   request: ProviderStreamRequest,
-  open: (req: ProviderStreamRequest) => AsyncGenerator<ProviderStreamEvent>,
+  open: StreamOpener,
   opts: {
     policy: RetryPolicy
     signal: AbortSignal
     providerId?: string
     buildContinuation: (req: ProviderStreamRequest, partialText: string) => ProviderStreamRequest
+    firstByteDeadline?: number
   }
 ): AsyncGenerator<ProviderStreamEvent> {
   let attempt = 0
   let text = ''
   let gotThinking = false
   let hadToolCall = false
+  let deadline = opts.firstByteDeadline ?? firstByteDeadline()
   for (;;) {
     const isContinuation = attempt > 0 && text.length > 0
     let continuationBuffer = ''
     let dedupeDone = !isContinuation
     let attemptHadToolCall = false
+    let sawData = false
     const flushContinuation = (): ProviderStreamEvent[] => {
       if (dedupeDone || !isContinuation) return []
       dedupeDone = true
@@ -246,7 +277,8 @@ export async function* streamWithContinuation(
     }
     try {
       const nextRequest = isContinuation ? opts.buildContinuation(request, text) : request
-      for await (const event of open(nextRequest)) {
+      for await (const event of open(nextRequest, remainingFirstByteBudget(deadline))) {
+        sawData = true
         if (event.type === 'text_delta') {
           if (isContinuation && !dedupeDone) {
             continuationBuffer += event.text
@@ -301,7 +333,17 @@ export async function* streamWithContinuation(
         throw error
       }
       const delay = retryDelay(opts.policy, attempt)
+      // 一帧都没收到且首字节预算已用尽：再重试只会立刻失败，直接说明情况，
+      // 而不是让用户再盯一轮 180 秒转圈。
+      if (!sawData && remainingFirstByteBudget(deadline) <= 0) {
+        throw new ProviderError(
+          `${error.message}${attempt > 0 ? `（已重试 ${attempt} 次）` : ''}（首字节预算已在本次请求内用完，不再自动重试）`,
+          { code: error.code, retryable: error.retryable, status: error.status, providerId: opts.providerId, cause: error }
+        )
+      }
       attempt += 1
+      // 收到过数据就说明上游是活的：续接时重新给足首字节预算。
+      if (sawData) deadline = firstByteDeadline()
       yield {
         type: 'notice',
         level: 'warn',
@@ -366,16 +408,20 @@ function continuationRequest(
  * - 仅思考（thinking）不算正文：断连后重发原请求是安全的；
  * - 重试前 yield notice，UI 显示「正在重试」而不是直接报错；
  * - signal 中断立即停止，不重试。
+ *
+ * 首字节预算是「所有重试共享」的一份：上游挂住时第一次就等满 180 秒，
+ * 之后的重试只拿剩余额度。否则 3 次重试会让用户盯着转圈 12 分钟。
  */
 export async function* streamWithRetry(
-  open: () => AsyncGenerator<ProviderStreamEvent>,
-  opts: { policy: RetryPolicy; signal: AbortSignal; providerId?: string }
+  open: Opener,
+  opts: { policy: RetryPolicy; signal: AbortSignal; providerId?: string; firstByteDeadline?: number }
 ): AsyncGenerator<ProviderStreamEvent> {
   let attempt = 0
+  let deadline = opts.firstByteDeadline ?? firstByteDeadline()
   for (;;) {
     let producedContent = false
     try {
-      for await (const event of open()) {
+      for await (const event of open(remainingFirstByteBudget(deadline))) {
         if (event.type !== 'notice' && event.type !== 'usage' && event.type !== 'thinking_delta') {
           producedContent = true
         }
@@ -399,6 +445,16 @@ export async function* streamWithRetry(
         throw error
       }
       const delay = retryDelay(opts.policy, attempt)
+      // 首字节预算已经用尽：再重试只会立刻失败，直接说明而不是再等一轮
+      if (!producedContent && remainingFirstByteBudget(deadline) <= 0) {
+        throw new ProviderError(`${error.message}（首字节预算已在本次请求内用完，不再自动重试）`, {
+          code: error.code,
+          retryable: error.retryable,
+          status: error.status,
+          providerId: opts.providerId,
+          cause: error
+        })
+      }
       attempt += 1
       yield {
         type: 'notice',
@@ -539,40 +595,151 @@ export class SSEParser {
   }
 }
 
+/** 从「请求发出」到「开始返回内容」的上限。 */
+export const STREAM_START_TIMEOUT_MS = 180_000
+/** 流已经开始后，连续没有字节（心跳注释也算字节）的上限。 */
 export const STREAM_IDLE_TIMEOUT_MS = 180_000
+
+const noNumber = (value: number): string => String(Math.max(1, Math.round(value / 1000)))
+
+function streamStartTimeoutError(budgetMs: number, providerId?: string, stage: 'headers' | 'body' = 'body'): ProviderError {
+  const where = stage === 'headers' ? '没有返回响应头' : '没有开始返回内容'
+  return new ProviderError(
+    `模型服务在 ${noNumber(budgetMs)} 秒内${where}，已中断本次请求。常见原因是上游排队或过载、代理把整个回复缓冲住、接口地址不可达；可以换模型、检查代理设置，或稍后再试。`,
+    { code: 'stream_start_timeout', retryable: true, providerId }
+  )
+}
+
+function streamIdleTimeoutError(idleMs: number, providerId?: string): ProviderError {
+  return new ProviderError(
+    `模型流式响应静默超过 ${noNumber(idleMs)} 秒，已中断本次请求。上游可能仍在排队、被中间代理切断了连接，或模型卡住了；稍后会自动重试。`,
+    { code: 'stream_timeout', retryable: true, providerId }
+  )
+}
+
+/** 一次用户请求的首字节预算（跨自动重试共享）：等响应头 + 等首帧合计不超过它。 */
+export function firstByteDeadline(now = Date.now()): number {
+  return now + STREAM_START_TIMEOUT_MS
+}
+
+/** 首字节还剩多少预算；已经用完返回 0。 */
+export function remainingFirstByteBudget(deadline: number, now = Date.now()): number {
+  return Math.max(0, deadline - now)
+}
+
+/**
+ * 等响应头这一段同样需要截止时间。
+ * fetch 只在响应头到达时 resolve，上游或代理卡在「还没开始回包」时，
+ * 后面的流超时计时器根本不会启动 —— 表现就是永远转圈，没有任何报错。
+ * 这里把调用方 signal 与剩余预算合成一个，超时翻译成可重试的 stream_start_timeout。
+ * 导出是为了单测能直接卡住响应头：用真 fetch 验证就得等满 180 秒。
+ */
+export async function fetchWithDeadline(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+  budgetMs: number,
+  providerId?: string
+): Promise<Response> {
+  if (budgetMs <= 0) throw streamStartTimeoutError(STREAM_START_TIMEOUT_MS, providerId, 'headers')
+  const caller = init.signal ?? undefined
+  const budget = new AbortController()
+  const timer = setTimeout(() => budget.abort(), Math.min(budgetMs, STREAM_START_TIMEOUT_MS))
+  const signal = caller ? AbortSignal.any([caller, budget.signal]) : budget.signal
+  try {
+    return await fetchImpl(url, { ...init, signal })
+  } catch (err) {
+    // 调用方主动中断 → 原样交给上层；预算耗尽 → 明确的「没拿到响应头」
+    if (caller?.aborted) throw err
+    if (budget.signal.aborted) throw streamStartTimeoutError(budgetMs, providerId, 'headers')
+    throw err
+  } finally {
+    // 响应头已经到（或已经失败）：预算不再管正文。否则正文阶段被预算打断时，
+    // 抛上来的是底层 AbortError，会被归成不可重试的 provider_error，
+    // 而正文该由 iterateSSE 的首帧预算负责报可重试的 stream_start_timeout。
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 统一「读下一块」与「超时后释放」。
+ * 对 fetch 的 body 只调 asyncIterator.return() 并不会真的取消底层流：在途的
+ * read 会一直挂着，上游那条连接也留着。重试几次就堆出几条半开连接，
+ * 服务商的并发名额被占满后，后续请求反而更容易超时 —— 必须用 reader.cancel()。
+ */
+interface ChunkSource {
+  /** done 时 value 必为 undefined，调用方读 next.value 不需要先判空 */
+  next: () => Promise<{ done: boolean; value: string | Uint8Array | undefined }>
+  release: () => void
+}
+
+function chunkSource(
+  stream: ReadableStream<Uint8Array> | AsyncIterable<string | Uint8Array>
+): ChunkSource {
+  if (typeof (stream as ReadableStream<Uint8Array>).getReader === 'function') {
+    const reader = (stream as ReadableStream<Uint8Array>).getReader()
+    return {
+      next: async () => {
+        const result = await reader.read()
+        return result.done ? { done: true, value: undefined } : { done: false, value: result.value }
+      },
+      // 不 await：cancel 要等在途 read 结束，而它可能永远不会结束
+      release: () => void reader.cancel().catch(() => undefined)
+    }
+  }
+  const iterator = (stream as AsyncIterable<string | Uint8Array>)[Symbol.asyncIterator]()
+  return {
+    // 统一成 value 必有的形状：ReadableStream 的 done 结果不带 value
+    next: async () => {
+      const result = await iterator.next()
+      return result.done ? { done: true as const, value: undefined } : { done: false as const, value: result.value }
+    },
+    // 自定义迭代器没有 cancel，只能 return；同样不等待，避免把超时变成永久挂起
+    release: () => void Promise.resolve(iterator.return?.()).catch(() => undefined)
+  }
+}
 
 /**
  * 把 fetch 的 body 流转成 SSE 帧。
  * 注意：调用方负责判断 `data: [DONE]`。
- * 超过 idleTimeoutMs 没有任何数据（含心跳）就报错，避免连接半开导致整轮永久卡住。
+ * 两个预算都按「没有新字节」计算（心跳注释也算字节）：
+ * - startTimeoutMs：还没收到第一块时的预算，由调用方扣掉「等响应头」已花的时间；
+ * - idleTimeoutMs：流已开始后的静默预算。
+ * 不区分这两段的话，上游先挂两分钟再回响应头时，用户总共要等两段。
  */
 export async function* iterateSSE(
   stream: ReadableStream<Uint8Array> | AsyncIterable<string | Uint8Array>,
-  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS
+  idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS,
+  startTimeoutMs = idleTimeoutMs
 ): AsyncGenerator<SSEFrame> {
   const parser = new SSEParser()
   const decoder = new TextDecoder('utf-8', { fatal: false })
-  const iterator = (stream as AsyncIterable<string | Uint8Array>)[Symbol.asyncIterator]()
+  const source = chunkSource(stream)
   let timer: NodeJS.Timeout | null = null
-  let timedOut = false
-  const arm = (): Promise<never> =>
+  let started = false
+  let drained = false
+  const arm = (budgetMs: number): Promise<never> =>
     new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        timedOut = true
-        reject(new ProviderError(`模型流式响应超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有数据，已中断。`, {
-          code: 'stream_timeout',
-          retryable: true
-        }))
-      }, idleTimeoutMs)
+      timer = setTimeout(
+        () => reject(started ? streamIdleTimeoutError(idleTimeoutMs) : streamStartTimeoutError(budgetMs)),
+        Math.max(1, budgetMs)
+      )
     })
   try {
     while (true) {
       if (timer) clearTimeout(timer)
       timer = null
-      const next = await Promise.race([iterator.next(), arm()])
-      if (next.done) break
+      const pending = source.next()
+      // 超时后底层读取可能以 rejection 结束，先挂一个吞错处理器，避免 unhandledRejection
+      pending.catch(() => undefined)
+      const next = await Promise.race([pending, arm(started ? idleTimeoutMs : startTimeoutMs)])
       if (timer) clearTimeout(timer)
       timer = null
+      if (next.done) {
+        drained = true
+        break
+      }
+      started = true
       const chunk = next.value
       const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
       for (const frame of parser.push(text)) yield frame
@@ -582,20 +749,23 @@ export async function* iterateSSE(
     for (const frame of parser.flush()) yield frame
   } finally {
     if (timer) clearTimeout(timer)
-    // 不等待 return：底层读取可能同样卡死，等它会把超时又变成永久挂起
-    if (timedOut) void Promise.resolve(iterator.return?.()).catch(() => undefined)
+    // 超时或上层提前结束（如 Anthropic 收到 message_stop 就 break）都要关连接，
+    // 否则那条半开连接会一直挂着，重试几次就把上游并发名额占满
+    if (!drained) source.release()
   }
 }
 
 /**
  * 逐帧 JSON 解析（跳过注释/心跳/空 data/[DONE]）。
  * onDone：收到 `[DONE]` 哨兵时回调，供 Provider 区分「正常收尾」与「中途断流」。
+ * 超时预算由 Provider 传入：首帧预算要扣掉已经花在「等响应头」上的时间。
  */
 export async function* iterateSSEData(
   stream: ReadableStream<Uint8Array> | AsyncIterable<string | Uint8Array>,
-  onDone?: () => void
+  onDone?: () => void,
+  timeouts: { idleTimeoutMs?: number; startTimeoutMs?: number } = {}
 ): AsyncGenerator<unknown> {
-  for await (const frame of iterateSSE(stream)) {
+  for await (const frame of iterateSSE(stream, timeouts.idleTimeoutMs, timeouts.startTimeoutMs)) {
     const data = frame.data.trim()
     if (!data) continue
     if (data === '[DONE]') {
@@ -828,32 +998,46 @@ export class AnthropicProvider implements Provider {
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
     const policy: RetryPolicy = this.retryPolicy
     if (req.responseFormat) {
-      return streamWithRetry(() => this.attempt(req), {
+      return streamWithRetry((firstByteMs) => this.attempt(req, firstByteMs), {
         policy,
         signal: req.signal,
         providerId: this.id
       })
     }
-    return streamWithContinuation(req, (nextRequest) => this.attempt(nextRequest), {
-      policy,
-      signal: req.signal,
-      providerId: this.id,
-      buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'anthropic')
-    })
+    return streamWithContinuation(
+      req,
+      (nextRequest, firstByteMs) => this.attempt(nextRequest, firstByteMs),
+      {
+        policy,
+        signal: req.signal,
+        providerId: this.id,
+        buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'anthropic')
+      }
+    )
   }
 
-  private async *attempt(req: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
+  private async *attempt(req: ProviderStreamRequest, firstByteMs: number): AsyncGenerator<ProviderStreamEvent> {
+    const startedAt = Date.now()
     let response: Response
     try {
-      response = await this.fetchImpl(this.url, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(buildAnthropicRequestBody(req, this.model)),
-        signal: req.signal
-      })
+      response = await fetchWithDeadline(
+        this.fetchImpl,
+        this.url,
+        {
+          method: 'POST',
+          headers: this.headers,
+          body: JSON.stringify(buildAnthropicRequestBody(req, this.model)),
+          signal: req.signal
+        },
+        firstByteMs,
+        this.id
+      )
     } catch (err) {
       throw toProviderError(err, this.id)
     }
+    // 响应头到了但首帧还没来：把「已经花在等响应头」的时间从首帧预算里扣掉
+    // （结构化降级会再发一次请求，所以要等最终那个响应头到了再算）
+    let startBudgetMs = Math.max(1, firstByteMs - (Date.now() - startedAt))
     if (!response.ok && req.responseFormat) {
       const body = await readTextSafe(response)
       if ((response.status === 400 || response.status === 422) && /tool|schema|response_format|structured/i.test(body)) {
@@ -865,18 +1049,25 @@ export class AnthropicProvider implements Provider {
           structuredMode: 'prompt'
         }
         try {
-          response = await this.fetchImpl(this.url, {
-            method: 'POST',
-            headers: this.headers,
-            body: JSON.stringify(buildAnthropicRequestBody({ ...req, responseFormat: undefined }, this.model)),
-            signal: req.signal
-          })
+          response = await fetchWithDeadline(
+            this.fetchImpl,
+            this.url,
+            {
+              method: 'POST',
+              headers: this.headers,
+              body: JSON.stringify(buildAnthropicRequestBody({ ...req, responseFormat: undefined }, this.model)),
+              signal: req.signal
+            },
+            Math.max(1, firstByteMs - (Date.now() - startedAt)),
+            this.id
+          )
         } catch (err) {
           throw toProviderError(err, this.id)
         }
         if (!response.ok) {
           throw normalizeHttpError(response.status, await readTextSafe(response), this.id)
         }
+        startBudgetMs = Math.max(1, firstByteMs - (Date.now() - startedAt))
       } else {
         throw normalizeHttpError(response.status, body, this.id)
       }
@@ -906,7 +1097,9 @@ export class AnthropicProvider implements Provider {
     }
     const blocks = new Map<number, BlockState>()
 
-    streamLoop: for await (const payload of iterateSSEData(response.body)) {
+    streamLoop: for await (const payload of iterateSSEData(response.body, undefined, {
+      startTimeoutMs: startBudgetMs
+    })) {
       const event = payload as AnthropicStreamPayload
       switch (event.type) {
         case 'message_start': {
@@ -968,24 +1161,25 @@ export class AnthropicProvider implements Provider {
           state.ended = true
           if (state.kind === 'tool_use' && state.toolId && state.toolName) {
             if (state.structured) {
-              const input = parseToolArgs(state.json)
-              if (!input) {
-                throw new ProviderError('模型返回的结构化 JSON 不完整或不是合法 JSON。', {
+              const parsed = parseToolArgsDetailed(state.json)
+              if (!parsed.input) {
+                throw new ProviderError(`模型返回的结构化 JSON 不完整或不是合法 JSON：${parsed.issue?.error ?? '无法解析'}`, {
                   code: 'structured_parse_error',
                   retryable: false,
                   providerId: this.id
                 })
               }
               finalizedToolCalls += 1
-              yield { type: 'text_delta', text: JSON.stringify(input) }
+              yield { type: 'text_delta', text: JSON.stringify(parsed.input) }
               break
             }
             finalizedToolCalls += 1
-            const input = parseToolArgs(state.json)
+            const parsed = parseToolArgsDetailed(state.json)
+            const input = parsed.input
             if (!input) {
               hadParseError = true
-              const parseError = '模型输出的工具参数不是合法 JSON（可能因为内容过长被截断）'
-              yield { type: 'notice', level: 'warn', message: `${parseError}（工具：${state.toolName}），将改为分步重试。` }
+              const parseError = toolArgsParseError(parsed.issue, { finishReason: stopReason })
+              yield { type: 'notice', level: 'warn', message: `${parseError}（工具：${state.toolName}），已交回模型修正后重试。` }
               yield { type: 'tool_call_end', index, id: state.toolId, name: state.toolName, input: {}, parseError }
               break
             }
@@ -1031,21 +1225,25 @@ export class AnthropicProvider implements Provider {
         state.ended = true
         hasOutput = true
         if (state.structured) {
-          const input = parseToolArgs(state.json)
-          if (!input) {
+          const structuredParsed = parseToolArgsDetailed(state.json)
+          if (!structuredParsed.input) {
             hadParseError = true
-            throw new ProviderError('模型返回的结构化 JSON 不完整或不是合法 JSON。', {
-              code: 'structured_parse_error',
-              retryable: false,
-              providerId: this.id
-            })
+            throw new ProviderError(
+              `模型返回的结构化 JSON 不完整或不是合法 JSON：${structuredParsed.issue?.error ?? '无法解析'}`,
+              {
+                code: 'structured_parse_error',
+                retryable: false,
+                providerId: this.id
+              }
+            )
           }
           finalizedToolCalls += 1
-          yield { type: 'text_delta', text: JSON.stringify(input) }
+          yield { type: 'text_delta', text: JSON.stringify(structuredParsed.input) }
           continue
         }
         finalizedToolCalls += 1
-        const input = parseToolArgs(state.json)
+        const parsed = parseToolArgsDetailed(state.json)
+        const input = parsed.input
         if (!input) {
           hadParseError = true
           yield {
@@ -1054,7 +1252,7 @@ export class AnthropicProvider implements Provider {
             id: state.toolId,
             name: state.toolName,
             input: {},
-            parseError: '模型输出的工具参数不是合法 JSON（可能因为内容过长被截断）'
+            parseError: toolArgsParseError(parsed.issue, { finishReason: stopReason })
           }
           continue
         }
@@ -1309,6 +1507,20 @@ function contentText(content: OpenAIDelta['content']): string {
   return ''
 }
 
+/**
+ * 工具参数解析失败时给模型看的文案。
+ * 关键是把「错在哪」和「模型自己写坏的那一段」一起带回去：
+ * 只说「不是合法 JSON」，模型下一轮往往会原样再写一遍同样的错；
+ * 指出「字符串里有真实换行」「Windows 路径反斜杠没转义」它才能一次改对。
+ */
+function toolArgsParseError(issue: ToolArgsIssue | undefined, opts: { finishReason?: string | null } = {}): string {
+  if (opts.finishReason === 'length') {
+    return '模型输出达到长度上限（finish_reason=length），工具参数被截断，不是完整 JSON'
+  }
+  const reason = issue?.error ?? '模型输出的工具参数不是合法 JSON'
+  return issue?.sample ? `模型输出的工具参数不是合法 JSON：${reason}；出错位置附近：${issue.sample}` : `模型输出的工具参数不是合法 JSON：${reason}`
+}
+
 function argsText(value: unknown): string {
   if (typeof value === 'string') return value
   if (value && typeof value === 'object') {
@@ -1346,38 +1558,53 @@ export class OpenAICompatProvider implements Provider {
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
     const policy: RetryPolicy = this.retryPolicy
     if (req.responseFormat) {
-      return streamWithRetry(() => this.attempt(req), {
+      return streamWithRetry((firstByteMs) => this.attempt(req, firstByteMs), {
         policy,
         signal: req.signal,
         providerId: this.id
       })
     }
-    return streamWithContinuation(req, (nextRequest) => this.attempt(nextRequest), {
-      policy,
-      signal: req.signal,
-      providerId: this.id,
-      buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'openai')
-    })
+    return streamWithContinuation(
+      req,
+      (nextRequest, firstByteMs) => this.attempt(nextRequest, firstByteMs),
+      {
+        policy,
+        signal: req.signal,
+        providerId: this.id,
+        buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'openai')
+      }
+    )
   }
 
-  private async *attempt(req: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
+  private async *attempt(req: ProviderStreamRequest, firstByteMs: number): AsyncGenerator<ProviderStreamEvent> {
     let response: Response | null = null
     let lastBody = ''
+    let startBudgetMs = firstByteMs
+    const attemptStartedAt = Date.now()
     let structuredMode: 'schema' | 'object' | 'none' = req.responseFormat ? 'schema' : 'none'
     for (;;) {
+      const requestStartedAt = Date.now()
       try {
-        response = await this.fetchImpl(this.url, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            ...(req.contextWindow ? { 'x-morrow-context-window': String(req.contextWindow) } : {})
+        response = await fetchWithDeadline(
+          this.fetchImpl,
+          this.url,
+          {
+            method: 'POST',
+            headers: {
+              ...this.headers,
+              ...(req.contextWindow ? { 'x-morrow-context-window': String(req.contextWindow) } : {})
+            },
+            body: JSON.stringify(buildOpenAIRequestBody(req, this.model, this.id, structuredMode)),
+            signal: req.signal
           },
-          body: JSON.stringify(buildOpenAIRequestBody(req, this.model, this.id, structuredMode)),
-          signal: req.signal
-        })
+          Math.max(1, firstByteMs - (requestStartedAt - attemptStartedAt)),
+          this.id
+        )
       } catch (err) {
         throw toProviderError(err, this.id)
       }
+      // 响应头到了但首帧还没来：把「已经花在等响应头」的时间从首帧预算里扣掉
+      startBudgetMs = Math.max(1, firstByteMs - (Date.now() - requestStartedAt))
       if (response.ok) break
       lastBody = await readTextSafe(response)
       const next = structuredFallbackStage(structuredMode, response.status, lastBody)
@@ -1419,9 +1646,13 @@ export class OpenAICompatProvider implements Provider {
     // 旧版 function_call 只有一个调用，用 -1 与 tool_calls 区分
     let legacyFunction: ToolAccumulator | null = null
 
-    for await (const payload of iterateSSEData(response.body, () => {
-      completed = true
-    })) {
+    for await (const payload of iterateSSEData(
+      response.body,
+      () => {
+        completed = true
+      },
+      { startTimeoutMs: startBudgetMs }
+    )) {
       const chunk = payload as OpenAIStreamChunk
       // 个别网关会在 200 响应里塞 error 帧
       if (chunk.error) {
@@ -1512,16 +1743,14 @@ export class OpenAICompatProvider implements Provider {
         yield { type: 'tool_call_start', index: acc.index, id: acc.id, name: acc.name }
         if (acc.args) yield { type: 'tool_call_delta', index: acc.index, argsDelta: acc.args }
       }
-      const input = parseToolArgs(acc.args)
+      const parsed = parseToolArgsDetailed(acc.args)
+      const input = parsed.input
       if (!input) {
         // 参数 JSON 不完整通常是输出触达 max_tokens 被截断：不要杀死整轮，
         // 交给 Agent 生成「可自修复」的工具错误，模型随后可以拆小内容重试。
         hadParseError = true
-        const parseError =
-          finishReason === 'length'
-            ? '模型输出达到长度上限（finish_reason=length），工具参数被截断，不是完整 JSON'
-            : '模型输出的工具参数不是合法 JSON'
-        yield { type: 'notice', level: 'warn', message: `${parseError}（工具：${acc.name}），将改为分步重试。` }
+        const parseError = toolArgsParseError(parsed.issue, { finishReason })
+        yield { type: 'notice', level: 'warn', message: `${parseError}（工具：${acc.name}），已交回模型修正后重试。` }
         yield { type: 'tool_call_end', index: acc.index, id: acc.id, name: acc.name, input: {}, parseError }
         continue
       }

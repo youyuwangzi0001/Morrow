@@ -89,7 +89,7 @@
   background: var(--surface-hover);
 }
 
-/* 停止会中断全部 Worker：用 rust 强调色提醒，不把它做成普通关闭按钮。 */
+/* 停止会中断全部协作成员：用 rust 强调色提醒，不把它做成普通关闭按钮。 */
 .super-icon-btn.is-stop {
   display: inline-flex;
   align-items: center;

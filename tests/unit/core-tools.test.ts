@@ -73,7 +73,7 @@ describe('tools.test.ts', () => {
       progress: (note) => {
         state.progressNotes.push(note)
       },
-      runSwarmMember: async () => ({ status: 'completed', summary: '集群成员已完成调研', steps: 2, usage: { inputTokens: 10, outputTokens: 5 } }),
+      runMemberTask: async () => ({ status: 'completed', summary: '协作成员已完成调研', steps: 2, usage: { inputTokens: 10, outputTokens: 5 } }),
       ...overrides
     }
   }
@@ -1215,7 +1215,7 @@ describe('mcp-tools.test.ts', () => {
       addArtifact: () => undefined,
       askUser: async () => ({ value: 'A', label: 'A' }),
       progress: () => undefined,
-      runSwarmMember: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
+      runMemberTask: async () => ({ status: 'completed', summary: '', steps: 0, usage: { inputTokens: 0, outputTokens: 0 } }),
       ...overrides
     }
   }

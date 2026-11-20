@@ -43,13 +43,13 @@ import type {
 } from '@shared/types'
 import { DEMO_MODEL, defaultSettings, shouldApplySuperAgentState } from '@shared/contracts'
 
-/** 后台 Worker 的审批不属于 Router 本轮运行：Router 结束时不能把它从界面清掉。 */
+/** 后台协作成员的审批不属于分发层本轮运行：分发层结束时不能把它从界面清掉。 */
 function isLiveWorkerPermission(request: PermissionRequest | null | undefined, session: Session | null): boolean {
   if (!request?.taskId) return false
   const task = session?.superAgent?.tasks.find((item) => (item.taskId ?? item.id) === request.taskId)
   return Boolean(task && (task.status === 'running' || task.waitingForApproval === true))
 }
-import { mergeSwarmTask, superProgressOf, swarmTasksFromMeta } from '@shared/types'
+import { mergeMemberTask, superProgressOf, memberTasksFromMeta } from '@shared/types'
 
 class IpcError extends Error {
   code: string
@@ -205,7 +205,7 @@ export interface AppStore {
   confirmCollaborationAction: (actionId: string) => Promise<void>
   /** 单独停止一个后台任务；其他任务继续 */
   stopCollaborationTask: (taskId: string) => Promise<boolean>
-  /** 关闭“可能卡住”的提醒，保留该 Worker 继续工作 */
+  /** 关闭“可能卡住”的提醒，保留该协作成员继续工作 */
   dismissCollaborationStuck: (taskId: string) => Promise<boolean>
   retryCollaborationTask: (taskId: string) => Promise<boolean>
   /** 向指定任务投递补充要求（先保存，成员在下一步读取） */
@@ -1041,8 +1041,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
               status: event.status ?? block.status,
               title: event.title ?? block.title,
               ...(typeof event.percent === 'number' ? { progressPercent: event.percent } : {}),
-              ...(event.swarmTask
-                ? { swarmTasks: mergeSwarmTask(block.swarmTasks, event.swarmTask) }
+              ...(event.memberTask
+                ? { memberTasks: mergeMemberTask(block.memberTasks, event.memberTask) }
                 : {})
             }
           })
@@ -1055,13 +1055,13 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           ...message,
           content: message.content.map((block) => {
             if (block.type !== 'tool_use' || block.id !== event.toolUseId) return block
-            const swarmTasks = swarmTasksFromMeta(event.result.meta)
+            const memberTasks = memberTasksFromMeta(event.result.meta)
             return {
               ...block,
               status: event.denied ? 'denied' : event.interrupted ? 'interrupted' : event.result.ok ? 'success' : 'error',
               result: event.result,
               finishedAt: event.at,
-              ...(swarmTasks.length > 0 ? { swarmTasks } : {})
+              ...(memberTasks.length > 0 ? { memberTasks } : {})
             }
           })
         }))
@@ -1592,7 +1592,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       await get().stopRunById(run.runId)
       return
     }
-    // Router 本轮已结束、后台 Worker 仍在跑：整批停止要把每个运行中任务单独停掉。
+    // 分发层本轮已结束、后台协作成员仍在跑：整批停止要把每个运行中任务单独停掉。
     const session = get().session
     const projectId = session?.collaboration?.projectId || session?.superAgent?.projectId
     const running = (session?.superAgent?.tasks ?? []).filter((task) => task.status === 'running')
@@ -1701,7 +1701,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           ? { session: { ...state.session, collaboration: result.projection } }
           : {}
       )
-      get().notify('success', replyTo ? '答复已发给 Worker。' : '补充要求已保存，成员会在下一步读取。')
+      get().notify('success', replyTo ? '答复已发给协作成员。' : '补充要求已保存，成员会在下一步读取。')
       return true
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '消息发送失败')
@@ -1724,7 +1724,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           clientMessageId: `reactivate_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
         })
       )
-      get().notify('success', '已带原线程重新激活这项 Worker。')
+      get().notify('success', '已带原线程重新激活这项协作成员。')
       return true
     } catch (err) {
       get().notify('error', err instanceof Error ? err.message : '重新激活失败')

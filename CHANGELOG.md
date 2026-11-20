@@ -12,7 +12,7 @@ Morrow 的版本按发布线记录。每节先给完整中文，再给完整英�
 
 后续两轮加固没有引入新的功能模块，只把创作台的「成片能不能播」变成可自动判定的产线，并修掉几处影响日常使用的问题。版本号仍为 0.2.0。
 
-**变更概览**：新增 3 项 · 优化 4 项 · 修复 7 项
+**变更概览**：新增 3 项 · 优化 12 项 · 修复 7 项
 
 **新增**
 
@@ -42,7 +42,14 @@ Morrow 的版本按发布线记录。每节先给完整中文，再给完整英�
 
 - **模型与订阅控制**：每个模型可选上下文档位与最大输出，支持思考档位、OpenAI / Anthropic 协议切换与重试策略；能按模型目录识别图片输入能力。
 - **界面可读性**：字号下限统一到 11px，输入框、文本域与下拉改为微圆角与内嵌焦点环；移除并排对话，协作并入工作模式。
-- **终端槽位**：上限仍然保持 32，但只统计**运行中**的进程。已退出的记录只是可回看的日志，不再占名额；`stop` / `close` 结束后立刻释放，新增 `close` 动作供显式回收。这正是「终端满了、停止成功却仍报满、只能回退 run_command」的根因。
+- **终端槽位**：同时运行上限降为 16，且只统计**运行中**的进程。一次性后台任务结束后自动收起终端窗口；记录只保留 10 分钟供 Agent 回读最终输出，不占名额。已退出的记录不再占名额；`stop` / `close` 结束后立刻释放，新增 `close` 动作供显式回收。这正是「终端满了、停止成功却仍报满、只能回退 run_command」的根因。
+- **终端布局**：终端停靠层改为贴在 Agent 对话列底部，不再横跨窗口；画布或侧聊打开时，终端随对话列收窄，不会伸到画布下方。
+- **素纸主题**：浅色主题的金色文字由浅褐金压到更深的暗金（`#7a5418` / `#86602a`），正文仍是原来的墨黑；金色填充按钮单独保留较亮的底色，黑字对比度不被牺牲。金色文字对纸底的 WCAG 对比度从 4.27:1 / 2.96:1 提升到 5.78:1 / 4.83:1。
+- **订阅浏览器授权**：登录窗口对本次授权的 HTTPS 来源放行 Local Network Access / loopback 回环权限，回环回调补齐 CORS 凭据与预检头；Command Code 这类“授权完成后把 Key POST 回 127.0.0.1”的流程不再被 Chromium 默认拒绝。登录窗口同时提供“在系统浏览器中打开”菜单，作为企业策略/浏览器策略仍拦截时的可靠出口。
+- **设置分页**：删除“更多功能”聚合页，把记忆、技能、外部工具、全部功能、全局搜索和版本记录拆成左侧一级分页，并按“接入 → 扩展 → 工作 → 系统 → 应用”重排。项目、定时任务和浏览器只保留在主页入口，不再在设置里重复出现；这些功能面板直接嵌入设置页，不再叠一层模态。
+- **右侧进展更新**：右栏未展开时，Agent 对话右侧常驻一列进展挂窗，实时显示会话状态、耗时、待办完成度、计划、协作成员和工具/成果/审批动态。它直接消费真实 `RuntimeEvent` 与主进程 `IslandSnapshot`，可收起成细轨；画布或侧聊展开时自动让位，避免盖住内容。
+- **长任务完成质量**：联网搜索的结果现在会和查询关键词做相关性核对：多词查询至少命中两个不同关键词，Bing 在部分网络返回的无关缓存结果不会再被当成答案；内置引擎超时从 9s 收到 6s，先失败快、再提示换 Tavily/Brave/Serper/SearXNG。原生搜索返回答案却没有来源时，会自动再走一次内置搜索补来源。深度研究结束前把报告引用 URL 与真实搜索/读取记录交叉核对，编造链接不再能完成；协作成员简报自动带上计划里的 `deliverable` 和下游验收文件/命令。Super-Agent 的系统提示新增长任务触发条件（三个以上独立方向、跨三个以上文件/模块、深度调研、多方案比较、独立验收或预计超过 8 次工具调用），默认先拆分派发，不再一个人串行做到底。
+- **手机配对**：桌面“设置 → 手机配对”提供远程通道开关、手机配对请求、90 秒一次性配对码与已配对设备撤销；安卓版修复 hello 通道字面量与桌面实际校验不一致的问题，真实 Ktor ↔ Node `DirectChannel` 配对链路跑通。APK 随后随交付包提供，实体机扫码仍需一台安卓设备。
 - **文件读取上限**：`read_file` 单次读取上限从 256KB 放宽到 4MB，默认一页（2000 行）的输出上限从 64K 提到 256K。Morrow 自己的 `studio.ts` 等文件早已超过 256KB，旧上限让读源码只能看到开头；仍保留 `offset`/`limit` 分页与二进制判定。
 - **稳定性改进（含修复）**：修复任务栏空白图标、8.3 短路径误判与大工作区副本上限误拦；断流、空回合与空闲超时不再静默停止。
 
@@ -70,7 +77,7 @@ This release turns Morrow from a capable agent into a workshop that ships work: 
 
 Two follow-up hardening rounds added no new feature modules. They turn "can this cut actually be broadcast" into an automatically decidable pipeline and fix several day-to-day issues. The version stays 0.2.0.
 
-**Summary**: Added 3 · Improved 4 · Fixed 7
+**Summary**: Added 3 · Improved 12 · Fixed 7
 
 **Added**
 
@@ -95,7 +102,14 @@ Two follow-up hardening rounds added no new feature modules. They turn "can this
 
 - **Model and subscription control**: per-model context tiers and maximum output, thinking levels, OpenAI/Anthropic protocol switching and retry policies; image-input capability is read from model catalogues.
 - **Interface readability**: an 11px minimum type size, consistent micro-radius controls and inset focus rings, no side-by-side chat, and collaboration folded into work mode.
-- **Terminal slots**: the ceiling is still 32, but only *running* processes count. Exited records are reviewable logs and no longer hold a slot; `stop` and `close` release immediately.
+- **Terminal slots**: the simultaneous ceiling is now 16 and only *running* processes count. One-shot background tasks close their terminal window as soon as they finish; the record is kept for 10 minutes so the agent can still read the final output, without holding a slot. Exited records no longer hold a slot, and `stop` / `close` release immediately.
+- **Terminal layout**: the terminal dock now anchors to the bottom of the agent conversation column instead of spanning the whole window. Opening the canvas or side chat narrows the terminal with the conversation, so it never reaches under the canvas.
+- **Paper theme**: gold text in the light theme now uses a deeper, more saturated dark gold (`#7a5418` / `#86602a`) while body copy stays the same ink black. Filled gold buttons keep their own lighter fill so black labels stay readable. Gold-on-paper contrast rises from 4.27:1 / 2.96:1 to 5.78:1 / 4.83:1.
+- **Subscription browser sign-in**: the login window now grants Local Network Access / loopback permission only to the HTTPS origin that started the flow, and the loopback callback answers CORS preflight with credentials. Command Code-style flows that POST the key back to `127.0.0.1` are no longer rejected by Chromium's default policy. The login window also exposes an “Open in system browser” menu as a reliable fallback when enterprise or browser policy still blocks the handoff.
+- **Settings pages**: removed the “More features” hub. Memory, skills, connectors, the tool catalog, global search and version history are now first-class pages in the left settings nav, ordered as connect → extend → work → system → app. Projects, scheduled tasks and the browser stay on their existing home-screen entries and no longer appear in Settings; the embedded panels render inline instead of stacking another modal.
+- **Progress rail**: while the right canvas/side chat is closed, a persistent “Progress” column sits to the right of the Agent conversation. It shows live status, elapsed time, todo completion, plan, collaborators and tool/artifact/permission updates from the real `RuntimeEvent` stream and the main-process `IslandSnapshot`. It collapses to a slim rail and yields automatically when the canvas or side chat opens.
+- **Long-task completion quality**: web search results are now checked against the query: a multi-term query must match at least two distinct terms, so Bing's unrelated cached pages no longer pass as answers. The built-in engine timeout drops from 9s to 6s and points users to Tavily/Brave/Serper/SearXNG when it cannot get relevant results; a native answer with no citations is followed by one built-in pass to recover sources. Before research finishes, report citations are cross-checked against the URLs actually returned by `web_search` / `web_fetch`, so fabricated links no longer pass. Member briefs now include the plan's `deliverable` plus the downstream acceptance files and command. The Super-Agent prompt now states long-task triggers (three or more independent directions, three or more files/modules, deep research, multi-option comparison, independent acceptance, or an expected 8+ tool calls) and defaults to splitting and dispatching instead of solving everything serially.
+- **Phone pairing**: Settings → Phone pairing now exposes the remote-channel switch, the phone pairing request, a 90-second single-use ticket and revocation of paired devices. The Android app's hello channel literal was fixed to match the desktop verifier, and the real Ktor ↔ Node `DirectChannel` pairing path passes. The APK ships with the delivery; physical-device scanning still needs an Android device.
 - **File read limits**: `read_file` now reads up to 4 MB per call (was 256 KB) and returns up to 256K characters per page (was 64K). Morrow's own sources already exceeded the old ceiling.
 - **Stability fixes**: fixed the blank taskbar icon, 8.3 short-path misdetection and a false limit on large workspace copies; stream breaks, empty turns and idle timeouts no longer stop silently.
 
@@ -138,7 +152,7 @@ Two follow-up hardening rounds added no new feature modules. They turn "can this
 - 10 个官方 Agent 订阅渠道与第三方 coding plan，凭据本机加密，请求经回环代理转发。
 - 本机多媒体：ComfyUI / llama.cpp / Ollama / LM Studio 的图片与视频生成、短片、动画、剪辑与检查；`describe_media` 优先当前对话模型，只回退到声明视觉能力的模型。
 - 项目、记忆中心、技能库（18 个内置技能）、MCP 连接器、自定义命令、自定义角色、钩子与定时任务。
-- `/btw` 侧聊不写主会话；`/swarm` 把独立任务分给 1–10 个集群成员，成员与主代理共用工作区与权限规则。
+- `/btw` 侧聊不写主会话；`/super-agent` 把独立任务分给 1–10 个协作成员，成员与主代理共用工作区与权限规则。
 - 打包版本地崩溃日志与渲染进程自动恢复；订阅凭据、审批日志与数据目录均可在设置中查看或管理。
 
 **重要说明**
@@ -167,7 +181,7 @@ The first public release: conversation, planning, file editing, an artifact canv
 - Ten official agent subscription channels and third-party coding plans, with credentials encrypted locally and requests forwarded through a loopback proxy.
 - Local media through ComfyUI, llama.cpp, Ollama, and LM Studio: image and video generation, short films, animations, editing, and inspection, with `describe_media` preferring the current chat model and falling back only to a model that declares vision.
 - Projects, a memory center, a skill library with 18 built-in skills, MCP connectors, custom commands, custom agent roles, hooks, and scheduled tasks.
-- `/btw` side chats that never write to the main session, and `/swarm` runs that split independent work across 1–10 members sharing the main agent's workspace and permission rules.
+- `/btw` side chats that never write to the main session, and `/super-agent` runs that split independent work across 1–10 members sharing the main agent's workspace and permission rules.
 - Local crash logging and renderer auto-recovery in packaged builds, plus in-app access to subscription credentials, the approval log, and the data directory.
 
 **Important Notes**

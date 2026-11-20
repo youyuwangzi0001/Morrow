@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "electronVersion": "44.9.0",
   "electronBuilderVersion": "26.0.12",
-  "startedAt": "2026-11-17T17:06:15.344Z",
+  "startedAt": "2026-11-20T21:39:47.343Z",
   "mirrors": {
     "electron": "https://npmmirror.com/mirrors/electron/",
     "electronBuilderBinaries": "https://npmmirror.com/mirrors/electron-builder-binaries/"
@@ -13,30 +13,30 @@
     {
       "name": "dir",
       "exitCode": 0,
-      "durationMs": 8750,
+      "durationMs": 15261,
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win --x64 --dir --publish never -c.directories.output=C:\\交付成品\\Morrow\\tmp\\electron-builder-output"
     },
     {
       "name": "zip",
       "exitCode": 0,
-      "durationMs": 18497
+      "durationMs": 19962
     },
     {
       "name": "portable",
       "exitCode": 0,
-      "durationMs": 19095,
+      "durationMs": 18725,
       "command": "launcher(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-portable.exe)"
     },
     {
       "name": "nsis",
       "exitCode": 0,
-      "durationMs": 19697,
+      "durationMs": 20270,
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\交付成品\\Morrow\\node_modules\\electron-builder\\cli.js --win nsis --x64 --prepackaged C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked --publish never -c.directories.output=C:\\交付成品\\Morrow\\release"
     },
     {
       "name": "installer",
       "exitCode": 0,
-      "durationMs": 20697,
+      "durationMs": 20630,
       "command": "installer(C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe)"
     }
   ],
@@ -46,13 +46,13 @@
       "path": "release/Morrow-0.2.0-portable",
       "exePath": "release/Morrow-0.2.0-portable/Morrow.exe",
       "exeSizeBytes": 126464,
-      "exeSha256": "3cbdc4c32623202a621194ad560c87c27b7fe2c7d322c1c12976061cac16184a",
+      "exeSha256": "5f3fda1a48cc60c34a172cdb29becfc4d65b018f1e475804fbca41056dec7ed3",
       "appExePath": "release/Morrow-0.2.0-portable/Morrow-app.exe",
       "appExeSizeBytes": 247250432,
-      "appExeSha256": "56bd1246c3a72396bf5e292ecbe24e7304111176e1886cf7b09810236ce74273",
-      "appAsarSha256": "65646bbfedc5d56fa7fff5ecaaa7ddd48369311acbda804f2a96d61f78d0dfea",
-      "sizeBytes": 525566362,
-      "sizeMB": 501.22,
+      "appExeSha256": "13f1473cafc6d915fbae467343d6f5ea33b1099794cc69e6d8734ead69bc3a92",
+      "appAsarSha256": "1138bb09dbc6bdfd574cf216a9ac31174f6bc6f9bcd8f1a9fe8442e180be2edf",
+      "sizeBytes": 530593314,
+      "sizeMB": 506.01,
       "fileCount": 339,
       "extras": [
         "portable.marker",
@@ -66,8 +66,8 @@
       "signatures": {
         "launcher": {
           "signed": false,
-          "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "status": "Unknown",
+          "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -76,8 +76,8 @@
         },
         "app": {
           "signed": false,
-          "status": "NotSigned",
-          "statusMessage": "未对文件 C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked\\Morrow-app.exe 进行数字签名。无法在当前系统上运行该脚本。有关运行脚本和设置执行策略的详细信息，请参阅 https:/go.microsoft.com/fwlink/?LinkID=135170 中的 about_Execution_Policies",
+          "status": "Unknown",
+          "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -85,14 +85,14 @@
           "timestampTime": null
         }
       },
-      "note": "推荐交付形态：Morrow.exe 为轻量启动器（带完整 Win32 manifest，自动 --no-sandbox 后启动 Morrow-app.exe），无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）；未签名时首次运行仍可能被 SmartScreen 拦截，需「更多信息 → 仍要运行」；配置受信任证书后打包会自动签名。"
+      "note": "推荐交付形态：Morrow.exe 为轻量启动器（带完整 Win32 manifest，保留 Chromium 沙箱启动 Morrow-app.exe），无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）；未签名时首次运行仍可能被 SmartScreen 拦截，需「更多信息 → 仍要运行」；配置受信任证书后打包会自动签名。"
     },
     "portableZip": {
       "kind": "zip",
       "path": "release/Morrow-0.2.0-portable-win64.zip",
-      "sizeBytes": 206865551,
-      "sizeMB": 197.28,
-      "sha256": "b4bd1e8e5ff1547dd4d64ad547131fb62f18821b7ee7bd057b90ddf1250e05b5",
+      "sizeBytes": 207641624,
+      "sizeMB": 198.02,
+      "sha256": "cfa7f119efca4261c205cf96edbb46ce401a489d13d255adf9b3ab5a189aebe9",
       "signed": false,
       "signature": {
         "signed": false,
@@ -104,14 +104,14 @@
     "portableExe": {
       "kind": "portable-exe",
       "path": "deliver/Morrow-0.2.0-portable.exe",
-      "sizeBytes": 206968320,
-      "sizeMB": 197.38,
-      "sha256": "3968ded9f53472191d84a711f9083521d4de007e77393c5f087d0d5d98effb15",
+      "sizeBytes": 207744512,
+      "sizeMB": 198.12,
+      "sha256": "61d729e57f5fdcba2dfb73108aff07b6bae1943704bc8b75ae4319a877d6056f",
       "signed": false,
       "signature": {
         "signed": false,
-        "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver-new\\Morrow-0.2.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "status": "Unknown",
+        "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -123,14 +123,14 @@
     "installer": {
       "kind": "nsis-installer",
       "path": "deliver/Morrow-0.2.0-setup.exe",
-      "sizeBytes": 157508694,
-      "sizeMB": 150.21,
-      "sha256": "e9ee7078d34403681d63429e9b3e6df0d1a5b2c7dfdd123db930eaa9f4379ce5",
+      "sizeBytes": 157930448,
+      "sizeMB": 150.61,
+      "sha256": "c4ea88a6f57cf07a5dc8a404cb232140d2da7afac9bcf166b9a2a9b04bbb9cd3",
       "signed": false,
       "signature": {
         "signed": false,
-        "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "status": "Unknown",
+        "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -141,7 +141,7 @@
     }
   },
   "logs": {
-    "combined": "tmp/verification/logs/dist-all-2026-11-17T17-06-15-203Z.log"
+    "combined": "docs/evidence/dist-all-final.log"
   },
   "signing": {
     "enabled": false,
@@ -155,8 +155,8 @@
       "portableFolder": {
         "launcher": {
           "signed": false,
-          "status": "NotSigned",
-          "statusMessage": "The file C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked\\Morrow.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+          "status": "Unknown",
+          "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -165,8 +165,8 @@
         },
         "app": {
           "signed": false,
-          "status": "NotSigned",
-          "statusMessage": "未对文件 C:\\交付成品\\Morrow\\tmp\\electron-builder-output\\win-unpacked\\Morrow-app.exe 进行数字签名。无法在当前系统上运行该脚本。有关运行脚本和设置执行策略的详细信息，请参阅 https:/go.microsoft.com/fwlink/?LinkID=135170 中的 about_Execution_Policies",
+          "status": "Unknown",
+          "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
           "signerSubject": null,
           "signerThumbprint": null,
           "signerNotAfter": null,
@@ -181,8 +181,8 @@
       },
       "portableExe": {
         "signed": false,
-        "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\deliver-new\\Morrow-0.2.0-portable.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "status": "Unknown",
+        "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -191,8 +191,8 @@
       },
       "installer": {
         "signed": false,
-        "status": "NotSigned",
-        "statusMessage": "The file C:\\交付成品\\Morrow\\release\\Morrow-0.2.0-setup.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+        "status": "Unknown",
+        "statusMessage": "Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module 'Microsoft.PowerShell.Secur\r\nity', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.\r\nAt line:3 char:6\r\n+ $s = Get-AuthenticodeSignature -LiteralPath $env:MORROW_SIGN_CHECK_PA ...\r\n+      ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], ParentContainsErrorRecordExceptio \r\n   n\r\n    + F",
         "signerSubject": null,
         "signerThumbprint": null,
         "signerNotAfter": null,
@@ -204,34 +204,34 @@
   "delivery": {
     "dir": "deliver",
     "cleaned": true,
-    "createdAt": "2026-11-17T17:07:26.855Z",
+    "createdAt": "2026-11-20T21:41:04.007Z",
     "folder": null,
     "artifacts": [
       {
         "name": "portable-exe",
         "path": "deliver/Morrow-0.2.0-portable.exe",
-        "sizeBytes": 206968320,
-        "sizeMB": 197.38,
-        "sha256": "3968ded9f53472191d84a711f9083521d4de007e77393c5f087d0d5d98effb15"
+        "sizeBytes": 207744512,
+        "sizeMB": 198.12,
+        "sha256": "61d729e57f5fdcba2dfb73108aff07b6bae1943704bc8b75ae4319a877d6056f"
       },
       {
         "name": "installer",
         "path": "deliver/Morrow-0.2.0-setup.exe",
-        "sizeBytes": 157508694,
-        "sizeMB": 150.21,
-        "sha256": "e9ee7078d34403681d63429e9b3e6df0d1a5b2c7dfdd123db930eaa9f4379ce5"
+        "sizeBytes": 157930448,
+        "sizeMB": 150.61,
+        "sha256": "c4ea88a6f57cf07a5dc8a404cb232140d2da7afac9bcf166b9a2a9b04bbb9cd3"
       }
     ],
     "usage": null,
     "sha256Sums": null,
     "checksums": [],
-    "totalSizeBytes": 364477014,
-    "totalSizeMB": 347.59,
+    "totalSizeBytes": 365674960,
+    "totalSizeMB": 348.73,
     "totalFileCount": 2,
     "localData": null
   },
   "primaryArtifact": "portableFolder",
   "notes": "Morrow 0.2.0 打包完成：启动器嵌入完整 Win32 manifest；交付便携版 exe 与安装包。未配置代码签名证书，产物 signed:false。 deliver/ 保留便携版、安装包、使用说明、SHA256SUMS 与 LICENSE；首次运行仍可能遇到 SmartScreen。",
-  "finishedAt": "2026-11-17T17:07:28.251Z",
-  "durationMs": 72907
+  "finishedAt": "2026-11-20T21:41:04.600Z",
+  "durationMs": 77257
 }

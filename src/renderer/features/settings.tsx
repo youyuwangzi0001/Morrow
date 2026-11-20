@@ -1,7 +1,7 @@
 // settings 功能域组件：由 5 个 TSX 文件扁平合并。
 import './settings.css'
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { RotateCcw, Check, Copy, Download, ExternalLink, FolderOpen, Play, Plus, RefreshCw, Save, Square, Trash2, ArrowLeft, Boxes, Bot, Brain, Gauge, Globe2, KeyRound, Layers, LoaderCircle, LogIn, Moon, Orbit, Route, Settings2, ShieldCheck, Sparkles, SquareTerminal, Upload, X, Zap, Activity, AlarmClock, Archive, ArchiveRestore, BadgeCheck, ChevronRight, Clapperboard, Eye, EyeOff, FileText, FolderCog, FolderGit2, FolderKanban, Globe, Info, Keyboard, MessageSquareText, Palette, Plug, Search, Shield } from 'lucide-react'
+import { RotateCcw, Check, Copy, Download, ExternalLink, FolderOpen, Play, Plus, RefreshCw, Save, Square, Trash2, ArrowLeft, Boxes, Bot, Brain, Gauge, Globe2, KeyRound, Layers, LoaderCircle, LogIn, Moon, Orbit, Route, Settings2, ShieldCheck, Sparkles, SquareTerminal, Upload, X, Zap, Activity, Archive, ArchiveRestore, BadgeCheck, Clapperboard, Eye, EyeOff, FileText, FolderCog, FolderGit2, Globe, Info, Keyboard, MessageSquareText, Palette, Plug, Search, Shield, Smartphone, QrCode, Unplug, ShieldOff } from 'lucide-react'
 import { ANSWER_STYLES, ANSWER_STYLE_MAX_CUSTOM } from '@shared/types'
 import type { AnswerStyleId, MediaEngineSettings, MediaEngineStatus, Result, TokenActivitySummary, CloseAction, CustomCommandInfo, HookConfig, HookEvent, ModelInfo, PermissionLogEntry, PermissionRule, PermissionRuleDecision, PermissionRuleKind, ProviderCategory, CodeFontId, ProviderConfig, ProviderKind, ProviderRetryPolicy, ProviderTestResult, ReasoningEffort, SessionMeta, TerminalShellProfile } from '@shared/types'
 import { MAX_ENABLED_HOOKS_PER_EVENT } from '@shared/types'
@@ -19,9 +19,15 @@ import type { ShortcutActionId } from '@shared/shortcuts'
 import { MEDIA_CAPABILITY_HINT, MEDIA_CAPABILITY_LABEL, MEDIA_REGION_LABEL, cloudMediaPresetsFor } from '@shared/media-cloud'
 import type { CloudMediaCapability, CloudMediaPreset, CloudMediaProvider } from '@shared/media-cloud'
 import type { SettingsTabId } from './settings-core'
+import { PairingTab } from './pairing'
 import { consumeRequestedTab, onSettingsTabRequest } from './settings-core'
-import type { WorkbenchPanel } from './workbench-core'
 import { openWorkbench } from './workbench-core'
+import { SkillsPanel } from './skills'
+import { MemoryCenter } from './memory'
+import { ConnectorsPanel } from './connectors'
+import { GitPanel } from './git'
+import SearchPanel from './search'
+import type { SearchHit } from '@shared/feature-types'
 import brandMarkUrl from '../assets/brand-mark-dark.png'
 
 export function AnswerStyleTab(): React.JSX.Element {
@@ -2829,31 +2835,48 @@ const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'subscriptions', label: '订阅', icon: <BadgeCheck size={15} strokeWidth={1.5} /> },
   { id: 'media', label: '本地', icon: <Clapperboard size={15} strokeWidth={1.5} /> },
   { id: 'search', label: '联网搜索', icon: <Globe size={15} strokeWidth={1.5} /> },
+  { id: 'memory', label: '记忆', icon: <Brain size={15} strokeWidth={1.5} /> },
+  { id: 'skills', label: '技能', icon: <Sparkles size={15} strokeWidth={1.5} /> },
+  { id: 'connectors', label: '外部工具', icon: <Plug size={15} strokeWidth={1.5} /> },
+  { id: 'capabilities', label: '全部功能', icon: <Layers size={15} strokeWidth={1.5} /> },
+  { id: 'globalSearch', label: '全局搜索', icon: <Search size={15} strokeWidth={1.5} /> },
+  { id: 'git', label: '版本记录', icon: <FolderGit2 size={15} strokeWidth={1.5} /> },
   { id: 'context', label: '上下文', icon: <Gauge size={15} strokeWidth={1.5} /> },
   { id: 'style', label: '回答', icon: <MessageSquareText size={15} strokeWidth={1.5} /> },
   { id: 'usage', label: '用量', icon: <Activity size={15} strokeWidth={1.5} /> },
   { id: 'archive', label: '归档', icon: <Archive size={15} strokeWidth={1.5} /> },
   { id: 'permission', label: '权限', icon: <Shield size={15} strokeWidth={1.5} /> },
   { id: 'automation', label: '自动运行', icon: <Zap size={15} strokeWidth={1.5} /> },
-  { id: 'tools', label: '更多功能', icon: <Layers size={15} strokeWidth={1.5} /> },
+  { id: 'pairing', label: '手机配对', icon: <Smartphone size={15} strokeWidth={1.5} /> },
   { id: 'terminal', label: '终端', icon: <SquareTerminal size={15} strokeWidth={1.5} /> },
   { id: 'appearance', label: '外观', icon: <Palette size={15} strokeWidth={1.5} /> },
   { id: 'shortcuts', label: '快捷键', icon: <Keyboard size={15} strokeWidth={1.5} /> },
   { id: 'about', label: '关于', icon: <Info size={15} strokeWidth={1.5} /> }
 ]
 
+/** 记忆/技能/外部工具等原本是宽面板，拆成设置页后给它们更多横向空间。 */
+const WIDE_TABS = new Set<SettingsTabId>(['memory', 'skills', 'connectors', 'capabilities', 'globalSearch', 'git'])
+/** 这些分页把原工作台面板直接嵌进设置页，页面本身不再滚动，交给面板内部滚动。 */
+const INLINE_PANELS = new Set<SettingsTabId>(['memory', 'skills', 'connectors', 'git', 'globalSearch'])
+
 const PAGE_META: Record<SettingsTabId, { title: string; description: string }> = {
   models: { title: '模型', description: '连接一个模型服务，选好默认模型就能开始。密钥只保存在本机。' },
   subscriptions: { title: '订阅', description: '登录你已经在用的账号，直接用订阅额度。登录信息只保存在本机。' },
   media: { title: '本地', description: '本机文本模型、图片、视频与声音工具；跑在自己的电脑上，不需要联网。' },
   search: { title: '联网搜索', description: '需要最新信息时，让 Morrow 上网查资料。' },
+  memory: { title: '记忆', description: '长期记忆会一直参考；任务经验只在相关任务里出现；建议要你采纳后才会保存。' },
+  skills: { title: '技能', description: '技能是给 Morrow 的任务说明。启用后，做相关任务时会参考；只从本地安装。' },
+  connectors: { title: '外部工具', description: '把 Morrow 接到本机程序或网络服务上，让它能用更多工具。' },
+  capabilities: { title: '全部功能', description: 'Morrow 能做的事；需要你确认的会标出来。' },
+  globalSearch: { title: '全局搜索', description: '一次查找对话、文件和生成结果。' },
+  git: { title: '版本记录', description: '查看文件改动、保存版本记录与浏览历史。只操作当前文件夹里的项目。' },
   context: { title: '上下文', description: '查看当前上下文占用；接近上限时自动压缩较早内容。' },
   style: { title: '回答方式', description: '调整回答方式、发送键和对话偏好。' },
   usage: { title: '用量', description: '按天查看用量；服务商没有提供精确数据时标为估算。' },
   archive: { title: '归档', description: '归档的对话可以恢复或永久删除。' },
   permission: { title: '权限', description: '决定哪些操作可以直接做，哪些先问你。' },
   automation: { title: '自动运行', description: '设置自动命令、协作者和自动动作。' },
-  tools: { title: '更多功能', description: '记忆、项目、技能、外部工具和全部功能。' },
+  pairing: { title: '手机配对', description: '让手机连上这台电脑：跟着手机上的步骤走，配对码 90 秒内有效。' },
   terminal: { title: '终端', description: '选择 Morrow 使用的终端。' },
   appearance: { title: '外观', description: '主题、字号和字体。' },
   shortcuts: { title: '快捷键', description: '查看和修改快捷键。' },
@@ -6204,117 +6227,9 @@ function AutomationTab(): React.JSX.Element {
   )
 }
 
-interface ToolEntry {
-  id: WorkbenchPanel | 'capabilities'
-  title: string
-  description: string
-  icon: React.ReactNode
-}
-
-const TOOL_GROUPS: { label: string; entries: ToolEntry[] }[] = [
-  {
-    label: '记住与背景',
-    entries: [
-      {
-        id: 'memory',
-        title: '记忆',
-        description: '记住你的偏好、习惯和项目里的事，并查看 Morrow 的建议。',
-        icon: <Brain size={16} strokeWidth={1.5} />
-      },
-      {
-        id: 'projects',
-        title: '项目',
-        description: '给一个文件夹准备长期说明和参考资料。',
-        icon: <FolderKanban size={16} strokeWidth={1.5} />
-      }
-    ]
-  },
-  {
-    label: '自动化',
-    entries: [
-      {
-        id: 'schedules',
-        title: '定时任务',
-        description: '让 Morrow 在指定时间自动做一件事，结果保存在新对话里。',
-        icon: <AlarmClock size={16} strokeWidth={1.5} />
-      }
-    ]
-  },
-  {
-    label: '扩展功能',
-    entries: [
-      {
-        id: 'skills',
-        title: '技能',
-        description: '给 Morrow 装上可以重复使用的工作方法。',
-        icon: <Sparkles size={16} strokeWidth={1.5} />
-      },
-      {
-        id: 'connectors',
-        title: '外部工具',
-        description: '连接外部服务或本机程序，让 Morrow 会用更多工具。',
-        icon: <Plug size={16} strokeWidth={1.5} />
-      },
-      {
-        id: 'capabilities',
-        title: '全部功能',
-        description: '查看 Morrow 能做什么，以及哪些操作会先问你。',
-        icon: <Layers size={16} strokeWidth={1.5} />
-      }
-    ]
-  },
-  {
-    label: '查找与工作',
-    entries: [
-      {
-        id: 'search',
-        title: '全局搜索',
-        description: '一次查找对话、文件和生成结果。',
-        icon: <Search size={16} strokeWidth={1.5} />
-      },
-      {
-        id: 'browser',
-        title: '浏览器',
-        description: '在应用内打开网页，供 Morrow 读取和操作。',
-        icon: <Globe2 size={16} strokeWidth={1.5} />
-      },
-      {
-        id: 'git',
-        title: '版本记录',
-        description: '查看文件改动和历史版本。',
-        icon: <FolderGit2 size={16} strokeWidth={1.5} />
-      }
-    ]
-  }
-]
-
-function ToolsTab(): React.JSX.Element {
-  const [evolutionPending, setEvolutionPending] = useState(0)
+function CapabilitiesTab(): React.JSX.Element {
   const [catalog, setCatalog] = useState<import('@shared/contracts').ToolCatalogEntry[]>([])
   const [catalogQuery, setCatalogQuery] = useState('')
-  const [view, setView] = useState<'home' | 'catalog'>('home')
-  const evolutionWorkspace = useAppStore(
-    (state) => state.session?.workspace ?? state.settings.lastWorkspace ?? null
-  )
-  useEffect(() => {
-    let active = true
-    const load = async (): Promise<void> => {
-      try {
-        const result = await window.morrow.features.invoke<{ pending: number }>('feature:evolution:list', {
-          workspace: evolutionWorkspace
-        })
-        if (active && result.ok) setEvolutionPending(result.data.pending)
-      } catch {
-        // 自进化建议不可用不影响功能入口
-      }
-    }
-    void load()
-    const off = window.morrow.features.on?.('feature:evolution:changed', () => void load())
-    return () => {
-      active = false
-      off?.()
-    }
-  }, [evolutionWorkspace])
 
   useEffect(() => {
     let active = true
@@ -6354,7 +6269,7 @@ function ToolsTab(): React.JSX.Element {
     high: '需要确认'
   }
   const DOMAIN_LABEL: Record<string, string> = {
-    artifacts: '成果', studio: '创作台', tools: '文件与工具', web: '上网', terminal: '命令', swarm: '协作',
+    artifacts: '成果', studio: '创作台', tools: '文件与工具', web: '上网', terminal: '命令', task: '协作',
     memory: '记忆', schedules: '定时任务', connectors: '外部工具', media: '多媒体', documents: '文档',
     browser: '浏览器', workspace: '工作区', git: '版本记录', permissions: '权限', sessions: '对话',
     goals: '目标', projects: '项目', skills: '技能', settings: '设置', computer: '电脑操作',
@@ -6363,7 +6278,7 @@ function ToolsTab(): React.JSX.Element {
     accessibility: '无障碍', shortcuts: '快捷键'
   }
   const domainText = (domain: string): string => DOMAIN_LABEL[domain] ?? domain
-  const plainText = (value: string): string => value.replaceAll('追溯', '记录').replaceAll('Worker', '成员')
+  const plainText = (value: string): string => value.replaceAll('追溯', '记录').replaceAll('协作成员', '成员')
   const approvalText = (value: string): string =>
     value
       .replace('免审批', '自动')
@@ -6372,137 +6287,62 @@ function ToolsTab(): React.JSX.Element {
       .replace('按权限档位', '按权限设置')
 
   useEffect(() => {
-    if (view !== 'catalog') return
     const timer = window.setTimeout(() => {
-      document.getElementById('st-tool-catalog-search')?.focus()
+      document.getElementById('st-tool-catalog-search')?.focus({ preventScroll: true })
     }, 60)
     return () => window.clearTimeout(timer)
-  }, [view])
-
-  if (view === 'catalog') {
-    return (
-      <div className="st-tools st-capability-page">
-        <button type="button" className="st-sub-back" onClick={() => setView('home')}>
-          <ArrowLeft size={13} strokeWidth={1.7} aria-hidden /> 返回更多功能
-        </button>
-        <div className="st-sub-detail-head">
-          <span className="st-sub-brand is-large">
-            <Layers size={22} strokeWidth={1.6} aria-hidden />
-          </span>
-          <div>
-            <h3>全部功能</h3>
-            <p>Morrow 能做的事；需要你确认的会标出来。</p>
-          </div>
-          <span className="mono st-tool-catalog-count">共 {catalog.length} 项</span>
-        </div>
-        <div className="st-tool-catalog-search">
-          <Search size={13} strokeWidth={1.6} aria-hidden />
-          <TextInput
-            id="st-tool-catalog-search"
-            aria-label="搜索功能"
-            placeholder="搜索功能或用途…"
-            value={catalogQuery}
-            onChange={(event) => setCatalogQuery(event.target.value)}
-          />
-          {catalogQuery ? (
-            <button type="button" aria-label="清除功能搜索" onClick={() => setCatalogQuery('')}>
-              <X size={12} strokeWidth={1.8} aria-hidden />
-            </button>
-          ) : null}
-        </div>
-        {catalogGroups.length === 0 ? (
-          <p className="st-hint">没有匹配的功能。</p>
-        ) : (
-          <>
-            <div className="st-tool-catalog-columns" aria-hidden>
-              <span>说明</span>
-              <span>工具</span>
-              <span>权限</span>
-            </div>
-            {catalogGroups.map(([domain, entries]) => (
-              <div key={domain} className="st-tool-catalog-group">
-                <p className="st-tool-group-label mono">
-                  {domainText(domain)} <span>{entries.length}</span>
-                </p>
-                <ul>
-                  {entries.map((entry) => (
-                    <li key={entry.name}>
-                      <span className="st-tool-catalog-desc" title={plainText(entry.description)}>
-                        {plainText(entry.description)}
-                      </span>
-                      <code className="mono" title={`工具名：${entry.name}`}>{entry.name}</code>
-                      <span className="st-tool-catalog-permission">
-                        <em className={`is-${entry.risk}`}>{riskText[entry.risk]}</em>
-                        <i>{approvalText(entry.approval)}</i>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    )
-  }
+  }, [])
 
   return (
-    <div className="st-tools">
-      <p className="st-hint">需要什么就打开；按 Esc 或关闭按钮回到对话。</p>
-      {TOOL_GROUPS.map((group) => (
-        <section key={group.label} className="st-tool-group">
-          <p className="st-tool-group-label mono">{group.label}</p>
-          <div className="st-tool-list">
-            {group.entries.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className="st-tool-row"
-                onClick={() => {
-                  if (entry.id === 'capabilities') {
-                    setView('catalog')
-                    return
-                  }
-                  useAppStore.getState().closeSettings()
-                  openWorkbench(entry.id, entry.id === 'projects' ? { view: 'settings' } : {})
-                }}
-              >
-                <span className="st-tool-icon" aria-hidden>
-                  {entry.icon}
-                </span>
-                <span className="st-tool-copy">
-                  <span className="st-tool-heading">
-                    <span className="st-tool-title">{entry.title}</span>
-                    {entry.id === 'memory' && evolutionPending > 0 ? (
-                      <span
-                        className="st-tool-badge mono"
-                        title={`${evolutionPending} 条建议待处理`}
-                        aria-label={`${evolutionPending} 条建议待处理`}
-                      >
-                        {evolutionPending}
-                      </span>
-                    ) : null}
-                    {entry.id === 'capabilities' && catalog.length > 0 ? (
-                      <span
-                        className="st-tool-badge mono"
-                        title={`${catalog.length} 个工具`}
-                        aria-label={`${catalog.length} 个工具`}
-                      >
-                        {catalog.length}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="st-tool-desc">{entry.description}</span>
-                </span>
-                <span className="st-tool-open">
-                  打开
-                  <ChevronRight size={12} strokeWidth={1.7} aria-hidden />
-                </span>
-              </button>
-            ))}
+    <div className="st-tools st-capability-page">
+      <div className="st-tool-catalog-search">
+        <Search size={13} strokeWidth={1.6} aria-hidden />
+        <TextInput
+          id="st-tool-catalog-search"
+          aria-label="搜索功能"
+          placeholder="搜索功能或用途…"
+          value={catalogQuery}
+          onChange={(event) => setCatalogQuery(event.target.value)}
+        />
+        {catalogQuery ? (
+          <button type="button" aria-label="清除功能搜索" onClick={() => setCatalogQuery('')}>
+            <X size={12} strokeWidth={1.8} aria-hidden />
+          </button>
+        ) : null}
+        <span className="mono st-tool-catalog-count">共 {catalog.length} 项</span>
+      </div>
+      {catalogGroups.length === 0 ? (
+        <p className="st-hint">没有匹配的功能。</p>
+      ) : (
+        <>
+          <div className="st-tool-catalog-columns" aria-hidden>
+            <span>说明</span>
+            <span>工具</span>
+            <span>权限</span>
           </div>
-        </section>
-      ))}
+          {catalogGroups.map(([domain, entries]) => (
+            <div key={domain} className="st-tool-catalog-group">
+              <p className="st-tool-group-label mono">
+                {domainText(domain)} <span>{entries.length}</span>
+              </p>
+              <ul>
+                {entries.map((entry) => (
+                  <li key={entry.name}>
+                    <span className="st-tool-catalog-desc" title={plainText(entry.description)}>
+                      {plainText(entry.description)}
+                    </span>
+                    <code className="mono" title={`工具名：${entry.name}`}>{entry.name}</code>
+                    <span className="st-tool-catalog-permission">
+                      <em className={`is-${entry.risk}`}>{riskText[entry.risk]}</em>
+                      <i>{approvalText(entry.approval)}</i>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
@@ -6526,8 +6366,44 @@ function CurrentModelCard(): React.JSX.Element | null {
 export function SettingsModal(): React.JSX.Element | null {
   const settingsOpen = useAppStore((s) => s.settingsOpen)
   const closeSettings = useAppStore((s) => s.closeSettings)
+  const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
   const [tab, setTab] = useState<SettingsTabId>('models')
   const panelRef = useRef<HTMLDivElement>(null)
+
+  const openSearchHit = (hit: SearchHit): void => {
+    closeSettings()
+    if (hit.kind === 'session' && hit.sessionId) {
+      const sessionId = hit.sessionId
+      const messageId = hit.messageId
+      void useAppStore
+        .getState()
+        .selectSession(sessionId)
+        .then(() => {
+          if (messageId) useAppStore.getState().focusMessage(messageId)
+        })
+      return
+    }
+    if (hit.kind === 'file' && hit.absolutePath) {
+      window.dispatchEvent(
+        new CustomEvent('morrow:open-file', {
+          detail: {
+            path: hit.path ?? hit.absolutePath,
+            absolutePath: hit.absolutePath
+          }
+        })
+      )
+      return
+    }
+    if (hit.kind === 'artifact' && hit.artifactId) {
+      void (async () => {
+        const store = useAppStore.getState()
+        if (hit.sessionId && store.activeSessionId !== hit.sessionId) {
+          await store.selectSession(hit.sessionId)
+        }
+        useAppStore.getState().openCanvas(hit.artifactId)
+      })()
+    }
+  }
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -6579,7 +6455,7 @@ export function SettingsModal(): React.JSX.Element | null {
       open={settingsOpen}
       onClose={closeSettings}
       title="设置"
-      width={880}
+      width={WIDE_TABS.has(tab) ? 1080 : 880}
       footer={
         <>
           <span className="st-foot-hint mono">外观、权限、回答与终端即时保存；模型、联网搜索与多媒体需点保存</span>
@@ -6619,7 +6495,7 @@ export function SettingsModal(): React.JSX.Element | null {
 
         <div
           ref={panelRef}
-          className="st-panel"
+          className={['st-panel', INLINE_PANELS.has(tab) ? 'is-embedded' : ''].filter(Boolean).join(' ')}
           id={`st-panel-${tab}`}
           role="tabpanel"
           aria-labelledby={`st-tab-${tab}`}
@@ -6642,7 +6518,29 @@ export function SettingsModal(): React.JSX.Element | null {
           {tab === 'archive' ? <ArchiveTab /> : null}
           {tab === 'permission' ? <PermissionTab /> : null}
           {tab === 'automation' ? <AutomationTab /> : null}
-          {tab === 'tools' ? <ToolsTab /> : null}
+          {tab === 'pairing' ? <PairingTab /> : null}
+          {tab === 'memory' ? (
+            <MemoryCenter inline open onClose={closeSettings} workspace={workspace} />
+          ) : null}
+          {tab === 'skills' ? (
+            <SkillsPanel inline open onClose={closeSettings} />
+          ) : null}
+          {tab === 'connectors' ? (
+            <ConnectorsPanel inline open onClose={closeSettings} workspace={workspace} />
+          ) : null}
+          {tab === 'capabilities' ? <CapabilitiesTab /> : null}
+          {tab === 'globalSearch' ? (
+            <SearchPanel
+              inline
+              open
+              workspace={workspace}
+              onClose={closeSettings}
+              onNavigate={openSearchHit}
+            />
+          ) : null}
+          {tab === 'git' ? (
+            <GitPanel inline open onClose={closeSettings} workspace={workspace} />
+          ) : null}
           {tab === 'terminal' ? <TerminalTab /> : null}
           {tab === 'appearance' ? <AppearanceTab /> : null}
           {tab === 'shortcuts' ? <ShortcutsTab /> : null}

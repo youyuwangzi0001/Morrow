@@ -19,8 +19,10 @@ import { MemoryCaptureBar } from './features/activity'
 import { GoalBar } from './features/goal'
 import { ResearchBar } from './features/research'
 import { Canvas } from './features/artifacts'
+import { ProgressDock } from './features/progress'
 import { DemoOverlay } from './features/demo'
 import { BrowserDock, WorkbenchHost } from './features/workbench'
+import { TerminalPanel } from './features/terminal'
 import { SideChat } from './features/sidechat'
 import { RewindConfirm } from './features/checkpoints'
 import { CloseConfirm } from './features/shell'
@@ -45,6 +47,10 @@ export default function App(): React.JSX.Element {
   const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
   const canvasOpen = useAppStore((s) => s.canvas.open)
   const sideChatOpen = useAppStore((s) => s.sideChatOpen)
+  const terminalOpen = useAppStore((s) => s.terminalOpen)
+  const closeTerminal = useAppStore((s) => s.closeTerminal)
+  const terminalWorkspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
+  const studioOpen = useStudioStore((s) => s.open)
   const run = useAppStore((s) => s.run)
   const shortcuts = useAppStore((s) => s.settings.shortcuts)
   const platform = useAppStore((s) => s.appInfo?.platform)
@@ -176,6 +182,7 @@ export default function App(): React.JSX.Element {
         sidebarCollapsed ? 'is-sidebar-collapsed' : '',
         canvasOpen ? 'is-canvas-open' : '',
         sideChatOpen ? 'is-sidechat-open' : '',
+        studioOpen ? 'is-studio-open' : '',
         run ? 'is-running' : ''
       ]
         .filter(Boolean)
@@ -184,7 +191,7 @@ export default function App(): React.JSX.Element {
       <div className="app-glow" aria-hidden />
       <div className="grain-overlay" aria-hidden />
       <TitleBar />
-      <div className="app-body">
+      <div className="app-body" inert={studioOpen || undefined}>
         {!sidebarCollapsed ? (
           <>
             <div className="app-sidebar-shell" style={{ width: sidebarWidth }}>
@@ -231,8 +238,10 @@ export default function App(): React.JSX.Element {
               <MemoryCaptureBar />
               <Composer />
             </div>
+            <TerminalPanel open={terminalOpen} onClose={closeTerminal} workspace={terminalWorkspace} />
           </section>
           <Canvas />
+          <ProgressDock />
           <BrowserDock />
           <SideChat />
         </main>

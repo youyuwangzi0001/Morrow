@@ -329,6 +329,17 @@ export function BrowserSurface({ open, visible = true, onHide, onClose, initialU
     }
   }, [open, visible, initialUrl, measureBounds])
 
+  /**
+   * 隐藏期间仍可能被 Agent 工具或外部入口重新设为可见（原生 WebContentsView
+   * 不受 CSS display:none 影响）。只要宿主声明不可见，就持续把原生层压回去；
+   * 创作台打开时正是靠这条保证浏览器不会盖在创作台上。
+   */
+  useEffect(() => {
+    if (visible || !state.visible) return
+    const api = featureApi()
+    void api?.invoke?.('feature:browser:set-visible', { visible: false }).catch(() => undefined)
+  }, [visible, state.visible])
+
   useEffect(
     () => () => {
       const api = featureApi()

@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { join, basename } from 'node:path'
 import { executeTool, toolDefinitionsForRun } from '../../src/core/tools'
 import { artifactDependencyReady, latestReadyArtifact, publishArtifactVersion, recordArtifactUsage, revokeArtifactVersion, compilePlan, PlanCompileError, formatArtifactHandoff, verificationFailureText, isSafeVerificationCommand, type PlanTaskInput } from '../../src/core/collaboration'
-import { superProgressOf, type CollaborationArtifact, type CollaborationArtifactUsage, type SuperAgentState, type SuperTask, type SwarmOperation, type CollaborationVerification, type ChatMessage, type ModelInfo, type RuntimeEvent, type ToolUseBlock } from '../../src/shared/types'
-import type { CollaborationArtifactOutcome, CollaborationArtifactPort, CollaborationArtifactPublishInput, CollaborationArtifactReadResult, SwarmMemberRequest, SwarmMemberResult, WorkerSlotLease, WorkerSlotPort, CollaborationRuntimePort, ToolContext, CollaborationTaskControl, RuntimeEventPayload, Provider, ProviderStreamEvent, ProviderStreamRequest } from '../../src/core/types'
+import { superProgressOf, type CollaborationArtifact, type CollaborationArtifactUsage, type SuperAgentState, type SuperTask, type MemberOperation, type CollaborationVerification, type ChatMessage, type ModelInfo, type RuntimeEvent, type ToolUseBlock } from '../../src/shared/types'
+import type { CollaborationArtifactOutcome, CollaborationArtifactPort, CollaborationArtifactPublishInput, CollaborationArtifactReadResult, MemberRunRequest, MemberRunResult, WorkerSlotLease, WorkerSlotPort, CollaborationRuntimePort, ToolContext, CollaborationTaskControl, RuntimeEventPayload, Provider, ProviderStreamEvent, ProviderStreamRequest } from '../../src/core/types'
 import { BUILTIN_AGENT_ROLES, runAgent } from '../../src/core/agent'
 import { makeTempWorkspace, makeToolContext, makeTempDir } from './helpers'
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
@@ -80,7 +80,7 @@ function fullState(): SuperAgentState {
 }
 
 describe('collaboration-artifact.test.ts', () => {
-  it('@core:swarm 成果按版本交接：草稿不生效，第 2 版只让旧版使用者重测，撤回后恢复', () => {
+  it('@core:superagent 成果按版本交接：草稿不生效，第 2 版只让旧版使用者重测，撤回后恢复', () => {
     let state = fullState()
     const v1 = artifact({ name: '登录接口说明', version: 1, summary: '第 1 版接口' })
     state = publishArtifactVersion(state, v1).state
@@ -152,7 +152,7 @@ describe('collaboration-artifact.test.ts', () => {
     expect(testAfterRevoke.artifactUsage?.some((usage) => usage.version === 4)).toBe(true)
   })
 
-  it('@core:swarm 依赖成果可由发布者提前解锁，版本与发布者不匹配时不放行', () => {
+  it('@core:superagent 依赖成果可由发布者提前解锁，版本与发布者不匹配时不放行', () => {
     const state = fullState()
     const page = state.tasks.find((task) => task.id === 'page')!
     const service = state.tasks.find((task) => task.id === 'service')!
@@ -165,7 +165,7 @@ describe('collaboration-artifact.test.ts', () => {
     expect(artifactDependencyReady(high, service, [v1, artifact({ name: '登录接口说明', version: 2 })]).ready).toBe(true)
   })
 
-  it('@core:swarm 发布者继续工作时页面和测试已读取同一版可用成果；第 2 版只让使用者重测', async () => {
+  it('@core:superagent 发布者继续工作时页面和测试已读取同一版可用成果；第 2 版只让使用者重测', async () => {
     const ws = makeTempWorkspace()
     const fake = new FakeArtifacts()
     const contexts = new Map<string, string>()
@@ -173,7 +173,7 @@ describe('collaboration-artifact.test.ts', () => {
     const pageStarted = deferred()
     const testStarted = deferred()
     let serviceRunning = false
-    const runner = async (request: SwarmMemberRequest): Promise<SwarmMemberResult> => {
+    const runner = async (request: MemberRunRequest): Promise<MemberRunResult> => {
       if (request.description === '登录服务') {
         serviceRunning = true
         await fake.publish({
@@ -214,10 +214,10 @@ describe('collaboration-artifact.test.ts', () => {
       permissionMode: 'auto',
       agents: BUILTIN_AGENT_ROLES,
       collaborationArtifacts: fake,
-      runSwarmMember: runner
+      runMemberTask: runner
     })
     const result = await executeTool(
-      'swarm',
+      'super_agent',
       {
         goal: '实现登录功能',
         max_parallel: 4,
@@ -272,20 +272,20 @@ describe('collaboration-artifact.test.ts', () => {
       permissionMode: 'auto',
       agents: BUILTIN_AGENT_ROLES,
       collaborationArtifacts: fake,
-      resumeSwarmTask: {
+      resumeMemberTask: {
         projectId: PROJECT_ID,
         runId: state!.runId,
         goal: state!.goal,
         task: retryTask
       },
-      runSwarmMember: async (request) => {
+      runMemberTask: async (request) => {
         expect(request.description).toBe('登录测试')
         expect(request.context).toContain('登录接口说明 v2')
         return completed('登录测试重测通过')
       }
     })
     const retryResult = await executeTool(
-      'swarm',
+      'super_agent',
       {
         goal: state!.goal,
         tasks: [
@@ -403,7 +403,7 @@ class FakeArtifacts implements CollaborationArtifactPort {
   }
 }
 
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return {
     status: 'completed',
     summary: `${title}已完成`,
@@ -429,7 +429,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 })
 
 describe('collaboration-limits', () => {
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return {
     status: 'completed',
     summary: `${title}已完成`,
@@ -490,7 +490,7 @@ function toolTasks(count = 4): Array<Record<string, unknown>> {
 async function runWithLimit(limit: number, delayMs = 120) {
   const ws = makeTempWorkspace()
   const slots = new FakeSlots(limit)
-  const runner = async (request: { description: string }): Promise<SwarmMemberResult> => {
+  const runner = async (request: { description: string }): Promise<MemberRunResult> => {
     await sleep(delayMs)
     return completed(request.description)
   }
@@ -499,12 +499,12 @@ async function runWithLimit(limit: number, delayMs = 120) {
     agents: BUILTIN_AGENT_ROLES,
     workerSlots: slots,
     collaborationLimits: { maxWorkers: limit, hostLimit: 8, auto: false },
-    runSwarmMember: runner
+    runMemberTask: runner
   })
   const startedAt = Date.now()
   try {
     const result = await executeTool(
-      'swarm',
+      'super_agent',
       { goal: `并发 ${limit}`, max_parallel: 4, watchdog_ms: 0, tasks: toolTasks() },
       ctx
     )
@@ -524,7 +524,7 @@ async function runWithLimit(limit: number, delayMs = 120) {
 }
 
 describe('collaboration-limits.test.ts', () => {
-  it('@core:swarm 1/2/4 人并发对照：并发不超上限，用量按任务累计', async () => {
+  it('@core:superagent 1/2/4 人并发对照：并发不超上限，用量按任务累计', async () => {
     const runs: Array<{
       limit: number
       wallMs: number
@@ -582,11 +582,11 @@ describe('collaboration-limits.test.ts', () => {
     }
   })
 
-  it('@core:swarm 失败尝试和重试消耗也计入项目用量', async () => {
+  it('@core:superagent 失败尝试和重试消耗也计入项目用量', async () => {
     const ws = makeTempWorkspace()
     const slots = new FakeSlots(2)
     let aCalls = 0
-    const runner = async (request: { description: string }): Promise<SwarmMemberResult> => {
+    const runner = async (request: { description: string }): Promise<MemberRunResult> => {
       if (request.description === '成员 A') {
         aCalls += 1
         if (aCalls === 1) {
@@ -607,11 +607,11 @@ describe('collaboration-limits.test.ts', () => {
       agents: BUILTIN_AGENT_ROLES,
       workerSlots: slots,
       collaborationLimits: { maxWorkers: 2, hostLimit: 8, auto: false },
-      runSwarmMember: runner
+      runMemberTask: runner
     })
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '失败与重试用量', max_parallel: 2, watchdog_ms: 0, retry: 1, tasks: toolTasks(2) },
         ctx
       )
@@ -763,7 +763,7 @@ function completeAll(state: SuperAgentState): SuperAgentState {
 
 function toolContext(
   ws: ReturnType<typeof makeTempWorkspace>,
-  runner: (request: SwarmMemberRequest) => Promise<SwarmMemberResult>,
+  runner: (request: MemberRunRequest) => Promise<MemberRunResult>,
   overrides: Partial<ToolContext> = {}
 ): ToolContext {
   return makeToolContext(ws, {
@@ -771,12 +771,12 @@ function toolContext(
     agents: BUILTIN_AGENT_ROLES,
     emit: () => undefined,
     progress: () => undefined,
-    runSwarmMember: runner,
+    runMemberTask: runner,
     ...overrides
   })
 }
 
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return { status: 'completed', summary: `${title}已完成`, steps: 1, usage: { inputTokens: 1, outputTokens: 1 } }
 }
 
@@ -795,7 +795,7 @@ function asToolTasks(tasks: PlanTaskInput[]): Array<Record<string, unknown>> {
 }
 
 describe('collaboration-plan.test.ts', () => {
-  it('@core:swarm 登录计划按成果拆分：服务与页面可并行，测试等两者，等待理由可读', () => {
+  it('@core:superagent 登录计划按成果拆分：服务与页面可并行，测试等两者，等待理由可读', () => {
     const compiled = compilePlan({
       projectId: 'project_plan00000001',
       runId: 'super_plan_1',
@@ -821,7 +821,7 @@ describe('collaboration-plan.test.ts', () => {
     ])
   })
 
-  it('@core:swarm 数据迁移保持强制顺序：检查→迁移→核对，不能并行越级', () => {
+  it('@core:superagent 数据迁移保持强制顺序：检查→迁移→核对，不能并行越级', () => {
     const compiled = compilePlan({
       projectId: 'project_plan00000002',
       runId: 'super_plan_2',
@@ -836,7 +836,7 @@ describe('collaboration-plan.test.ts', () => {
     expect(compiled.state.tasks.find((task) => task.id === 'check')?.dependsOn).toEqual([])
   })
 
-  it('@core:swarm 局部修订只重排受影响项：无关任务保留完成，下游自动失效', () => {
+  it('@core:superagent 局部修订只重排受影响项：无关任务保留完成，下游自动失效', () => {
     const projectId = 'project_plan00000003'
     const v1 = completeAll(
       compilePlan({ projectId, runId: 'super_plan_v1', goal: '登录功能', tasks: loginPlan('v1') }).state
@@ -865,7 +865,7 @@ describe('collaboration-plan.test.ts', () => {
     expect(revised.hasWork).toBe(true)
   })
 
-  it('@core:swarm 相同计划重复提交：不产生新版本，也不重跑任何任务', () => {
+  it('@core:superagent 相同计划重复提交：不产生新版本，也不重跑任何任务', () => {
     const projectId = 'project_plan00000004'
     const v2 = completeAll(
       compilePlan({ projectId, runId: 'super_plan_v1', goal: '登录功能', tasks: loginPlan('v2') }).state
@@ -884,7 +884,7 @@ describe('collaboration-plan.test.ts', () => {
     expect(again.hasWork).toBe(false)
   })
 
-  it('@core:swarm 修订影响运行中的任务时要求先停止它，避免新旧尝试同时写文件', () => {
+  it('@core:superagent 修订影响运行中的任务时要求先停止它，避免新旧尝试同时写文件', () => {
     const projectId = 'project_plan00000007'
     const v1 = completeAll(
       compilePlan({ projectId, runId: 'super_plan_v1', goal: '登录功能', tasks: loginPlan('v1') }).state
@@ -905,7 +905,7 @@ describe('collaboration-plan.test.ts', () => {
     expect(revised.affectedKeys.sort()).toEqual(['page', 'rules', 'service', 'test'])
   })
 
-  it('@core:swarm 从计划移除已完成项：保留历史成果，但不影响当前计划完成状态', () => {
+  it('@core:superagent 从计划移除已完成项：保留历史成果，但不影响当前计划完成状态', () => {
     const projectId = 'project_plan00000006'
     const v1 = completeAll(
       compilePlan({ projectId, runId: 'super_plan_v1', goal: '登录功能', tasks: loginPlan('v1') }).state
@@ -926,7 +926,7 @@ describe('collaboration-plan.test.ts', () => {
     expect(revised.state.status).toBe('completed')
   })
 
-  it('@core:swarm 互相等待或缺少前置结果时拒绝修订，上一版计划保持不变', () => {
+  it('@core:superagent 互相等待或缺少前置结果时拒绝修订，上一版计划保持不变', () => {
     const projectId = 'project_plan00000005'
     const current = completeAll(
       compilePlan({ projectId, runId: 'super_plan_v1', goal: '登录功能', tasks: loginPlan('v1') }).state
@@ -973,7 +973,7 @@ describe('collaboration-plan.test.ts', () => {
 })
 
 describe('collaboration-plan-tool.test.ts', () => {
-  it('@core:swarm 登录计划真实调度：规则完成后服务/页面并行，测试等两者', async () => {
+  it('@core:superagent 登录计划真实调度：规则完成后服务/页面并行，测试等两者', async () => {
     const ws = makeTempWorkspace()
     const starts = new Map<string, number>()
     const ends = new Map<string, number>()
@@ -990,7 +990,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     })
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '实现登录功能', max_parallel: 3, watchdog_ms: 0, tasks: asToolTasks(loginPlan('v1')) },
         ctx
       )
@@ -1008,7 +1008,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     }
   })
 
-  it('@core:swarm 数据迁移真实调度：即使并行名额足够也按检查→迁移→核对顺序执行', async () => {
+  it('@core:superagent 数据迁移真实调度：即使并行名额足够也按检查→迁移→核对顺序执行', async () => {
     const ws = makeTempWorkspace()
     const starts = new Map<string, number>()
     const ends = new Map<string, number>()
@@ -1025,7 +1025,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     })
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '数据迁移', max_parallel: 3, watchdog_ms: 0, tasks: asToolTasks(migrationPlan()) },
         ctx
       )
@@ -1038,7 +1038,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     }
   })
 
-  it('@core:swarm 规则变更后只重跑受影响项：无关说明任务保留完成，下游服务/页面/测试重新排队', async () => {
+  it('@core:superagent 规则变更后只重跑受影响项：无关说明任务保留完成，下游服务/页面/测试重新排队', async () => {
     const ws = makeTempWorkspace()
     const projectId = collaborationProjectId(ws.root, SESSION_ID)
     const current = completeAll(
@@ -1060,7 +1060,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     )
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '登录功能（规则更新）',
           revision_of: 'current',
@@ -1084,8 +1084,8 @@ describe('collaboration-plan-tool.test.ts', () => {
     }
   })
 
-  it('@core:swarm 两个 Worker 改同一行：独立副本合并时保留两份，主文件不被静默覆盖', async () => {
-    const dataDir = makeTempDir('morrow-swarm-iso-')
+  it('@core:superagent 两个协作成员改同一行：独立副本合并时保留两份，主文件不被静默覆盖', async () => {
+    const dataDir = makeTempDir('morrow-super_agent-iso-')
     const ws = makeTempWorkspace({ 'note.txt': 'base line\n' })
     try {
       const isolation = new WorkspaceIsolationService(dataDir)
@@ -1102,7 +1102,7 @@ describe('collaboration-plan-tool.test.ts', () => {
         { workspaceIsolation: isolation }
       )
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '并发改同一行',
           max_parallel: 2,
@@ -1133,7 +1133,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     }
   })
 
-  it('@core:swarm 修订出现互相等待时拒绝并保留上一版：没有 Worker 被启动', async () => {
+  it('@core:superagent 修订出现互相等待时拒绝并保留上一版：没有协作成员被启动', async () => {
     const ws = makeTempWorkspace()
     const projectId = collaborationProjectId(ws.root, SESSION_ID)
     const current = completeAll(
@@ -1156,7 +1156,7 @@ describe('collaboration-plan-tool.test.ts', () => {
     )
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '环',
           revision_of: 'current',
@@ -1195,7 +1195,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function readOperation(id: string): SwarmOperation {
+function readOperation(id: string): MemberOperation {
   return {
     id,
     name: 'read_file',
@@ -1205,7 +1205,7 @@ function readOperation(id: string): SwarmOperation {
   }
 }
 
-function writeOperation(id: string, content: string): SwarmOperation {
+function writeOperation(id: string, content: string): MemberOperation {
   return {
     id,
     name: 'write_file',
@@ -1218,7 +1218,7 @@ function writeOperation(id: string, content: string): SwarmOperation {
   }
 }
 
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return {
     status: 'completed',
     summary: `${title}已完成`,
@@ -1317,7 +1317,7 @@ const STUCK_LIMITS = {
 }
 
 describe('collaboration-stuck.test.ts', () => {
-  it('@core:swarm 重复操作要同时满足没有新成果和等待时间', () => {
+  it('@core:superagent 重复操作要同时满足没有新成果和等待时间', () => {
     const tracker = new StuckTracker({ enabled: true, idleMs: 1_000, repeats: 3, steps: 6 }, 0)
     const first = tracker.observe({
       now: 500,
@@ -1349,7 +1349,7 @@ describe('collaboration-stuck.test.ts', () => {
     expect(afterProgress.kind).toBe('idle')
   })
 
-  it('@core:swarm 等人批准期间暂停，关闭开关后不再提示', () => {
+  it('@core:superagent 等人批准期间暂停，关闭开关后不再提示', () => {
     const tracker = new StuckTracker({ enabled: true, idleMs: 200, repeats: 3, steps: 3 }, 0)
     tracker.observe({
       now: 100,
@@ -1374,7 +1374,7 @@ describe('collaboration-stuck.test.ts', () => {
     expect(noAlert.kind).toBe('idle')
   })
 
-  it('@core:swarm 重复无成果才提示，等人批准不误报，选择继续等待不停止成员', async () => {
+  it('@core:superagent 重复无成果才提示，等人批准不误报，选择继续等待不停止成员', async () => {
     const ws = makeTempWorkspace({ 'seed.txt': 'unchanged' })
     const runtime = new FakeRuntime()
     const states: SuperAgentState[] = []
@@ -1391,7 +1391,7 @@ describe('collaboration-stuck.test.ts', () => {
       releaseRepeat = resolve
     })
 
-    const runner = async (request: SwarmMemberRequest): Promise<SwarmMemberResult> => {
+    const runner = async (request: MemberRunRequest): Promise<MemberRunResult> => {
       if (request.description === '重复成员') {
         request.onProgress?.('反复读取同一文件', 3, [readOperation('repeat-1'), readOperation('repeat-2'), readOperation('repeat-3')])
         await Promise.race([sleep(1_200), repeatGate, abortPromise(request.signal)])
@@ -1424,7 +1424,7 @@ describe('collaboration-stuck.test.ts', () => {
       agents: BUILTIN_AGENT_ROLES,
       collaborationRuntime: runtime,
       collaborationLimits: STUCK_LIMITS,
-      runSwarmMember: runner,
+      runMemberTask: runner,
       emit: (event: RuntimeEventPayload) => {
         if (event.type === 'super_updated' && event.state) states.push(event.state)
       }
@@ -1437,7 +1437,7 @@ describe('collaboration-stuck.test.ts', () => {
 
     try {
       const pending = executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '三种任务的卡住判断',
           max_parallel: 3,
@@ -1540,13 +1540,13 @@ describe('collaboration-stuck.test.ts', () => {
     }
   })
 
-  it('@core:swarm 停止只影响这一项并释放名额，后续任务继续', async () => {
+  it('@core:superagent 停止只影响这一项并释放名额，后续任务继续', async () => {
     const ws = makeTempWorkspace()
     const runtime = new FakeRuntime()
     const states: SuperAgentState[] = []
     const slots = new FakeSlots(1)
     const startOrder: string[] = []
-    const runner = async (request: SwarmMemberRequest): Promise<SwarmMemberResult> => {
+    const runner = async (request: MemberRunRequest): Promise<MemberRunResult> => {
       startOrder.push(request.description)
       if (request.description === '卡住成员') {
         request.onProgress?.('反复读取同一文件', 3, [
@@ -1564,7 +1564,7 @@ describe('collaboration-stuck.test.ts', () => {
       collaborationRuntime: runtime,
       workerSlots: slots,
       collaborationLimits: { ...STUCK_LIMITS, maxWorkers: 1 },
-      runSwarmMember: runner,
+      runMemberTask: runner,
       emit: (event: RuntimeEventPayload) => {
         if (event.type === 'super_updated' && event.state) states.push(event.state)
       }
@@ -1573,7 +1573,7 @@ describe('collaboration-stuck.test.ts', () => {
 
     try {
       const pending = executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '释放名额',
           max_parallel: 2,
@@ -1617,7 +1617,7 @@ describe('collaboration-stuck.test.ts', () => {
 
 describe('collaboration-verification', () => {
 
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return {
     status: 'completed',
     summary: `${title}已完成`,
@@ -1700,7 +1700,7 @@ function runtimeOf(get: () => SuperAgentState | null): CollaborationRuntimePort 
 }
 
 describe('collaboration-verification.test.ts', () => {
-  it('@core:swarm 验收命令只允许常见测试运行器，不能借验收绕过命令权限', async () => {
+  it('@core:superagent 验收命令只允许常见测试运行器，不能借验收绕过命令权限', async () => {
     expect(isSafeVerificationCommand('node --test test/accept.test.mjs')).toBe(true)
     expect(isSafeVerificationCommand('node.exe --test test/accept.test.mjs')).toBe(true)
     expect(isSafeVerificationCommand('cd pelican-night-ride && node --test tests/static.test.mjs')).toBe(true)
@@ -1721,12 +1721,12 @@ describe('collaboration-verification.test.ts', () => {
       permissionMode: 'auto',
       agents: BUILTIN_AGENT_ROLES,
       verification: verifier,
-      runSwarmMember: async (request) => completed(request.description)
+      runMemberTask: async (request) => completed(request.description)
     })
     try {
       const tasks = toolTasks({ maxReworks: 1 })
       ;(tasks[1].verify as Record<string, unknown>).command = 'powershell -Command "Remove-Item -Recurse ."'
-      const result = await executeTool('swarm', { goal: '不安全验收', max_parallel: 2, tasks }, ctx)
+      const result = await executeTool('super_agent', { goal: '不安全验收', max_parallel: 2, tasks }, ctx)
       expect(result.ok).toBe(false)
       expect(String(result.error)).toContain('安全测试命令')
     } finally {
@@ -1734,13 +1734,13 @@ describe('collaboration-verification.test.ts', () => {
     }
   })
 
-  it('@core:swarm 独立验收失败退回作者返工，修复后在新候选版本复测通过', async () => {
+  it('@core:superagent 独立验收失败退回作者返工，修复后在新候选版本复测通过', async () => {
     const { ws, dataDir } = prepareWorkspace()
     let authorCalls = 0
     let verifierCalls = 0
     let docsCalls = 0
     const verifier = new CollaborationVerificationService(dataDir)
-    const runner = async (request: { description: string }): Promise<SwarmMemberResult> => {
+    const runner = async (request: { description: string }): Promise<MemberRunResult> => {
       if (request.description === '编写交付物') {
         authorCalls += 1
         writeFileSync(join(ws.root, 'artifact.txt'), authorCalls === 1 ? 'draft' : 'ready', 'utf8')
@@ -1762,11 +1762,11 @@ describe('collaboration-verification.test.ts', () => {
       permissionMode: 'auto',
       agents: BUILTIN_AGENT_ROLES,
       verification: verifier,
-      runSwarmMember: runner
+      runMemberTask: runner
     })
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '独立验收', max_parallel: 3, watchdog_ms: 0, tasks: toolTasks({ maxReworks: 1 }) },
         ctx
       )
@@ -1799,11 +1799,11 @@ describe('collaboration-verification.test.ts', () => {
     }
   })
 
-  it('@core:swarm 必需文件缺失时作者自报完成也不能通过，超过返工上限交负责人', async () => {
+  it('@core:superagent 必需文件缺失时作者自报完成也不能通过，超过返工上限交负责人', async () => {
     const { ws, dataDir } = prepareWorkspace()
     let authorCalls = 0
     const verifier = new CollaborationVerificationService(dataDir)
-    const runner = async (request: { description: string }): Promise<SwarmMemberResult> => {
+    const runner = async (request: { description: string }): Promise<MemberRunResult> => {
       if (request.description === '编写交付物') {
         authorCalls += 1
         return completed('编写交付物')
@@ -1819,11 +1819,11 @@ describe('collaboration-verification.test.ts', () => {
       permissionMode: 'auto',
       agents: BUILTIN_AGENT_ROLES,
       verification: verifier,
-      runSwarmMember: runner
+      runMemberTask: runner
     })
     try {
       const result = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '缺失文件验收', max_parallel: 3, watchdog_ms: 0, tasks: toolTasks({ maxReworks: 1 }) },
         ctx
       )
@@ -1850,12 +1850,12 @@ describe('collaboration-verification.test.ts', () => {
     }
   })
 
-  it('@core:swarm 验收后交付文件变化会作废旧结论，并重新验收新版本', async () => {
+  it('@core:superagent 验收后交付文件变化会作废旧结论，并重新验收新版本', async () => {
     const { ws, dataDir } = prepareWorkspace()
     let authorCalls = 0
     let latest: SuperAgentState | null = null
     const verifier = new CollaborationVerificationService(dataDir)
-    const runner = async (request: { description: string }): Promise<SwarmMemberResult> => {
+    const runner = async (request: { description: string }): Promise<MemberRunResult> => {
       if (request.description === '编写交付物') {
         authorCalls += 1
         writeFileSync(join(ws.root, 'artifact.txt'), authorCalls === 1 ? 'ready' : 'ready v2', 'utf8')
@@ -1878,11 +1878,11 @@ describe('collaboration-verification.test.ts', () => {
       agents: BUILTIN_AGENT_ROLES,
       verification: verifier,
       collaborationRuntime: runtimeOf(() => latest),
-      runSwarmMember: runner
+      runMemberTask: runner
     })
     try {
       const first = await executeTool(
-        'swarm',
+        'super_agent',
         { goal: '验收失效', max_parallel: 3, watchdog_ms: 0, tasks: toolTasks({ maxReworks: 1 }) },
         ctx
       )
@@ -1895,7 +1895,7 @@ describe('collaboration-verification.test.ts', () => {
       // 验收后文件又被外部改坏：下一批必须在新的候选版本上重新验收。
       writeFileSync(join(ws.root, 'artifact.txt'), 'tampered', 'utf8')
       const second = await executeTool(
-        'swarm',
+        'super_agent',
         {
           goal: '验收失效',
           revision_of: 'current',
@@ -1933,7 +1933,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function completed(title: string): SwarmMemberResult {
+function completed(title: string): MemberRunResult {
   return {
     status: 'completed',
     summary: `${title} 已完成`,
@@ -1944,7 +1944,7 @@ function completed(title: string): SwarmMemberResult {
 
 function ctxWith(
   workspace: ReturnType<typeof makeTempWorkspace>,
-  runner: (request: SwarmMemberRequest) => Promise<SwarmMemberResult>,
+  runner: (request: MemberRunRequest) => Promise<MemberRunResult>,
   overrides: Partial<ToolContext> = {}
 ): { ctx: ToolContext; events: Array<Record<string, unknown>> } {
   const events: Array<Record<string, unknown>> = []
@@ -1952,7 +1952,7 @@ function ctxWith(
     permissionMode: 'auto',
     emit: (event) => events.push(event as unknown as Record<string, unknown>),
     progress: (note, options) => events.push({ type: 'progress', note, ...options }),
-    runSwarmMember: runner,
+    runMemberTask: runner,
     ...overrides
   })
   return { ctx, events }
@@ -1963,7 +1963,7 @@ function tasksOf(result: { meta?: Record<string, unknown> }): SuperAgentState {
 }
 
 describe('Super-Agent Router / Worker', () => {
-  it('@core:swarm 按 DAG 依赖调度，并在上限内并行 Worker', async () => {
+  it('@core:superagent 按 DAG 依赖调度，并在上限内并行协作成员', async () => {
     const ws = makeTempWorkspace()
     const starts: Record<string, number> = {}
     const ends: Record<string, number> = {}
@@ -1979,7 +1979,7 @@ describe('Super-Agent Router / Worker', () => {
       return completed(request.description)
     })
     try {
-      const result = await executeTool('swarm', {
+      const result = await executeTool('super_agent', {
         goal: '完成 A/B/C',
         max_parallel: 2,
         watchdog_ms: 0,
@@ -2018,7 +2018,7 @@ describe('Super-Agent Router / Worker', () => {
     }
   })
 
-  it('@core:swarm 失败任务阻塞下游，独立任务继续并返回部分结果', async () => {
+  it('@core:superagent 失败任务阻塞下游，独立任务继续并返回部分结果', async () => {
     const ws = makeTempWorkspace()
     const { ctx } = ctxWith(ws, async (request) => {
       if (request.description === 'A') {
@@ -2027,7 +2027,7 @@ describe('Super-Agent Router / Worker', () => {
       return completed(request.description)
     })
     try {
-      const result = await executeTool('swarm', {
+      const result = await executeTool('super_agent', {
         goal: '失败测试',
         watchdog_ms: 0,
         tasks: [
@@ -2056,7 +2056,7 @@ describe('Super-Agent Router / Worker', () => {
     }
   })
 
-  it('@core:swarm 失败可按 retry 重试，依赖任务等待重试结果', async () => {
+  it('@core:superagent 失败可按 retry 重试，依赖任务等待重试结果', async () => {
     const ws = makeTempWorkspace()
     const calls: string[] = []
     const { ctx } = ctxWith(ws, async (request) => {
@@ -2067,7 +2067,7 @@ describe('Super-Agent Router / Worker', () => {
       return completed(request.description)
     })
     try {
-      const result = await executeTool('swarm', {
+      const result = await executeTool('super_agent', {
         goal: '重试测试',
         retry: 1,
         watchdog_ms: 0,
@@ -2097,10 +2097,10 @@ describe('Super-Agent Router / Worker', () => {
     }
   })
 
-  it('@core:swarm Watchdog 停止无进展 Worker 并标记 stalled', async () => {
+  it('@core:superagent Watchdog 停止无进展协作成员并标记 stalled', async () => {
     const ws = makeTempWorkspace()
     const { ctx } = ctxWith(ws, (request) =>
-      new Promise<SwarmMemberResult>((resolve, reject) => {
+      new Promise<MemberRunResult>((resolve, reject) => {
         const signal = request.signal
         const timer = setTimeout(() => resolve(completed(request.description)), 500)
         signal?.addEventListener('abort', () => {
@@ -2112,7 +2112,7 @@ describe('Super-Agent Router / Worker', () => {
       })
     )
     try {
-      const result = await executeTool('swarm', {
+      const result = await executeTool('super_agent', {
         goal: '看门狗测试',
         watchdog_ms: 80,
         tasks: [{ id: 'a', title: 'A', prompt: '永远没有进展', deliverable: 'A 的成果' }]
@@ -2126,11 +2126,11 @@ describe('Super-Agent Router / Worker', () => {
     }
   })
 
-  it('@core:swarm 拒绝循环依赖，工作模式主代理保留完整工具', async () => {
+  it('@core:superagent 拒绝循环依赖，工作模式主代理保留完整工具', async () => {
     const ws = makeTempWorkspace()
     const { ctx } = ctxWith(ws, async (request) => completed(request.description))
     try {
-      const result = await executeTool('swarm', {
+      const result = await executeTool('super_agent', {
         goal: '环',
         tasks: [
           {
@@ -2155,7 +2155,7 @@ describe('Super-Agent Router / Worker', () => {
       expect(String(result.error)).toContain('互相等待')
 
       const workTools = toolDefinitionsForRun(false, false, true).map((tool) => tool.name)
-      expect(workTools).toContain('swarm')
+      expect(workTools).toContain('super_agent')
       expect(workTools).toContain('read_file')
       expect(workTools).toContain('write_file')
       expect(workTools).toContain('run_command')
@@ -2174,14 +2174,14 @@ describe('recovery-retry.test.ts', () => {
     return { id: `u-${text}`, role: 'user', content: [{ type: 'text', text }], createdAt: Date.now() }
   }
 
-  function swarmStates(events: RuntimeEvent[]): SuperAgentState[] {
+  function memberStates(events: RuntimeEvent[]): SuperAgentState[] {
     return events
       .filter((event): event is Extract<RuntimeEvent, { type: 'super_updated' }> => event.type === 'super_updated')
       .map((event) => event.state)
       .filter((state): state is SuperAgentState => Boolean(state))
   }
 
-  it('@core:swarm 单独重试只运行指定任务：沿用 taskId、尝试次数递增、已完成任务不重跑', async () => {
+  it('@core:superagent 单独重试只运行指定任务：沿用 taskId、尝试次数递增、已完成任务不重跑', async () => {
     const ws = makeTempWorkspace()
     const provider = new (class implements Provider {
       readonly calls: ProviderStreamRequest[] = []
@@ -2246,12 +2246,12 @@ describe('recovery-retry.test.ts', () => {
         emit: (event) => events.push(event),
         onPermission: async () => 'once',
         onAskUser: async () => ({ value: 'A', label: 'A' }),
-        retrySwarmTask: { projectId, runId: 'super_retry', goal: '修复登录页', task }
+        retryMemberTask: { projectId, runId: 'super_retry', goal: '修复登录页', task }
       })
       expect(result.reason).toBe('complete')
-      // 单项重试不经过 Router 模型，只调用一次 Worker。
+      // 单项重试不经过分发层模型，只调用一次协作成员。
       expect(provider.calls).toHaveLength(1)
-      expect(provider.calls[0].system).toContain('## 集群成员')
+      expect(provider.calls[0].system).toContain('## 协作成员')
       const workerPrompt = provider.calls[0].messages
         .filter((message) => message.role === 'user')
         .flatMap((message) => message.content)
@@ -2259,11 +2259,11 @@ describe('recovery-retry.test.ts', () => {
         .map((block) => block.text)
         .join('\n')
       expect(workerPrompt).toContain('完整简报：修复登录页的账号锁定提示')
-      const swarmBlock = result.messages
+      const memberBlock = result.messages
         .flatMap((message) => message.content)
-        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'swarm')
-      expect(swarmBlock?.result?.ok).toBe(true)
-      const state = (swarmBlock?.result?.meta as { superAgent?: SuperAgentState } | undefined)?.superAgent
+        .find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === 'super_agent')
+      expect(memberBlock?.result?.ok).toBe(true)
+      const state = (memberBlock?.result?.meta as { superAgent?: SuperAgentState } | undefined)?.superAgent
       expect(state?.projectId).toBe(projectId)
       expect(state?.tasks).toHaveLength(1)
       const retried = state?.tasks[0]
@@ -2272,7 +2272,7 @@ describe('recovery-retry.test.ts', () => {
       expect(retried?.attempts).toBe(2)
       expect(retried?.currentAttemptId).toContain('_a2')
       expect(retried?.attemptHistory?.map((attempt) => attempt.status)).toEqual(['failed', 'delivered'])
-      const merged = swarmStates(events).at(-1)
+      const merged = memberStates(events).at(-1)
       expect(merged?.tasks[0].attemptHistory).toHaveLength(2)
       expect(merged?.tasks[0].statusHistory?.some((change) => change.source === 'user' && change.to === 'waiting')).toBe(
         true
@@ -2282,7 +2282,7 @@ describe('recovery-retry.test.ts', () => {
     }
   })
 
-  it('@core:swarm 等用户批准时暂停看门狗，批准后继续完成', async () => {
+  it('@core:superagent 等用户批准时暂停看门狗，批准后继续完成', async () => {
     const ws = makeTempWorkspace()
     // 工作区外的写入会触发审批；等审批时间超过看门狗阈值。
     const outsideName = `${basename(ws.root)}-approval.txt`
@@ -2293,15 +2293,15 @@ describe('recovery-retry.test.ts', () => {
       private parentCalls = 0
       async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
         this.calls.push(request)
-        if (!request.system.includes('## 集群成员')) {
+        if (!request.system.includes('## 协作成员')) {
           this.parentCalls += 1
           if (this.parentCalls === 1) {
-            yield { type: 'tool_call_start', index: 0, id: 'swarm-approval', name: 'swarm' }
+            yield { type: 'tool_call_start', index: 0, id: 'super_agent-approval', name: 'super_agent' }
             yield {
               type: 'tool_call_end',
               index: 0,
-              id: 'swarm-approval',
-              name: 'swarm',
+              id: 'super_agent-approval',
+              name: 'super_agent',
               input: {
                 goal: '审批等待测试',
                 max_parallel: 1,
@@ -2369,7 +2369,7 @@ describe('recovery-retry.test.ts', () => {
         snapshotDir: ws.snapshotDir,
         signal: new AbortController().signal,
         emit: (event) => events.push(event),
-        // 等审批的时间超过看门狗阈值；如果看门狗没暂停，Worker 会被误杀。
+        // 等审批的时间超过看门狗阈值；如果看门狗没暂停，协作成员会被误杀。
         onPermission: async () => {
           await new Promise((resolve) => setTimeout(resolve, 360))
           return 'once'
@@ -2379,11 +2379,11 @@ describe('recovery-retry.test.ts', () => {
       })
       expect(result.reason).toBe('complete')
       expect(waitingCalls).toEqual([true, false])
-      const state = swarmStates(events).at(-1)
+      const state = memberStates(events).at(-1)
       expect(state?.tasks[0].status).toBe('completed')
       expect(state?.tasks[0].waitingForApproval).toBeUndefined()
       expect(state?.tasks[0].error).toBeUndefined()
-      const waitingSnapshots = swarmStates(events).filter((snapshot) => snapshot.tasks[0]?.waitingForApproval)
+      const waitingSnapshots = memberStates(events).filter((snapshot) => snapshot.tasks[0]?.waitingForApproval)
       expect(waitingSnapshots.length).toBeGreaterThan(0)
       expect(readFileSync(outsidePath, 'utf8')).toBe('等审批后写入')
       mkdirSync(join(process.cwd(), 'test-results'), { recursive: true })
@@ -2412,7 +2412,7 @@ describe('recovery-retry.test.ts', () => {
     }
   })
 
-  it('@core:swarm 单独取消等待审批的任务：停止等待、不写文件，其他成员继续完成', async () => {
+  it('@core:superagent 单独取消等待审批的任务：停止等待、不写文件，其他成员继续完成', async () => {
     const ws = makeTempWorkspace()
     const outsideName = `${basename(ws.root)}-b.txt`
     const outsidePath = join(ws.root, '..', outsideName)
@@ -2421,15 +2421,15 @@ describe('recovery-retry.test.ts', () => {
       private workerSteps = new Map<string, number>()
       async *stream(request: ProviderStreamRequest): AsyncGenerator<ProviderStreamEvent> {
         this.calls.push(request)
-        if (!request.system.includes('## 集群成员')) {
-          const parentCalls = this.calls.filter((call) => !call.system.includes('## 集群成员')).length
+        if (!request.system.includes('## 协作成员')) {
+          const parentCalls = this.calls.filter((call) => !call.system.includes('## 协作成员')).length
           if (parentCalls === 1) {
-            yield { type: 'tool_call_start', index: 0, id: 'swarm-stop-wait', name: 'swarm' }
+            yield { type: 'tool_call_start', index: 0, id: 'super_agent-stop-wait', name: 'super_agent' }
             yield {
               type: 'tool_call_end',
               index: 0,
-              id: 'swarm-stop-wait',
-              name: 'swarm',
+              id: 'super_agent-stop-wait',
+              name: 'super_agent',
               input: {
                 goal: '取消等待测试',
                 max_parallel: 2,
@@ -2515,7 +2515,7 @@ describe('recovery-retry.test.ts', () => {
       const deadline = Date.now() + 3_000
       let waitingTaskId = ''
       while (Date.now() < deadline) {
-        const state = swarmStates(events).at(-1)
+        const state = memberStates(events).at(-1)
         const waitingTask = state?.tasks.find((task) => task.title === 'B')
         if (waitingTask?.waitingForApproval) {
           waitingTaskId = waitingTask.taskId ?? waitingTask.id
@@ -2524,7 +2524,7 @@ describe('recovery-retry.test.ts', () => {
         await sleep(10)
       }
       expect(waitingTaskId, '没有进入等待批准状态').toBeTruthy()
-      const beforeStop = swarmStates(events).at(-1)
+      const beforeStop = memberStates(events).at(-1)
       expect(beforeStop?.tasks.find((task) => task.title === 'A')?.status).toBe('completed')
       expect(beforeStop?.tasks.find((task) => task.title === 'B')?.status).toBe('running')
       expect(controls.get(waitingTaskId)?.attemptId).toContain('_a1')
@@ -2536,7 +2536,7 @@ describe('recovery-retry.test.ts', () => {
         })
       ])
       expect(result.reason).toBe('complete')
-      const finalState = swarmStates(events).at(-1)
+      const finalState = memberStates(events).at(-1)
       expect(finalState?.tasks.find((task) => task.title === 'A')?.status).toBe('completed')
       expect(finalState?.tasks.find((task) => task.title === 'B')?.status).toBe('cancelled')
       expect(finalState?.tasks.find((task) => task.title === 'B')?.error).toContain('单独停止')

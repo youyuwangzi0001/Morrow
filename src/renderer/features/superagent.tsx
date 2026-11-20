@@ -26,8 +26,9 @@ import type {
   SuperAgentState,
   SuperTask
 } from '@shared/types'
+import { isSuperAgentTool } from '@shared/types'
 import { useAppStore } from '../store'
-import { isCurrentSwarmBlock } from './activity-core'
+import { isCurrentMemberBlock } from './activity-core'
 
 const MESSAGE_STATUS_TEXT: Record<CollaborationMessageStatus, string> = {
   pending: '待投递',
@@ -100,7 +101,7 @@ function agoText(ms: number): string {
 interface SuperAgentBoardProps {
   state: SuperAgentState
   collaboration: CollaborationProjection | null
-  /** swarm 工具的最终文字结果；有值时在头部提供复制入口。 */
+  /** 成员协作工具的最终文字结果；有值时在头部提供复制入口。 */
   copyValue?: string
 }
 
@@ -156,7 +157,7 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
   )
   useEffect(() => {
     if (!messagesInFlight) return
-    // 补充要求的状态由 Worker 安全步推进；轻量轮询只到所有消息落定为止。
+    // 补充要求的状态由协作成员安全步推进；轻量轮询只到所有消息落定为止。
     const timer = window.setInterval(() => void refreshCollaborationProjection(), 600)
     return () => window.clearInterval(timer)
   }, [messagesInFlight, refreshCollaborationProjection])
@@ -1318,7 +1319,7 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
 }
 
 /**
- * 会话里有协作状态、但消息里找不到对应 swarm 工具卡片时（例如恢复的旧会话），
+ * 会话里有协作状态、但消息里找不到对应成员协作卡片时（例如恢复的旧会话），
  * 在主对话末尾单独挂一块驾驶舱，避免进度只能藏在历史里。
  */
 export function CollaborationStandalone(): React.JSX.Element | null {
@@ -1329,7 +1330,7 @@ export function CollaborationStandalone(): React.JSX.Element | null {
     .filter((message) => message.hidden !== true)
     .some((message) =>
       message.content.some(
-        (block) => block.type === 'tool_use' && block.name === 'swarm' && isCurrentSwarmBlock(state, block)
+        (block) => block.type === 'tool_use' && isSuperAgentTool(block.name) && isCurrentMemberBlock(state, block)
       )
     )
   if (hasCard) return null

@@ -34,7 +34,7 @@ function context(): ToolContext {
     addArtifact: () => undefined,
     askUser: async () => ({ value: 'ok', label: 'ok' }),
     progress: () => undefined,
-    runSwarmMember: async () => ({
+    runMemberTask: async () => ({
       status: 'failed' as const,
       summary: '',
       steps: 0,

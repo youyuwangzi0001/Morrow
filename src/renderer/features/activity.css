@@ -666,7 +666,7 @@
   line-height: var(--lh-readable);
 }
 
-.spine-swarm-tasks {
+.spine-member-tasks {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -675,7 +675,7 @@
   list-style: none;
 }
 
-.spine-swarm-task {
+.spine-member-task {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -685,20 +685,20 @@
   background: var(--surface-inset);
 }
 
-.spine-swarm-index {
+.spine-member-index {
   flex: 0 0 auto;
   color: var(--gold);
   font-size: var(--fs-2xs);
 }
 
-.spine-swarm-title {
+.spine-member-title {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text-2);
   font-size: var(--fs-sm-plus);
 }
 
-.spine-swarm-role {
+.spine-member-role {
   flex: 0 0 auto;
   padding: 0 6px;
   border: 1px solid var(--line);
@@ -1479,8 +1479,8 @@
   color: var(--text-3);
 }
 
-/* Swarm 实时任务板：每个子任务一行，状态、进度、结论都可见 */
-.spine-swarm-goal {
+/* SuperAgent 实时任务板：每个子任务一行，状态、进度、结论都可见 */
+.spine-member-goal {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1490,14 +1490,14 @@
   line-height: var(--lh-copy);
 }
 
-.spine-swarm-goal .mono {
+.spine-member-goal .mono {
   flex: 0 0 auto;
   color: var(--text-3);
   font-size: var(--fs-3xs);
   letter-spacing: var(--ls-caps);
 }
 
-.spine-swarm-main {
+.spine-member-main {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1505,50 +1505,50 @@
   min-width: 0;
 }
 
-.spine-swarm-line {
+.spine-member-line {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.spine-swarm-status {
+.spine-member-status {
   flex: 0 0 auto;
   font-size: var(--fs-3xs);
   letter-spacing: var(--ls-label);
 }
 
-.spine-swarm-status.is-queued {
+.spine-member-status.is-queued {
   color: var(--text-3);
 }
 
-.spine-swarm-status.is-running {
+.spine-member-status.is-running {
   color: var(--gold);
 }
 
-.spine-swarm-status.is-completed {
+.spine-member-status.is-completed {
   color: var(--patina);
 }
 
-.spine-swarm-status.is-failed,
-.spine-swarm-status.is-cancelled,
-.spine-swarm-status.is-exhausted {
+.spine-member-status.is-failed,
+.spine-member-status.is-cancelled,
+.spine-member-status.is-exhausted {
   color: var(--rust);
 }
 
-.spine-swarm-steps {
+.spine-member-steps {
   flex: 0 0 auto;
   color: var(--text-3);
   font-size: var(--fs-3xs);
 }
 
-.spine-swarm-note {
+.spine-member-note {
   color: var(--text-3);
   font-size: var(--fs-xs-plus);
   line-height: var(--lh-copy);
 }
 
-.spine-swarm-summary {
+.spine-member-summary {
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-2);
@@ -1559,30 +1559,30 @@
   -webkit-line-clamp: 3;
 }
 
-.spine-swarm-error {
+.spine-member-error {
   color: var(--rust);
   font-size: var(--fs-xs-plus);
   line-height: var(--lh-copy);
   overflow-wrap: anywhere;
 }
 
-.spine-swarm-task.is-running {
+.spine-member-task.is-running {
   border-color: var(--line-gold);
   background: var(--gold-ghost);
 }
 
-.spine-swarm-task.is-completed {
+.spine-member-task.is-completed {
   border-color: color-mix(in srgb, var(--patina) 30%, var(--line));
 }
 
-.spine-swarm-task.is-failed,
-.spine-swarm-task.is-cancelled,
-.spine-swarm-task.is-exhausted {
+.spine-member-task.is-failed,
+.spine-member-task.is-cancelled,
+.spine-member-task.is-exhausted {
   border-color: color-mix(in srgb, var(--rust) 38%, var(--line));
 }
 
-/* 集群成员实际操作：展开后按时间显示工具、参数与结果摘要 */
-.spine-swarm-task-toggle {
+/* 协作成员实际操作：展开后按时间显示工具、参数与结果摘要 */
+.spine-member-task-toggle {
   width: 100%;
   padding: 0;
   border: 0;
@@ -1591,92 +1591,92 @@
   text-align: left;
   cursor: pointer;
 }
-.spine-swarm-task-toggle:hover .spine-swarm-title {
+.spine-member-task-toggle:hover .spine-member-title {
   color: var(--gold-bright);
 }
-.spine-swarm-ops-count {
+.spine-member-ops-count {
   color: var(--text-3);
   font-size: var(--fs-2xs);
   white-space: nowrap;
 }
-.spine-swarm-chevron {
+.spine-member-chevron {
   margin-left: auto;
   flex: none;
   color: var(--text-3);
   transition: transform 160ms ease;
 }
-.spine-swarm-chevron.is-open {
+.spine-member-chevron.is-open {
   transform: rotate(90deg);
   color: var(--gold);
 }
-.spine-swarm-ops {
+.spine-member-ops {
   display: grid;
   gap: 7px;
   margin: 8px 0 2px 2px;
   padding-left: 10px;
   border-left: 1px solid var(--line-gold);
 }
-.spine-swarm-op {
+.spine-member-op {
   display: flex;
   gap: 7px;
   min-width: 0;
 }
-.spine-swarm-op-icon {
+.spine-member-op-icon {
   display: inline-flex;
   flex: none;
   margin-top: 1px;
   color: var(--text-3);
 }
-.spine-swarm-op.is-success .spine-swarm-op-icon {
+.spine-member-op.is-success .spine-member-op-icon {
   color: var(--patina);
 }
-.spine-swarm-op.is-error .spine-swarm-op-icon,
-.spine-swarm-op.is-denied .spine-swarm-op-icon {
+.spine-member-op.is-error .spine-member-op-icon,
+.spine-member-op.is-denied .spine-member-op-icon {
   color: var(--rust);
 }
-.spine-swarm-op.is-running .spine-swarm-op-icon {
+.spine-member-op.is-running .spine-member-op-icon {
   color: var(--gold);
 }
-.spine-swarm-op-main {
+.spine-member-op-main {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
-.spine-swarm-op-line {
+.spine-member-op-line {
   display: flex;
   align-items: baseline;
   gap: 7px;
   min-width: 0;
 }
-.spine-swarm-op-title {
+.spine-member-op-title {
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
-.spine-swarm-op-name,
-.spine-swarm-op-time {
+.spine-member-op-name,
+.spine-member-op-time {
   color: var(--text-3);
   font-size: var(--fs-xs);
   white-space: nowrap;
 }
-.spine-swarm-op-time {
+.spine-member-op-time {
   margin-left: auto;
 }
-.spine-swarm-op-param,
-.spine-swarm-op-output,
-.spine-swarm-op-error {
+.spine-member-op-param,
+.spine-member-op-output,
+.spine-member-op-error {
   color: var(--text-3);
   font-size: var(--fs-xs);
   line-height: var(--lh-ui);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.spine-swarm-op-param {
+.spine-member-op-param {
   opacity: 0.9;
 }
-.spine-swarm-op-output {
+.spine-member-op-output {
   color: var(--text-2);
 }
-.spine-swarm-op-error {
+.spine-member-op-error {
   color: var(--rust);
 }
 

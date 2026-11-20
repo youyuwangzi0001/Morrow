@@ -894,7 +894,7 @@ export function Composer(): React.JSX.Element {
         run: () => openSideChat()
       },
       {
-        name: 'swarm',
+        name: 'super-agent',
         label: '成员协作',
         description: chatMode
           ? '聊天模式不能开始成员协作；先切换到工作模式'
@@ -910,7 +910,7 @@ export function Composer(): React.JSX.Element {
               ? '当前正在运行，等本轮结束或先停止。'
               : '先打开一个对话。',
         run: () => {
-          setText('/swarm ')
+          setText('/super-agent ')
           setPopup(null)
           requestAnimationFrame(() => {
             const el = textareaRef.current
@@ -918,7 +918,7 @@ export function Composer(): React.JSX.Element {
             el.focus()
             el.setSelectionRange(el.value.length, el.value.length)
           })
-          notify('info', '在 /swarm 后面写下目标；Morrow 会拆成 1–10 个独立部分，交给成员并行完成。')
+          notify('info', '在 /super-agent 后面写下目标；Morrow 会拆成 1–10 个独立部分，交给成员并行完成。')
         }
       },
       chatMode
@@ -1247,14 +1247,14 @@ export function Composer(): React.JSX.Element {
       requestAnimationFrame(() => textareaRef.current?.focus())
       return
     }
-    // /swarm + 目标：让模型拆成集群任务（真正的编排仍由模型决定）
-    const swarmCommand = /^\/swarm(?:\s+([\s\S]*))?$/i.exec(value)
-    if (swarmCommand) {
-      const objective = (swarmCommand[1] ?? '').trim()
+    // /super-agent + 目标：让模型拆成成员任务（真正的编排仍由模型决定）
+    const memberCommand = /^\/super-agent(?:\s+([\s\S]*))?$/i.exec(value)
+    if (memberCommand) {
+      const objective = (memberCommand[1] ?? '').trim()
       setText('')
       setPopup(null)
       if (!objective) {
-        notify('info', '在 /swarm 后面写下总目标，例如 /swarm 分别检查前端、后端与测试。')
+        notify('info', '在 /super-agent 后面写下总目标，例如 /super-agent 分别检查前端、后端与测试。')
         return
       }
       if (chatMode) {
@@ -1275,7 +1275,7 @@ export function Composer(): React.JSX.Element {
       window.setTimeout(() => setSweep(false), 480)
       void sendMessage(
         [
-          '请把下面的总目标拆成 1–10 个相互独立的子任务，并用 swarm 工具（成员协作）并行交给合适的成员类型（explore/plan/review/test/docs/general）；成员与主代理拥有相同的工作区权限，类型只改变工作重点。每个子任务写清背景、输入/输出与验证方式。',
+          '请把下面的总目标拆成 1–10 个相互独立的子任务，并用 super_agent 工具（成员协作）并行交给合适的成员类型（explore/plan/review/test/docs/general）；成员与主代理拥有相同的工作区权限，类型只改变工作重点。每个子任务写清背景、输入/输出与验证方式。',
           '等所有子任务返回后，汇总结果、检查是否有失败或冲突，再给出真实可验证的最终结果；不要把未完成的子任务当作完成。',
           '',
           `总目标：${objective}`
@@ -1331,7 +1331,7 @@ export function Composer(): React.JSX.Element {
       notify('warning', '目标进行中，先在目标条暂停或结束，再发送普通消息。')
       return
     }
-    // 协作成员仍在推进：默认把新指令排队，避免一次插话杀掉整组 Worker；
+    // 协作成员仍在推进：默认把新指令排队，避免一次插话杀掉整组协作成员；
     // 需要立刻停止时用成员卡片顶部的「停止全部」或显式的「打断」按钮。
     const queuedMode = intent ?? settings.runningSendMode
     if (runningCurrent && queuedMode === 'steer') {

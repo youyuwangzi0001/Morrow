@@ -139,34 +139,214 @@ export function safeJsonParse<T = unknown>(text: string): T | null {
   }
 }
 
+/** 字符串字面量的转义修复结果 */
+interface JsonLiteralRepair {
+  text: string
+  /** 修好的非法反斜杠转义个数（如 `"C:\交付成品"` 里的 `\交`） */
+  escapes: number
+  /** 修好的裸控制字符个数（字符串里的真实换行、制表符） */
+  controls: number
+}
+
+const JSON_ESCAPABLE = '"\\/bfnrt'
+
 /**
- * 容错解析工具参数 JSON：
- * 1) 去掉 markdown 代码围栏；
- * 2) 从第一个 { 截到最后 } —— 兼容模型在 JSON 前后夹带解释文字；
- * 3) 去掉尾逗号再试一次。
- * 全部失败返回 null，由上层回灌「参数不合法，请重新输出」。
+ * 修复字符串字面量里最常见的两类非法 JSON。它们都来自「模型把命令或路径当纯文本写」：
+ * - 反斜杠只写了一层：`"C:\交付成品"` 在 JSON 里是有问题的转义；
+ * - 多行命令里的真实换行/制表符没有写成转义序列。
+ * 只改转义、不改字符内容，修出来的参数与模型本意一致；
+ * 结构性损坏（截断、引号缺失）不在这里兜底，仍按失败处理，
+ * 避免把半条命令当成完整参数执行。
  */
-export function parseToolArgs(raw: string): Record<string, unknown> | null {
-  if (!raw) return {}
-  const candidates: string[] = []
-  const trimmed = raw.trim()
-  candidates.push(trimmed)
-  const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed)
-  if (fence?.[1]) candidates.push(fence[1].trim())
-  const start = trimmed.indexOf('{')
-  const end = trimmed.lastIndexOf('}')
-  if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1))
-  for (const candidate of candidates) {
-    const parsed = safeJsonParse<Record<string, unknown>>(candidate)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+function repairJsonStringLiterals(text: string): JsonLiteralRepair {
+  let out = ''
+  let escapes = 0
+  let controls = 0
+  let inString = false
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (!inString) {
+      out += ch
+      if (ch === '"') inString = true
+      continue
+    }
+    if (ch === '\\') {
+      const next = text[i + 1]
+      if (next === 'u') {
+        const hex = text.slice(i + 2, i + 6)
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += `\\u${hex}`
+          i += 5
+          continue
+        }
+      } else if (next && JSON_ESCAPABLE.includes(next)) {
+        out += `\\${next}`
+        i += 1
+        continue
+      }
+      // 非法转义（含结尾孤立的反斜杠）：按字面反斜杠处理
+      out += '\\\\'
+      escapes += 1
+      continue
+    }
+    if (ch === '"') {
+      inString = false
+      out += ch
+      continue
+    }
+    if (ch.charCodeAt(0) < 0x20) {
+      const code = ch.charCodeAt(0)
+      out +=
+        code === 0x0a ? '\\n' : code === 0x0d ? '\\r' : code === 0x09 ? '\\t' : `\\u${code.toString(16).padStart(4, '0')}`
+      controls += 1
+      continue
+    }
+    out += ch
   }
-  // 尾逗号 / 其它常见小错
-  for (const candidate of candidates) {
-    const repaired = candidate.replace(/,\s*([}\]])/g, '$1')
-    const parsed = safeJsonParse<Record<string, unknown>>(repaired)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+  return { text: out, escapes, controls }
+}
+
+/**
+ * 从 start 处的 `{` 起按括号配对截出第一个完整对象（跳过字符串里的括号）。
+ * 比「第一个 { 到最后一个 }」可靠：模型一次吐出两段 JSON 时，后者会横跨两个对象。
+ * 找不到配对（被截断）时返回 null。
+ */
+function sliceBalancedObject(text: string, start: number): string | null {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]
+    if (inString) {
+      if (ch === '\\') i += 1
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(start, i + 1)
+    }
   }
   return null
+}
+
+/** 工具参数解析失败的具体原因：既要说明错在哪，也要带上模型自己写坏的那一段 */
+export interface ToolArgsIssue {
+  /** 面向模型的失败原因（同时用于工具卡上的错误文案） */
+  error: string
+  /** 失败位置附近的原始片段，回灌给模型让它看到问题，而不是盲猜重试 */
+  sample?: string
+}
+
+export interface ToolArgsParseResult {
+  input: Record<string, unknown> | null
+  issue?: ToolArgsIssue
+}
+
+function parseObjectStrict(text: string): Record<string, unknown> | null {
+  const parsed = safeJsonParse<unknown>(text)
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
+}
+
+/** JSON.parse 的报错文本（不抛错）；空字符串表示这段文本本身能解析 */
+function jsonErrorOf(text: string): string {
+  try {
+    JSON.parse(text)
+    return ''
+  } catch (err) {
+    return errorMessage(err)
+  }
+}
+
+/** 取失败位置前后各一小段：整条命令可能上千字符，全塞回模型只会挤占上下文 */
+function sampleAround(text: string, at: number): string | undefined {
+  const flat = text.replace(/\s+/g, ' ')
+  if (!flat) return undefined
+  if (at < 0) return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat
+  const from = Math.max(0, at - 60)
+  const to = Math.min(flat.length, at + 60)
+  return `${from > 0 ? '…' : ''}${flat.slice(from, to)}${to < flat.length ? '…' : ''}`
+}
+
+const TRUNCATED_ERROR = /Unexpected end|Unterminated|end of JSON input/i
+const BAD_ESCAPE_ERROR = /Bad escaped character/i
+const BAD_CONTROL_ERROR = /Bad control character/i
+const TRAILING_ERROR = /Unexpected non-whitespace character/i
+const STRUCTURE_ERROR = /Expected ','|Expected property name|Expected ':'|Expected double-quoted|Unexpected token/i
+
+function diagnoseToolArgs(text: string, message: string): ToolArgsIssue {
+  const atMatch = /position (\d+)/.exec(message)
+  const sample = sampleAround(text, atMatch ? Number(atMatch[1]) : -1)
+  const build = (error: string): ToolArgsIssue => (sample ? { error, sample } : { error })
+  if (TRUNCATED_ERROR.test(message)) {
+    return build('参数 JSON 在结尾被截断（缺少结尾的引号、括号或花括号），通常是单次输出太长')
+  }
+  if (BAD_CONTROL_ERROR.test(message)) {
+    return build('参数 JSON 的字符串里有真实换行或制表符，必须写成转义序列，不能直接换行')
+  }
+  if (BAD_ESCAPE_ERROR.test(message)) {
+    return build('参数 JSON 里有不合法的反斜杠转义（Windows 路径只写了一个反斜杠，或命令里的 \\|、\\K 这类正则转义），每个反斜杠都要写成两个')
+  }
+  if (TRAILING_ERROR.test(message)) {
+    return build('同一次输出里带了多段 JSON 或 JSON 之外的文字，只能输出一个参数对象')
+  }
+  if (STRUCTURE_ERROR.test(message)) {
+    return build('参数 JSON 结构不完整（引号、逗号或括号没有配对）')
+  }
+  return build(`参数不是合法的 JSON 对象（${message || '无法解析'}）`)
+}
+
+/**
+ * 带诊断的工具参数解析。除直接解析外，还会尝试这些不改变语义的修复：
+ * 1) 去掉 markdown 代码围栏与 JSON 前后的解释文字；
+ * 2) 取第一个括号配对完整的对象（兼容一次吐出两段 JSON）；
+ * 3) 去掉尾逗号；
+ * 4) 补字符串里的反斜杠转义、转义裸换行/制表符。
+ * 仍失败时给出具体原因和出错位置附近的片段，供上层回灌给模型自修复。
+ */
+export function parseToolArgsDetailed(raw: string): ToolArgsParseResult {
+  // 无参数的调用（如 todo_write 之外的零参数工具）上游给的是空串，按「没有参数」处理
+  if (!raw || !raw.trim()) return { input: {} }
+  const trimmed = raw.trim()
+  const candidates: string[] = []
+  const push = (value: string | null | undefined): void => {
+    const text = value?.trim()
+    if (text && !candidates.includes(text)) candidates.push(text)
+  }
+  push(trimmed)
+  const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed)
+  push(fence?.[1])
+  const start = trimmed.indexOf('{')
+  const shape = start >= 0 ? sliceBalancedObject(trimmed, start) : null
+  push(shape)
+  if (start >= 0) {
+    const end = trimmed.lastIndexOf('}')
+    if (end > start) push(trimmed.slice(start, end + 1))
+    // 被截断的尾巴：拿不到配对，但保留它作为候选项，让报错落在真正的位置上
+    push(trimmed.slice(start))
+  }
+
+  const attempts: string[] = []
+  for (const candidate of candidates) {
+    const literal = repairJsonStringLiterals(candidate)
+    const noComma = candidate.replace(/,\s*([}\]])/g, '$1')
+    attempts.push(candidate, noComma, literal.text, literal.text.replace(/,\s*([}\]])/g, '$1'))
+  }
+  for (const attempt of attempts) {
+    const parsed = parseObjectStrict(attempt)
+    if (parsed) return { input: parsed }
+  }
+  // 诊断用「形状最规整」的候选：它最接近模型想表达的那个对象
+  return { input: null, issue: diagnoseToolArgs(shape ?? trimmed, jsonErrorOf(shape ?? trimmed)) }
+}
+
+/**
+ * 容错解析工具参数 JSON：能修好就用修好的结果，否则返回 null。
+ * 需要失败原因与出错片段时用 parseToolArgsDetailed。
+ */
+export function parseToolArgs(raw: string): Record<string, unknown> | null {
+  return parseToolArgsDetailed(raw).input
 }
 
 /** 按字符截断并给出「已截断」说明（中英文按字符，不做字节裁剪） */

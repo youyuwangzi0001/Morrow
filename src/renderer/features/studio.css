@@ -1639,7 +1639,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 }
 
 .studio-brief-sheet .btn-gold {
-  --btn-bg: var(--gold);
+  --btn-bg: var(--gold-fill);
   --btn-color: var(--text-on-gold);
   --btn-border: var(--line-gold);
   height: 30px;
@@ -6324,8 +6324,8 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   left: 5px;
   padding: 1px 4px;
   border-radius: var(--r-xs);
-  color: var(--text);
-  background: var(--gold);
+  color: var(--text-on-gold);
+  background: var(--gold-fill);
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
 }
@@ -6371,7 +6371,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   padding: 1px 4px;
   border-radius: var(--r-xs);
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-caps);
@@ -6703,7 +6703,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   height: 14px;
   border-radius: 50%;
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
 }
 
 .studio-candidate-thumb > em {
@@ -6716,7 +6716,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   padding: 1px 3px;
   border-radius: var(--r-xs);
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
   font-size: var(--fs-xs);
   font-style: normal;
   font-weight: var(--fw-semibold);
@@ -6757,7 +6757,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   height: 13px;
   border-radius: 50%;
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
   font-style: normal;
   font-size: var(--fs-xs);
 }
@@ -8363,11 +8363,11 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 
 .studio-transport button.is-play {
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
 }
 
 .studio-transport button.is-play:hover {
-  background: var(--gold-bright);
+  background: var(--gold-fill-hover);
 }
 
 .studio-transport-time {
@@ -9039,7 +9039,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   padding: 1px 4px;
   border-radius: var(--r-xs);
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
   font-size: var(--fs-xs);
   white-space: nowrap;
 }
@@ -11906,13 +11906,13 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   padding: 0 9px;
   border-radius: var(--r-xs);
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
   font-size: var(--fs-panel-meta);
   font-weight: var(--fw-medium);
 }
 
 .studio-plan-apply:hover {
-  background: var(--gold-bright);
+  background: var(--gold-fill-hover);
 }
 
 .studio-assistant-suggestions {
@@ -11989,7 +11989,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   flex: 0 0 auto;
   border-radius: var(--r-xs);
   color: #17140f;
-  background: var(--gold);
+  background: var(--gold-fill);
 }
 
 .studio-assistant-composer-foot button:disabled {
@@ -12641,7 +12641,7 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
 }
 
 .sd-paper-head .sd-eyebrow {
-  color: #8a6a3c;
+  color: #7a5418;
 }
 
 .sd-paper-meta {
@@ -12715,8 +12715,8 @@ body.is-resizing-panel[data-resize-target='studio-right-resizer'] .studio-assist
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #8a6a3c;
-  box-shadow: 0 0 0 4px rgba(138, 106, 60, 0.14);
+  background: #7a5418;
+  box-shadow: 0 0 0 4px rgba(122, 84, 24, 0.14);
   animation: sd-pulse 1.6s ease-in-out infinite;
 }
 

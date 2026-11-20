@@ -38,12 +38,14 @@ const MAX_READ_CHARS = 40_000
 const KILL_GRACE_MS = 2_000
 /**
  * 上限只约束「还活着」的终端与后台任务。已退出的记录只是可回看的日志，
- * 如果把它们也算进槽位，一个跑满 32 条命令的会话就再也开不了新终端，
+ * 如果把它们也算进槽位，一个跑满 16 条命令的会话就再也开不了新终端，
  * 而 stop/remove 也不会让计数下降——这正是「停止成功却仍然报满」的来源。
  */
-const MAX_PROCESSES = 32
+const MAX_PROCESSES = 16
 /** 已退出记录保留条数：留够回看，又不至于无限增长。 */
 const MAX_EXITED_RECORDS = 40
+/** 一次性命令结束后自动收起窗口，但保留输出缓存供 Agent 回读。 */
+const AUTO_CLOSED_TASK_TTL_MS = 10 * 60_000
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 30
 
@@ -69,6 +71,11 @@ interface BaseRecord {
   logs: string
   rawLogs: string
   onExit?: (code: number | null) => void
+  /** 日志或状态变化时唤醒等待中的 read（长任务轮询等输出用） */
+  waiters?: Set<() => void>
+  /** 一次性任务结束后自动收起窗口：仍保留记录供 Agent 回读最终输出。 */
+  hidden?: boolean
+  hiddenAt?: number
 }
 
 interface ShellRecord extends BaseRecord {
@@ -96,6 +103,15 @@ function emit(payload: TerminalEventPayload): void {
 
 function infoCopy(info: TerminalProcessInfo): TerminalProcessInfo {
   return { ...info }
+}
+
+/**
+ * 唤醒正在等待该任务新输出的 read。
+ * 长任务轮询时 read 会挂起等日志/状态变化，不能让模型自己空转重试。
+ */
+function wakeWaiters(record: ManagedRecord): void {
+  if (!record.waiters || record.waiters.size === 0) return
+  for (const wake of [...record.waiters]) wake()
 }
 
 function shortTitle(text: string, max = 36): string {
@@ -508,7 +524,10 @@ export class TerminalManager {
   }
 
   list(): TerminalProcessInfo[] {
-    return [...this.records.values()].map((record) => infoCopy(record.info)).sort((a, b) => a.createdAt - b.createdAt)
+    return [...this.records.values()]
+      .filter((record) => !record.hidden)
+      .map((record) => infoCopy(record.info))
+      .sort((a, b) => a.createdAt - b.createdAt)
   }
 
   /** 占用槽位的只有运行中的进程；已退出记录只保留日志供回看。 */
@@ -540,14 +559,30 @@ export class TerminalManager {
     }
   }
 
+  /** 一次性任务结束后自动收起窗口；记录保留供 Agent 回读，不占运行槽位。 */
+  private autoCloseFinishedTask(record: TaskRecord): void {
+    if (record.info.status === 'running' || record.hidden) return
+    record.hidden = true
+    record.hiddenAt = Date.now()
+    emit({ type: 'removed', id: record.info.id, autoClosed: true })
+  }
+
   /** 已退出记录超过保留条数时，从最早的开始清理。 */
   private trimExited(): void {
+    const now = Date.now()
     const exited = [...this.records.entries()]
       .filter(([, record]) => record.info.status !== 'running')
       .sort((a, b) => a[1].info.createdAt - b[1].info.createdAt)
-    const excess = exited.length - MAX_EXITED_RECORDS
+    // 自动收起的任务只留一段时间给 Agent 回读，过期静默释放内存。
+    for (const [id, record] of exited) {
+      if (record.hidden && record.hiddenAt && now - record.hiddenAt > AUTO_CLOSED_TASK_TTL_MS) {
+        this.records.delete(id)
+      }
+    }
+    const remaining = exited.filter(([id]) => this.records.has(id))
+    const excess = remaining.length - MAX_EXITED_RECORDS
     if (excess <= 0) return
-    for (const [id] of exited.slice(0, excess)) {
+    for (const [id] of remaining.slice(0, excess)) {
       this.records.delete(id)
       emit({ type: 'removed', id })
     }
@@ -627,6 +662,7 @@ export class TerminalManager {
       record.rawLogs = appendCapped(record.rawLogs, chunk, MAX_RAW_CHARS)
       record.logs = appendCapped(record.logs, stripTerminalMarkup(chunk), MAX_LOG_CHARS)
       if (!chunk) return
+      wakeWaiters(record)
       emit({ type: 'data', id: info.id, chunk, stream: 'stdout', pty: true })
     })
     pty.onExit(({ exitCode }) => {
@@ -639,6 +675,7 @@ export class TerminalManager {
       ended = true
       info.status = 'exited'
       info.exitCode = exitCode
+      wakeWaiters(record)
       emit({ type: 'state', id: info.id, info: infoCopy(info) })
       record.onExit?.(exitCode)
       this.trimExited()
@@ -733,6 +770,7 @@ export class TerminalManager {
       if (!clean) return
       record.logs = appendCapped(record.logs, clean, MAX_LOG_CHARS)
       record.rawLogs = record.logs
+      wakeWaiters(record)
       emit({ type: 'data', id: info.id, chunk: clean, stream, pty: false })
     }
     const markEnded = (code: number | null): void => {
@@ -741,8 +779,11 @@ export class TerminalManager {
       ended = true
       info.status = 'exited'
       info.exitCode = code ?? undefined
+      wakeWaiters(record)
       emit({ type: 'state', id: info.id, info: infoCopy(info) })
       record.onExit?.(code)
+      // 一次性命令结束即收起窗口；记录留在内存里供 Agent 回读最后一段输出。
+      this.autoCloseFinishedTask(record)
       this.trimExited()
     }
     child.stdout.on('data', (chunk: Buffer) => append(stdout.write(chunk), 'stdout'))
@@ -839,6 +880,59 @@ export class TerminalManager {
     }
   }
 
+  /**
+   * 读取输出，并在进程未结束时等待「有新日志」或「进程结束」。
+   *
+   * 长任务（构建、抓取、测试）启动后通常十几秒没有输出。旧实现只返回同步快照，
+   * 模型拿着 timeout_ms 以为会等，实际立刻拿到「暂无输出」，只好反复重读，
+   * 既浪费步数又会被死循环守卫掐断。这里把 timeout_ms 真正用作等待上限：
+   * 一旦有输出或进程结束立即返回，最多等到 timeoutMs。
+   */
+  async readAndWait(
+    id: string,
+    tail = MAX_READ_CHARS,
+    timeoutMs = 0,
+    signal?: AbortSignal
+  ): Promise<{ info: TerminalProcessInfo; output: string; rawOutput: string; waitedMs: number; changed: boolean }> {
+    const startedAt = Date.now()
+    const snapshot = (): { info: TerminalProcessInfo; output: string; rawOutput: string } => this.read(id, tail)
+    const record = this.records.get(id)
+    if (!record) throw new Error('终端/任务不存在或已关闭。')
+    const first = snapshot()
+    if (timeoutMs <= 0 || first.info.status !== 'running' || signal?.aborted) {
+      return { ...first, waitedMs: 0, changed: false }
+    }
+    const beforeLen = record.logs.length
+    const beforeOutput = first.output
+    const waitMs = Math.max(0, Math.min(300_000, Math.round(timeoutMs)))
+    const changed = await new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (value: boolean): void => {
+        if (settled) return
+        settled = true
+        if (record.waiters) record.waiters.delete(wake)
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        resolve(value)
+      }
+      const wake = (): void => finish(true)
+      const onAbort = (): void => finish(false)
+      if (!record.waiters) record.waiters = new Set()
+      record.waiters.add(wake)
+      const timer = setTimeout(() => finish(false), waitMs)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      // 注册等待后再检查一次：等待期间可能刚好已经产出新内容或已退出
+      const current = this.records.get(id)
+      if (!current || current.logs.length !== beforeLen || current.info.status !== 'running') finish(true)
+    })
+    const after = this.read(id, tail)
+    return {
+      ...after,
+      waitedMs: Date.now() - startedAt,
+      changed: changed && (after.output !== beforeOutput || after.info.status !== 'running')
+    }
+  }
+
   write(id: string, data: string, raw = false): TerminalProcessInfo {
     const record = this.records.get(id)
     if (!record) throw new Error('终端/任务不存在或已关闭。')
@@ -927,7 +1021,7 @@ export class TerminalManager {
 
   /**
    * 停止并释放槽位。stop 以前只发信号、保留记录，进程退出后记录仍在，
-   * 于是「已停止」的终端继续占着 32 个名额，后续启动仍被拦下。
+   * 于是「已停止」的终端继续占着 16 个名额，后续启动仍被拦下。
    * 现在等进程真正退出后删除记录，槽位随之释放；超时也删除，避免卡住名额。
    */
   async stopAndRelease(id: string, graceMs = KILL_GRACE_MS + 1_000): Promise<TerminalProcessInfo> {
@@ -1018,6 +1112,8 @@ export class TerminalManager {
     }
     // 先替换 child，再 attach：旧子进程的 exit/error 会被 isCurrent 丢弃
     record.child = child
+    record.hidden = false
+    delete record.hiddenAt
     record.logs = appendCapped(record.logs, '\n--- 重新启动 ---\n', MAX_LOG_CHARS)
     record.rawLogs = record.logs
     record.onExit = undefined

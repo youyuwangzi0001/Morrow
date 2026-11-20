@@ -1,5 +1,5 @@
 // 工作区、路径、文件预览、编辑历史与登录窗口。
-import { BrowserWindow, session, app, shell, clipboard, dialog } from 'electron'
+import { BrowserWindow, session, app, shell, clipboard, dialog, Menu } from 'electron'
 import { log } from './logger'
 import { dirname, isAbsolute, join, relative, resolve, sep, basename, extname } from 'node:path'
 import type { Stats, Dirent } from 'node:fs'
@@ -34,13 +34,71 @@ const CHROME_BRANDS = '"Chromium";v="156", "Google Chrome";v="156", "Not?A_Brand
 const CHROME_FULL_BRANDS =
   '"Chromium";v="156.0.0.0", "Google Chrome";v="156.0.0.0", "Not?A_Brand";v="24.0.0.0"'
 
+/** 登录页需要向本机回环回调服务器交回凭据；Chromium 的 Local Network Access
+ *  会先走权限检查。只对本次登录打开的 HTTPS 来源放行，其他权限仍全部拒绝。 */
+const LOGIN_LOOPBACK_PERMISSIONS = new Set(['local-network', 'local-network-access', 'loopback-network'])
+/** 登录页确实需要的非敏感能力：写剪贴板、全屏、第三方 Cookie/存储与后台同步。
+ *  摄像头、麦克风、地理位置、通知、USB/串口等仍拒绝。 */
+const LOGIN_SAFE_PERMISSIONS = new Set([
+  'clipboard-sanitized-write',
+  'fullscreen',
+  'storage-access',
+  'top-level-storage-access',
+  'persistent-storage',
+  'background-sync',
+  'background-fetch'
+])
+const loginTrustedOrigins = new Set<string>()
+
+export function loginPermissionAllowed(
+  permission: string,
+  requestingOrigin: string,
+  trustedOrigins: ReadonlySet<string> = loginTrustedOrigins
+): boolean {
+  let trusted = false
+  try {
+    const origin = new URL(requestingOrigin)
+    trusted = origin.protocol === 'https:' && trustedOrigins.has(origin.origin)
+  } catch {
+    return false
+  }
+  if (LOGIN_SAFE_PERMISSIONS.has(permission)) return trusted
+  return LOGIN_LOOPBACK_PERMISSIONS.has(permission) && trusted
+}
+
+function rememberLoginOrigin(url: string): void {
+  try {
+    const origin = new URL(url)
+    if (origin.protocol === 'https:') loginTrustedOrigins.add(origin.origin)
+  } catch {
+    // 非 URL 由 loadURL 自己报错，不在这里处理。
+  }
+}
+
 let loginWindow: BrowserWindow | null = null
 
 let headerHooksInstalled = false
 
+let loginPermissionHooksInstalled = false
+
 function loginSession(): Electron.Session {
   const ses = session.fromPartition(LOGIN_PARTITION)
   ses.setUserAgent(LOGIN_UA)
+  if (!loginPermissionHooksInstalled) {
+    loginPermissionHooksInstalled = true
+    ses.setPermissionCheckHandler((contents, permission, requestingOrigin) => {
+      const origin = (requestingOrigin || contents?.getURL?.() || '').trim()
+      return loginPermissionAllowed(permission, origin)
+    })
+    ses.setPermissionRequestHandler((contents, permission, callback) => {
+      const requestingUrl = contents?.getURL?.() ?? ''
+      const allowed = loginPermissionAllowed(permission, requestingUrl)
+      if (LOGIN_LOOPBACK_PERMISSIONS.has(permission)) {
+        log.info('login loopback permission', { permission, allowed, host: safeHost(requestingUrl) })
+      }
+      callback(allowed)
+    })
+  }
   if (!headerHooksInstalled) {
     headerHooksInstalled = true
     // Electron 默认的 Client Hints 会暴露 Electron 身份，Cloudflare 因此要求
@@ -63,7 +121,18 @@ function loginSession(): Electron.Session {
 }
 
 function isLoginCallback(url: string): boolean {
-  return /^http:\/\/(localhost|127\.0\.0\.1):1455\/auth\/callback(?:[/?#]|$)/i.test(url)
+  try {
+    const target = new URL(url)
+    if (target.protocol !== 'http:') return false
+    if (target.hostname !== 'localhost' && target.hostname !== '127.0.0.1') return false
+    return (
+      /^\/auth\/callback(?:[/?#]|$)/i.test(target.pathname) ||
+      /^\/callback(?:\/complete)?(?:[/?#]|$)/i.test(target.pathname) ||
+      /^\/oauth-callback(?:[/?#]|$)/i.test(target.pathname)
+    )
+  } catch {
+    return false
+  }
 }
 
 export function isLoginSession(ses: Electron.Session): boolean {
@@ -93,6 +162,7 @@ function installLoginNavigation(window: BrowserWindow): void {
 export function openLoginWindow(url: string): boolean {
   try {
     loginSession()
+    rememberLoginOrigin(url)
     if (loginWindow && !loginWindow.isDestroyed()) {
       void loginWindow.loadURL(url)
       loginWindow.show()
@@ -105,7 +175,7 @@ export function openLoginWindow(url: string): boolean {
       minWidth: 380,
       minHeight: 520,
       title: 'Morrow 登录',
-      autoHideMenuBar: true,
+      autoHideMenuBar: false,
       show: false,
       webPreferences: {
         partition: LOGIN_PARTITION,
@@ -117,7 +187,32 @@ export function openLoginWindow(url: string): boolean {
       }
     })
     loginWindow = window
-    window.setMenuBarVisibility(false)
+    // 内置 Chromium 的权限/企业策略可能拦截回环回调。保留一个显式的系统浏览器
+    // 出口：授权页仍由 Morrow 的回环服务接收回调，用户在 Edge 完成后无需再手动粘贴。
+    window.setMenu(
+      Menu.buildFromTemplate([
+        {
+          label: '在系统浏览器中打开',
+          click: () => {
+            if (window.isDestroyed()) return
+            const target = window.webContents.getURL()
+            if (!/^https?:\/\//i.test(target)) return
+            void shell.openExternal(target).catch((err) => {
+              log.warn('login window open external failed', { message: String(err) })
+              try { clipboard.writeText(target) } catch { /* ignore */ }
+            })
+          }
+        },
+        {
+          label: '复制当前链接',
+          click: () => {
+            if (window.isDestroyed()) return
+            try { clipboard.writeText(window.webContents.getURL()) } catch { /* ignore */ }
+          }
+        }
+      ])
+    )
+    window.setMenuBarVisibility(true)
     window.webContents.setUserAgent(LOGIN_UA)
     window.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
       if (!/^https?:\/\//i.test(popupUrl)) return { action: 'deny' }
@@ -139,9 +234,9 @@ export function openLoginWindow(url: string): boolean {
     })
     window.webContents.on('will-attach-webview', (event) => event.preventDefault())
     installLoginNavigation(window)
-    window.webContents.on('did-navigate', (_event, target) => {
-      if (isLoginCallback(target)) {
-        // 本地回调已交给订阅服务的 1455 服务器，留一点时间完成响应再收起窗口。
+    window.webContents.on('did-navigate', (_event, target, httpResponseCode) => {
+      if (isLoginCallback(target) && (httpResponseCode === 200 || httpResponseCode === 303)) {
+        // 本地回调已交给订阅服务的回环服务器，留一点时间完成响应再收起窗口。
         setTimeout(() => {
           if (!window.isDestroyed()) window.close()
         }, 900)
@@ -157,7 +252,10 @@ export function openLoginWindow(url: string): boolean {
       }
     })
     window.on('closed', () => {
-      if (loginWindow === window) loginWindow = null
+      if (loginWindow === window) {
+        loginWindow = null
+        loginTrustedOrigins.clear()
+      }
     })
     void window.loadURL(url).catch((err) => {
       log.warn('login window load rejected', { host: safeHost(url), message: String(err) })

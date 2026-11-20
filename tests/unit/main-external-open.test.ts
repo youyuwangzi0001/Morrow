@@ -17,7 +17,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   return { ...actual, execFile: mocks.execFile }
 })
 
-import { openExternalUrl, openLoginUrl } from '../../src/main/workspace'
+import { openExternalUrl, openLoginUrl, loginPermissionAllowed } from '../../src/main/workspace'
 
 describe('openExternalUrl', () => {
   beforeEach(() => {
@@ -64,5 +64,18 @@ describe('openLoginUrl', () => {
     expect(result).toEqual({ opened: false, copied: true })
     expect(mocks.writeText).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?x=1')
     expect(mocks.openLoginWindow).not.toHaveBeenCalled()
+  })
+
+  it('@core:interface 登录页只向可信 HTTPS 来源放行本机回环授权', () => {
+    const trusted = new Set(['https://commandcode.ai'])
+    for (const permission of ['local-network', 'local-network-access', 'loopback-network']) {
+      expect(loginPermissionAllowed(permission, 'https://commandcode.ai/studio/auth/cli', trusted)).toBe(true)
+    }
+    expect(loginPermissionAllowed('clipboard-sanitized-write', 'https://commandcode.ai/', trusted)).toBe(true)
+    expect(loginPermissionAllowed('storage-access', 'https://commandcode.ai/', trusted)).toBe(true)
+    expect(loginPermissionAllowed('local-network-access', 'http://commandcode.ai/', trusted)).toBe(false)
+    expect(loginPermissionAllowed('local-network-access', 'https://evil.example/', trusted)).toBe(false)
+    expect(loginPermissionAllowed('camera', 'https://commandcode.ai/', trusted)).toBe(false)
+    expect(loginPermissionAllowed('local-network-access', 'not-a-url', trusted)).toBe(false)
   })
 })

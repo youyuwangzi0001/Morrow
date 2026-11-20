@@ -1,0 +1,248 @@
+
+/* ── 手机配对 ────────────────────────────────────────────────
+   这一块要同时表达四件事：通道开没开、票还有多久、票过期了、设备清单。
+   倒计时是唯一「会自己变」的元素，所以它用一条 2px 的进度条 + 等宽数字，
+   而不是靠颜色变化 —— 颜色一变，整块都会跳。
+   ──────────────────────────────────────────────────────────── */
+.st-pair {
+  padding-bottom: 8px;
+}
+
+.st-pair-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 26px;
+  margin-bottom: 8px;
+}
+
+.st-pair-gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 10px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  background: var(--surface-2, transparent);
+  color: var(--text-3);
+}
+
+.st-pair-gate-title {
+  margin: 0 0 3px;
+  color: var(--text);
+  font-size: var(--fs-ui);
+}
+
+.st-pair-gate-desc {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
+}
+
+.st-pair-request {
+  width: 100%;
+}
+
+.st-pair-request textarea,
+.st-pair .text-area {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-ui);
+  overflow-wrap: anywhere;
+}
+
+.st-pair-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.st-pair-error {
+  margin: 8px 0 0;
+  color: var(--danger, #c2543f);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
+}
+
+.st-pair-warn {
+  margin: 8px 0 0;
+  color: var(--warning, #a8762a);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
+}
+
+/* 倒计时 */
+.st-pair-countdown {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 16px;
+}
+
+.st-pair-countdown-bar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.st-pair-countdown-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-2, currentColor);
+  transition: width 0.9s linear;
+}
+
+.st-pair-countdown-bar > span.is-urgent {
+  background: var(--warning, #a8762a);
+}
+
+.st-pair-countdown-num {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-pair-countdown-num.is-urgent {
+  color: var(--warning, #a8762a);
+}
+
+/* 六位码：整块里唯一的大字 */
+.st-pair-code-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.st-pair-code {
+  color: var(--text);
+  font-size: var(--fs-display-sm);
+  letter-spacing: var(--ls-display);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-none);
+}
+
+.st-pair-code-label {
+  color: var(--text-3);
+  font-size: var(--fs-sm-plus);
+  line-height: var(--lh-copy);
+}
+
+/* 配对码文本 */
+.st-pair-qr-box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'label copy'
+    'text  copy';
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+}
+
+.st-pair-qr-label {
+  grid-area: label;
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--ls-label, normal);
+}
+
+.st-pair-qr-text {
+  grid-area: text;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-copy);
+  overflow-wrap: anywhere;
+  /* 不限制高度：配对码约 300–400 字符，等宽小字换行后 6–8 行。
+     第一版设了 `max-height: 4.6em; overflow: auto`，视觉上只剩两行 + 一条滚动条 ——
+     用户看不出这串是完整的，会怀疑自己复制到的是半截。
+     它本来就要被整体复制走，那就整段展开给他看（真实渲染截图审看时发现）。 */
+  white-space: pre-wrap;
+}
+
+.st-pair-qr-box .icon-btn {
+  grid-area: copy;
+}
+
+/* 过期 */
+.st-pair-expired {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  color: var(--text-3);
+}
+
+/* 设备清单 */
+.st-pair-devices {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.st-pair-device {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+}
+
+.st-pair-device-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.st-pair-device-name {
+  color: var(--text);
+  font-size: var(--fs-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-pair-device-meta {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-pair-foot {
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .st-pair-code {
+    font-size: var(--fs-h1);
+  }
+
+  .st-pair-qr-box {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'label'
+      'text';
+  }
+
+  .st-pair-qr-box .icon-btn {
+    justify-self: start;
+  }
+}

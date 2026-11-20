@@ -253,6 +253,9 @@
   --gold: #c8ae7d;
   --gold-deep: #9a7c4a;
   --gold-bright: #e4ce9e;
+  --gold-fill: var(--gold-bright);
+  --gold-fill-deep: var(--gold);
+  --gold-fill-hover: #f1ddb0;
   --gold-dim: rgba(200, 174, 125, 0.14);
   --gold-ghost: rgba(200, 174, 125, 0.06);
   --patina: #7fa292;
@@ -367,16 +370,21 @@
   --surface-inset: #eae4d8;
   --line: rgba(27, 26, 23, 0.1);
   --line-strong: rgba(27, 26, 23, 0.18);
-  --line-gold: rgba(138, 106, 60, 0.34);
+  --line-gold: rgba(122, 84, 24, 0.34);
   --text: #1b1a17;
   --text-2: #5c574d;
   --text-3: #8c867a;
   --text-invert: #f8f4ea;
-  --gold: #8a6a3c;
-  --gold-deep: #6f5128;
-  --gold-bright: #a8844f;
-  --gold-dim: rgba(138, 106, 60, 0.12);
-  --gold-ghost: rgba(138, 106, 60, 0.05);
+  /* 素纸上的金色文字压到暗金：正文仍是墨黑，金色只比原值更深、更饱和。 */
+  --gold: #7a5418;
+  --gold-deep: #5f3f12;
+  --gold-bright: #86602a;
+  /* 承载深色文字的金色填充保持明度，避免暗金底配黑字反而更难读。 */
+  --gold-fill: #a8844f;
+  --gold-fill-deep: #a17c46;
+  --gold-fill-hover: #b18d57;
+  --gold-dim: rgba(122, 84, 24, 0.12);
+  --gold-ghost: rgba(122, 84, 24, 0.05);
   --patina: #4f7263;
   --patina-dim: rgba(79, 114, 99, 0.12);
   --rust: #a2543f;
@@ -387,26 +395,26 @@
   --mauve-dim: rgba(111, 100, 128, 0.12);
   --danger: #a2543f;
   --focus: var(--gold);
-  --glow: radial-gradient(1200px 620px at 74% -12%, rgba(138, 106, 60, 0.06), transparent 62%);
+  --glow: radial-gradient(1200px 620px at 74% -12%, rgba(122, 84, 24, 0.06), transparent 62%);
   --vignette: radial-gradient(1400px 900px at 50% 120%, rgba(60, 50, 30, 0.06), transparent 70%);
   --glass: rgba(246, 242, 233, 0.82);
   --scrim: rgba(30, 27, 20, 0.32);
   --shadow-float: 0 24px 80px -28px rgba(50, 40, 20, 0.35), 0 2px 10px rgba(50, 40, 20, 0.1);
   --shadow-soft: 0 12px 32px -20px rgba(50, 40, 20, 0.28);
   --grain-opacity: 0.035;
-  --scrollbar-thumb-color: #a8844f;
-  --scrollbar-thumb-hover-color: #c8ae7d;
-  --scrollbar-thumb-active-color: #8a6a3c;
+  --scrollbar-thumb-color: #8a6428;
+  --scrollbar-thumb-hover-color: #a37a36;
+  --scrollbar-thumb-active-color: #7a5418;
   --user-bubble: #e8e1d2;
   --code-bg: #ece6d8;
   --btn-primary-hover: #000000;
   --text-on-gold: #17140f;
 
   /* 编辑器语法色：浅底上用深墨/暗金，保证可读 */
-  --syntax-keyword: #7a5528;
+  --syntax-keyword: #6b4818;
   --syntax-string: #446756;
-  --syntax-number: #7a5a1e;
-  --syntax-function: #7a5528;
+  --syntax-number: #6b4818;
+  --syntax-function: #6b4818;
   --syntax-type: #565a63;
   --syntax-variable: #3a3a38;
   --syntax-comment: #7b7569;
@@ -888,7 +896,21 @@ textarea {
   display: none;
 }
 
+/* 创作台是另外一种工作模式：进入后挂起 Agent 侧的所有浮层。
+   画布、侧边聊天和终端都是普通渲染层，隐藏即可；内置浏览器是原生
+   WebContentsView，永远盖在渲染层之上，必须同时由 visible=false 收起。
+   否则切到创作台时，上一次打开的画布/预览会一直压在最上层收不起来。 */
+.app.is-studio-open .canvas-root,
+.app.is-studio-open .canvas-resizer,
+.app.is-studio-open .browser-dock-resizer,
+.app.is-studio-open .sidechat-rail,
+.app.is-studio-open .sidechat-resizer,
+.app.is-studio-open .terminal-dock {
+  display: none !important;
+}
+
 .app-conversation {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;

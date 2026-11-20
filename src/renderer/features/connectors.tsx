@@ -468,6 +468,7 @@ export interface ConnectorsPanelProps {
   onClose: () => void
   /** 可选：显式指定文件夹；不传时用当前对话/最近文件夹 */
   workspace?: string | null
+  inline?: boolean
 }
 
 interface SecretRow {
@@ -749,7 +750,7 @@ function TestResult({ result }: { result: ConnectorTestResult }): React.JSX.Elem
   )
 }
 
-export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: ConnectorsPanelProps): React.JSX.Element | null {
+export function ConnectorsPanel({ open, onClose, workspace: workspaceProp, inline = false }: ConnectorsPanelProps): React.JSX.Element | null {
   const sessionWorkspace = useAppStore((state) => state.session?.workspace ?? null)
   const lastWorkspace = useAppStore((state) => state.settings.lastWorkspace ?? null)
   const workspace = workspaceProp !== undefined ? workspaceProp : (sessionWorkspace ?? lastWorkspace)
@@ -1164,6 +1165,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
       description="把 Morrow 接到本机程序或网络服务上，让它能用更多工具。每次外部操作都会先问你；密钥只保存在本机并加密。"
       width={940}
       ariaLabel="外部工具"
+      inline={inline}
     >
       {catalogOpen ? (
         <ConnectorDirectory
@@ -1323,7 +1325,7 @@ export function ConnectorsPanel({ open, onClose, workspace: workspaceProp }: Con
                     label="名称"
                     value={draft.name}
                     placeholder="例如 morrow_mock"
-                    autoFocus
+                    autoFocus={!inline}
                     onChange={(event) => updateDraft({ name: event.target.value })}
                   />
                   <div className="conn-transport">

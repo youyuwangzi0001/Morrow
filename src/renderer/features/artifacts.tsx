@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { AlignLeft, Check, Copy, FileDown, FileText, Globe, ShieldCheck, TriangleAlert, Clock, RotateCcw, Archive, Search, Eye, FileWarning, Pencil, RefreshCw, Save, SaveAll, X, History, ChevronLeft, ChevronRight, Minus, Plus, ScanLine, ExternalLink, FileAudio, FileImage, FileQuestion, FileVideo, FolderOpen, FileCode2, FilePen, FolderDown, Image as ImageIcon, Maximize2, Minimize2, Share2 } from 'lucide-react'
 import type { Artifact, ArtifactExportFormat, ArtifactVersionInfo, ArtifactKind } from '@shared/types'
 import { useAppStore, maxCanvasWidthForViewport, responsiveCanvasWidth } from '../store'
+import { useStudioStore } from './studio-core'
 import { Button, Modal, Spinner, IconButton, ErrorNote, ResizeHandle } from '../components'
 import { formatBytes } from '@shared/types'
 import { formatArtifactTime, errorText } from '../components'
@@ -2004,6 +2005,7 @@ export function Canvas(): React.JSX.Element | null {
   const setCanvasWidth = useAppStore((s) => s.setCanvasWidth)
   const narrow = useNarrowViewport()
   const editor = useEditorDocs()
+  const studioOpen = useStudioStore((s) => s.open)
 
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -2182,6 +2184,22 @@ export function Canvas(): React.JSX.Element | null {
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [fullscreen])
+
+  /* 关闭画布、或切换到创作台时，退出全屏并收起画布内的浮层。
+     全屏是画布本地状态，若跨开关保留，回到 Agent 时会以满屏层重新出现，
+     表现为“画布一直在最上层收不起来”。 */
+  useEffect(() => {
+    if (canvas.open && !studioOpen) return
+    setFullscreen(false)
+    setVersionsOpen(false)
+    setExportOpen(false)
+  }, [canvas.open, studioOpen])
+
+  /* 切到创作台时，画布自带的保存确认框不应悬在创作台上方。 */
+  useEffect(() => {
+    if (!studioOpen) return
+    editor.closeDialog()
+  }, [studioOpen, editor.closeDialog])
 
   /* 窗口变窄时把画布宽度收回可视范围并持久化，避免对话列被挤到无法输入 */
   useEffect(() => {

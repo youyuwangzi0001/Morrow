@@ -3,12 +3,12 @@ import type { Dirent } from 'node:fs'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, statSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { dirname, join, isAbsolute, resolve, sep, basename, relative } from 'node:path'
 import type { TokenActivityDay, TokenActivitySummary, ChatMessage, CheckpointResume, HookEvent, ReasoningEffort, Usage, ModelInfo, Session, AskUserAnswer, AskUserRequest, Goal, PermissionDecision, PermissionMode, PermissionRequest, PermissionResponse, ProviderConfig, QueuedMessage, ResearchState, RuntimeEvent, SendMessageInput, SendMessageResult, SessionMeta, SessionMode, SessionPlan, SuperTaskRetryRequest, TodoItem, ToolUseBlock } from '../shared/types'
-import { decodeTextBytes, MAX_ENABLED_HOOKS_PER_EVENT, messagePlainText, buildAnswerStyleSection, userMessageDisplayText, estimateUsageCost, replaceUserMessageText, mergeSwarmTask, swarmTasksFromMeta, planStepsCompleted, todosFromPlan } from '../shared/types'
+import { decodeTextBytes, MAX_ENABLED_HOOKS_PER_EVENT, messagePlainText, buildAnswerStyleSection, userMessageDisplayText, estimateUsageCost, replaceUserMessageText, mergeMemberTask, memberTasksFromMeta, planStepsCompleted, todosFromPlan } from '../shared/types'
 import { createHash, randomUUID } from 'node:crypto'
 import { log } from './logger'
 import { availableParallelism, homedir } from 'node:os'
 import { BUILTIN_AGENT_ROLES } from '../core/agent'
-import type { SwarmMemberRole, ProviderStreamRequest, CommandShell } from '../core/types'
+import type { MemberRole, ProviderStreamRequest, CommandShell } from '../core/types'
 import type { AgentQuotaWindow, EvolutionAction, EvolutionApplyResult, EvolutionListResult, EvolutionMemoryScope, EvolutionReviewResult, EvolutionSkipReason, EvolutionSuggestion, ResearchStartInput } from '../shared/contracts'
 import { EVOLUTION_EXPIRES_MS, EVOLUTION_MAX_CONTENT_CHARS, EVOLUTION_MAX_PENDING, EVOLUTION_MAX_RATIONALE_CHARS, EVOLUTION_MAX_STORE_BYTES, EVOLUTION_MAX_SUGGESTIONS_PER_REVIEW, EVOLUTION_MAX_SUMMARY_CHARS, EVOLUTION_MAX_TITLE_CHARS, EVOLUTION_MIN_CONFIDENCE, EVOLUTION_REVIEW_COOLDOWN_MS, EVENT_CHANNEL, FOCUS_SESSION_CHANNEL, EVOLUTION_CHANGED_EVENT, EVOLUTION_SKIP_LABEL, EPISODE_CHANGED_EVENT, MEMORY_CHANGED_EVENT, RESEARCH_DEPTHS, buildResearchPlanPrompt, collaborationProjectId, createResearchState, decideResearchNextStep, normalizeResearchDepth, normalizeSuperAgentCollaboration, reconcileSuperAgentAfterRestart } from '../shared/contracts'
 import { estimateTokens } from '@core/agent'
@@ -790,7 +790,7 @@ export function parseAgentFile(
   name: string,
   scope: 'project' | 'user',
   _path: string
-): SwarmMemberRole | null {
+): MemberRole | null {
   const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   const lines = text.split('\n')
   const meta: Record<string, string> = {}
@@ -810,13 +810,13 @@ export function parseAgentFile(
   return {
     name: name.toLowerCase(),
     title: (meta.title || meta.name || name).slice(0, 40),
-    description: (meta.description || systemPrompt.split('\n').find(Boolean) || '自定义集群成员').slice(0, 160),
+    description: (meta.description || systemPrompt.split('\n').find(Boolean) || '自定义协作成员').slice(0, 160),
     systemPrompt,
     source: scope
   }
 }
 
-function readAgentsFrom(dir: string, scope: 'project' | 'user', into: Map<string, SwarmMemberRole>): void {
+function readAgentsFrom(dir: string, scope: 'project' | 'user', into: Map<string, MemberRole>): void {
   let entries: Dirent[]
   try {
     entries = readdirSync(dir, { withFileTypes: true })
@@ -863,8 +863,8 @@ function projectAgentsDir(workspace: string): string | null {
 }
 
 /** 内置角色 + 自定义角色；项目覆盖同名用户角色。 */
-export function loadAgentRoles(workspace: string | null, home = homedir()): SwarmMemberRole[] {
-  const custom = new Map<string, SwarmMemberRole>()
+export function loadAgentRoles(workspace: string | null, home = homedir()): MemberRole[] {
+  const custom = new Map<string, MemberRole>()
   readAgentsFrom(join(home, '.morrow', 'agents'), 'user', custom)
   if (workspace) {
     const dir = projectAgentsDir(workspace)
@@ -880,7 +880,7 @@ export interface AgentRoleSummary {
   source: 'builtin' | 'project' | 'user'
 }
 
-export function summarizeAgentRoles(roles: SwarmMemberRole[]): AgentRoleSummary[] {
+export function summarizeAgentRoles(roles: MemberRole[]): AgentRoleSummary[] {
   return roles.map((role) => ({
     name: role.name,
     title: role.title,
@@ -2600,7 +2600,7 @@ export class AgentService {
 
   /**
    * 从本机记录单独重试一项任务：不重新规划、不执行已完成任务，
-   * 沿用原 taskId 与尝试历史，只追加一次新的 Worker 尝试。
+   * 沿用原 taskId 与尝试历史，只追加一次新的协作成员尝试。
    */
   retrySuperTask(
     sessionId: string,
@@ -2611,7 +2611,7 @@ export class AgentService {
     const session = this.sessionStore.get(sessionId)
     if (!session) throw new Error('这个对话不存在了。')
     if (session.mode === 'chat' || session.mode === 'research') {
-      throw new Error('当前对话不是工作模式，不能重试 Worker 任务。')
+      throw new Error('当前对话不是工作模式，不能重试协作成员任务。')
     }
     if (this.isSessionBusy(session.id)) throw new Error('当前对话正在运行；请等本轮结束后再单独重试。')
     const storedState = getCollaborationStore().rawProject(projectId)?.superAgent
@@ -2650,12 +2650,12 @@ export class AgentService {
     }
     return this.startRun(session, { sessionId: session.id, text: '', hidden: true }, window, {
       userMessage,
-      retrySwarmTask: retry
+      retryMemberTask: retry
     })
   }
 
   /**
-   * 重新激活一个已结束的 Worker：保留原任务编号、历史与待办，带上新指令继续。
+   * 重新激活一个已结束的协作成员：保留原任务编号、历史与待办，带上新指令继续。
    * 与普通重试不同，允许 completed 任务；仍拒绝正在运行的项目，避免并发改同一任务。
    */
   reactivateSuperTask(
@@ -2668,7 +2668,7 @@ export class AgentService {
     const session = this.sessionStore.get(sessionId)
     if (!session) throw new Error('这个对话不存在了。')
     if (session.mode === 'chat' || session.mode === 'research') {
-      throw new Error('当前对话不是工作模式，不能重新激活 Worker。')
+      throw new Error('当前对话不是工作模式，不能重新激活协作成员。')
     }
     if (this.isSessionBusy(session.id)) throw new Error('当前对话正在运行；请等本轮结束后再重新激活。')
     const instruction = text.trim()
@@ -2688,7 +2688,7 @@ export class AgentService {
       throw new Error('这项任务仍在运行；请先停止它。')
     }
     session.superAgent = state
-    const userMessage = buildUserMessage(`重新激活 Worker「${task.title}」：${instruction}`)
+    const userMessage = buildUserMessage(`重新激活协作成员「${task.title}」：${instruction}`)
     userMessage.hidden = true
     const retry: SuperTaskRetryRequest = {
       projectId,
@@ -2706,7 +2706,7 @@ export class AgentService {
     }
     return this.startRun(session, { sessionId: session.id, text: '', hidden: true }, window, {
       userMessage,
-      retrySwarmTask: retry
+      retryMemberTask: retry
     })
   }
 
@@ -3280,7 +3280,7 @@ export class AgentService {
     session: Session,
     input: SendMessageInput,
     window: BrowserWindow | null,
-    options?: { userMessage?: ChatMessage; retrySwarmTask?: SuperTaskRetryRequest; resume?: CheckpointResume }
+    options?: { userMessage?: ChatMessage; retryMemberTask?: SuperTaskRetryRequest; resume?: CheckpointResume }
   ): SendMessageResult {
     if (this.deletedSessions.has(session.id)) throw new Error('这个对话已被删除。')
     const resolved = this.resolveProvider(session, input)
@@ -3445,7 +3445,7 @@ export class AgentService {
     const reasoningEffort = session.reasoningEffort ?? this.settingsStore.get().reasoningEffort
     const agents = loadAgentRoles(session.workspace)
     const globalSettings = this.settingsStore.get()
-    // 本机并发：自动模式给界面/Router 留一核；测试模式不额外占核，避免低核 CI 卡住并行用例。
+    // 本机并发：自动模式给界面/分发层留一核；测试模式不额外占核，避免低核 CI 卡住并行用例。
     const testMode = process.env.MORROW_TEST === '1' || process.argv.includes('--test-mode')
     const hostLimit = Math.max(1, Math.min(8, availableParallelism() - (testMode ? 0 : 1)))
     const configuredWorkers = globalSettings.collaborationMaxWorkers
@@ -3516,7 +3516,7 @@ export class AgentService {
           research: researchMode ? session.research ?? null : null,
           researchPlanning,
           planMode,
-          ...(options?.retrySwarmTask ? { retrySwarmTask: options.retrySwarmTask } : {}),
+          ...(options?.retryMemberTask ? { retryMemberTask: options.retryMemberTask } : {}),
           ...(options?.resume ? { resume: options.resume } : {}),
           ...(collaborationMode && session.superAgent ? { superAgentState: session.superAgent } : {}),
           collaborationRuntime: getCollaborationRuntime(),
@@ -4573,7 +4573,7 @@ export class AgentService {
       case 'permission_resolved': {
         const request = active.permissionRequests.get(event.requestId)
         active.permissionRequests.delete(event.requestId)
-        // Worker 被单独停止/审批等待被中断时，内核会补发 deny；这里同步移除挂起项。
+        // 协作成员被单独停止/审批等待被中断时，内核会补发 deny；这里同步移除挂起项。
         this.permissions.delete(event.requestId)
         if (request) {
           const rulesService = getPermissionRulesService()
@@ -4635,8 +4635,8 @@ export class AgentService {
             if (event.status) block.status = event.status
             if (event.title) block.title = event.title
             if (typeof event.percent === 'number') block.progressPercent = event.percent
-            if (event.swarmTask) {
-              block.swarmTasks = mergeSwarmTask(block.swarmTasks, event.swarmTask)
+            if (event.memberTask) {
+              block.memberTasks = mergeMemberTask(block.memberTasks, event.memberTask)
             }
           }
         }
@@ -4658,8 +4658,8 @@ export class AgentService {
                   ? 'success'
                   : 'error'
             block.finishedAt = Date.now()
-            const finalSwarmTasks = swarmTasksFromMeta(event.result.meta)
-            if (finalSwarmTasks.length > 0) block.swarmTasks = finalSwarmTasks
+            const finalMemberTasks = memberTasksFromMeta(event.result.meta)
+            if (finalMemberTasks.length > 0) block.memberTasks = finalMemberTasks
             const changedFiles = (event.result.meta as Record<string, unknown> | undefined)?.changedFiles
             if ((event.result.ok || Array.isArray(changedFiles)) && active.checkpointId) {
               try {
@@ -4798,7 +4798,7 @@ export class AgentService {
         session.superAgent = merged.state
         forwarded = { ...event, state: merged.state }
         if (merged.state.projectId) {
-          // 动作先落盘再允许 Worker 执行；落盘失败/只读时中止本次运行，避免无法恢复的副作用。
+          // 动作先落盘再允许协作成员执行；落盘失败/只读时中止本次运行，避免无法恢复的副作用。
           const sync = getCollaborationStore().syncSuperAgent({
             projectId: merged.state.projectId,
             sessionId: session.id,
@@ -5499,8 +5499,17 @@ export class AgentService {
           return { ok: false, summary: '', error: '这个终端/任务不存在，或不属于当前工作区。' }
         }
         if (input.action === 'read') {
-          const result = manager.read(input.id, input.tail)
-          return { ok: true, summary: '读取终端输出。', process: result.info, output: result.output }
+          // 默认等 30 秒：长任务刚启动时通常还没有输出，
+          // 立刻返回空快照会诱导模型反复重读（正是 Planwright 会话被频繁打断的原因）。
+          const waitMs = input.timeoutMs ?? 30_000
+          const result = await manager.readAndWait(input.id, input.tail, waitMs)
+          return {
+            ok: true,
+            summary: '读取终端输出。',
+            process: result.info,
+            output: result.output,
+            waitedMs: result.waitedMs
+          }
         }
         if (input.action === 'write') {
           const info = manager.write(input.id, input.data ?? '')
@@ -6307,7 +6316,7 @@ export class AgentService {
     this.updateTaskbar()
     for (const [id, pending] of this.permissions) {
       if (pending.sessionId !== active.sessionId) continue
-      // Router 本轮已结束，但后台 Worker 仍在本机运行：它的审批继续等用户处理，
+      // 分发层本轮已结束，但后台协作成员仍在本机运行：它的审批继续等用户处理，
       // 直到用户批准/拒绝，或该任务被单独停止后由 permission_resolved 清理。
       if (pending.projectId && pending.taskId && getCollaborationRuntime().hasTask(pending.projectId, pending.taskId)) {
         continue

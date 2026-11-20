@@ -1044,7 +1044,7 @@ button.message-diff-file-head:focus-visible {
 .message-edit-send {
   padding: 4px 12px;
   border-radius: var(--r-xs);
-  background: var(--gold);
+  background: var(--gold-fill, var(--gold));
   color: #14181d;
   font-size: var(--fs-sm-plus);
   font-weight: var(--fw-semibold);
@@ -1052,7 +1052,7 @@ button.message-diff-file-head:focus-visible {
 }
 
 .message-edit-send:hover:not(:disabled) {
-  background: var(--gold-bright);
+  background: var(--gold-fill-hover, var(--gold-bright));
 }
 
 .message-edit-send:disabled {

@@ -1,5 +1,5 @@
 /**
- * 合并后的 reveal 组：Agent 规则、内置技能、自定义命令/集群成员、权限规则、技能库、会话导出、文件管理器定位。
+ * 合并后的 reveal 组：Agent 规则、内置技能、自定义命令/协作成员、权限规则、技能库、会话导出、文件管理器定位。
  * 每个原文件各自包在 describe('<原文件名>') 中；本文件 mock 子进程，因此不包含依赖真实命令的用例。
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -217,7 +217,7 @@ afterEach(() => {
   }
 })
 
-describe('自定义集群成员类型', () => {
+describe('自定义协作成员类型', () => {
 
   it('@core:skills 内置角色始终存在；项目角色覆盖同名用户角色；内置名不可覆盖', () => {
     const home = tempDir('morrow-agents-home-')

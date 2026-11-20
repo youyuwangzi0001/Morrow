@@ -86,11 +86,13 @@ function DiffBody({ diff, truncated, binary }: { diff: string; truncated: boolea
 export function GitPanel({
   open,
   onClose,
-  workspace
+  workspace,
+  inline = false
 }: {
   open: boolean
   onClose: () => void
   workspace: string | null
+  inline?: boolean
 }): React.JSX.Element {
   const notify = useAppStore((s) => s.notify)
   const [status, setStatus] = useState<GitStatus | null>(null)
@@ -708,6 +710,7 @@ export function GitPanel({
       title="版本历史"
       description="查看文件改动、保存版本记录与浏览历史。只操作当前文件夹里的项目。"
       width={1060}
+      inline={inline}
     >
       <div className="git-panel">
         <div className="git-topbar">

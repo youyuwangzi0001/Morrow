@@ -297,6 +297,14 @@ const api: MorrowApi = {
     get: () => invoke<import('../shared/types').TokenActivitySummary>(IPC.tokenActivityGet)
   },
 
+  relayPair: {
+    issue: (input) =>
+      invoke<import('../shared/types').PairIssueResult>(IPC.relayPairIssue, input),
+    list: () => invoke<import('../shared/types').PairDeviceView[]>(IPC.relayPairList),
+    revoke: (deviceId: string) =>
+      invoke<{ revoked: boolean }>(IPC.relayPairRevoke, { deviceId })
+  },
+
   features: {
     invoke: async <T = unknown>(channel: string, payload?: unknown): Promise<import('../shared/types').Result<T>> => {
       if (!channel.startsWith('feature:')) {

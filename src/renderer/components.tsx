@@ -384,6 +384,7 @@ export function Modal({
   width = 560,
   layer = 'modal',
   closeOnBackdrop = true,
+  inline = false,
   ariaLabel
 }: {
   open: boolean
@@ -395,6 +396,8 @@ export function Modal({
   width?: number
   layer?: 'modal' | 'overlay' | 'palette'
   closeOnBackdrop?: boolean
+  /** 直接嵌进设置页等现有页面：不建遮罩、不抢 Esc，只保留内容区。 */
+  inline?: boolean
   ariaLabel?: string
 }): React.JSX.Element | null {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -409,7 +412,7 @@ export function Modal({
   if (!modalIdRef.current) modalIdRef.current = Symbol('modal')
 
   useEffect(() => {
-    if (!open) return
+    if (!open || inline) return
     const modalId = modalIdRef.current as symbol
     openModals.push(modalId)
     const isTopModal = (): boolean => openModals[openModals.length - 1] === modalId
@@ -466,9 +469,20 @@ export function Modal({
       window.clearTimeout(timer)
       previous?.focus?.()
     }
-  }, [open])
+  }, [open, inline])
 
   if (!open) return null
+
+  if (inline) {
+    return (
+      <ModalStackContext.Provider value={{ depth: stack.depth + 1 }}>
+        <div className="modal-inline" role="region" aria-label={ariaLabel}>
+          <div className="modal-inline-body">{children}</div>
+          {footer ? <div className="modal-inline-foot">{footer}</div> : null}
+        </div>
+      </ModalStackContext.Provider>
+    )
+  }
 
   return createPortal(
     <ModalStackContext.Provider value={{ depth: stack.depth + 1 }}>

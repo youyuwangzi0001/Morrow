@@ -35,7 +35,8 @@
     "predocs:capture": "npm run build",
     "prebuild": "node scripts/embed-prompts.mjs",
     "embed:prompts": "node scripts/embed-prompts.mjs",
-    "pretypecheck": "node scripts/embed-prompts.mjs --placeholder-ok"
+    "pretypecheck": "node scripts/embed-prompts.mjs --placeholder-ok",
+    "test:pair-panel": "playwright test --config playwright.pair.config.ts"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -60,6 +61,7 @@
     "@types/node": "24.10.0",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "5.0.4",
     "diff": "7.0.0",
     "electron": "^44.9.0",
@@ -177,6 +179,8 @@
     "mammoth": "^1.13.0",
     "node-pty": "^1.1.0",
     "pdf-parse": "^1.1.1",
-    "pdfjs-dist": "^6.4.299"
+    "pdfjs-dist": "^6.4.299",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.23.0"
   }
 }

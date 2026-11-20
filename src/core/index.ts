@@ -132,7 +132,7 @@ export type {
   ProviderStreamRequest,
   RuntimeEventPayload,
   ToolContext,
-  SwarmMemberRequest,
+  MemberRunRequest,
   TerminalToolHandler,
   TerminalToolInput,
   TerminalToolResponse

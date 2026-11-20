@@ -74,8 +74,8 @@ interface Waiter {
 }
 
 /**
- * 全局限流：跨 Router 批次/会话共用一个 Worker 并发上限。
- * 超过上限的 Worker 在内存里排队，不会启动模型请求；取消信号会直接退出队列。
+ * 全局限流：跨分发批次/会话共用一个协作成员并发上限。
+ * 超过上限的协作成员在内存里排队，不会启动模型请求；取消信号会直接退出队列。
  */
 export class WorkerSlotManager implements WorkerSlotPort {
   private active = 0
@@ -282,7 +282,7 @@ export class SharedResourceManager implements SharedResourcePort {
     }
   }
 
-  /** 会话删除时释放其主代理和所有 Worker 的租约。 */
+  /** 会话删除时释放其主代理和所有协作成员的租约。 */
   releaseSession(sessionId: string): void {
     for (const [resource, lease] of this.leases) {
       if (lease.owner.sessionId !== sessionId) continue
@@ -659,7 +659,7 @@ export class CollaborationStore {
     return projection.projectId ? projection : { ...projection, projectId }
   }
 
-  /** 保存一条发往指定任务或由 Worker 发出的协作消息；同一 idempotencyKey 重复提交只保留一条。 */
+  /** 保存一条发往指定任务或由协作成员发出的协作消息；同一 idempotencyKey 重复提交只保留一条。 */
   enqueueMessage(input: {
     projectId: string
     taskId?: string
@@ -701,7 +701,7 @@ export class CollaborationStore {
     return message
   }
 
-  /** Worker 在安全步取走待投递消息；领取即标记 delivered，第二次取不到。 */
+  /** 协作成员在安全步取走待投递消息；领取即标记 delivered，第二次取不到。 */
   drainMessages(input: { projectId: string; taskId: string; attemptId: string }): CollaborationMessage[] {
     const loaded = this.load(input.projectId)
     if (loaded.readOnly || !loaded.record) return []
@@ -1080,7 +1080,7 @@ function mergeTask(existing: SuperTask, incoming: SuperTask, preferIncomingPlan:
 
 /**
  * 主进程协作运行时：
- * - 把不同 Router 批次的任务合并成同一项目视图；
+ * - 把不同分发批次的任务合并成同一项目视图；
  * - 按批次 revision 丢弃重复/迟到快照；
  * - 登记后台任务的单独停止控制，供 IPC/驾驶舱调用。
  */
@@ -1115,7 +1115,7 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
   }
 
   /**
-   * 合并一个 Router 批次的快照。相同批次 revision 不高于上次时视为重复/迟到；
+   * 合并一个分发批次的快照。相同批次 revision 不高于上次时视为重复/迟到；
    * 任务按 taskId 合并，旧批次任务不会因为新批次发布而消失。
    */
   mergeBatch(state: SuperAgentState): MergedBatch {
@@ -1187,7 +1187,7 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
       ...baseWithoutFinish,
       runId: projectRunId(projectId),
       projectId,
-      // 新批次用新的 swarm 工具调用 id，重试/继续沿用原卡片。
+      // 新批次用新的 super_agent 工具调用 id，重试/继续沿用原卡片。
       ...(state.toolUseId || base.toolUseId
         ? { toolUseId: state.toolUseId ?? base.toolUseId }
         : {}),
@@ -1262,7 +1262,7 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
         try {
           this.getStore().markMessagesAdopted(input.projectId, [input.questionId, reply.id])
         } catch {
-          // 状态落盘失败不影响把答复交给 Worker
+          // 状态落盘失败不影响把答复交给协作成员
         }
         return { text: reply.text, messageId: reply.id }
       }
@@ -1270,9 +1270,9 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
     }
     if (!input.signal.aborted) {
       try {
-        this.getStore().failMessage(input.projectId, input.questionId, '10 分钟内没有收到主代理答复，Worker 已继续执行。')
+        this.getStore().failMessage(input.projectId, input.questionId, '10 分钟内没有收到主代理答复，协作成员已继续执行。')
       } catch {
-        // 问题状态保存失败不阻断 Worker
+        // 问题状态保存失败不阻断协作成员
       }
     }
     return null
@@ -1314,7 +1314,7 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
     try {
       control.setWaiting?.(input.waiting)
     } catch {
-      // 看门狗状态更新失败不能阻断 Worker 的审批流程
+      // 看门狗状态更新失败不能阻断协作成员的审批流程
     }
   }
 
@@ -1394,7 +1394,7 @@ export class CollaborationRuntime implements CollaborationRuntimePort {
     }
   }
 
-  /** 会话删除时撤销其后台任务，避免旧 Worker 继续写文件。 */
+  /** 会话删除时撤销其后台任务，避免旧协作成员继续写文件。 */
   stopProject(projectId: string): void {
     for (const control of [...this.controls.values()]) {
       if (control.projectId !== projectId) continue
@@ -1475,7 +1475,7 @@ export class CollaborationArtifactService implements CollaborationArtifactPort {
 
   private commit(state: SuperAgentState): SuperAgentState {
     getCollaborationRuntime().replaceProjectState(state)
-    // 独立事件批次：成果发布可能发生在 Router 批次之间，不能占用它的 revision 序列。
+    // 独立事件批次：成果发布可能发生在分发批次之间，不能占用它的 revision 序列。
     return { ...state, runId: 'artifact', revision: this.nextEventRevision() }
   }
 

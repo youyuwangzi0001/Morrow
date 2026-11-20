@@ -10,9 +10,10 @@
 //   单文件版：csc ... -resource:app.zip,MorrowApp.zip MorrowLauncher.cs
 //   文件夹版：csc ... -define:FOLDER_MODE MorrowLauncher.cs（输出为文件夹里的 Morrow.exe，
 //            启动同目录的 Morrow-app.exe；不再需要内部 zip）
-// 两种形态都会给应用追加 --no-sandbox：本机/受限启动环境下 Chromium 沙箱会在初始化阶段
-// 直接崩溃（0x80000003，进程秒退、无窗口），而应用只渲染本地内容，工具层仍有工作区沙箱与
-// 审批机制；这是为了让双击一定能打开的兼容性取舍。
+// 两种形态默认都**保留** Chromium 沙箱启动，只在真的撞上 0x80000003 时才降级重试一次。
+// 早期版本无条件追加 --no-sandbox，那是因为当时本机沙箱「必然崩溃」；后来查清那个崩溃
+// 的根因是产物继承了交付目录的 Low 完整性标签（进程完整性由镜像标签决定，Low 进程里
+// 沙箱必然初始化失败），打包脚本已把产物重置为 Medium，前提不再成立。详见下方启动处注释。
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -35,6 +36,18 @@ internal static class MorrowLauncher
     private const string ZipResourceName = "MorrowApp.zip";
     private const string RuntimeStampFile = ".morrow-runtime-complete";
     private const string BrokerArgument = "--shell-broker";
+
+    /// <summary>
+    /// Chromium 沙箱初始化失败时的退出码 0x80000003（STATUS_BREAKPOINT）。
+    /// 崩溃发生在主进程建窗之前，进程会几乎立刻退出，因此可以用「短等待 + 退出码」识别。
+    /// </summary>
+    private const int SandboxInitFailureExitCode = unchecked((int)0x80000003);
+
+    /// <summary>
+    /// 观察应用是否还活着的窗口期。沙箱崩溃在这个时间内一定发生；
+    /// 正常启动时进程会活过这段时间，随后交给监视线程。
+    /// </summary>
+    private const int SandboxProbeWaitMilliseconds = 8000;
     private static string cachedRuntimeStamp;
 #if FOLDER_MODE
     private const bool FolderMode = true;
@@ -118,9 +131,24 @@ internal static class MorrowLauncher
             startInfo.UseShellExecute = false;
             // 从 DSH/工作流终端继承的 ELECTRON_RUN_AS_NODE 会让 Electron 以 Node 模式启动并拒绝 --no-sandbox
             startInfo.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE");
-            // 兼容性：本机在带 Chromium 沙箱启动时会在初始化阶段直接崩溃，必须禁用沙箱。
-            // 应用仅渲染本地内容；工具权限沙箱、工作区边界与审批不受影响。
-            startInfo.Arguments = "--no-sandbox " + JoinArguments(args);
+            /*
+             * 沙箱：默认保留（2026-11-21 更正）
+             *
+             * 以前这里无条件追加 --no-sandbox。当时的前提是「本机 Chromium 沙箱在初始化
+             * 阶段必然崩溃（0x80000003）」，后来查清那个崩溃的真正原因是产物继承了交付
+             * 目录的 Low 完整性标签 —— 进程完整性由镜像文件的标签决定，Low 进程里沙箱
+             * 必然初始化失败。打包脚本已经把产物重置为 Medium（见 scripts/dist-portable.mjs
+             * 的 ensureMediumIntegrity / ensureMediumTree），前提已不成立。
+             *
+             * 实测：Medium 标签下不带 --no-sandbox，renderer 带 --enable-sandbox 正常运行，
+             * 退出码不是 0x80000003。
+             *
+             * 因此改为「先保留沙箱启动，只在真的撞上 0x80000003 时才降级重试一次」，
+             * 与 Planwright 的 launcher.nsi 采用同一策略：正常路径不再牺牲安全性，
+             * 受限环境仍有兜底。
+             */
+            string launchArgs = JoinArguments(args);
+            startInfo.Arguments = launchArgs;
             startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_DIR"] = exeDir;
             startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_FILE"] = exePath;
             startInfo.EnvironmentVariables["PORTABLE_EXECUTABLE_APP_FILENAME"] = AppExeName;
@@ -133,6 +161,38 @@ internal static class MorrowLauncher
             {
                 throw new InvalidOperationException("Morrow-app.exe 未能启动。");
             }
+
+            /*
+             * 沙箱探测：Chromium 沙箱初始化失败发生在主进程建窗之前，进程会几乎立刻以
+             * 0x80000003（有符号 -2147483645）退出。给一个几秒的观察窗口：
+             *   · 窗口期内没退出  → 沙箱正常，继续按原参数运行；
+             *   · 以 0x80000003 退出 → 确实起不来，带 --no-sandbox 重试一次。
+             * 正常路径不再牺牲沙箱；受限环境仍有兜底。
+             */
+            if (appProcess.WaitForExit(SandboxProbeWaitMilliseconds))
+            {
+                int probeCode = 1;
+                try
+                {
+                    probeCode = appProcess.ExitCode;
+                }
+                catch
+                {
+                    probeCode = 1;
+                }
+
+                if (probeCode == SandboxInitFailureExitCode)
+                {
+                    appProcess.Dispose();
+                    startInfo.Arguments = "--no-sandbox " + launchArgs;
+                    appProcess = Process.Start(startInfo);
+                    if (appProcess == null)
+                    {
+                        throw new InvalidOperationException("Morrow-app.exe 降级重试也未能启动。");
+                    }
+                }
+            }
+
             // 应用退出后由后台监视线程结束启动器与外部代理；主线程继续提供代理服务。
             Thread monitor = new Thread(() =>
             {

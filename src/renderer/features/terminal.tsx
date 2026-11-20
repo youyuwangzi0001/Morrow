@@ -46,13 +46,13 @@ function xtermTheme(theme: ThemeMode): ITheme {
   return {
     background: '#00000000',
     foreground: light ? '#1b1a17' : '#ede7da',
-    cursor: light ? '#8a6a3c' : '#c8ae7d',
+    cursor: light ? '#7a5418' : '#c8ae7d',
     cursorAccent: light ? '#f1ede4' : '#0b0d10',
-    selectionBackground: light ? 'rgba(138, 106, 60, 0.24)' : 'rgba(200, 174, 125, 0.28)',
+    selectionBackground: light ? 'rgba(122, 84, 24, 0.24)' : 'rgba(200, 174, 125, 0.28)',
     black: light ? '#3a352c' : '#1c2026',
     red: light ? '#a2543f' : '#d08b76',
     green: light ? '#4f7263' : '#94b8a4',
-    yellow: light ? '#8a6a2f' : '#d8bd86',
+    yellow: light ? '#7a5418' : '#d8bd86',
     blue: light ? '#4f6887' : '#93aecb',
     magenta: light ? '#7c5a72' : '#c3a2bc',
     cyan: light ? '#4b7476' : '#93bfc0',
@@ -323,6 +323,7 @@ export function TerminalPanel({
   const heightRef = useRef(height)
   heightRef.current = height
   const autoOpenedFor = useRef<string | null>(null)
+  const autoClosedId = useRef<string | null>(null)
 
   const active = useMemo(
     () => processes.find((process) => process.id === activeId) ?? null,
@@ -412,6 +413,7 @@ export function TerminalPanel({
           return copy
         })
       } else if (event.type === 'removed') {
+        if (event.autoClosed) autoClosedId.current = event.id
         setProcesses((previous) => previous.filter((item) => item.id !== event.id))
         setTaskLogs((previous) => {
           const next = { ...previous }
@@ -423,6 +425,16 @@ export function TerminalPanel({
     })
     return off
   }, [workspace])
+
+  // 一次性命令结束、窗口自动收起后，如果终端里已经没有其它标签，就一并关闭面板。
+  // 等被移除的标签真正从 processes 里消失再判断：事件到达时这次 state 更新可能还没提交。
+  useEffect(() => {
+    const closedId = autoClosedId.current
+    if (!closedId) return
+    if (processes.some((process) => process.id === closedId)) return
+    autoClosedId.current = null
+    if (open && processes.length === 0) onClose()
+  }, [processes, open, onClose])
 
   // 当前标签被关闭后，自动切到同工作区的下一个终端
   useEffect(() => {

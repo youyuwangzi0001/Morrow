@@ -1,7 +1,7 @@
 {
   "version": 1,
   "limits": {
-    "unit": 662,
+    "unit": 965,
     "e2e": 96
   },
   "features": [
@@ -18,8 +18,8 @@
       "e2e": true
     },
     {
-      "id": "swarm",
-      "title": "集群派发、权限继承与汇总",
+      "id": "superagent",
+      "title": "成员协作派发、权限继承与汇总",
       "unit": true,
       "e2e": true
     },
@@ -256,6 +256,12 @@
       "title": "焦点环、读屏播报、焦点陷阱与减少动效",
       "unit": true,
       "e2e": true
+    },
+    {
+      "id": "relay",
+      "title": "跨设备远程通道、配对、通道降级与鉴权",
+      "unit": true,
+      "e2e": false
     }
   ]
 }

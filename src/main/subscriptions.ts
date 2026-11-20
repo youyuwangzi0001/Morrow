@@ -3912,9 +3912,12 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
     : 'https://commandcode.ai'
   return {
     'access-control-allow-origin': allowed,
+    'access-control-allow-credentials': 'true',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, authorization, x-requested-with',
     'access-control-allow-private-network': 'true',
+    'access-control-max-age': '600',
+    'cross-origin-resource-policy': 'cross-origin',
     vary: 'origin'
   }
 }

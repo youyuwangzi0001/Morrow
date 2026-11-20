@@ -2,11 +2,13 @@
 
 /* 集成终端：底部停靠、标签页、真实 PTY 输出。 */
 
+/* 终端只贴在 Agent 对话列底部：画布/侧聊打开时对话列收窄，终端随之收窄，
+   不会横跨到右侧画布下方。绝对定位相对 .app-conversation。 */
 .terminal-dock {
-  position: fixed;
+  position: absolute;
   right: 0;
   bottom: 0;
-  left: var(--app-sidebar-width, 0px);
+  left: 0;
   z-index: var(--z-overlay);
   display: none;
   flex-direction: column;

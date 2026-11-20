@@ -231,14 +231,14 @@ test('super-agent screen', async () => {
   const mock = await startMockLLM({
     respond: (ctx: { body: unknown }) => {
       const raw = JSON.stringify(ctx.body ?? {})
-      if (!raw.includes('## 集群成员')) {
+      if (!raw.includes('## 协作成员')) {
         mainCalls += 1
         if (mainCalls === 1) {
           return {
-            text: '我把任务拆成两个 Worker：先定位登录入口，再审查风险。',
+            text: '我把任务拆成两个协作成员：先定位登录入口，再审查风险。',
             toolCalls: [
               {
-                name: 'swarm',
+                name: 'super_agent',
                 arguments: {
                   goal: '检查登录流程',
                   max_parallel: 2,
@@ -262,9 +262,9 @@ test('super-agent screen', async () => {
         }
         return { text: '协作任务完成：入口已定位，未发现高危问题。' }
       }
-      if (raw.includes('## 集群成员')) {
+      if (raw.includes('## 协作成员')) {
         return {
-          text: raw.includes('你是代码侦察型集群成员') ? '探索完成：入口在 src/auth/login.ts。' : '审查完成：未发现高危问题，建议补一个锁定测试。',
+          text: raw.includes('你是代码侦察型协作成员') ? '探索完成：入口在 src/auth/login.ts。' : '审查完成：未发现高危问题，建议补一个锁定测试。',
           delayMs: 2500
         }
       }

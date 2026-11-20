@@ -9,9 +9,9 @@ import { ScheduledTasksPanel } from './schedules'
 import { ConnectorsPanel } from './connectors'
 import SearchPanel from './search'
 import BrowserSurface from './browser'
-import { TerminalPanel } from './terminal'
 import { GitPanel } from './git'
 import { maxCanvasWidthForViewport, useAppStore } from '../store'
+import { useStudioStore } from './studio-core'
 import type { WorkbenchPanel } from './workbench-core'
 import { WORKBENCH_EVENT, CLOSE_BROWSER_EVENT, parseWorkbenchPanel } from './workbench-core'
 
@@ -24,6 +24,7 @@ const BROWSER_MIN_WIDTH = 320
 export function BrowserDock(): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [hidden, setHidden] = useState(false)
+  const studioOpen = useStudioStore((s) => s.open)
   const canvasWidth = useAppStore((s) => s.canvasWidth)
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
@@ -72,10 +73,10 @@ export function BrowserDock(): React.JSX.Element | null {
   }, [])
 
   useEffect(() => {
-    const active = open && !hidden
+    const active = open && !hidden && !studioOpen
     document.body.classList.toggle('is-browser-dock-open', active)
     return () => document.body.classList.remove('is-browser-dock-open')
-  }, [open, hidden])
+  }, [open, hidden, studioOpen])
 
   if (!open) return null
 
@@ -96,10 +97,11 @@ export function BrowserDock(): React.JSX.Element | null {
         className={['canvas-root', 'browser-dock', hidden ? 'is-hidden' : ''].filter(Boolean).join(' ')}
         style={{ width }}
         aria-label="电脑操作"
+        aria-hidden={studioOpen || undefined}
       >
         <BrowserSurface
           open
-          visible={!hidden}
+          visible={!hidden && !studioOpen}
           onHide={() => setHidden(true)}
           onClose={() => {
             setOpen(false)
@@ -120,9 +122,7 @@ export function WorkbenchHost(): React.JSX.Element {
   const [panelWorkspace, setPanelWorkspace] = useState<string | null>(null)
   const [projectView, setProjectView] = useState<'home' | 'settings'>('home')
   const workspace = useAppStore((s) => s.session?.workspace ?? s.settings.lastWorkspace ?? null)
-  const terminalOpen = useAppStore((s) => s.terminalOpen)
   const openTerminal = useAppStore((s) => s.openTerminal)
-  const closeTerminal = useAppStore((s) => s.closeTerminal)
 
   useEffect(() => {
     const onEvent = (event: Event): void => {
@@ -165,7 +165,6 @@ export function WorkbenchHost(): React.JSX.Element {
       />
       <ScheduledTasksPanel open={panel === 'schedules'} onClose={close} />
       <ConnectorsPanel open={panel === 'connectors'} onClose={close} />
-      <TerminalPanel open={terminalOpen} onClose={closeTerminal} workspace={workspace} />
       <GitPanel open={panel === 'git'} onClose={close} workspace={workspace} />
       <SearchPanel
         open={panel === 'search'}

@@ -1,7 +1,8 @@
 // 会话仓库、导出、快照与检查点：由 session-*、snapshot-restore、checkpoint-service 扁平合并。
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync, copyFileSync, openSync, readSync, closeSync, realpathSync, statSync, lstatSync } from 'node:fs'
 import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
-import type { ChatMessage, CollaborationArtifact, CollaborationArtifactUsage, CollaborationAttempt, CollaborationConflict, CollaborationStatusChange, CollaborationVerification, CreateSessionInput, Goal, ModelRef, PermissionMode, ReasoningEffort, ResearchState, Session, SessionMeta, SessionMode, SessionPlan, TodoItem, Usage, CheckpointFile, CheckpointReplayPreview, RewindConflict, RewindPreview, RewindResult, RewindScope, TurnCheckpoint, SuperAgentState, SuperTask, SwarmOperation, PlanNeed, PlanRevisionSnapshot, WorkspaceCopyInfo } from '../shared/types'
+import type { ChatMessage, MemberTaskProgress, CollaborationArtifact, CollaborationArtifactUsage, CollaborationAttempt, CollaborationConflict, CollaborationStatusChange, CollaborationVerification, CreateSessionInput, Goal, ModelRef, PermissionMode, ReasoningEffort, ResearchState, Session, SessionMeta, SessionMode, SessionPlan, TodoItem, Usage, CheckpointFile, CheckpointReplayPreview, RewindConflict, RewindPreview, RewindResult, RewindScope, TurnCheckpoint, SuperAgentState, SuperTask, MemberOperation, PlanNeed, PlanRevisionSnapshot, WorkspaceCopyInfo } from '../shared/types'
+import { SUPER_AGENT_TOOL } from '../shared/types'
 import { collaborationProjectId, normalizeStuckAlert, normalizeSuperAgentCollaboration } from '../shared/contracts'
 import { buildCheckpointReplay } from '../shared/checkpoint'
 import { RESTORE_MANIFEST_FILE, superProgressOf, userMessageDisplayText, messagePlainText } from '../shared/types'
@@ -26,6 +27,27 @@ function isStoredMessage(value: unknown): value is ChatMessage {
     ['user', 'assistant', 'tool', 'system'].includes(message.role) &&
     Array.isArray(message.content)
   )
+}
+
+/**
+ * 旧版本把成员协作存成 `swarm`：工具名和进度字段都是旧名。
+ * 读取时统一成本版命名，旧会话的成员卡片才能照常展开。
+ */
+function upgradeLegacyMemberRun(message: ChatMessage): ChatMessage {
+  let changed = false
+  const content = message.content.map((block) => {
+    if (block.type !== 'tool_use') return block
+    const legacy = block as typeof block & { swarmTasks?: MemberTaskProgress[]; swarmTask?: MemberTaskProgress }
+    const legacyTasks = legacy.memberTasks ?? legacy.swarmTasks
+    const name = legacy.name === 'swarm' ? SUPER_AGENT_TOOL : legacy.name
+    if (name === legacy.name && legacyTasks === legacy.memberTasks) return block
+    changed = true
+    const next = { ...block, name } as typeof block & { swarmTasks?: MemberTaskProgress[] }
+    if (legacyTasks) next.memberTasks = legacyTasks
+    delete next.swarmTasks
+    return next
+  })
+  return changed ? { ...message, content } : message
 }
 
 function isStoredGoal(value: unknown): value is Goal {
@@ -284,7 +306,7 @@ function normalizeStoredSuperAgent(raw: unknown, fallbackProjectId?: string): Su
       ? task.dependsOn.filter((dep): dep is string => typeof dep === 'string').slice(0, 20)
       : []
     const operations = Array.isArray(task.operations)
-      ? (task.operations.filter((operation) => operation && typeof operation === 'object') as SwarmOperation[]).slice(0, 200)
+      ? (task.operations.filter((operation) => operation && typeof operation === 'object') as MemberOperation[]).slice(0, 200)
       : undefined
     const attemptHistory = Array.isArray(task.attemptHistory)
       ? (task.attemptHistory
@@ -539,7 +561,9 @@ function normalizeStoredSession(raw: unknown, expectedId?: string): Session | nu
   const id = typeof item.id === 'string' ? item.id : expectedId
   if (!id || !SAFE_ID.test(id) || (expectedId && id !== expectedId)) return null
 
-  const messages = Array.isArray(item.messages) ? item.messages.filter(isStoredMessage) : []
+  const messages = Array.isArray(item.messages)
+    ? item.messages.filter(isStoredMessage).map(upgradeLegacyMemberRun)
+    : []
   const todos = Array.isArray(item.todos) ? (item.todos as TodoItem[]) : []
   const artifacts = Array.isArray(item.artifacts) ? (item.artifacts as Session['artifacts']) : []
   const usageRaw = item.usage && typeof item.usage === 'object' ? (item.usage as Record<string, unknown>) : {}
@@ -1442,7 +1466,7 @@ export class CheckpointService {
     return checkpoint
   }
 
-  /** 写/编辑工具成功后登记文件；集群成员通过 meta.changedFiles 批量上报。 */
+  /** 写/编辑工具成功后登记文件；协作成员通过 meta.changedFiles 批量上报。 */
   recordToolResult(sessionId: string, checkpointId: string, meta: Record<string, unknown> | undefined): void {
     if (!meta || !CHECKPOINT_SAFE_ID.test(sessionId) || !CHECKPOINT_SAFE_ID.test(checkpointId)) return
     const checkpoint = this.get(sessionId, checkpointId)

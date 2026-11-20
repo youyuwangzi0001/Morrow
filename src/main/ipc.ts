@@ -38,6 +38,8 @@ import { getSettingsStore } from './settings'
 import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
+import { applyRelaySettings, currentPairing } from '../relay'
+import { issuePairTicket, listPairDevices, revokePairDevice } from '../relay/pair-api'
 import {
   getCollaborationRuntime,
   getCollaborationStore,
@@ -410,6 +412,29 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  /**
+   * 手机配对三条通道。
+   *
+   * 逻辑全在 `pair-api.ts`（可单测），这里只做转发。
+   * `pair-api` 返回的已经是 `Result`，所以不需要 try/catch —— 多写一层
+   * 反而会把「已分类的错误码」压成一句 `PAIR_FAILED`。
+   *
+   * 每次调用都现取 `currentPairing()`：远程通道可能在两次点击之间被关掉，
+   * 缓存实例会让界面继续对着一个已经停掉的服务签发票据。
+   */
+  ipcMain.handle(
+    IPC.relayPairIssue,
+    (_e, input: { deviceId: string; phonePubKey: string; relayHint?: string }): Result<unknown> =>
+      issuePairTicket(currentPairing(), input)
+  )
+
+  ipcMain.handle(IPC.relayPairList, (): Result<unknown> => listPairDevices(currentPairing()))
+
+  ipcMain.handle(
+    IPC.relayPairRevoke,
+    (_e, payload: { deviceId: string }): Result<unknown> => revokePairDevice(currentPairing(), payload?.deviceId)
+  )
+
   ipcMain.handle(IPC.openExternal, async (_e, payload: { url: string }): Promise<Result<void>> => {
     const url = payload?.url ?? ''
     if (!/^https?:\/\//i.test(url)) return fail('INVALID_URL', '只能打开 http(s) 链接。')
@@ -588,7 +613,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.settingsGet, (): Result<unknown> => ok(getSettingsStore().get()))
 
-  ipcMain.handle(IPC.settingsUpdate, (_e, patch: UpdateSettingsInput): Result<unknown> => {
+  ipcMain.handle(IPC.settingsUpdate, async (_e, patch: UpdateSettingsInput): Promise<Result<unknown>> => {
     try {
       const previous = getSettingsStore().get()
       const settings = getSettingsStore().update(patch)
@@ -604,8 +629,32 @@ export function registerIpcHandlers(): void {
           throw new Error(`快捷键没有保存：${status.reason ?? '系统拒绝了全局快捷键。'}`)
         }
       }
+      // 远程通道开关必须**当场生效**。不重启 relay 的话会出现两种错：
+      // 打开开关后点「生成配对码」得到「远程通道没有开启」（开关明明是开的）；
+      // 关掉开关后监听端口还开着（用户以为关了，其实没关 —— 安全含义更重）。
+      //
+      // 失败不回滚设置：开关状态是用户意图，起不来是环境问题
+      // （端口被占 / 证书生成失败）。回滚会让用户看到「打开 → 又变回关」
+      // 却不知道原因。改成如实报错，让人能重试或改端口。
+      let relayError: string | null = null
+      if (
+        Object.prototype.hasOwnProperty.call(patch ?? {}, 'relayEnabled') ||
+        Object.prototype.hasOwnProperty.call(patch ?? {}, 'relayPort')
+      ) {
+        try {
+          await applyRelaySettings()
+        } catch (err) {
+          relayError = err instanceof Error ? err.message : '远程通道没能启动'
+        }
+      }
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) win.webContents.send(IPC.settingsChanged, settings)
+      }
+      if (relayError) {
+        log.warn('relay settings saved but relay failed to start', { error: relayError })
+        // 设置已落盘（上面已广播 settingsChanged），但通道没起来。
+        // 用 fail 是为了让界面能立刻提示，而不是让用户下一次点配对才发现。
+        return fail('RELAY_START_FAILED', `设置已保存，但远程通道没能启动：${relayError}`)
       }
       return ok(settings)
     } catch (err) {
@@ -996,7 +1045,7 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         return fail(
           'COLLABORATION_REACTIVATE_FAILED',
-          err instanceof Error ? err.message : '重新激活 Worker 失败，请稍后再试。'
+          err instanceof Error ? err.message : '重新激活协作成员失败，请稍后再试。'
         )
       }
     }

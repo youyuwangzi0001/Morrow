@@ -46,7 +46,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_docx: '阅读文档',
   read_pptx: '阅读演示文稿',
   read_xlsx: '阅读表格',
-  swarm: '集群协作',
+  super_agent: '成员协作',
   todo_write: '更新计划',
   generate_image: '生成图片',
   generate_video: '生成视频',

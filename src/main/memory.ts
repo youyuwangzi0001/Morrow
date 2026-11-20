@@ -4406,6 +4406,19 @@ export class WebSearchService {
             maxResults,
             signal: controller.signal
           })
+          // 有些渠道会返回一段“答案”却没有可引用来源（模型没有真的执行搜索，
+          // 或只总结了旧知识）。这种结果不能算搜索成功：再用内置搜索补一次来源。
+          if (response.sources.length === 0) {
+            try {
+              const fallback = await this.searchBuiltin(query, maxResults, options.signal)
+              fallback.provider = `${fallback.provider}（原生搜索没有返回可引用来源）`
+              if (response.answer?.trim()) fallback.answer = response.answer.trim()
+              response = fallback
+            } catch {
+              // 内置搜索也不可用时保留原生回答；它至少可能是一段有用的概述，
+              // 但 sources 为空会让上层明确提示“不要编造引用”。
+            }
+          }
         } catch (err) {
           if (options.signal?.aborted) throw err
           if (!(err instanceof NativeSearchError)) throw err

@@ -7,6 +7,7 @@ import { useAppStore } from '../store'
 import { DiffView } from '../components'
 import { extractDiff, toolStatusLabel, toolSummary, fileDiffEvents } from './activity-core'
 import { formatBytes } from '@shared/types'
+import { isSuperAgentTool } from '@shared/types'
 import { stripToolProtocol } from '@shared/types'
 import { messagePlainText, userMessageDisplayText, positionCompactionNotices } from '@shared/types'
 import { Markdown } from '../components'
@@ -17,7 +18,7 @@ import { Kbd, HorizonLoader } from '../components'
 import { PermissionCard } from './activity'
 import { QuestionCard } from './activity'
 import { CollaborationStandalone } from './superagent'
-import { isCurrentSwarmBlock } from './activity-core'
+import { isCurrentMemberBlock } from './activity-core'
 import { preferredScrollBehavior } from '@shared/motion'
 
 interface DiffDetail {
@@ -1037,19 +1038,19 @@ export function ExecutionGroup({
   const [open, setOpen] = useState(false)
   const superAgent = useAppStore((s) => s.session?.superAgent ?? null)
   const bodyId = useId()
-  const hasCurrentSwarm = useMemo(
+  const hasCurrentMemberBlock = useMemo(
     () =>
       messages.some((message) =>
         message.content.some(
-          (block) => block.type === 'tool_use' && block.name === 'swarm' && isCurrentSwarmBlock(superAgent, block)
+          (block) => block.type === 'tool_use' && isSuperAgentTool(block.name) && isCurrentMemberBlock(superAgent, block)
         )
       ),
     [messages, superAgent]
   )
   useEffect(() => {
     // 当前协作可能夹在一组工具调用里：默认展开，确保主界面驾驶舱不会被折叠藏住。
-    if (hasCurrentSwarm) setOpen(true)
-  }, [hasCurrentSwarm])
+    if (hasCurrentMemberBlock) setOpen(true)
+  }, [hasCurrentMemberBlock])
   const stats = useMemo(() => {
     let toolCount = 0
     let failed = 0

@@ -896,8 +896,9 @@ function compileLauncher(outPath, options = {}) {
 /**
  * 把 electron-builder 的 win-unpacked 变成「文件夹版」：
  *   Morrow.exe（Electron）→ Morrow-app.exe；再放一个小的 C# 启动器作为 Morrow.exe。
- * 启动器会追加 --no-sandbox 再启动应用——本机/受限环境下 Chromium 沙箱会在初始化阶段
- * 直接崩溃（0x80000003，双击无窗口、进程秒退），这是为了确保双击一定能打开的兼容取舍。
+ * 启动器默认保留 Chromium 沙箱，只在真的撞上 0x80000003（沙箱初始化失败）时才降级重试。
+ * 早期版本无条件追加 --no-sandbox，那是因为产物继承了交付目录的 Low 完整性标签而必然崩溃；
+ * 标签问题已在 ensureMediumIntegrity / ensureMediumTree 里处理，前提不再成立。
  */
 function prepareUnpackedWithLauncher() {
   const electronExe = join(winUnpacked, 'Morrow.exe')
@@ -907,7 +908,7 @@ function prepareUnpackedWithLauncher() {
     renameSync(electronExe, appExe)
   }
   compileLauncher(join(winUnpacked, 'Morrow.exe'), { defineFolder: true })
-  logLine('[dist] 已生成文件夹启动器 Morrow.exe（→ Morrow-app.exe，自动 --no-sandbox）')
+  logLine('[dist] 已生成文件夹启动器 Morrow.exe（→ Morrow-app.exe，保留沙箱，失败才降级）')
 }
 
 function zipFolder() {
@@ -1146,7 +1147,7 @@ try {
         app: signatureSummary(folderAppSig)
       },
       note:
-        '推荐交付形态：Morrow.exe 为轻量启动器（带完整 Win32 manifest，自动 --no-sandbox 后启动 Morrow-app.exe），' +
+        '推荐交付形态：Morrow.exe 为轻量启动器（带完整 Win32 manifest，保留 Chromium 沙箱启动 Morrow-app.exe），' +
         '无需解压/不依赖 %TEMP%；含 portable.marker（数据目录跟随 exe）；' +
         '未签名时首次运行仍可能被 SmartScreen 拦截，需「更多信息 → 仍要运行」；配置受信任证书后打包会自动签名。'
     }

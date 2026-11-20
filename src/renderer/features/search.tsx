@@ -30,6 +30,7 @@ export interface SearchPanelProps {
   /** 当前文件夹；不传则由主进程使用最近文件夹（文件结果按文件夹隔离） */
   workspace?: string | null
   initialQuery?: string
+  inline?: boolean
 }
 
 const EMPTY_RESULT: SearchResponse = {
@@ -80,7 +81,8 @@ export default function SearchPanel({
   onClose,
   onNavigate,
   workspace = null,
-  initialQuery = ''
+  initialQuery = '',
+  inline = false
 }: SearchPanelProps): JSX.Element | null {
   const [query, setQuery] = useState(initialQuery)
   const [scope, setScope] = useState<'all' | 'workspace'>('all')
@@ -233,8 +235,17 @@ export default function SearchPanel({
   }
 
   return (
-    <div className="search-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="search-dialog" role="dialog" aria-modal="true" aria-label="全局搜索">
+    <div
+      className={['search-overlay', inline ? 'is-inline' : ''].filter(Boolean).join(' ')}
+      role="presentation"
+      onMouseDown={(event) => !inline && event.target === event.currentTarget && onClose()}
+    >
+      <div
+        className="search-dialog"
+        role={inline ? 'region' : 'dialog'}
+        aria-modal={inline ? undefined : 'true'}
+        aria-label="全局搜索"
+      >
         <div className="search-input-row">
           <Search size={16} className="search-input-icon" aria-hidden />
           <input
@@ -248,9 +259,11 @@ export default function SearchPanel({
             autoComplete="off"
           />
           {loading ? <Loader2 size={15} className="search-spinner" aria-label="搜索中" /> : null}
-          <button type="button" className="search-close" onClick={onClose} title="关闭（Esc）" aria-label="关闭搜索">
-            <X size={15} aria-hidden />
-          </button>
+          {inline ? null : (
+            <button type="button" className="search-close" onClick={onClose} title="关闭（Esc）" aria-label="关闭搜索">
+              <X size={15} aria-hidden />
+            </button>
+          )}
         </div>
 
         <div className="search-scope-row" role="group" aria-label="搜索范围">

@@ -14,6 +14,25 @@
   backdrop-filter: blur(3px);
 }
 
+/* 设置页里的全局搜索：不再悬浮，作为普通页面占满宽度。 */
+.search-overlay.is-inline {
+  position: static;
+  z-index: auto;
+  display: block;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+}
+
+.search-overlay.is-inline .search-dialog {
+  width: 100%;
+  max-height: none;
+  height: min(620px, calc(100vh - 300px));
+  min-height: 320px;
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+
 .search-dialog {
   width: min(720px, 92vw);
   max-height: 74vh;

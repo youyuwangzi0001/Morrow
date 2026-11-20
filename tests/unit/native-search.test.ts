@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelInfo, ProviderConfig } from '../../src/shared/types'
 import { nativeSearch, nativeSearchProtocol, nativeSearchSupported, NativeSearchError } from '../../src/main/native-search'
-import { decodeSearchHtml, parseBingHtml, parseDuckDuckGoHtml, unwrapBingUrl } from '../../src/main/builtin-search'
+import { decodeSearchHtml, parseBingHtml, parseDuckDuckGoHtml, rankSearchSources, unwrapBingUrl } from '../../src/main/builtin-search'
 import { isProxyUnavailableError, parseProxyRule } from '../../src/core/web-proxy'
 
 function config(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
@@ -78,6 +78,19 @@ describe('模型原生搜索', () => {
       url: 'https://rog.asus.com/spec/',
       snippet: '28 相供电 & 双雷电'
     })
+
+    // Bing 在部分网络会返回与查询完全无关的缓存页；相关性核对必须把它们清掉，
+    // 且 `morrow` 不能因为出现在 `tomorrow` 里就算命中。
+    const ranked = rankSearchSources(
+      [
+        { rank: 1, title: 'Morrow AI agent 文档', url: 'https://morrow.example/docs', snippet: '长任务与协作' },
+        { rank: 2, title: '座头鲸 - 百度百科', url: 'https://baike.baidu.com/item/座头鲸', snippet: '海洋生物' },
+        { rank: 3, title: 'tomorrow weather', url: 'https://example.com/weather', snippet: 'forecast' }
+      ],
+      'Morrow AI agent'
+    )
+    expect(ranked.map((source) => source.title)).toEqual(['Morrow AI agent 文档'])
+    expect(rankSearchSources([{ rank: 1, title: 'tomorrow weather', url: 'https://example.com/weather', snippet: 'forecast' }], 'morrow')).toEqual([])
   })
 
   it('@core:web 解析 OpenAI Responses 与 Anthropic 搜索来源', async () => {

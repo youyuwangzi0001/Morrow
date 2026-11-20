@@ -812,18 +812,15 @@ export async function createSession(
 }
 
 /**
- * 从「设置 → 更多功能」打开一个真实功能面板。
+ * 从设置左侧打开一个已经拆成独立分页的功能。
  * 兼容旧测试里的工作台面板名，避免每处都记新文案。
  */
 export async function openToolPanel(page: Page, label: string): Promise<void> {
   const titles: Record<string, string> = {
     技能库: '技能',
     记忆中心: '记忆',
-    项目: '项目',
     连接器: '外部工具',
     全局搜索: '全局搜索',
-    内置浏览器: '浏览器',
-    浏览器: '浏览器',
     Git: '版本记录',
     'Git 工作台': '版本记录'
   }
@@ -831,7 +828,6 @@ export async function openToolPanel(page: Page, label: string): Promise<void> {
   await page.keyboard.press('Control+,')
   const settings = page.getByRole('dialog', { name: '设置' })
   await settings.waitFor({ state: 'visible' })
-  await settings.getByRole('tab', { name: '更多功能' }).click()
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  await settings.getByRole('button', { name: new RegExp(`^${escaped}`) }).click()
+  await settings.getByRole('tab', { name: new RegExp(`^${escaped}$`) }).click()
 }

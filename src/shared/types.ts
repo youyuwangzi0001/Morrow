@@ -363,11 +363,11 @@ export interface ToolUseBlock {
   progressPercent?: number
   /** 同一批并行只读工具的组 id；用于轨迹区并排展示 */
   parallelGroup?: string
-  /** swarm 每个子任务的实时状态与最终摘要 */
-  swarmTasks?: SwarmTaskProgress[]
+  /** 成员协作里每个子任务的实时状态与最终摘要 */
+  memberTasks?: MemberTaskProgress[]
 }
 
-export type SwarmTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'exhausted'
+export type MemberProgressStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'exhausted'
 
 /** 可能卡住的任务：只提示，不自动停止；保留证据供负责人决定。 */
 export interface StuckAlert {
@@ -382,14 +382,14 @@ export interface StuckAlert {
   repeatedCount: number
   lastOperation?: string
   /** 判断依据：最近几步的工具操作（只保留摘要） */
-  evidence?: SwarmOperation[]
+  evidence?: MemberOperation[]
   status?: 'open' | 'resolved'
   resolution?: 'completed' | 'stopped' | 'failed' | 'waiting' | 'dismissed' | 'progress' | 'superseded'
   resolvedAt?: number
   resolutionNote?: string
 }
 
-export interface SwarmOperation {
+export interface MemberOperation {
   id: string
   name: string
   title: string
@@ -411,23 +411,33 @@ export interface SwarmOperation {
   finishedAt?: number
 }
 
-export interface SwarmTaskProgress {
+export interface MemberTaskProgress {
   index: number
   title: string
   agent: string
   /** 成员类型的中文名（新事件提供；旧数据回退到 agent） */
   agentTitle?: string
-  status: SwarmTaskStatus
+  status: MemberProgressStatus
   stepCount?: number
   /** 最近一步在做什么 */
   note?: string
   summary?: string
   error?: string
   /** 成员实际执行过的全部工具操作（按时间顺序） */
-  operations?: SwarmOperation[]
+  operations?: MemberOperation[]
 }
 
-/* ── Super-Agent：Router / Worker 双层任务 ───────────────────── */
+/* ── Super-Agent：分发层 / 协作成员双层任务 ───────────────────── */
+
+/** 派发协作成员的工具名。旧版本存的是 `swarm`，读历史记录时必须一并识别。 */
+export const SUPER_AGENT_TOOL = 'super_agent'
+
+/** 历史会话里的旧工具名。只用于识别已落盘的消息，不再注册给模型。 */
+const LEGACY_SUPER_AGENT_TOOLS: ReadonlySet<string> = new Set(['swarm'])
+
+export function isSuperAgentTool(name: string | undefined): boolean {
+  return name === SUPER_AGENT_TOOL || (name !== undefined && LEGACY_SUPER_AGENT_TOOLS.has(name))
+}
 
 export type SuperTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'stalled' | 'blocked'
 
@@ -457,7 +467,7 @@ export type CollaborationMessageDirection = 'main' | 'worker'
 
 export type CollaborationMessageKind = 'directive' | 'note' | 'question' | 'answer'
 
-/** 用户/主代理 → Worker，或 Worker → 主代理的协作消息。 */
+/** 用户/主代理 → 协作成员，或协作成员 → 主代理的协作消息。 */
 export interface CollaborationMessage {
   id: string
   projectId: string
@@ -468,9 +478,9 @@ export interface CollaborationMessage {
   /** main = 用户/主代理发出；worker = 子智能体发出 */
   direction: CollaborationMessageDirection
   kind: CollaborationMessageKind
-  /** Worker 提问后，主代理答复对应的消息 id */
+  /** 协作成员提问后，主代理答复对应的消息 id */
   replyTo?: string
-  /** 展示用作者：主代理、协调助手或 Worker 角色名 */
+  /** 展示用作者：主代理、协调助手或协作成员角色名 */
   author?: string
   createdAt: number
   updatedAt: number
@@ -482,7 +492,7 @@ export interface CollaborationMessage {
   error?: string
   /** 重复提交同一 message 只生效一次 */
   idempotencyKey: string
-  /** 只作信息补充，不改变 Worker 的工具或目录权限 */
+  /** 只作信息补充，不改变协作成员的工具或目录权限 */
   informational: true
 }
 
@@ -626,13 +636,13 @@ export interface CollaborationVerification {
   error?: string
 }
 
-export interface SwarmTaskUsage {
+export interface MemberTaskUsage {
   inputTokens: number
   outputTokens: number
   totalTokens: number
 }
 
-/** 单个协作项目的 Worker 用量；失败与重试同样计入，只作展示。 */
+/** 单个协作项目的协作成员用量；失败与重试同样计入，只作展示。 */
 export interface CollaborationUsageTotals {
   inputTokens: number
   outputTokens: number
@@ -732,7 +742,7 @@ export interface WorkerTodo {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
-/** Worker 自己的短对话记录：只保留可展示的用户/助手文本，不含工具参数。 */
+/** 协作成员自己的短对话记录：只保留可展示的用户/助手文本，不含工具参数。 */
 export interface WorkerHistoryEntry {
   role: 'user' | 'assistant'
   text: string
@@ -746,9 +756,9 @@ export interface SuperTask {  id: string
   planKey?: string
   index: number
   title: string
-  /** 派发给 Worker 的任务简报（截断后供驾驶舱查看） */
+  /** 派发给协作成员的任务简报（截断后供驾驶舱查看） */
   prompt: string
-  /** 未截断的 Worker 简报；单独重试时沿用原文，旧会话缺失时回退 prompt */
+  /** 未截断的协作成员简报；单独重试时沿用原文，旧会话缺失时回退 prompt */
   promptFull?: string
   /** 这项任务最终要交出的可验收成果 */
   deliverable?: string
@@ -785,7 +795,7 @@ export interface SuperTask {  id: string
   /** 本任务被自动返工/重测的次数 */
   reworkCount?: number
   /** 本次尝试实际消耗的模型用量（失败/重试也保留） */
-  usage?: SwarmTaskUsage
+  usage?: MemberTaskUsage
   /** 当前仍成立的卡住提示（只提示，不自动停止） */
   stuck?: StuckAlert
   role: string
@@ -807,13 +817,13 @@ export interface SuperTask {  id: string
   startedAt?: number
   finishedAt?: number
   lastActivityAt?: number
-  /** Worker 正在等用户批准：看门狗暂停计时，不计为停滞 */
+  /** 协作成员正在等用户批准：看门狗暂停计时，不计为停滞 */
   waitingForApproval?: boolean
   waitingApprovalSince?: number
-  operations?: SwarmOperation[]
-  /** Worker 自管待办：只属于本任务，不覆盖主任务计划 */
+  operations?: MemberOperation[]
+  /** 协作成员自管待办：只属于本任务，不覆盖主任务计划 */
   workerTodos?: WorkerTodo[]
-  /** 压缩后的 Worker 对话历史，供完成后重新激活 */
+  /** 压缩后的协作成员对话历史，供完成后重新激活 */
   workerHistory?: WorkerHistoryEntry[]
 }
 
@@ -829,7 +839,7 @@ export interface SuperTaskRetryRequest {
 
 export interface SuperAgentState {
   runId: string
-  /** 最近一次派发本次协作的 swarm 工具调用 id；用于把全量状态挂回主对话里的成员卡片 */
+  /** 最近一次派发本次协作的 super_agent 工具调用 id；用于把全量状态挂回主对话里的成员卡片 */
   toolUseId?: string
   /** 固定项目编号：同一工作区跨会话保持一致；旧会话由兼容转换补齐 */
   projectId?: string
@@ -843,7 +853,7 @@ export interface SuperAgentState {
   conflicts?: CollaborationConflict[]
   /** 项目成果的所有版本（草稿/可用/已撤回），按发布时间追加 */
   artifacts?: CollaborationArtifact[]
-  /** Worker 累计用量与预算（跨批次保留；失败/重试也计入） */
+  /** 协作成员累计用量与预算（跨批次保留；失败/重试也计入） */
   usage?: CollaborationUsageTotals
   /** 卡住提示历史（含已解除/已停止，供负责人核对依据） */
   stuckAlerts?: StuckAlert[]
@@ -902,6 +912,38 @@ export interface TokenActivitySummary {
   activeDays: number
   estimatedTokens: number
   generatedAt: number
+}
+
+/**
+ * 手机配对：一次签发的完整结果。
+ *
+ * 为什么把 `qr` 和 `expiresAt` 一起返回：界面要同时显示「扫码文本」和「还剩几秒」。
+ * 分成两个调用的话，用户点开第二次会拿到一张新票据，倒计时与文本就对不上了。
+ */
+export interface PairIssueResult {
+  /** 二维码文本（base64url 编码的票据 JSON）。手机粘贴这一段。 */
+  qr: string
+  /** 桌面端算出的六位码，供人工与手机屏幕上的数字比对 */
+  code: string
+  /** 过期时刻（毫秒时间戳）。界面用它与本地时钟算倒计时。 */
+  expiresAt: number
+  /** 票据里的 nonce。撤销/排查时用来定位是哪一张。 */
+  nonce: string
+  /**
+   * 票据里是否带了桌面证书指纹。
+   *
+   * 正常情况下必须是 `true`。为 `false` 时手机侧会**拒绝完成配对**
+   * （没有指纹就无法做 TLS 证书固定），所以界面必须当场提示
+   * 「局域网直连没起来」而不是让用户白扫一次。
+   */
+  hasFingerprint: boolean
+}
+
+/** 已配对设备（不含 sessionKey —— 设置页只需要展示信息） */
+export interface PairDeviceView {
+  deviceId: string
+  pairedAt: number
+  name?: string
 }
 
 export interface ChatImage {
@@ -1168,7 +1210,7 @@ export interface PermissionLogEntry {
   decision: PermissionDecision
 }
 
-/** 执行工具时的真实身份：主代理或某个 Worker。 */
+/** 执行工具时的真实身份：主代理或某个协作成员。 */
 export type AgentActorKind = 'main' | 'worker'
 
 /**
@@ -1185,10 +1227,10 @@ export interface AgentToolGrant {
   taskId?: string
   attemptId?: string
   allowedTools: string[]
-  /** 是否强制工具名必须来自 allowedTools（主代理由模式权限层处理，Router/Worker 强制） */
+  /** 是否强制工具名必须来自 allowedTools（主代理由模式权限层处理，分发层/协作成员强制） */
   enforceToolAllowlist: boolean
   writeRoots: string[]
-  /** 是否强制把文件写入限制在 writeRoots（主代理保留既有 auto 越界行为，Router/Worker 强制） */
+  /** 是否强制把文件写入限制在 writeRoots（主代理保留既有 auto 越界行为，分发层/协作成员强制） */
   enforceWriteScope: boolean
   issuedAt: number
   expiresAt: number
@@ -1232,7 +1274,7 @@ export interface PermissionRequest {
   sandbox?: PermissionSandboxOption
   /** false = 高风险/外部动作/越界，不提供「始终允许」，每次都会重新询问 */
   allowAlways?: boolean
-  /** Worker 的协作任务身份：Router 运行结束后，后台 Worker 的审批仍可等待用户处理 */
+  /** 协作成员的协作任务身份：分发层运行结束后，后台协作成员的审批仍可等待用户处理 */
   projectId?: string
   taskId?: string
   attemptId?: string
@@ -1390,6 +1432,8 @@ export interface TerminalEventPayload {
   stream?: 'stdout' | 'stderr'
   /** 真实 PTY 输出：保留 ANSI/回车，直接交给 xterm；后台任务为纯文本 */
   pty?: boolean
+  /** 一次性后台任务结束后自动收起窗口；渲染层据此在最后一个标签消失时关闭终端面板 */
+  autoClosed?: boolean
 }
 
 /* ── 联网搜索 ─────────────────────────────────────────────────── */
@@ -1541,7 +1585,7 @@ export interface Settings {
   compactThreshold: number
   /** 压缩目标：压到上下文窗口的多少（0.1–0.3，默认 0.15）；只作用于模型侧，历史不受影响 */
   compactTargetRatio?: number
-  /** 本机同时运行的 Worker 上限；0 = 按 CPU 自动（保留一核给界面） */
+  /** 本机同时运行的协作成员上限；0 = 按 CPU 自动（保留一核给界面） */
   collaborationMaxWorkers: number
   /** 成员可能卡住时提示负责人；关闭只停止提醒，不停止成员 */
   collaborationStuckAlerts: boolean
@@ -1585,6 +1629,13 @@ export interface Settings {
   mediaProviders: CloudMediaProvider[]
   /** 每类多媒体生成默认使用的服务 id */
   mediaDefaults: Partial<Record<CloudMediaCapability, string>>
+  /**
+   * 手机远程通道（relay）开关。默认关闭：开启后本机回环端口才会监听，
+   * 允许配对的手机读取状态、发指令与做审批。关闭时连 socket 都不创建。
+   */
+  relayEnabled: boolean
+  /** relay 监听端口；0 = 由系统分配（避免与用户机器上其他服务撞车） */
+  relayPort: number
 }
 
 /* ── 自定义命令与钩子（P1-12） ───────────────────────────────── */
@@ -1672,10 +1723,10 @@ export type RuntimeEvent =
       note?: string
       /** 长任务进度（0–100） */
       percent?: number
-      /** 集群成员当前步数（用于活动条展示，不参与模型上下文） */
+      /** 协作成员当前步数（用于活动条展示，不参与模型上下文） */
       stepCount?: number
-      /** swarm 子任务的结构化实时状态（同一个 swarm 工具下按 index 区分） */
-      swarmTask?: SwarmTaskProgress
+      /** 成员子任务的结构化实时状态（同一次 super_agent 调用下按 index 区分） */
+      memberTask?: MemberTaskProgress
     })
   | (RuntimeEventBase & {
       type: 'tool_finished'
@@ -2303,17 +2354,17 @@ export function buildAnswerStyleSection(style: AnswerStyleId, custom?: string): 
   ].join('\n')
 }
 
-const STATUSES: SwarmTaskStatus[] = ['queued', 'running', 'completed', 'failed', 'cancelled', 'exhausted']
+const STATUSES: MemberProgressStatus[] = ['queued', 'running', 'completed', 'failed', 'cancelled', 'exhausted']
 
-function statusOf(value: unknown): SwarmTaskStatus {
-  return typeof value === 'string' && (STATUSES as string[]).includes(value) ? (value as SwarmTaskStatus) : 'failed'
+function statusOf(value: unknown): MemberProgressStatus {
+  return typeof value === 'string' && (STATUSES as string[]).includes(value) ? (value as MemberProgressStatus) : 'failed'
 }
 
 /** 按 index 合并一个子任务的最新状态，保证乱序/并行事件不会互相覆盖。 */
-export function mergeSwarmTask(
-  tasks: SwarmTaskProgress[] | undefined,
-  incoming: SwarmTaskProgress
-): SwarmTaskProgress[] {
+export function mergeMemberTask(
+  tasks: MemberTaskProgress[] | undefined,
+  incoming: MemberTaskProgress
+): MemberTaskProgress[] {
   const next = tasks ? tasks.map((task) => ({ ...task })) : []
   const index = next.findIndex((task) => task.index === incoming.index)
   if (index >= 0) next[index] = { ...next[index], ...incoming }
@@ -2322,7 +2373,7 @@ export function mergeSwarmTask(
 }
 
 /** 从工具结果 meta.tasks 还原最终状态（重载旧会话、补发事件时使用）。 */
-export function swarmTasksFromMeta(meta: unknown): SwarmTaskProgress[] {  if (!meta || typeof meta !== 'object') return []
+export function memberTasksFromMeta(meta: unknown): MemberTaskProgress[] {  if (!meta || typeof meta !== 'object') return []
   const raw = (meta as Record<string, unknown>).tasks
   if (!Array.isArray(raw)) return []
   return raw.flatMap((entry, position) => {
@@ -2352,7 +2403,7 @@ export function swarmTasksFromMeta(meta: unknown): SwarmTaskProgress[] {  if (!m
             id: typeof op.id === 'string' ? op.id : `${position}-${op.name}`,
             name: op.name,
             title: op.title,
-            status: status as SwarmOperation['status'],
+            status: status as MemberOperation['status'],
             ...(typeof op.input === 'string' ? { input: op.input.slice(0, 240) } : {}),
             ...(typeof op.output === 'string' ? { output: op.output.slice(0, 360) } : {}),
             ...(typeof op.error === 'string' ? { error: op.error.slice(0, 360) } : {}),

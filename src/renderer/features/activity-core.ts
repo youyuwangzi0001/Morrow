@@ -4,10 +4,10 @@ import type { ChatMessage, PermissionRequest, SuperAgentState, ToolResult, ToolU
 export type ToolVisual = 'read' | 'write' | 'edit' | 'search' | 'command' | 'list' | 'glob' | 'todo' | 'ask' | 'artifact' | 'web' | 'memory' | 'media' | 'other'
 
 /**
- * 判断某个 swarm 工具块是否对应会话里这次协作。
+ * 判断某个成员协作工具块是否对应会话里这次协作。
  * 新会话用 toolUseId 精确匹配；旧会话退回创建时间/结果快照，避免把历史卡片挂成当前驾驶舱。
  */
-export function isCurrentSwarmBlock(state: SuperAgentState | null, block: ToolUseBlock): boolean {
+export function isCurrentMemberBlock(state: SuperAgentState | null, block: ToolUseBlock): boolean {
   if (!state) return false
   if (state.toolUseId) return state.toolUseId === block.id
   if (block.status === 'running' || block.status === 'waiting') {
