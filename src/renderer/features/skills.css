@@ -22,10 +22,6 @@
   flex: 0 0 auto;
 }
 
-.skills-summary {
-  flex: 0 0 auto;
-}
-
 .skills-search {
   display: flex;
   align-items: center;
@@ -83,13 +79,6 @@
 
 .skills-sort select:focus-visible {
   border-color: var(--line-gold);
-}
-
-.skills-summary {
-  margin: 0;
-  color: var(--text-3);
-  font-size: var(--fs-micro);
-  flex: 0 0 auto;
 }
 
 .skills-inline-error {
@@ -164,16 +153,34 @@
 
 .skills-body {
   display: grid;
-  grid-template-columns: minmax(250px, 37%) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
   gap: 12px;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* 左侧：统计信息 + 可滚动列表。统计不再占用右侧详情的高度。 */
+.skills-list-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.skills-list-summary {
+  flex: 0 0 auto;
+  margin: 0 2px;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-copy);
 }
 
 .skills-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding-right: 4px;
   min-height: 0;
@@ -324,13 +331,15 @@
 .skills-detail {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   min-height: 0;
+  /* 详情本身只在极矮窗口下兜底滚动；正常尺寸由正文阅读区自己滚动。 */
   overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface-inset);
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 .skills-detail-empty {
@@ -361,25 +370,27 @@
 
 .skills-detail-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
   flex: 0 0 auto;
 }
 
-.skills-detail-title {
+.skills-detail-heading {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
-.skills-detail-title h3 {
+.skills-detail-heading h3 {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--fs-title);
   font-weight: var(--fw-medium);
+  line-height: var(--lh-title);
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -391,18 +402,23 @@
   flex-wrap: wrap;
 }
 
+/* 动作区保持单行；标题过长时让标题自己换行，而不是把按钮挤到下一行。 */
 .skills-detail-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
 }
 
 .skills-detail-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   margin: 0;
   color: var(--text-2);
-  font-size: var(--fs-ui);
-  line-height: var(--lh-readable);
+  font-size: var(--fs-base);
+  line-height: var(--lh-copy);
   flex: 0 0 auto;
 }
 
@@ -410,7 +426,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 4px 4px 8px;
+  padding: 3px 3px 3px 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg-elev);
@@ -430,7 +446,7 @@
 
 .skills-hint {
   margin: 0;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-left: 2px solid var(--line-gold);
   background: var(--gold-ghost);
   color: var(--text-3);
@@ -439,45 +455,62 @@
   flex: 0 0 auto;
 }
 
-.skills-detail-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-  min-height: 0;
-  padding-right: 4px;
-}
+/* ── 正文阅读区：占满详情剩余高度，自己滚动 ─────────────────── */
 
-.skills-section {
+.skills-reader {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 160px;
 }
 
-.skills-section h4 {
+.skills-reader-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.skills-reader-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--text-2);
   font-family: var(--font-ui);
   font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-caps);
-  text-transform: uppercase;
 }
 
-.skills-section-note {
+.skills-reader-title code {
   color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs-plus);
   font-weight: var(--fw-regular);
   letter-spacing: 0;
-  text-transform: none;
+}
+
+.skills-reader-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.skills-reader-note {
+  color: var(--text-3);
+  font-size: var(--fs-xs-plus);
+  white-space: nowrap;
 }
 
 .skills-md {
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
-  max-height: 260px;
   overflow: auto;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -489,16 +522,56 @@
   line-height: var(--lh-readable);
   white-space: pre-wrap;
   word-break: break-word;
+  tab-size: 2;
+}
+
+/* ── 文件清单：默认折叠，不抢占正文高度 ─────────────────────── */
+
+.skills-files-panel {
+  flex: 0 0 auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.skills-files-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
+}
+
+.skills-files-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.skills-files-panel > summary:hover {
+  color: var(--text);
+}
+
+.skills-files-chevron {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.skills-files-panel[open] .skills-files-chevron {
+  transform: rotate(90deg);
 }
 
 .skills-files {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 0;
+  margin: 6px 0 0;
   padding: 0;
   list-style: none;
-  max-height: 180px;
+  max-height: 150px;
   overflow-y: auto;
 }
 
@@ -530,7 +603,7 @@
 }
 
 .skills-section-empty {
-  margin: 0;
+  margin: 6px 0 0;
   color: var(--text-3);
   font-size: var(--fs-micro);
 }
@@ -627,7 +700,7 @@
   margin: 0;
 }
 
-/* ── 底部说明 ───────────────────────────────────────────────── */
+/* ── 底部说明（面板内固定页脚） ─────────────────────────────── */
 
 .skills-footnote {
   display: flex;
@@ -635,8 +708,8 @@
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 10px;
+  flex: 0 0 auto;
+  padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 
@@ -668,10 +741,10 @@
 
   .skills-body {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(180px, 34vh) minmax(0, 1fr);
+    grid-template-rows: minmax(140px, 26vh) minmax(0, 1fr);
   }
 
   .skills-detail {
-    max-height: 46vh;
+    max-height: none;
   }
 }

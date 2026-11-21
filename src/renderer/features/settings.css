@@ -1411,6 +1411,16 @@
   min-height: 220px;
 }
 
+/* 文档型分页（技能）：弹窗接近满高，内容区按「弹窗高度 - 标题/页脚/内边距」计算，
+   这样详情里的正文阅读区才能拿到稳定的剩余高度，而不是被内容挤扁。 */
+.modal-panel.modal-panel-tall {
+  max-height: min(92vh, 900px);
+}
+
+.settings.is-tall {
+  height: min(calc(92vh - 172px), 700px);
+}
+
 /* 模型页标题栏：说明文字与默认模型卡在同一行顶部对齐 */
 .st-page-head.has-aside {
   display: grid;

@@ -2858,6 +2858,8 @@ const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
 const WIDE_TABS = new Set<SettingsTabId>(['memory', 'skills', 'connectors', 'capabilities', 'globalSearch', 'git'])
 /** 这些分页把原工作台面板直接嵌进设置页，页面本身不再滚动，交给面板内部滚动。 */
 const INLINE_PANELS = new Set<SettingsTabId>(['memory', 'skills', 'connectors', 'git', 'globalSearch'])
+/** 文档型面板：给弹窗更高的固定高度，内部阅读区才有稳定的可视高度。 */
+const TALL_TABS = new Set<SettingsTabId>(['skills'])
 
 const PAGE_META: Record<SettingsTabId, { title: string; description: string }> = {
   models: { title: '模型', description: '连接一个模型服务，选好默认模型就能开始。密钥只保存在本机。' },
@@ -6456,6 +6458,7 @@ export function SettingsModal(): React.JSX.Element | null {
       onClose={closeSettings}
       title="设置"
       width={WIDE_TABS.has(tab) ? 1080 : 880}
+      className={TALL_TABS.has(tab) ? 'modal-panel-tall' : undefined}
       footer={
         <>
           <span className="st-foot-hint mono">外观、权限、回答与终端即时保存；模型、联网搜索与多媒体需点保存</span>
@@ -6465,7 +6468,7 @@ export function SettingsModal(): React.JSX.Element | null {
         </>
       }
     >
-      <div className="settings">
+      <div className={['settings', TALL_TABS.has(tab) ? 'is-tall' : ''].filter(Boolean).join(' ')}>
         <nav
           className="st-nav"
           role="tablist"

@@ -385,7 +385,8 @@ export function Modal({
   layer = 'modal',
   closeOnBackdrop = true,
   inline = false,
-  ariaLabel
+  ariaLabel,
+  className
 }: {
   open: boolean
   onClose: () => void
@@ -399,6 +400,8 @@ export function Modal({
   /** 直接嵌进设置页等现有页面：不建遮罩、不抢 Esc，只保留内容区。 */
   inline?: boolean
   ariaLabel?: string
+  /** 追加到弹窗面板上的类名（整页式功能用它换取更稳定的内部高度）。 */
+  className?: string
 }): React.JSX.Element | null {
   const panelRef = useRef<HTMLDivElement>(null)
   const stack = useContext(ModalStackContext)
@@ -494,7 +497,7 @@ export function Modal({
         }}
       >
         <div
-          className={['modal-panel', `modal-${layer}`].join(' ')}
+          className={['modal-panel', `modal-${layer}`, className ?? ''].filter(Boolean).join(' ')}
           style={{ width, '--modal-depth': stack.depth } as CSSProperties}
           role="dialog"
           aria-modal="true"

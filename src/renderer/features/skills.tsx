@@ -1,7 +1,7 @@
 // skills 功能域组件：由 1 个 TSX 文件扁平合并。
 import './skills.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BookOpen, CheckCircle2, Copy, FileText, FolderOpen, Library, Package, Power, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronRight, Copy, FileText, FolderOpen, Library, Package, Power, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 import { useAppStore } from '../store'
 import { formatBytes } from '@shared/types'
 import type { InstallResult, SkillDetail, SkillsSnapshot, SkillView } from '@shared/feature-types'
@@ -300,7 +300,22 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
     notify('success', '已复制技能路径')
   }
 
-  const current = detail ?? skills.find((skill) => skill.id === selectedId) ?? null
+  // 切换技能时 detail 仍是上一个技能的数据：只有 id 匹配才当作当前正文，
+  // 避免标题已经变了、正文还停留在旧技能上。
+  const currentDetail = detail && detail.id === selectedId ? detail : null
+  const current = currentDetail ?? skills.find((skill) => skill.id === selectedId) ?? null
+
+  const copySkillBody = (): void => {
+    if (!currentDetail?.raw.trim()) return
+    void copyText(currentDetail.raw)
+    notify('success', '已复制技能说明')
+  }
+
+  const bodyText = currentDetail
+    ? currentDetail.raw.trim()
+      ? currentDetail.raw
+      : '（技能说明为空）'
+    : '正在读取技能说明…'
 
   return (
     <Modal
@@ -355,12 +370,6 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
           </Button>
         </div>
 
-        <p className="skills-summary">
-          共 {skills.length} 个 · 内置 {builtinCount} · 我的 {mineCount}
-          {folderCount > 0 ? ` · 当前文件夹 ${folderCount}` : ''} · 已启用 {enabledCount}
-          {snapshot?.workspace ? null : ' · 还没有选择文件夹'}
-        </p>
-
         {loadError ? <ErrorNote title={loadError} /> : null}
         {actionError ? (
           <div className="skills-inline-error" role="alert">
@@ -385,79 +394,82 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
         ) : null}
 
         <div className="skills-body">
-          <div className="skills-list" role="listbox" aria-label="技能列表">
-            {loading && skills.length === 0 ? (
-              <div className="skills-list-loading">
-                <Spinner size={16} label="正在读取技能" />
-                <span>正在读取技能…</span>
-              </div>
-            ) : visibleSkills.length === 0 ? (
-              <div className="skills-list-empty">
-                <BookOpen size={22} aria-hidden />
-                <p>
-                  {skills.length === 0
-                    ? '还没有技能。可以从本地文件夹或 .zip 安装一个技能包。'
-                    : '没有匹配的技能。试试清空搜索或切换筛选条件。'}
-                </p>
-                <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={openInstall}>
-                  安装技能
-                </Button>
-              </div>
-            ) : (
-              visibleSkills.map((skill) => {
-                const active = skill.id === selectedId
-                return (
-                  <button
-                    key={skill.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    className={['skills-card', active ? 'is-active' : '', skill.enabled ? '' : 'is-disabled'].filter(Boolean).join(' ')}
-                    onClick={() => setSelectedId(skill.id)}
-                  >
-                    <span className="skills-card-main">
-                      <span className="skills-card-title">
-                        <span className="skills-card-name">{skill.name}</span>
-                        <Badge tone={skill.source === 'user' ? 'gold' : 'neutral'}>{sourceLabel(skill)}</Badge>
-                        {skill.shadowed ? (
-                          <Badge tone="warning" mono>
-                            被文件夹覆盖
-                          </Badge>
-                        ) : null}
-                        {!skill.enabled ? <Badge tone="neutral">已禁用</Badge> : null}
-                        {!skill.valid ? <Badge tone="danger">不完整</Badge> : null}
-                      </span>
-                      <span className="skills-card-desc">{skill.description}</span>
-                      <span className="skills-card-meta">
-                        {skill.fileCount} 个文件 · {formatBytes(skill.sizeBytes)} · 更新于 {formatTime(skill.updatedAt)}
-                        {skill.declaredName && skill.declaredName !== skill.name ? ` · 别名 ${skill.declaredName}` : ''}
-                      </span>
-                    </span>
-                    <span
-                      className={['skills-mini-switch', skill.enabled ? 'is-on' : ''].join(' ')}
-                      role="switch"
-                      aria-checked={skill.enabled}
-                      aria-label={`${skill.enabled ? '禁用' : '启用'}技能 ${skill.name}`}
-                      title={skill.enabled ? '已启用（点击禁用）' : '已禁用（点击启用）'}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        void toggleSkill(skill)
-                      }}
+          <div className="skills-list-column">
+            <p className="skills-list-summary">
+              共 {skills.length} 个 · 内置 {builtinCount} · 我的 {mineCount}
+              {folderCount > 0 ? ` · 当前文件夹 ${folderCount}` : ''} · 已启用 {enabledCount}
+              {snapshot?.workspace ? null : ' · 还没有选择文件夹'}
+            </p>
+            <div className="skills-list" role="listbox" aria-label="技能列表">
+              {loading && skills.length === 0 ? (
+                <div className="skills-list-loading">
+                  <Spinner size={16} label="正在读取技能" />
+                  <span>正在读取技能…</span>
+                </div>
+              ) : visibleSkills.length === 0 ? (
+                <div className="skills-list-empty">
+                  <BookOpen size={22} aria-hidden />
+                  <p>
+                    {skills.length === 0
+                      ? '还没有技能。可以从本地文件夹或 .zip 安装一个技能包。'
+                      : '没有匹配的技能。试试清空搜索或切换筛选条件。'}
+                  </p>
+                  <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={openInstall}>
+                    安装技能
+                  </Button>
+                </div>
+              ) : (
+                visibleSkills.map((skill) => {
+                  const active = skill.id === selectedId
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={['skills-card', active ? 'is-active' : '', skill.enabled ? '' : 'is-disabled'].filter(Boolean).join(' ')}
+                      onClick={() => setSelectedId(skill.id)}
                     >
-                      <span className="skills-mini-switch-thumb" />
-                    </span>
-                  </button>
-                )
-              })
-            )}
+                      <span className="skills-card-main">
+                        <span className="skills-card-title">
+                          <span className="skills-card-name">{skill.name}</span>
+                          <Badge tone={skill.source === 'user' ? 'gold' : 'neutral'}>{sourceLabel(skill)}</Badge>
+                          {skill.shadowed ? (
+                            <Badge tone="warning" mono>
+                              被文件夹覆盖
+                            </Badge>
+                          ) : null}
+                          {!skill.enabled ? <Badge tone="neutral">已禁用</Badge> : null}
+                          {!skill.valid ? <Badge tone="danger">不完整</Badge> : null}
+                        </span>
+                        <span className="skills-card-desc">{skill.description}</span>
+                        <span className="skills-card-meta">
+                          {skill.fileCount} 个文件 · {formatBytes(skill.sizeBytes)} · 更新于 {formatTime(skill.updatedAt)}
+                          {skill.declaredName && skill.declaredName !== skill.name ? ` · 别名 ${skill.declaredName}` : ''}
+                        </span>
+                      </span>
+                      <span
+                        className={['skills-mini-switch', skill.enabled ? 'is-on' : ''].join(' ')}
+                        role="switch"
+                        aria-checked={skill.enabled}
+                        aria-label={`${skill.enabled ? '禁用' : '启用'}技能 ${skill.name}`}
+                        title={skill.enabled ? '已启用（点击禁用）' : '已禁用（点击启用）'}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void toggleSkill(skill)
+                        }}
+                      >
+                        <span className="skills-mini-switch-thumb" />
+                      </span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
           </div>
 
           <section className="skills-detail" aria-label="技能详情">
-            {detailLoading && !detail ? (
-              <div className="skills-detail-empty">
-                <Spinner size={16} label="正在读取技能详情" />
-              </div>
-            ) : detailError ? (
+            {detailError ? (
               <div className="skills-detail-empty">
                 <ErrorNote title={detailError} />
                 {selectedId ? (
@@ -475,14 +487,14 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
             ) : (
               <>
                 <header className="skills-detail-head">
-                  <div className="skills-detail-title">
+                  <div className="skills-detail-heading">
                     <h3>{current.name}</h3>
                     <div className="skills-detail-badges">
                       <Badge tone={current.source === 'user' ? 'gold' : 'neutral'}>{sourceLabel(current)}</Badge>
-                      <Badge tone={current.enabled ? 'success' : 'neutral'}>{current.enabled ? '已启用' : '已禁用'}</Badge>
-                      {current.shadowed ? (
-                        <Badge tone="warning">同名文件夹技能优先</Badge>
-                      ) : null}
+                      <span title={current.enabled ? '已启用：Morrow 在做相关任务时会参考它。' : '已禁用：Morrow 暂时不会参考它。'}>
+                        <Badge tone={current.enabled ? 'success' : 'neutral'}>{current.enabled ? '已启用' : '已禁用'}</Badge>
+                      </span>
+                      {current.shadowed ? <Badge tone="warning">同名文件夹技能优先</Badge> : null}
                     </div>
                   </div>
                   <div className="skills-detail-actions">
@@ -495,77 +507,91 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
                     >
                       {current.enabled ? '禁用' : '启用'}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<FolderOpen size={13} />}
-                      onClick={() => void reveal(current)}
-                    >
-                      打开目录
-                    </Button>
+                    <IconButton label="打开技能目录" onClick={() => void reveal(current)}>
+                      <FolderOpen size={14} aria-hidden />
+                    </IconButton>
                     {current.source === 'user' ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={<Trash2 size={13} />}
+                      <IconButton
+                        label="删除技能"
+                        tone="danger"
                         onClick={() => {
                           setDeleteError(null)
                           setDeleteTarget(current)
                         }}
                       >
-                        删除
-                      </Button>
+                        <Trash2 size={14} aria-hidden />
+                      </IconButton>
                     ) : null}
                   </div>
                 </header>
 
-                <p className="skills-detail-desc">{current.description}</p>
+                <p className="skills-detail-desc" title={current.description}>
+                  {current.description}
+                </p>
+
                 <div className="skills-path-row">
                   <code className="skills-path" title={current.skillPath}>
                     {shortenPath(current.skillPath)}
                   </code>
-                  <IconButton label="复制技能路径" onClick={() => copySkillPath(current)}>
-                    <Copy size={13} aria-hidden />
+                  <IconButton label="复制技能路径" size={24} onClick={() => copySkillPath(current)}>
+                    <Copy size={12} aria-hidden />
                   </IconButton>
                 </div>
-                <p className="skills-hint">
-                  {current.enabled
-                    ? '已启用：Morrow 在做相关任务时会参考它。'
-                    : '已禁用：Morrow 暂时不会参考它。'}
-                  {current.shadowed ? ' 当前文件夹有同名技能，实际会使用文件夹里的那份。' : ''}
-                </p>
 
-                <div className="skills-detail-scroll">
-                  <section className="skills-section">
-                    <h4>
-                      <FileText size={13} aria-hidden /> 技能说明（SKILL.md）
-                      <span className="skills-section-note">
-                        {detail?.rawTruncated ? '（文件过大，仅显示前 256KB）' : ''}
-                      </span>
-                    </h4>
-                    <pre className="skills-md">{detail?.raw?.trim() ? detail.raw : '（技能说明为空）'}</pre>
-                  </section>
-                  <section className="skills-section">
-                    <h4>
-                      <Package size={13} aria-hidden /> 文件（{detail?.files.length ?? current.fileCount}）
-                    </h4>
-                    {detail && detail.files.length > 0 ? (
-                      <ul className="skills-files">
-                        {detail.files.map((file) => (
-                          <li key={file.path}>
-                            <span className="skills-file-path">{file.path}</span>
-                            <span className="skills-file-size">{formatBytes(file.size)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="skills-section-empty">除技能说明外没有其他文件。</p>
-                    )}
-                  </section>
-                </div>
+                {current.shadowed ? (
+                  <p className="skills-hint">当前文件夹有同名技能，实际会使用文件夹里的那份。</p>
+                ) : null}
+
+                <section className="skills-reader" aria-label="技能正文">
+                  <header className="skills-reader-head">
+                    <span className="skills-reader-title">
+                      <FileText size={13} aria-hidden /> 技能说明 <code>SKILL.md</code>
+                    </span>
+                    <span className="skills-reader-tools">
+                      {currentDetail?.rawTruncated ? <span className="skills-reader-note">仅显示前 256KB</span> : null}
+                      <IconButton label="复制技能说明" size={24} onClick={copySkillBody} disabled={!currentDetail?.raw.trim()}>
+                        <Copy size={12} aria-hidden />
+                      </IconButton>
+                    </span>
+                  </header>
+                  <pre className="skills-md" data-testid="skills-md" tabIndex={0} aria-label="技能说明正文" aria-busy={detailLoading || undefined}>{bodyText}</pre>
+                </section>
+
+                <details className="skills-files-panel">
+                  <summary>
+                    <ChevronRight size={12} className="skills-files-chevron" aria-hidden />
+                    <Package size={13} aria-hidden /> 文件（{currentDetail?.files.length ?? current.fileCount}）
+                  </summary>
+                  {currentDetail && currentDetail.files.length > 0 ? (
+                    <ul className="skills-files">
+                      {currentDetail.files.map((file) => (
+                        <li key={file.path}>
+                          <span className="skills-file-path">{file.path}</span>
+                          <span className="skills-file-size">{formatBytes(file.size)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="skills-section-empty">除技能说明外没有其他文件。</p>
+                  )}
+                </details>
               </>
             )}
           </section>
+        </div>
+
+        <div className="skills-footnote">
+          <span className="skills-footnote-path" title={snapshot?.userDir ?? ''}>
+            我的技能：{snapshot?.userDir ? shortenPath(snapshot.userDir) : '（加载中…）'}
+          </span>
+          <span className="skills-footnote-actions">
+            <Button variant="ghost" size="sm" icon={<FolderOpen size={13} />} onClick={() => void openUserDir()}>
+              打开技能文件夹
+            </Button>
+            <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} loading={loading} onClick={() => void rescan()}>
+              重新扫描
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -695,20 +721,6 @@ export function SkillsPanel({ open, onClose, inline = false }: SkillsPanelProps)
           </div>
         ) : null}
       </Modal>
-
-      <div className="skills-footnote">
-        <span className="skills-footnote-path" title={snapshot?.userDir ?? ''}>
-          我的技能：{snapshot?.userDir ? shortenPath(snapshot.userDir) : '（加载中…）'}
-        </span>
-        <span className="skills-footnote-actions">
-          <Button variant="ghost" size="sm" icon={<FolderOpen size={13} />} onClick={() => void openUserDir()}>
-            打开技能文件夹
-          </Button>
-          <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} loading={loading} onClick={() => void rescan()}>
-            重新扫描
-          </Button>
-        </span>
-      </div>
     </Modal>
   )
 }
