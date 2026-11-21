@@ -190,8 +190,8 @@
 
 | 常量 | 值 |
 |---|---|
-| 应用包名 | `studio.morrow.android.debug`（debug 变体） |
-| versionName | `1.0.0-debug` |
+| 应用包名 | `studio.morrow.android`（release 变体） |
+| versionName / versionCode | `0.2.0` / 2 |
 | minSdk / targetSdk | 26 / 35 |
 | 通道监听端口 | `relayPort` 默认 `0`，表示由系统分配可用端口 |
 | 配对票据有效期 | 90 秒，一次性 |

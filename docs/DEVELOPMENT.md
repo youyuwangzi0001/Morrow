@@ -42,12 +42,12 @@ npm run dev
 
 ## 安卓端仓库
 
-手机端源码不在本仓，在 `C:\交付成品\MorrowAndroid`；本仓只收 `deliver/Morrow-Android-1.0.0-debug.apk` 与它的哈希。
+手机端源码不在本仓，在 `C:\交付成品\MorrowAndroid`；本仓只收 `deliver/Morrow-Android-0.2.0.apk` 与它的哈希。
 
 - 工具链：Kotlin 2.2.21、Compose BOM 2025.09.00、AGP 8.13.0、JDK 17；minSdk 26、targetSdk 35、compileSdk 36。
 - 没有 Gradle wrapper（`gradlew`、`gradlew.bat`、`gradle/wrapper/` 都不存在），用本机 Gradle 8.14.3 加已安装的 Android SDK 构建。工作区路径含中文，`gradle.properties` 里开了 `android.overridePathCheck=true`。
-- debug 变体包名 `studio.morrow.android.debug`，versionName `1.0.0-debug`，用工程内 debug keystore 签名，只有 v2 签名方案。
-- 测试是 844 项 JVM 用例、57 个测试类，包含 Robolectric 渲染与协议向量；`app/src/androidTest` 为空，没有仪器测试，也没有真机或模拟器运行证据。
+- release 变体包名 `studio.morrow.android`，versionCode 2、versionName `0.2.0`，用工程内 release keystore（`CN=Morrow Release`）签名；`verify.sh` 265 项静态验收。
+- 测试是 919 项 JVM 用例、71 个测试类，包含 Robolectric 渲染与协议向量；`app/src/androidTest` 为空，没有仪器测试，也没有真机或模拟器运行证据。
 - 手机端改动在另一个仓库完成，构建出 APK 后复制到本仓 `deliver/`，再更新 `SHA256SUMS.txt` 与 [VERIFICATION.md](VERIFICATION.md) 的哈希。
 - 本仓的 `npm run verify` 不构建安卓；不要把 Gradle 任务写进根 `package.json`。
 
@@ -69,15 +69,15 @@ npm run dev
 
 | 命令 | 内容 | 当前真值 |
 |---|---|---|
-| `npm run test:unit` | Vitest 单元用例 | 985 项、56 个文件 |
+| `npm run test:unit` | Vitest 单元用例 | 1014 项、59 个文件 |
 | `npm run test:e2e` | 先构建，再跑 Playwright Electron 流程 | 96 条、16 个文件，95 通过加 1 跳过 |
-| `npm run test:suite` | 只读静态校验：覆盖登记、核心标记与数量预算 | 43 个功能域，预算 985 / 96 |
+| `npm run test:suite` | 只读静态校验：覆盖登记、核心标记与数量预算 | 43 个功能域，预算 1014 / 96 |
 | `npm run verify` | 七道门槛串行 | typecheck、audit:ui、audit:flex、docs:check、test:suite、test:unit、test:e2e |
 | `npm run bench:compaction` | 上下文压缩基准 | 不参与门槛 |
 | `npm run bench:collaboration` | 协作调度基准 | 不参与门槛 |
 
 - 独立用例标题直接写 `@core:功能域`，并在 `tests/core-coverage.json` 登记；禁止 `.only`、整组标记或参数化隐藏数量。`test:suite` 会逐条检查，不通过就不算提交完成。
-- 当前预算是 985 个单元与 96 条 Electron 流程。预算只拦失控增长，不要求“加一条先删一条”；新增前先消除重复，确需扩展时说明覆盖并同步预算。
+- 当前预算是 1014 个单元与 96 条 Electron 流程。预算只拦失控增长，不要求“加一条先删一条”；新增前先消除重复，确需扩展时说明覆盖并同步预算。
 - `test:e2e` 的 `pretest:e2e` 会先跑 `build-for-tests`，需要真实桌面会话与稳定的 2100×1200 物理窗口；有两条用例要管理员权限执行 `icacls`。
 - 唯一跳过项是 `packaged-parallel`，它需要现成的打包产物，按设计在常规 E2E 里跳过；跳过不是通过。
 - 压缩路径有硬规则：`Session.messages` 永远是完整记录，压缩只写 `RunContext.modelMessages`。新增压缩必须走 `applyModelCompaction`，规划输入必须是模型侧数组；不要让 `planCompaction` 读完整记录。

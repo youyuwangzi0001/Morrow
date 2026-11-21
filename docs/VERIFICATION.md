@@ -12,14 +12,14 @@
 |---|---:|---:|---|
 | `Morrow-0.2.0-portable.exe` | 207,750,144 | 198.13 MiB | `d60421ee9206546b68e1808774cd9273be1bdd2d09ef1e0989362f07e281cf29` |
 | `Morrow-0.2.0-setup.exe` | 157,935,140 | 150.62 MiB | `e65e4bfc8705aa8bcd454b38b581d29b78b4853698587c48f783fbf75b78c9cd` |
-| `Morrow-Android-1.0.0-debug.apk` | 19,492,528 | 18.59 MiB | `72fd50f81b83a39e5cda33f53a5274f940ffd999eec845999bdfde47f95b4769` |
+| `Morrow-Android-0.2.0.apk` | 2,307,066 | 2.20 MiB | `8b09a91cfed5c2e019c2b07d84d5e6628dbbcbd3895d123e8536183a9403714e` |
 
-三个文件合计 385,177,812 B（367.33 MiB）。
+三个文件合计 367,992,350 B（350.95 MiB）。安卓包在本次重打包后复制进 `deliver/`，最终哈希以 `deliver/SHA256SUMS.txt` 为准。
 
 - 便携版是单文件启动器，内嵌应用 zip；首次运行在 exe 同级解压 `.morrow-runtime-<版本>-<修订>`，之后复用缓存。
 - 安装包是 NSIS 自解压，可选安装目录，创建开始菜单与桌面快捷方式；安装版数据目录是 `%APPDATA%\Morrow`。
 - 两个 exe 都未签名（`signed:false`）。首次运行时 SmartScreen 可能要求“更多信息 → 仍要运行”。
-- APK 是 debug 构建：包名 `studio.morrow.android.debug`，versionName `1.0.0-debug`，minSdk 26、targetSdk 35，用工程内 debug keystore 签名，只有 v2 签名方案。
+- APK 是 release 签名包：包名 `studio.morrow.android`，versionCode 2、versionName `0.2.0`，minSdk 26、targetSdk 35，用工程内 release keystore（`CN=Morrow Release`）签名。
 - 安卓源码不在本仓，构建与测试在 `C:\交付成品\MorrowAndroid` 完成；本仓只保存 APK 产物。
 
 ## 冒烟验证
@@ -71,12 +71,12 @@
 | `npm run audit:ui` | 通过：0 条裸排版声明，字号令牌全部由基值推导，焦点环 2 px |
 | `npm run audit:flex` | 通过：没有被压成竖排的行内尾部标签 |
 | `npm run docs:check` | 通过：链接与锚点存在，30 张截图均为 2100×1200 且被引用 |
-| `npm run test:suite` | 985 个单元 / 96 条 Electron / 43 个域，未超预算 |
-| `npm run test:unit` | 56 个文件、985 项通过 |
+| `npm run test:suite` | 1014 个单元 / 96 条 Electron / 43 个域，未超预算 |
+| `npm run test:unit` | 59 个文件、1014 项通过 |
 | `npm run test:e2e` | 16 个文件、96 条：95 通过、1 跳过、0 失败，9.5 分钟 |
 
 - 唯一跳过的是 `packaged-parallel`，它需要现成的打包产物；跳过项不计入通过。
-- 全量 E2E 记录在 `docs/evidence/e2e-final.log`；安卓的 844 项 JVM 用例记录在 `MorrowAndroid/build-evidence-prerun/all.log`（57 个测试类，失败类 0 个）。
+- 全量 E2E 记录在 `docs/evidence/e2e-final.log`；安卓的 919 项 JVM 用例记录在 `MorrowAndroid/build-evidence-prerun/all.log`（71 个测试类，失败类 0 个），另有 `scripts/verify.sh` 的 265 项静态验收。
 - `verify` 链是 typecheck → audit:ui → audit:flex → docs:check → test:suite → test:unit → test:e2e；上面七行都通过时整链才为绿。
 - `test:suite` 是静态校验：它只读测试源码与 `tests/core-coverage.json`，不执行任何用例；通过它不代表用例通过。
 
@@ -132,10 +132,10 @@
 下面这些没有被本次交付证明，不能从上面的绿勾里推断。
 
 - 安装包没有执行 per-machine 安装，只验证了解压后的文件与文件夹版一致；安装路径、快捷方式与卸载流程没有实机走查。
-- 两个 exe 未配置代码签名；APK 只有 debug 签名。它们都不是应用商店或正式分发包。
-- Android 只有 JVM 用例（844 项、57 类），没有仪器测试，也没有真机或模拟器证据；实体安装、通知投递与后台行为未验证。
+- 两个 exe 未配置代码签名；APK 已用 release keystore 签名。它们都不是应用商店或正式分发渠道。
+- Android 只有 JVM 用例（919 项、71 类）与 265 项静态验收，没有仪器测试，也没有真机或模拟器证据；实体安装、通知投递、生物识别与后台保活未验证。
 - 公网中继是占位实现，手机只能在同一局域网内直连；没有跨网络、NAT 穿透与移动网络下的证据。
-- 手机端部分页面在生产路径没有接数据源：对话页消息、协作页成员、作品页列表与审批页队列；通知未接 FCM，前台服务没有调用方，点击通知不导航，生物识别门未实现，release 未产出。
+- 手机端已接事件流、审批、协作干预、作品预览、通知与生物识别；仍未接 FCM，进程被杀后收不到推送。没有真机或模拟器证据，通知投递、生物识别弹窗与后台保活未在实体设备上验证。
 - 本轮核对 APK 合并清单时发现它没有 `android.permission.INTERNET`，真机无法发起 WSS 连接；桌面配对面板调用 `relayPair.issue` 时也没有传 `relayHint`，票据缺局域网地址。两者叠加，0.2.0 的手机端到端连接不可完成——这是本轮如实记下的阻塞点，不是文档表述问题。
 - 手机配对协议本身有两端向量与 JVM 用例（ECDH 向量、relay 协议向量、SecureChannel 双向密文、桌面解密校验），但这些只证明算法一致，不证明设备上跑通。
 - 外部模型、订阅渠道、ComfyUI、FFmpeg、TTS 与音乐服务依赖你的环境；没有逐一做真实付费调用，也没有覆盖全部订阅渠道的登录。
@@ -154,6 +154,7 @@
 | 2026-11-12 | 修复若干开放 issue，重新打包并替换发布资产 |
 | 2026-11-16 | 创作产线加固：帧数契约、画音分离、导演层、出包门禁 |
 | 2026-11-21 | 体验修复、源码扁平化合并，重出桌面双包与安卓 APK；单测 985、E2E 96 |
+| 2026-11-21 | 安卓补齐事件流、审批生物识别、通知、设置、作品预览与协作干预；单测 1014、安卓 JVM 919、静态验收 265 |
 | 2026-11-21 | 文档体系按扁平结构重写：13 篇正文、双语首页、三张示意图与截图复核，校验脚本同步加固 |
 
 ## 复现
@@ -176,9 +177,9 @@ npm run smoke:packaged
 
 - 私有提示词源默认在 `%APPDATA%\Morrow-build\prompts`，可用 `MORROW_PROMPT_SOURCE` 指向别处。缺源时只能跑 `npm run typecheck`。
 - 打包前确认 `deliver/` 没有 `Morrow Data`；有就先暂存到 `tmp/`，打包后恢复。
-- 安卓复现要进 `C:\交付成品\MorrowAndroid`，用本机 Gradle 8.14.3 构建 debug 变体，再把 APK 复制回 `deliver/` 并重算哈希。
+- 安卓复现要进 `C:\交付成品\MorrowAndroid`，用本机 Gradle 8.14.3 构建 release 变体，再把 APK 复制回 `deliver/` 并重算哈希。
 - 哈希复核：
 
 ```powershell
-Get-FileHash deliver\Morrow-0.2.0-portable.exe, deliver\Morrow-0.2.0-setup.exe, deliver\Morrow-Android-1.0.0-debug.apk -Algorithm SHA256
+Get-FileHash deliver\Morrow-0.2.0-portable.exe, deliver\Morrow-0.2.0-setup.exe, deliver\Morrow-Android-0.2.0.apk -Algorithm SHA256
 ```

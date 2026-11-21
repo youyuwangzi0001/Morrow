@@ -82,9 +82,9 @@ Morrow 是 Windows 10/11（x64）上的桌面 AI 智能体。你描述想要的�
 |---|---|
 | `Morrow-0.2.0-portable.exe` | 单文件便携版；首次运行在 exe 同级解压运行时 |
 | `Morrow-0.2.0-setup.exe` | NSIS 安装包；可选安装目录，创建快捷方式 |
-| `Morrow-Android-1.0.0-debug.apk` | 安卓伴侣端（API 26 及以上），侧载安装，debug 签名 |
+| `Morrow-Android-0.2.0.apk` | 安卓伴侣端（API 26 及以上），侧载安装，release 签名 |
 
-从 [v0.2.0 发布页](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0)下载，并对照 `SHA256SUMS.txt` 校验。三个包都没有代码签名：Windows 可能提示“已保护你的电脑”，选择“更多信息 → 仍要运行”；APK 需要打开“安装未知应用”，且不是应用商店版本。
+从 [v0.2.0 发布页](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0)下载，并对照 `SHA256SUMS.txt` 校验。两个 Windows 包没有代码签名：可能提示“已保护你的电脑”，选择“更多信息 → 仍要运行”。APK 已用 release keystore 签名，但需要打开“安装未知应用”，且不是应用商店版本。
 
 ## 上手
 
@@ -109,7 +109,7 @@ npm run dev
 
 ```powershell
 npm run typecheck    # 两个进程的类型检查
-npm run test:unit    # 985 项单元测试
+npm run test:unit    # 1014 项单元测试
 npm run test:e2e     # 96 条 Electron 流程（会先构建）
 npm run docs:check   # 链接、锚点与截图尺寸
 npm run verify       # 本地完整链路

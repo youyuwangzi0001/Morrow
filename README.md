@@ -82,9 +82,9 @@ The companion is a preview, not a finished feature: the shipped APK does not dec
 |---|---|
 | `Morrow-0.2.0-portable.exe` | Single-file portable build; extracts its runtime next to the exe on first run |
 | `Morrow-0.2.0-setup.exe` | NSIS installer; choose a directory, creates shortcuts |
-| `Morrow-Android-1.0.0-debug.apk` | Android companion (API 26+), sideload, debug key |
+| `Morrow-Android-0.2.0.apk` | Android companion (API 26+), sideload, release keystore |
 
-Download from the [v0.2.0 release](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0) and check the files against `SHA256SUMS.txt`. None of the builds is code-signed, so Windows SmartScreen may block the first launch: choose **More info → Run anyway**. The APK needs **Install unknown apps** and is not a store build.
+Download from the [v0.2.0 release](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0) and check the files against `SHA256SUMS.txt`. The two Windows builds are not code-signed, so SmartScreen may block the first launch: choose **More info → Run anyway**. The APK is release-signed but needs **Install unknown apps**; it is not a store build.
 
 ## Quick start
 
@@ -109,7 +109,7 @@ Common checks:
 
 ```powershell
 npm run typecheck    # both processes
-npm run test:unit    # 985 unit tests
+npm run test:unit    # 1014 unit tests
 npm run test:e2e     # 96 Electron flows (builds first)
 npm run docs:check   # links, anchors, screenshot sizes
 npm run verify       # the full local chain

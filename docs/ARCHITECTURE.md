@@ -193,7 +193,7 @@ main（Electron 主进程）
 - 帧用 AES-256-GCM，AAD 绑定方向、设备与单调计数。重复计数与篡改分别以 4402 与 4403 关闭连接，4401 表示未授权；这三个关闭码都不重连。
 - Android 端源码不在本仓，位于 `C:\交付成品\MorrowAndroid`。WebSocket 客户端与 RFC 6455 帧编解码是手写的，`SecureChannel` 负责双向密钥、AAD 与防重放；本仓只放 `deliver/` 里的 APK。
 - 手机端没有桌面连接时停在未配对状态，不编造数据；通知、审批与作品页的数据来源见 [MOBILE.md](MOBILE.md)，协议细节见 [PAIRING.md](PAIRING.md)。
-- Android 侧只有 JVM 用例（844 项、57 类），没有仪器测试，也没有真机证据；这是当前交付的已知边界。
+- Android 侧只有 JVM 用例（919 项、71 类），没有仪器测试，也没有真机证据；这是当前交付的已知边界。
 
 ## 设计系统
 
@@ -216,14 +216,14 @@ main（Electron 主进程）
 - 命令：危险命令、越界路径、外部副作用与终端 stdin 逐次审批；命令环境过滤敏感变量，不把整份环境交给子进程。
 - 不可信内容：网页、MCP 工具结果与桌面窗口内容都按不可信数据处理；浏览器只允许 http(s)；MCP 信任按工作区授予。
 - 密钥：系统安全存储加密，界面不回显，日志脱敏；网络请求带 SSRF 防护，本机与局域网模型不误走厂商原生搜索。
-- 已知边界：两个 exe 未签名；ComfyUI、FFmpeg、TTS 模型与音乐服务不随包；Android 是 debug 构建；公网中继未实现；真实模型质量与账号额度由服务商决定。
+- 已知边界：两个 exe 未签名；ComfyUI、FFmpeg、TTS 模型与音乐服务不随包；Android 是 release 签名包但无真机证据；公网中继未实现；真实模型质量与账号额度由服务商决定。
 
 ## 构建、测试与打包
 
 源码构建有一个容易踩的前置：创作台提示词不在仓库里。`prebuild` 调 `scripts/embed-prompts.mjs`，从 `%APPDATA%\Morrow-build\prompts`（可用 `MORROW_PROMPT_SOURCE` 覆盖）读取私有源并生成 `src/generated/prompts.bundle.ts`。缺源时 `npm run build` 明确失败；干净 clone 只能先跑 `typecheck`（`pretypecheck` 用占位产物），不能直接构建。
 
 - `verify` 链是 `typecheck → audit:ui → audit:flex → docs:check → test:suite → test:unit → test:e2e`，任何一步失败都返回非零。
-- 测试真值：985 个单元用例（56 个文件）、96 条 Electron 流程（16 个文件，95 通过加 1 跳过）、43 个功能域。`test:suite` 只做覆盖登记与数量预算的静态校验，不执行用例。
+- 测试真值：1014 个单元用例（59 个文件）、96 条 Electron 流程（16 个文件，95 通过加 1 跳过）、43 个功能域。`test:suite` 只做覆盖登记与数量预算的静态校验，不执行用例。
 - 打包：`dist:final` 等于 `npm run build` 加 `dist-portable --two-files`，产出便携版与 NSIS 安装包；`smoke:packaged` 真实启动便携包并检查首屏。
 - CI：`.github/workflows/quality-gates.yml` 只跑 typecheck、audit:ui、docs:check、test:suite。L2（单测、E2E、打包、冒烟）需要自托管 Windows runner，尚未接入；`audit:flex` 只在本地 `verify` 跑。
 - 文档与截图：`docs:capture` 产 27 张、`test:pair-panel` 产 1 张、E2E 顺手产 2 张；`docs:check` 校验链接、锚点、截图尺寸与“每张图被引用”。细节见 [DEVELOPMENT.md](DEVELOPMENT.md)。
