@@ -37,7 +37,7 @@ export interface PhoneInvokeResult {
 export type PhoneInvokeHandler = (request: PhoneInvokeRequest) => PhoneInvokeResult | Promise<PhoneInvokeResult>
 
 /** 白名单：每一项都在 ipc.ts 有对应实现，新增方法必须同时改两端与测试。 */
-export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'ping'] as const
+export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'message.send', 'ping'] as const
 
 const MAX_ID = 120
 const MAX_METHOD = 80
@@ -110,6 +110,22 @@ export async function dispatchPhoneInvoke(raw: unknown): Promise<PhoneInvokeResu
     if (typeof params.runId !== 'string' || !params.runId || params.runId.length > MAX_ID) {
       rejected++
       return fail('bad_request', '缺 runId')
+    }
+  }
+
+  if (method === 'message.send') {
+    if (typeof params.sessionId !== 'string' || !params.sessionId || params.sessionId.length > MAX_REQUEST_ID) {
+      rejected++
+      return fail('bad_request', '缺 sessionId')
+    }
+    // 空白消息不启动一轮 agent：那只会让模型收到空输入，白烧一次调用。
+    if (typeof params.text !== 'string' || !params.text.trim()) {
+      rejected++
+      return fail('bad_request', '消息不能为空')
+    }
+    if (params.text.length > 20_000) {
+      rejected++
+      return fail('bad_request', '消息超过 20000 字符')
     }
   }
 

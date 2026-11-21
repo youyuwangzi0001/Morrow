@@ -2003,6 +2003,24 @@ export function registerIpcHandlers(): void {
       }
       case 'snapshot.get':
         return { ok: true, result: service.phoneSnapshot() }
+      case 'message.send': {
+        // 手机会话里发消息 = 在桌面同一个会话里启动一轮。返回 runId 让手机
+        // 能在 result 里确认「发出去了」；后续进度仍走事件下行。
+        return service
+          .send(
+            {
+              sessionId: String(request.params.sessionId),
+              text: String(request.params.text)
+            },
+            // 手机发起的一轮没有对应的桌面窗口：进度通过下行事件到手机，
+            // 桌面窗口若开着也能从同一条事件流看到（forward 会走存在的窗口）。
+            null
+          )
+          .then((sent) => ({
+            ok: true as const,
+            result: { runId: sent.runId, assistantMessageId: sent.assistantMessageId }
+          }))
+      }
       case 'ping':
         return { ok: true, result: { at: Date.now() } }
       default:

@@ -80,6 +80,38 @@ describe('手机上行 invoke', () => {
     expect(result.error?.message).toBe('磁盘满了')
   })
 
+  it('@core:relay message.send 校验会话与正文后交给处理器', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    setPhoneInvokeHandler((request) => {
+      seen.push(request.params)
+      return { ok: true, result: { runId: 'run-1' } }
+    })
+    const result = await dispatchPhoneInvoke({
+      id: 'm1',
+      method: 'message.send',
+      params: { sessionId: 's1', text: '把 Q3 做复盘' }
+    })
+    expect(result.ok).toBe(true)
+    expect(seen).toEqual([{ sessionId: 's1', text: '把 Q3 做复盘' }])
+  })
+
+  it('@core:relay 空白消息不启动一轮，直接拒绝', async () => {
+    let called = false
+    setPhoneInvokeHandler(() => {
+      called = true
+      return { ok: true }
+    })
+    const blank = await dispatchPhoneInvoke({ id: 'm1', method: 'message.send', params: { sessionId: 's1', text: '   ' } })
+    const tooLong = await dispatchPhoneInvoke({
+      id: 'm2',
+      method: 'message.send',
+      params: { sessionId: 's1', text: 'x'.repeat(20_001) }
+    })
+    expect(blank.error?.code).toBe('bad_request')
+    expect(tooLong.error?.code).toBe('bad_request')
+    expect(called).toBe(false)
+  })
+
   it('@core:relay 未注册处理器时回 unavailable', async () => {
     const result = await dispatchPhoneInvoke({ id: '1', method: 'snapshot.get', params: {} })
     expect(result.ok).toBe(false)
