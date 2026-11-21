@@ -1255,11 +1255,13 @@ export class DirectChannel implements TierChannel {
         const sealed = state.channel.seal('desktop-to-phone', JSON.stringify(event))
         state.socket.send(JSON.stringify(sealed))
       }
-    } else {
-      // 缓冲里没有可补的历史（首连 / 桌面刚重启 / 手机落后太多）：
-      // 主动下发全量快照，让手机一次对齐，而不是停在空白页。
-      this.sendSnapshot(state, this.now())
     }
+    // 什么时候还要再发一份快照：
+    // - lastSeq === 0：手机没有任何状态（首配/重装）。即使缓冲能从头重放，
+    //   也只覆盖「桌面本次启动之后」的事件；更早的会话历史只有快照里有。
+    //   快照在重放之后发，所以它一定是最新状态，不会被旧事件覆盖。
+    // - 缓冲补不齐（result 失败）：桌面重启过或手机落后太多。
+    if (lastSeq === 0 || !result.ok) this.sendSnapshot(state, this.now())
   }
 
   /**

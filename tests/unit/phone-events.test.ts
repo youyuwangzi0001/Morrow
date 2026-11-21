@@ -122,7 +122,7 @@ describe('手机下行事件裁剪', () => {
       role: 'user',
       attachments: [{ name: 'a.png', dataUrl: 'data:image/png;base64,SECRET-BYTES' }],
       images: [{ dataUrl: 'data:image/png;base64,SECRET-BYTES' }]
-    } as ChatMessage
+    } as unknown as ChatMessage
     const phone = toPhoneEvent(event({ type: 'run_started', userMessage, assistantMessageId: 'm-2' }))
     expect(JSON.stringify(phone)).not.toContain('SECRET-BYTES')
     expect((phone?.userMessage as Record<string, unknown>).text).toBe('看这个文件')
