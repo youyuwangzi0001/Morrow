@@ -142,7 +142,7 @@ function rendererUrl(): { url?: string; file?: string } {
     url.hash = 'island'
     return { url: url.toString() }
   }
-  return { file: join(__dirname, '../renderer/index.html') }
+  return { file: join(app.getAppPath(), 'out', 'renderer', 'index.html') }
 }
 
 function createWindow(): BrowserWindow {
@@ -172,7 +172,7 @@ function createWindow(): BrowserWindow {
     title: 'Morrow 小伙伴',
     ...(islandIcon ? { icon: islandIcon.resize({ width: 256, height: 256 }) } : {}),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(app.getAppPath(), 'out', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

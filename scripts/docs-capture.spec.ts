@@ -174,8 +174,8 @@ test('guide screens', async () => {
       await page.waitForTimeout(700)
       await shot(page, file)
     }
-    await settings.getByRole('tab', { name: '更多功能' }).click()
-    await settings.getByRole('button', { name: /^记忆/ }).click()
+    // 设置页改版后「记忆」是顶层分页，不再藏在“更多功能”里。
+    await settings.getByRole('tab', { name: '记忆' }).click()
     await page.waitForTimeout(900)
     await shot(page, 'guide-memory.png')
     await page.keyboard.press('Escape')

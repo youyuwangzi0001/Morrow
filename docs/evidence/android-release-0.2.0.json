@@ -1,0 +1,44 @@
+{
+  "product": "Morrow Android",
+  "versionName": "0.2.0",
+  "versionCode": 2,
+  "package": "studio.morrow.android",
+  "builtAt": "2026-11-21T18:25:14+08:00",
+  "apk": {
+    "name": "Morrow-Android-0.2.0.apk",
+    "bytes": 2307066,
+    "sha256": "8b09a91cfed5c2e019c2b07d84d5e6628dbbcbd3895d123e8536183a9403714e",
+    "minSdk": 26,
+    "targetSdk": 35,
+    "compileSdk": 36
+  },
+  "signing": {
+    "scheme": "release keystore",
+    "dn": "CN=Morrow Release, O=Morrow Studio, C=CN",
+    "certSha256": "567199120a48ec8e954add6aa5ac77cb257cefcbde62261598d9aad55c57ad63"
+  },
+  "tests": {
+    "verifyScript": { "passed": 265, "failed": 0 },
+    "jvm": { "classes": 71, "tests": 919, "failedClasses": 0 },
+    "newInThisRound": [
+      "SwarmCommandWiringTest: 停止 / 重试 / 发新指令的 callback 与文本",
+      "PreviewModelTest: 预览载荷解析与 4 MiB 上限",
+      "SettingsScreenTest: 设置页分页与两步清配对"
+    ]
+  },
+  "dexMarkers": [
+    "works.preview",
+    "swarm.stopMember",
+    "swarm.retryMember",
+    "swarm.instruction",
+    "PdfRenderer",
+    "BiometricPrompt",
+    "morrow.settings"
+  ],
+  "limits": [
+    "没有真机或模拟器运行证据；只有 JVM、Robolectric 与静态验收",
+    "没有仪器测试（app/src/androidTest 为空）",
+    "没有 Firebase 云消息，进程被杀后收不到推送",
+    "公网中继未实现，只支持同一局域网直连"
+  ]
+}

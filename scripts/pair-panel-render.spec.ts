@@ -51,7 +51,9 @@ async function shot(app: MorrowApp, name: string): Promise<void> {
   const file = join(OUT, name)
   rmSync(file, { force: true })
   await app.page.waitForTimeout(350)
-  await app.page.screenshot({ path: file })
+  // 文档约定桌面截图统一 2100×1200。测试窗口是 1400×800 CSS 像素、1.5 倍缩放，
+// 按整窗裁切后输出正好 2100×1200。
+  await app.page.screenshot({ path: file, clip: { x: 0, y: 0, width: 1400, height: 800 } })
   const buf = readFileSync(file)
   expect(buf.length, `${name} 不应为空`).toBeGreaterThan(5000)
   expect(buf.subarray(0, 8).toString('hex'), `${name} 必须是 PNG`).toBe('89504e470d0a1a0a')

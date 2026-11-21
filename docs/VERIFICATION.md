@@ -20,7 +20,7 @@
 - 安装包是 NSIS 自解压，可选安装目录，创建开始菜单与桌面快捷方式；安装版数据目录是 `%APPDATA%\Morrow`。
 - 两个 exe 都未签名（`signed:false`）。首次运行时 SmartScreen 可能要求“更多信息 → 仍要运行”。
 - APK 是 release 签名包：包名 `studio.morrow.android`，versionCode 2、versionName `0.2.0`，minSdk 26、targetSdk 35，用工程内 release keystore（`CN=Morrow Release`）签名。
-- 安卓源码不在本仓，构建与测试在 `C:\交付成品\MorrowAndroid` 完成；本仓只保存 APK 产物。
+- 安卓源码不在本仓，构建与测试在 `C:\交付成品\MorrowAndroid` 完成；本仓只保存 APK 产物。机器可读的安卓证据见 `docs/evidence/android-release-0.2.0.json`。
 
 ## 冒烟验证
 
@@ -89,6 +89,10 @@
 | `npm run docs:capture` | 27 | 12 张引导、设置与工作区，15 张创作台，直接写入 `docs/screens/` |
 | `npm run test:pair-panel` | 1 | 桌面端配对面板，不是手机截图 |
 | E2E 顺手截取 | 2 | 两张设置页，需要手工搬入 `docs/screens/` |
+
+- 30 张均在 2026-11-21 用当前 0.2.0 构建重拍：`docs:capture` 三个 spec、配对面板按 2100×1200 裁切、E2E 的 `settings-cloud-media.png` 与 `settings-local.png` 从 `tmp/e2e-screens/` 拷入。
+- 手机端本轮没有真机或模拟器，因此 **0 张手机截图**；`docs/diagrams/mobile-pages.png` 是按 Compose 结构重画的示意图，不是界面截图。
+- 安卓的构建、签名、JVM 与静态验收数字见 `docs/evidence/android-release-0.2.0.json`，本页只摘录关键项。
 
 | 文件 | 内容 |
 |---|---|

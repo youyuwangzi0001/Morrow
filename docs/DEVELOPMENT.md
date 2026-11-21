@@ -84,6 +84,12 @@ npm run dev
 - 修改单个模块可以先跑对应文件，完成后跑 `npm run verify`；涉及 UI、终端、权限或真实链路时，跑受影响的 E2E。
 - 代码统计用 `node scripts/count-code.mjs`，口径是 `wc -l` 换行，排除依赖、产物、文档、图片与媒体夹具。
 
+## 构建
+
+- `electron.vite.config.ts` 里 renderer 固定 `target: esnext` 并用 terser 压缩；main/preload 用 `target: node22` 且按源文件拆 `manualChunks`。
+- 原因是 Windows 上 esbuild 0.25 处理超过约 512 KB 的整块 chunk 时会先写临时文件，删除时稳定报 `remove ...: Access is denied`（本机 4 MB 复现，与杀软/临时目录无关）。拆小或跳过整块转译都能绕开，逐模块 TS/TSX 转译不受影响。
+- 这不是“关掉压缩”：renderer 仍由 terser 输出压缩产物；main 保持可读，便于崩溃栈定位。
+
 ## 持续集成
 
 CI 只承担能在几分钟内跑完的静态与类型门槛，Windows 专属验证留在本地。
