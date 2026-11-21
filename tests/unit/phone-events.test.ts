@@ -140,3 +140,23 @@ describe('手机下行事件裁剪', () => {
     expect(phone.createdAt).toBe(AT)
   })
 })
+describe('协作状态下行', () => {
+  it('@core:relay 带出项目/会话/任务 id 供手机干预', () => {
+    const phone = toPhoneEvent(
+      event({
+        type: 'super_updated',
+        state: {
+          status: 'running',
+          projectId: 'proj-1',
+          goal: '把 Q3 复盘做完',
+          tasks: [{ index: 0, id: 'task-0', taskId: 'task-0b', title: '前端', status: 'running' }]
+        }
+      })
+    )
+    const state = (phone as unknown as { state: Record<string, unknown> }).state
+    expect(state.sessionId).toBe('s-1')
+    expect(state.projectId).toBe('proj-1')
+    const tasks = state.tasks as Array<Record<string, unknown>>
+    expect(tasks[0].taskId).toBe('task-0b')
+  })
+})

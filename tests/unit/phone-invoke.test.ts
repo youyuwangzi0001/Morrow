@@ -55,6 +55,66 @@ describe('手机上行 invoke', () => {
     expect(calls).toBe(0)
   })
 
+  it('@core:relay works.preview 缺 id 时不调用处理器', async () => {
+    let calls = 0
+    setPhoneInvokeHandler(() => {
+      calls++
+      return { ok: true }
+    })
+    const noWork = await dispatchPhoneInvoke({ id: '1', method: 'works.preview', params: { productId: 'p1' } })
+    const noProduct = await dispatchPhoneInvoke({ id: '2', method: 'works.preview', params: { workId: 'w1' } })
+    expect(noWork.error?.code).toBe('bad_request')
+    expect(noProduct.error?.code).toBe('bad_request')
+    expect(calls).toBe(0)
+  })
+
+  it('@core:relay 合法的预览请求被交给处理器', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    setPhoneInvokeHandler((request) => {
+      seen.push(request.params)
+      return { ok: true, result: { preview: null } }
+    })
+    const result = await dispatchPhoneInvoke({
+      id: 'p1',
+      method: 'works.preview',
+      params: { workId: 'w1', productId: 'd1' }
+    })
+    expect(result.ok).toBe(true)
+    expect(seen).toEqual([{ workId: 'w1', productId: 'd1' }])
+  })
+
+  it('@core:relay swarm 干预缺 id/空指令时不调用处理器', async () => {
+    let calls = 0
+    setPhoneInvokeHandler(() => {
+      calls++
+      return { ok: true }
+    })
+    const noProject = await dispatchPhoneInvoke({ id: '1', method: 'swarm.stopMember', params: { taskId: 't1' } })
+    const emptyText = await dispatchPhoneInvoke({
+      id: '2',
+      method: 'swarm.instruction',
+      params: { projectId: 'p1', sessionId: 's1', taskId: 't1', text: '  ' }
+    })
+    expect(noProject.error?.code).toBe('bad_request')
+    expect(emptyText.error?.code).toBe('bad_request')
+    expect(calls).toBe(0)
+  })
+
+  it('@core:relay 合法的协作重试交给处理器', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    setPhoneInvokeHandler((request) => {
+      seen.push(request.params)
+      return { ok: true, result: { started: true } }
+    })
+    const result = await dispatchPhoneInvoke({
+      id: 'r1',
+      method: 'swarm.retryMember',
+      params: { projectId: 'p1', sessionId: 's1', taskId: 't1' }
+    })
+    expect(result.ok).toBe(true)
+    expect(seen).toEqual([{ projectId: 'p1', sessionId: 's1', taskId: 't1' }])
+  })
+
   it('@core:relay 合法的审批决定被交给处理器', async () => {
     const seen: Array<Record<string, unknown>> = []
     setPhoneInvokeHandler((request) => {

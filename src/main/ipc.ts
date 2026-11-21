@@ -2010,7 +2010,88 @@ export function registerIpcHandlers(): void {
         // 失败回 failed，手机保留「未知」而不是显示「没有作品」。
         return getStudioService()
           .list()
-          .then((list) => ({ ok: true as const, result: { works: phoneWorks(list.projects) } }))
+          .then((list) => ({
+            ok: true as const,
+            result: {
+              works: phoneWorks(list.projects, (id) => getStudioService().productSummaries(id))
+            }
+          }))
+      case 'works.preview': {
+        // 成片预览取件：只允许取该作品 deliveries 里的产物，受 4 MiB 上限约束。
+        // 太大回 too_large（手机显示「在桌面打开」），不把半份文件发过去。
+        const workId = String(request.params.workId ?? '')
+        const productId = String(request.params.productId ?? '')
+        try {
+          const preview = getStudioService().deliveryPreview(workId, productId)
+          if (preview.tooLarge) {
+            const mb = Math.round((preview.bytes / 1024 / 1024) * 10) / 10
+            return {
+              ok: false as const,
+              error: { code: 'too_large', message: `文件 ${mb} MB，超过手机预览上限 4 MB，请在桌面打开` }
+            }
+          }
+          return {
+            ok: true as const,
+            result: { preview: { workId, productId, ...preview } }
+          }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'not_found', message: err instanceof Error ? err.message : '预览取件失败' }
+          }
+        }
+      }
+      case 'swarm.stopMember': {
+        // 手机端「停止成员」：只停这一个任务，不动整个协作。
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        const stopped = getCollaborationRuntime().stopTask(projectId, taskId)
+        return stopped
+          ? { ok: true as const, result: { stopped: true } }
+          : { ok: false as const, error: { code: 'not_found', message: '这项任务已经结束或不在本机运行' } }
+      }
+      case 'swarm.retryMember': {
+        const sessionId = String(request.params.sessionId ?? '')
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        try {
+          getAgentService(getSettingsStore(), getSessionStore()).retrySuperTask(
+            sessionId,
+            projectId,
+            taskId,
+            null
+          )
+          return { ok: true as const, result: { started: true } }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'failed', message: err instanceof Error ? err.message : '单独重试失败' }
+          }
+        }
+      }
+      case 'swarm.instruction': {
+        // 「发新指令」在桌面语义里是重新激活这个成员（reactivate），
+        // 不是往正在跑的成员里插话 —— 后者会把一条消息塞进错误的回合。
+        const sessionId = String(request.params.sessionId ?? '')
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        const text = String(request.params.text ?? '').trim()
+        try {
+          getAgentService(getSettingsStore(), getSessionStore()).reactivateSuperTask(
+            sessionId,
+            projectId,
+            taskId,
+            text,
+            null
+          )
+          return { ok: true as const, result: { started: true } }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'failed', message: err instanceof Error ? err.message : '下发新指令失败' }
+          }
+        }
+      }
       case 'message.send': {
         // 手机会话里发消息 = 在桌面同一个会话里启动一轮。返回 runId 让手机
         // 能在 result 里确认「发出去了」；后续进度仍走事件下行。

@@ -41,6 +41,8 @@ import { cloudMediaConfigured, cloudMediaFor, generateCloudImage, generateCloudM
 import { creativeMasterPrompt, type CreativeTask } from './creative-masters'
 import { localTtsStatus, localTtsVoices, isLocalTtsVoice, QWEN_DEFAULT_VOICE, synthesizeLocalSpeech } from './tts-local'
 import { sendFeatureEvent } from './feature-ipc'
+import { deliveryMime, MAX_PHONE_PREVIEW_BYTES, phoneProducts } from './phone-works'
+import type { PhoneDeliveryPreview, PhoneWorkProduct } from './phone-works'
 
 const PROJECT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{3,63}$/
 
@@ -7840,6 +7842,38 @@ export class StudioService {
     this.ensureInitialized()
     const engine = await this.status()
     return { projects: this.store.summaries(), engine }
+  }
+
+  /**
+   * 产物清单（只读 project.json，不触发素材补测/ffprobe）。
+   *
+   * `works.get` 需要给每件作品附上成片清单；用 `getProject` 会顺带做
+   * 帧数补齐与内嵌字幕扫描（每个作品一次 ffmpeg），40 个作品会卡住上行。
+   */
+  productSummaries(projectId: string): PhoneWorkProduct[] {
+    try {
+      const project = this.store.readProject(safeProjectId(projectId))
+      return phoneProducts(project.deliveries)
+    } catch {
+      // 作品已删除/损坏：没有产物清单，比让整个作品库失败好
+      return []
+    }
+  }
+
+  /**
+   * 手机预览取件。只允许取该作品 `deliveries` 里的产物；
+   * 路径经 `deliveryAbsolute` 的 `safeRelative` 校验，不能越出工程目录。
+   */
+  deliveryPreview(projectId: string, deliveryId: string): PhoneDeliveryPreview {
+    const project = this.store.readProject(safeProjectId(projectId))
+    const delivery = project.deliveries.find((item) => item.id === deliveryId)
+    if (!delivery) throw new Error('产物不存在或已被删除')
+    const absolute = this.store.deliveryAbsolute(project.id, delivery)
+    if (!existsSync(absolute)) throw new Error('产物文件不存在，请在桌面重新导出')
+    const size = statSync(absolute).size
+    const meta = { bytes: size, mime: deliveryMime(delivery.kind), label: delivery.label || delivery.kind, kind: delivery.kind }
+    if (size > MAX_PHONE_PREVIEW_BYTES) return { tooLarge: true, ...meta }
+    return { tooLarge: false, ...meta, dataBase64: readFileSync(absolute).toString('base64') }
   }
 
   getProject(id: string): StudioProject {

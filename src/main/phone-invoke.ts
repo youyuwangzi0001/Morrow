@@ -37,7 +37,7 @@ export interface PhoneInvokeResult {
 export type PhoneInvokeHandler = (request: PhoneInvokeRequest) => PhoneInvokeResult | Promise<PhoneInvokeResult>
 
 /** 白名单：每一项都在 ipc.ts 有对应实现，新增方法必须同时改两端与测试。 */
-export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'message.send', 'works.get', 'ping'] as const
+export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'message.send', 'works.get', 'works.preview', 'swarm.stopMember', 'swarm.retryMember', 'swarm.instruction', 'ping'] as const
 
 const MAX_ID = 120
 const MAX_METHOD = 80
@@ -126,6 +126,44 @@ export async function dispatchPhoneInvoke(raw: unknown): Promise<PhoneInvokeResu
     if (params.text.length > 20_000) {
       rejected++
       return fail('bad_request', '消息超过 20000 字符')
+    }
+  }
+
+  if (method === 'works.preview') {
+    for (const key of ['workId', 'productId'] as const) {
+      const value = params[key]
+      if (typeof value !== 'string' || !value || value.length > MAX_REQUEST_ID) {
+        rejected++
+        return fail('bad_request', `缺 ${key}`)
+      }
+    }
+  }
+
+  if (method === 'swarm.stopMember' || method === 'swarm.retryMember' || method === 'swarm.instruction') {
+    for (const key of ['projectId', 'taskId'] as const) {
+      const value = params[key]
+      if (typeof value !== 'string' || !value || value.length > MAX_REQUEST_ID) {
+        rejected++
+        return fail('bad_request', `缺 ${key}`)
+      }
+    }
+    if (method !== 'swarm.stopMember') {
+      const sessionId = params.sessionId
+      if (typeof sessionId !== 'string' || !sessionId || sessionId.length > MAX_REQUEST_ID) {
+        rejected++
+        return fail('bad_request', '缺 sessionId')
+      }
+    }
+    if (method === 'swarm.instruction') {
+      const text = params.text
+      if (typeof text !== 'string' || !text.trim()) {
+        rejected++
+        return fail('bad_request', '指令不能为空')
+      }
+      if (text.length > 4_000) {
+        rejected++
+        return fail('bad_request', '指令超过 4000 字符')
+      }
     }
   }
 

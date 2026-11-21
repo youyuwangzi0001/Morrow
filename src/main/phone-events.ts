@@ -113,13 +113,21 @@ export function phonePermission(request: PermissionRequest): Record<string, unkn
  * 手机 `IgnoreBridges.membersOf` 读的是 `{ state: { tasks: [...] } }`，
  * 所以这里保留外层 `state` 结构、只裁字段，不重新发明一套 schema。
  */
-export function phoneSuperState(state: SuperAgentState | null | undefined): Record<string, unknown> | null {
+export function phoneSuperState(
+  state: SuperAgentState | null | undefined,
+  sessionId?: string
+): Record<string, unknown> | null {
   if (!state) return null
   return {
     status: state.status,
+    // 手机干预（停止/重试/发新指令）需要会话 + 项目 + 任务三件套；
+    // 缺任何一件，桌面都无法定位到具体成员。
+    ...(sessionId ? { sessionId } : {}),
+    ...(state.projectId ? { projectId: state.projectId } : {}),
     goal: clamp(state.goal, 800),
     tasks: state.tasks.slice(0, 20).map((task) => ({
       index: task.index,
+      ...(task.taskId ?? task.id ? { taskId: task.taskId ?? task.id } : {}),
       title: clamp(task.title, 200),
       agent: 'general',
       ...(task.roleTitle ? { agentTitle: clamp(task.roleTitle, 120) } : {}),
@@ -217,7 +225,7 @@ export function toPhoneEvent(event: RuntimeEvent): PhoneEvent | null {
         todos: event.todos.map((todo) => ({ id: todo.id, text: clamp(todo.text, 200), status: todo.status }))
       }
     case 'super_updated':
-      return { ...base, state: phoneSuperState(event.state) }
+      return { ...base, state: phoneSuperState(event.state, event.sessionId) }
     case 'goal_updated':
       return {
         ...base,

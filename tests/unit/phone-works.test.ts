@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { phoneWorks } from '../../src/main/phone-works'
-import type { StudioProjectSummary } from '../../src/shared/studio'
+import { phoneProducts, phoneWorks } from '../../src/main/phone-works'
+import type { StudioDelivery, StudioProjectSummary } from '../../src/shared/studio'
 
 /**
  * 作品摘要的映射。
@@ -64,5 +64,21 @@ describe('phoneWorks', () => {
       project({ id: 'c', progress: Number.NaN })
     ])
     expect(works.map((w) => w.progress)).toEqual([0, 100, 0])
+  })
+
+  it('@core:relay 产物清单按创建时间倒序并映射字段', () => {
+    const deliveries = [
+      { id: 'd1', kind: 'pdf', label: '成书.pdf', path: 'exports/a.pdf', bytes: 100, sha256: '', createdAt: 2 },
+      { id: 'd2', kind: 'mp4', label: '成片', path: 'exports/a.mp4', bytes: 200, sha256: '', createdAt: 3 }
+    ] as StudioDelivery[]
+    const [work] = phoneWorks([project()], () => phoneProducts(deliveries))
+    expect(work.products.map((p) => p.id)).toEqual(['d2', 'd1'])
+    expect(work.products[0]).toMatchObject({ kind: 'mp4', label: '成片', bytes: 200, createdAtMillis: 3 })
+  })
+
+  it('@core:relay 没有产物时作品本身不丢', () => {
+    const [work] = phoneWorks([project()])
+    expect(work.id).toBe('w1')
+    expect(work.products).toEqual([])
   })
 })
