@@ -100,7 +100,9 @@ async function main() {
       artifacts: [],
       artifactsSessionId: 's1',
       members: null
-    })
+    }),
+    // 上行：真实加密 invoke → result 回帧（手机审批/停止走的就是这条路）。
+    invoke: async (request) => ({ ok: true, result: { method: request.method, params: request.params } })
   })
   await ch.connect()
   const port = ch.port()
@@ -214,6 +216,35 @@ async function main() {
     '手机用 sessionKey + salt 能解开广播事件（说明密钥对得上）',
     eventBody?.body?.message === SECRET,
     eventBody?.error ?? eventBody?.body?.type ?? '无'
+  )
+
+  // ── 5. 上行 invoke（加密）与 result 回帧 ──
+  const invoke = JSON.stringify({
+    v: 1,
+    kind: 'invoke',
+    seq: 1,
+    id: 'inv-1',
+    method: 'ping',
+    params: { from: 'phone' }
+  })
+  ws.send(JSON.stringify(phoneChannel.seal('phone-to-desktop', invoke)))
+  const gotResult = await waitFrames(4)
+  check('上行 invoke 后收到 result 帧', gotResult, `${inbox.length} 帧`)
+  let resultBody = null
+  try {
+    resultBody = JSON.parse(phoneChannel.open('desktop-to-phone', JSON.parse(inbox[3].toString())).toString('utf8'))
+  } catch (err) {
+    resultBody = { error: err.message }
+  }
+  check(
+    'result 帧带同一个 id 且 ok=true',
+    resultBody?.kind === 'result' && resultBody?.body?.id === 'inv-1' && resultBody?.body?.ok === true,
+    resultBody?.error ?? JSON.stringify(resultBody?.body ?? {}).slice(0, 80)
+  )
+  check(
+    '桌面处理器拿到真实 params',
+    resultBody?.body?.result?.params?.from === 'phone',
+    JSON.stringify(resultBody?.body?.result ?? {}).slice(0, 80)
   )
 
   // ── 4. 篡改帧被断开（4402） ──

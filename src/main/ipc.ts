@@ -39,6 +39,7 @@ import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
 import { setPhoneSnapshotProvider } from './phone-bridge'
+import { setPhoneInvokeHandler } from './phone-invoke'
 import { applyRelaySettings, currentPairing, lanHint } from './relay'
 import { issuePairTicket, listPairDevices, revokePairDevice } from './relay-pairing'
 import {
@@ -1979,6 +1980,35 @@ export function registerIpcHandlers(): void {
   // 只有 IPC 层同时拿得到 settingsStore / sessionStore 与 agentService 单例，
   // relay.ts 自己构造会造出第二个 AgentService（两份运行状态）。
   setPhoneSnapshotProvider(() => agentService().phoneSnapshot())
+
+  // 手机上行指令（白名单与参数校验在 phone-invoke.ts；这里只做动作）。
+  // 返回 false 不抛出：手机需要看到「这条审批已失效」，而不是通道断开。
+  setPhoneInvokeHandler((request) => {
+    const service = agentService()
+    switch (request.method) {
+      case 'approval.decide': {
+        const requestId = String(request.params.requestId)
+        const decision = request.params.decision as 'once' | 'deny'
+        const accepted = service.respondPermission(requestId, decision)
+        return accepted
+          ? { ok: true, result: { requestId, decision } }
+          : { ok: false, error: { code: 'not_found', message: '审批请求已失效或已处理' } }
+      }
+      case 'run.stop': {
+        const runId = String(request.params.runId)
+        const stopped = service.cancel(runId)
+        return stopped
+          ? { ok: true, result: { runId } }
+          : { ok: false, error: { code: 'not_found', message: '这一轮已经结束或不存在' } }
+      }
+      case 'snapshot.get':
+        return { ok: true, result: service.phoneSnapshot() }
+      case 'ping':
+        return { ok: true, result: { at: Date.now() } }
+      default:
+        return { ok: false, error: { code: 'unsupported', message: '不支持的方法' } }
+    }
+  })
 
   ipcMain.handle(IPC.chatSend, async (_e, input: Parameters<ReturnType<typeof getAgentService>['send']>[0]): Promise<Result<unknown>> => {
     try {

@@ -1,4 +1,5 @@
 import { type Envelope, makeEnvelope, SeqAllocator, ENVELOPE_VERSION, FRAME_REPLAYED, FRAME_TAMPERED, SecureChannel, newConnectionSalt, type TlsMaterial } from './relay-crypto'
+import type { PhoneInvokeRequest, PhoneInvokeResult } from './phone-invoke'
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import type { AddressInfo } from 'node:net'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -848,6 +849,11 @@ export const CLOSE_TAMPERED = 4402
 /** 关闭码：检测到重放（旧帧或乱序帧） */
 export const CLOSE_REPLAYED = 4403
 
+/** 上行 `params` 必须是普通对象；数组/null 一律当空对象交给校验层拒绝。 */
+function asParams(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
 export interface DirectChannelOptions {
   /** 配对服务，用于校验 hello 里的签名 */
   pairing: PairingService
@@ -870,6 +876,14 @@ export interface DirectChannelOptions {
    * 「正在同步」而不是收到一份空状态被误认为「桌面什么都没有」。
    */
   snapshot?: () => unknown
+  /**
+   * 手机上行 invoke 的处理器。
+   *
+   * 参数校验与白名单在 `phone-invoke.ts` 里完成，这一层只负责解密、
+   * 调用、把结果封成 `result` 帧。**处理器抛错不会断开连接** —— 客户端
+   * 需要看到失败原因，而不是被当成网络故障反复重连。
+   */
+  invoke?: (request: PhoneInvokeRequest) => PhoneInvokeResult | Promise<PhoneInvokeResult>
   /** 每条帧的日志钩子（测试与诊断用；生产不传） */
   onFrame?: (dir: 'in' | 'out', summary: string) => void
 }
@@ -899,6 +913,7 @@ export class DirectChannel implements TierChannel {
   private readonly now: () => number
   private readonly onFrame?: (dir: 'in' | 'out', summary: string) => void
   private readonly snapshot?: () => unknown
+  private readonly invoke?: (request: PhoneInvokeRequest) => PhoneInvokeResult | Promise<PhoneInvokeResult>
 
   private readonly replay: ReplayBuffer
   private readonly seq = new SeqAllocator()
@@ -919,6 +934,7 @@ export class DirectChannel implements TierChannel {
     this.now = options.now ?? Date.now
     this.onFrame = options.onFrame
     this.snapshot = options.snapshot
+    this.invoke = options.invoke
     this.replay = new ReplayBuffer({ capacity: options.replayCapacity })
   }
 
@@ -1171,11 +1187,60 @@ export class DirectChannel implements TierChannel {
       return
     }
 
-    // 已鉴权连接只接受 ack（推进已确认序号），其他帧忽略。
-    // 手机不向桌面推事件（桌面是权威源），所以这里没有上行分支。
+    // 已鉴权连接接受 ack（推进已确认序号）与 invoke（白名单上行指令）。
+    // 手机不向桌面推事件（桌面是权威源），所以没有 event 上行分支。
     if (inner.kind === 'ack') {
       this.onFrame?.('in', `ack seq=${String(inner.seq)}`)
+    } else if (inner.kind === 'invoke') {
+      void this.handleInvoke(state, inner)
     }
+  }
+
+  /**
+   * 执行一条手机上行指令并回 `result` 帧。
+   *
+   * `result` 不写 replay 缓冲：它是「这一次请求的应答」，不是可重放的历史事件。
+   * 重连后补发一份过期结果没有任何意义，反而会覆盖手机的新状态。
+   */
+  private async handleInvoke(state: ClientState, inner: Record<string, unknown>): Promise<void> {
+    const id = typeof inner.id === 'string' ? inner.id : ''
+    const method = typeof inner.method === 'string' ? inner.method : ''
+    this.onFrame?.('in', `invoke ${method || '?'} id=${id || '?'}`)
+    if (!this.invoke) {
+      this.sendResult(state, id, { ok: false, error: { code: 'unsupported', message: '桌面未提供上行处理' } })
+      return
+    }
+    let result: PhoneInvokeResult
+    try {
+      result = await this.invoke({ id, method, params: asParams(inner.params) })
+    } catch (err) {
+      // 处理器自身崩溃也不能断线：回一条失败结果，手机据此提示。
+      result = { ok: false, error: { code: 'failed', message: err instanceof Error ? err.message : String(err) } }
+    }
+    this.sendResult(state, id, result)
+  }
+
+  private sendResult(state: ClientState, id: string, result: PhoneInvokeResult): void {
+    if (!state.channel) return
+    const envelope = makeEnvelope(
+      this.seq,
+      'result',
+      { at: this.now() },
+      {
+        id,
+        ok: result.ok,
+        ...(result.result !== undefined ? { result: result.result } : {}),
+        ...(result.error ? { error: result.error } : {})
+      }
+    )
+    const sealed = state.channel.seal('desktop-to-phone', JSON.stringify(envelope))
+    try {
+      state.socket.send(JSON.stringify(sealed))
+    } catch {
+      // 连接刚好断开：结果是给这条连接的，没有补发意义。
+      return
+    }
+    this.onFrame?.('out', `seq=${envelope.seq} result id=${id || '?'} ok=${result.ok}`)
   }
 
   private handleHello(state: ClientState, frame: Record<string, unknown>): void {

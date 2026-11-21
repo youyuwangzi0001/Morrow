@@ -8,6 +8,7 @@ import { loadDevices, saveDevices, loadOrCreateKey, type LoadedKey, PairingServi
 import { ChannelSelector, type ChannelView, type TierChannel, DirectChannel, ChannelPoller } from './relay-channel'
 import { loadOrCreateTls } from './relay-crypto'
 import { buildPhoneSnapshot, setPhonePublisher } from './phone-bridge'
+import { dispatchPhoneInvoke } from './phone-invoke'
 
 // ───── src/relay/index.ts ─────
 /**
@@ -178,7 +179,9 @@ async function startLanStack(service: PairingService, dataDir: string): Promise<
       tls,
       // 首连或补漏缓冲不够时，服务端主动下发一份加密快照。
       // 手机按 `snapshot` 事件一次性对齐状态，不必再发一次请求。
-      snapshot: () => buildPhoneSnapshot()
+      snapshot: () => buildPhoneSnapshot(),
+      // 所有上行都过白名单与参数校验（phone-invoke.ts），再转给 ipc 注册的动作。
+      invoke: (request) => dispatchPhoneInvoke(request)
     })
     await direct.connect()
     log.info('lan direct listening', { port: direct.port(), fingerprint: tls.fingerprint.slice(0, 12) })
