@@ -23,8 +23,10 @@ import {
 import type {
   CollaborationMessageStatus,
   CollaborationProjection,
+  MemberOperation,
   SuperAgentState,
-  SuperTask
+  SuperTask,
+  ToolStatus
 } from '@shared/types'
 import { isSuperAgentTool } from '@shared/types'
 import { useAppStore } from '../store'
@@ -96,6 +98,80 @@ function agoText(ms: number): string {
   if (minutes < 60) return `${minutes} 分钟前`
   const hours = Math.floor(minutes / 60)
   return `${hours} 小时前`
+}
+
+const OPERATION_STATUS_TEXT: Record<ToolStatus, string> = {
+  running: '进行中',
+  waiting: '等待',
+  success: '完成',
+  error: '失败',
+  denied: '未允许',
+  interrupted: '已中断'
+}
+
+function operationIcon(status: ToolStatus): ReactNode {
+  if (status === 'running' || status === 'waiting') {
+    return <Loader2 size={12} className="super-spin" aria-hidden />
+  }
+  if (status === 'success') return <CheckCircle2 size={12} aria-hidden />
+  if (status === 'error' || status === 'denied') return <OctagonX size={12} aria-hidden />
+  return <CircleDashed size={12} aria-hidden />
+}
+
+/** 操作输出只做“可读摘要”，完整摘要由用户按需展开；不依赖 CSS 截断。 */
+function operationPreview(text: string): { preview: string; truncated: boolean } {
+  const clean = text.trim()
+  if (clean.length <= 240) return { preview: clean, truncated: false }
+  return { preview: `${clean.slice(0, 237).trimEnd()}…`, truncated: true }
+}
+
+function MemberOperationRow({ operation }: { operation: MemberOperation }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const output = (operation.error || operation.output || '').trim()
+  const { preview, truncated } = operationPreview(output)
+  const duration =
+    operation.startedAt && operation.finishedAt
+      ? `${Math.max(1, Math.round((operation.finishedAt - operation.startedAt) / 1000))}s`
+      : ''
+  const meta = operation.target || operation.input || ''
+  const outputId = `super-op-output-${operation.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+  return (
+    <li className={`super-op is-${operation.status}`}>
+      <div className="super-op-head">
+        <span className="super-op-mark" aria-hidden>{operationIcon(operation.status)}</span>
+        <span className="super-op-copy">
+          <strong>{operation.title || operation.name}</strong>
+          <span className="super-op-meta">
+            {meta ? <code title={meta}>{meta}</code> : null}
+            <em>{OPERATION_STATUS_TEXT[operation.status]}</em>
+            {duration ? <span className="mono">{duration}</span> : null}
+          </span>
+        </span>
+      </div>
+      {output ? (
+        <div className="super-op-output">
+          <p id={outputId}>{open ? output : preview}</p>
+          {truncated ? (
+            <button
+              type="button"
+              className="super-op-expand"
+              aria-expanded={open}
+              aria-controls={outputId}
+              onClick={() => setOpen((value) => !value)}
+            >
+              {open ? '收起摘要' : '查看完整摘要'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {operation.diffPreview ? (
+        <details className="super-op-diff">
+          <summary>查看这次改动</summary>
+          <pre>{operation.diffPreview}</pre>
+        </details>
+      ) : null}
+    </li>
+  )
 }
 
 interface SuperAgentBoardProps {
@@ -851,7 +927,7 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
                       ) : null}
                       {task.error ? <span className="super-task-error">{task.error}</span> : null}
                     </span>
-                    {operations.length > 0 ? (
+                    {operations.length > 0 || task.summary || taskMessages.length > 0 ? (
                       <ChevronDown size={13} className={['super-task-chevron', isOpen ? 'is-open' : ''].filter(Boolean).join(' ')} aria-hidden />
                     ) : null}
                   </button>
@@ -933,6 +1009,48 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
                   ) : null}
                   {isOpen ? (
                     <div className="super-task-detail">
+                      <div className="super-member-head">
+                        <span className="super-member-mark" aria-hidden>
+                          <Network size={14} strokeWidth={1.6} />
+                        </span>
+                        <span className="super-member-id">
+                          <strong>{task.roleTitle ?? task.role}</strong>
+                          <span>
+                            成员 {String(task.index + 1).padStart(2, '0')}
+                            {task.stepCount ? ` · ${task.stepCount} 步` : ''}
+                            {operations.length > 0 ? ` · ${operations.length} 次操作` : ''}
+                            {task.startedAt ? ` · ${elapsed(task, now)}` : ''}
+                          </span>
+                        </span>
+                        <span className={`super-member-status is-${task.status}`}>
+                          {statusIcon(task.status)}
+                          {STATUS_TEXT[task.status]}
+                        </span>
+                      </div>
+                      <div className="super-member-summary">
+                        <span className="super-member-label">成员结论</span>
+                        <p>
+                          {task.summary ||
+                            (task.status === 'running'
+                              ? '正在工作，完成后会在这里给出结论。'
+                              : '这位成员还没有返回结论。')}
+                        </p>
+                      </div>
+                      {operations.length > 0 ? (
+                        <section className="super-member-work" aria-label={`${task.roleTitle ?? task.role}的工作记录`}>
+                          <div className="super-member-work-head">
+                            <span className="super-kicker">工作记录</span>
+                            <span className="super-member-work-count">{operations.length} 次操作</span>
+                          </div>
+                          <ol className="super-ops">
+                            {operations.map((operation) => (
+                              <MemberOperationRow key={operation.id} operation={operation} />
+                            ))}
+                          </ol>
+                        </section>
+                      ) : task.summary ? null : (
+                        <p className="super-detail-empty">成员还没有返回操作记录。</p>
+                      )}
                       {task.deliverable || (task.needs?.length ?? 0) > 0 || task.waitReason || (task.files?.length ?? 0) > 0 ? (
                         <div className="super-detail-block super-plan-block">
                           <span className="super-kicker">计划</span>
@@ -1072,12 +1190,6 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
                           有 {task.conflictCount} 个文件冲突待选择；主文件未被覆盖，两版都在上方的“文件冲突”里。
                         </p>
                       ) : null}
-                      {task.summary ? (
-                        <div className="super-detail-block">
-                          <span className="super-kicker">成员结论</span>
-                          <p>{task.summary}</p>
-                        </div>
-                      ) : null}
                       <div className="super-detail-block">
                         <div className="super-supplement-head">
                           <span className="super-kicker">补充要求</span>
@@ -1104,7 +1216,7 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
                         ) : null}
                         {taskMessages.length > 0 ? (
                           <ul className="super-msg-list">
-                            {taskMessages.slice(-8).map((message) => (
+                            {taskMessages.map((message) => (
                               <li key={message.id} data-status={message.status} className={`is-${message.direction} is-${message.kind}`}>
                                 <div>
                                   <span className="super-msg-author">
@@ -1247,27 +1359,6 @@ export function SuperAgentBoard({ state, collaboration, copyValue }: SuperAgentB
                           </ul>
                         </div>
                       ) : null}
-                      {operations.length > 0 ? (
-                        <div className="super-detail-block">
-                          <span className="super-kicker">执行记录</span>
-                          <ul className="super-ops">
-                            {operations.map((operation) => (
-                              <li key={operation.id} className={`is-${operation.status}`}>
-                                <span>{operation.title || operation.name}</span>
-                                <em>{operation.error || operation.output || operation.status}</em>
-                                {operation.diffPreview ? (
-                                  <details className="super-op-diff">
-                                    <summary>查看这次改动</summary>
-                                    <pre>{operation.diffPreview}</pre>
-                                  </details>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : (
-                        <p className="super-detail-empty">成员还没有返回操作记录。</p>
-                      )}
                     </div>
                   ) : null}
                 </li>

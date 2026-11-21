@@ -45,7 +45,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  const { resetRelayForTests } = await import('../../src/relay')
+  const { resetRelayForTests } = await import('../../src/main/relay')
   await resetRelayForTests()
   vi.resetModules()
   while (dirs.length) {
@@ -74,7 +74,7 @@ function canConnect(port: number): Promise<boolean> {
 
 describe('relay 生命周期', () => {
   it('@core:relay 设置关闭时不监听、返回 null 端口', async () => {
-    const { applyRelaySettings, relayStatus } = await import('../../src/relay')
+    const { applyRelaySettings, relayStatus } = await import('../../src/main/relay')
     const r = await applyRelaySettings()
     expect(r.listening).toBe(false)
     expect(r.port).toBeNull()
@@ -83,7 +83,7 @@ describe('relay 生命周期', () => {
 
   it('@core:relay 设置开启后端口真的可连', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, relayStatus } = await import('../../src/relay')
+    const { applyRelaySettings, relayStatus } = await import('../../src/main/relay')
     const r = await applyRelaySettings()
     expect(r.listening).toBe(true)
     expect(r.port).toBeGreaterThan(0)
@@ -93,7 +93,7 @@ describe('relay 生命周期', () => {
 
   it('@core:relay 从开启切回关闭：端口必须真的断开，不能只是状态位变了', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings } = await import('../../src/relay')
+    const { applyRelaySettings } = await import('../../src/main/relay')
     const on = await applyRelaySettings()
     const port = on.port as number
     expect(await canConnect(port)).toBe(true)
@@ -107,7 +107,7 @@ describe('relay 生命周期', () => {
 
   it('@core:relay 改端口后重新应用：旧端口断开、新端口可连', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings } = await import('../../src/relay')
+    const { applyRelaySettings } = await import('../../src/main/relay')
     const first = await applyRelaySettings()
     const oldPort = first.port as number
 
@@ -129,12 +129,12 @@ describe('relay 生命周期', () => {
   })
 
   it('@core:relay 拒绝绑定非白名单通道（白名单不能被接入方绕过）', async () => {
-    const { bindDesktopChannel } = await import('../../src/relay')
+    const { bindDesktopChannel } = await import('../../src/main/relay')
     expect(() => bindDesktopChannel('app:change-data-dir', async () => ({}))).toThrow(/非白名单/)
   })
 
   it('@core:relay 绑定白名单通道后可被分发调用', async () => {
-    const { bindDesktopChannel, dispatch } = await import('../../src/relay')
+    const { bindDesktopChannel, dispatch } = await import('../../src/main/relay')
     bindDesktopChannel('session:list', async () => [{ id: 'live-1' }])
     const r = await dispatch('session:list', {})
     expect(r.ok).toBe(true)
@@ -143,7 +143,7 @@ describe('relay 生命周期', () => {
 
   it('@core:relay shutdown 后端口断开', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, shutdownRelay } = await import('../../src/relay')
+    const { applyRelaySettings, shutdownRelay } = await import('../../src/main/relay')
     const r = await applyRelaySettings()
     const port = r.port as number
     expect(await canConnect(port)).toBe(true)
@@ -166,7 +166,7 @@ describe('relay 生命周期', () => {
 describe('applyRelaySettings 真的传了 pairing', () => {
   it('@core:relay 服务启动后，不带签名的请求被 403 拒绝（说明鉴权生效）', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings } = await import('../../src/relay')
+    const { applyRelaySettings } = await import('../../src/main/relay')
     const r = await applyRelaySettings()
     expect(r.listening).toBe(true)
 
@@ -183,10 +183,10 @@ describe('applyRelaySettings 真的传了 pairing', () => {
 
   it('@core:relay 重启后（再次 applyRelaySettings）桌面公钥不变，已配对设备无需重配', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, shutdownRelay } = await import('../../src/relay')
+    const { applyRelaySettings, shutdownRelay } = await import('../../src/main/relay')
 
     await applyRelaySettings()
-    const { loadOrCreateKey } = await import('../../src/relay/keystore')
+    const { loadOrCreateKey } = await import('../../src/main/relay-pairing')
     const { safeStorage } = await import('electron')
     const before = loadOrCreateKey({ dataDir: state.dataDir, safeStorage })
 
@@ -213,7 +213,7 @@ describe('applyRelaySettings 真的传了 pairing', () => {
 describe('applyRelaySettings 真的起了局域网直连', () => {
   it('@core:relay 开启后 lanPort() 返回真实端口，且该端口可连', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, lanPort } = await import('../../src/relay')
+    const { applyRelaySettings, lanPort } = await import('../../src/main/relay')
     await applyRelaySettings()
 
     const port = lanPort()
@@ -224,7 +224,7 @@ describe('applyRelaySettings 真的起了局域网直连', () => {
 
   it('@core:relay 开启后 channelView() 有值（UI 才有 chip 可显示）', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, channelView } = await import('../../src/relay')
+    const { applyRelaySettings, channelView } = await import('../../src/main/relay')
     await applyRelaySettings()
 
     const view = channelView()
@@ -236,7 +236,7 @@ describe('applyRelaySettings 真的起了局域网直连', () => {
 
   it('@core:relay 关闭后 lanPort() 为 null 且端口真的断开', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, lanPort } = await import('../../src/relay')
+    const { applyRelaySettings, lanPort } = await import('../../src/main/relay')
     await applyRelaySettings()
     const port = lanPort() as number
     expect(await canConnect(port)).toBe(true)
@@ -249,7 +249,7 @@ describe('applyRelaySettings 真的起了局域网直连', () => {
 
   it('@core:relay shutdownRelay 后 lanPort() 为 null（不留后台监听）', async () => {
     state.relayEnabled = true
-    const { applyRelaySettings, shutdownRelay, lanPort } = await import('../../src/relay')
+    const { applyRelaySettings, shutdownRelay, lanPort } = await import('../../src/main/relay')
     await applyRelaySettings()
     const port = lanPort() as number
 

@@ -30,10 +30,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
  */
 const ENTRY = join(ROOT, `tmp-lan-entry-${process.pid}.ts`)
 const BUNDLE = join(ROOT, `tmp-lan-bundle-${process.pid}.mjs`)
-const ENTRY_SOURCE = `export { PairingService } from './src/relay/pairing'
-export { DirectChannel } from './src/relay/net/direct-channel'
-export { loadOrCreateTls } from './src/relay/net/tls'
-export { SecureChannel } from './src/relay/net/secure-frame'
+const ENTRY_SOURCE = `export { PairingService } from './src/main/relay-pairing'
+export { DirectChannel } from './src/main/relay-channel'
+export { loadOrCreateTls } from './src/main/relay-crypto'
+export { SecureChannel } from './src/main/relay-crypto'
 `
 
 const results = []

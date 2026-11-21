@@ -1,18 +1,13 @@
 import { createHash } from 'node:crypto'
 import { app, safeStorage } from 'electron'
-import { log } from '../main/logger'
-import { getSettingsStore } from '../main/settings'
-import { allowedChannels, checkChannel } from './allowlist'
-import { loadDevices, saveDevices } from './device-store'
-import { loadOrCreateKey, type LoadedKey } from './keystore'
-import { ChannelSelector, type ChannelView, type TierChannel } from './net/channel'
-import { DirectChannel } from './net/direct-channel'
-import { ChannelPoller } from './net/poller'
-import { loadOrCreateTls } from './net/tls'
-import { PairingService } from './pairing'
-import { bindChannel, dispatch, resetBindings } from './registry'
-import { startRelay, type RelayHandle } from './server'
+import { log } from './logger'
+import { getSettingsStore } from './settings'
+import { allowedChannels, checkChannel, bindChannel, dispatch, resetBindings, startRelay, type RelayHandle } from './relay-server'
+import { loadDevices, saveDevices, loadOrCreateKey, type LoadedKey, PairingService } from './relay-pairing'
+import { ChannelSelector, type ChannelView, type TierChannel, DirectChannel, ChannelPoller } from './relay-channel'
+import { loadOrCreateTls } from './relay-crypto'
 
+// ───── src/relay/index.ts ─────
 /**
  * Relay 生命周期：把「设置里的开关」接到「真实运行的服务」上。
  *

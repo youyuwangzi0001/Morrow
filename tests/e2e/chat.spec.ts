@@ -586,6 +586,9 @@ test('@core:context 手动压缩：锁住发送、摘要折叠展示、旧消息
     await page.locator('.message-compaction .compaction-head').click()
     await expect(page.locator('.compaction-body')).toBeVisible()
     await expect(page.locator('.compaction-body')).toContainText('六轮资料核对')
+    // 压缩检查点必须带上运行时状态：最近用户指令与待办/目标由系统写入，不靠摘要模型回忆
+    await expect(page.locator('.compaction-body')).toContainText('运行状态（系统记录，压缩时刷新）')
+    await expect(page.locator('.compaction-body')).toContainText('最近用户指令')
     await page.screenshot({ path: screenshotPath('context-compaction-expanded-light.png') })
     await setThemeViaStore(page, 'dark')
     await page.waitForTimeout(500)

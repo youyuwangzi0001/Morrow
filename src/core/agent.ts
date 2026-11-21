@@ -4,7 +4,15 @@ import type { AgentActorKind, AgentToolGrant, ChatMessage, CheckpointResume, Com
 import { newId, truncateText, sha256, shellSyntaxHint, abortable, abortError, errorMessage, isAbortError, iterateWithAbort, parseToolArgsDetailed } from './util'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, isAbsolute, relative, resolve } from 'node:path'
-import { composeCompactionSummary, extractCompactionLedger, isCompactionSummaryMessage, modelMessagesFrom } from './compaction'
+import {
+  buildRuntimeCheckpoint,
+  composeCompactionSummary,
+  extractCompactionLedger,
+  isCompactionSummaryMessage,
+  modelMessagesFrom,
+  pruneMiddle,
+  pruneToolOutputsForModel
+} from './compaction'
 import { createUnifiedDiff, ToolInputError, displayPath, inspectWorkspacePath, isExplicitlyAttachedPath, normalizeWorkspace, PLAN_TOOL_DEFINITION, TOOL_DEFINITIONS, GOAL_TOOL_DEFINITION, executeTool, toolCategory, toolDefinitionsForRun, toolRiskFor, toolTitleFor } from './tools'
 import { buildSkillsPromptSection, validateGoalEvidence, workerAskTool, workerMessageTool, workerTodoTool } from './tool-extra'
 import { buildResearchPromptSection, RESEARCH_DEPTHS } from '../shared/contracts'
@@ -737,7 +745,7 @@ function trimMessageForPreserve(message: ChatMessage, maxChars = 6000): ChatMess
   let remaining = maxChars
   const content = message.content.map((block) => {
     if (block.type === 'text') {
-      const text = truncateText(block.text, Math.max(0, remaining))
+      const text = pruneMiddle(block.text, Math.max(0, remaining))
       remaining = Math.max(0, remaining - text.length)
       return { ...block, text }
     }
@@ -748,8 +756,8 @@ function trimMessageForPreserve(message: ChatMessage, maxChars = 6000): ChatMess
           ? {
               result: {
                 ...block.result,
-                output: truncateText(block.result.output ?? '', 1200),
-                error: truncateText(block.result.error ?? '', 1200)
+                output: pruneMiddle(block.result.output ?? '', 1200, '工具输出已折叠'),
+                error: pruneMiddle(block.result.error ?? '', 1200, '工具错误已折叠')
               }
             }
           : {})
@@ -779,13 +787,13 @@ export function shrinkToolOutputs(
             ...block,
             result: {
               ...block.result,
-              output: truncateText(block.result.output ?? '', resultChars),
-              error: truncateText(block.result.error ?? '', resultChars)
+              output: pruneMiddle(block.result.output ?? '', resultChars, '工具输出已折叠'),
+              error: pruneMiddle(block.result.error ?? '', resultChars, '工具错误已折叠')
             }
           }
         }
         if (block.type === 'text') {
-          return { ...block, text: truncateText(block.text, textChars) }
+          return { ...block, text: pruneMiddle(block.text, textChars) }
         }
         return block
       })
@@ -895,14 +903,14 @@ function fitSingleOversizedMessages(messages: ChatMessage[], system: string, bud
     return {
       ...message,
       content: message.content.map((block) => {
-        if (block.type === 'text') return { ...block, text: truncateText(block.text, perMessage * 2) }
-        if (block.type === 'thinking') return { ...block, text: truncateText(block.text, Math.max(200, perMessage)) }
+        if (block.type === 'text') return { ...block, text: pruneMiddle(block.text, perMessage * 2) }
+        if (block.type === 'thinking') return { ...block, text: pruneMiddle(block.text, Math.max(200, perMessage)) }
         if (block.type === 'tool_use') {
           let input = block.input
           try {
             const serialized = JSON.stringify(block.input ?? {})
             if (estimateTokens(serialized) > perMessage) {
-              input = { _truncated: truncateText(serialized, perMessage) }
+              input = { _truncated: pruneMiddle(serialized, perMessage) }
             }
           } catch {
             input = block.input
@@ -914,8 +922,8 @@ function fitSingleOversizedMessages(messages: ChatMessage[], system: string, bud
               ? {
                   result: {
                     ...block.result,
-                    output: truncateText(block.result.output ?? '', perMessage),
-                    error: truncateText(block.result.error ?? '', Math.max(120, Math.floor(perMessage / 2)))
+                    output: pruneMiddle(block.result.output ?? '', perMessage, '工具输出已折叠'),
+                    error: pruneMiddle(block.result.error ?? '', Math.max(120, Math.floor(perMessage / 2)), '工具错误已折叠')
                   }
                 }
               : {})
@@ -932,15 +940,15 @@ function fitSingleOversizedMessages(messages: ChatMessage[], system: string, bud
     next = next.map((message) => ({
       ...message,
       content: message.content.map((block) => {
-        if (block.type === 'text') return { ...block, text: truncateText(block.text, chars * 2) }
-        if (block.type === 'thinking') return { ...block, text: truncateText(block.text, chars) }
+        if (block.type === 'text') return { ...block, text: pruneMiddle(block.text, chars * 2) }
+        if (block.type === 'thinking') return { ...block, text: pruneMiddle(block.text, chars) }
         if (block.type === 'tool_use' && block.result) {
           return {
             ...block,
             result: {
               ...block.result,
-              output: truncateText(block.result.output ?? '', chars),
-              error: truncateText(block.result.error ?? '', Math.max(80, Math.floor(chars / 2)))
+              output: pruneMiddle(block.result.output ?? '', chars, '工具输出已折叠'),
+              error: pruneMiddle(block.result.error ?? '', Math.max(80, Math.floor(chars / 2)), '工具错误已折叠')
             }
           }
         }
@@ -963,18 +971,18 @@ export function serializeMessagesForSummary(messages: ChatMessage[], maxChars = 
     }
     for (const block of message.content) {
       if (block.type === 'text' && block.text.trim()) {
-        chunks.push(truncateText(block.text.trim(), message.role === 'user' ? 6000 : 2000))
+        chunks.push(pruneMiddle(block.text.trim(), message.role === 'user' ? 6000 : 2000))
       } else if (block.type === 'thinking' && block.text.trim()) {
-        chunks.push(`（思考）${truncateText(block.text.trim(), 240)}`)
+        chunks.push(`（思考）${pruneMiddle(block.text.trim(), 240)}`)
       } else if (block.type === 'tool_use') {
         const resultText = block.result
           ? block.result.ok
-            ? truncateText(block.result.output ?? '', 1600)
-            : `失败：${truncateText(block.result.error ?? '未知错误', 1200)}`
+            ? pruneMiddle(block.result.output ?? '', 1600, '工具输出已折叠')
+            : `失败：${pruneMiddle(block.result.error ?? '未知错误', 1200, '工具错误已折叠')}`
           : '（无结果）'
         let inputText = ''
         try {
-          inputText = block.input ? truncateText(JSON.stringify(block.input), 700) : ''
+          inputText = block.input ? pruneMiddle(JSON.stringify(block.input), 700) : ''
         } catch {
           inputText = ''
         }
@@ -6169,6 +6177,16 @@ async function runMemberLoop(
   }
 }
 
+function runtimeCheckpointFor(ctx: RunContext): string {
+  return buildRuntimeCheckpoint({
+    goal: ctx.currentGoal,
+    plan: ctx.plan,
+    todos: ctx.todos,
+    artifacts: ctx.artifacts,
+    messages: ctx.messages
+  })
+}
+
 async function maybeCompact(
   ctx: RunContext,
   options: { force?: boolean; targetRatio?: number } = {}
@@ -6178,13 +6196,56 @@ async function maybeCompact(
   // 必须按「模型侧数组」规划：完整记录只增不减（压缩只插入标记），
   // 拿记录规划会让 estimate 在每次压缩后继续上涨，于是每个步骤都重复压缩，
   // 且 cutIndex 是记录索引，切模型侧数组会错位——最终把模型视图清到只剩一条。
-  const plan = planCompaction(ctx.modelMessages, ctx.systemPrompt, ctx.opts.model.contextWindow, {
+  const planOptions = {
     threshold: ctx.opts.compactThreshold,
     keepRecent: ctx.opts.keepRecent,
     targetRatio: options.targetRatio ?? ctx.opts.compactTargetRatio,
     force: options.force,
     measuredTokens: measuredContextTokens(ctx)
-  })
+  }
+  let plan = planCompaction(ctx.modelMessages, ctx.systemPrompt, ctx.opts.model.contextWindow, planOptions)
+  // DSH 式「先修剪、后摘要」：压力触发后先把超大工具结果换成「头 + 省略标记 + 尾」，
+  // 完整原文仍留在会话记录里。修剪后已经回到阈值内就跳过摘要模型，省一次调用；
+  // 仍需摘要时，摘要模型看到的也是修剪后的内容，不会被单条巨量日志淹没。
+  if (plan.shouldCompact || plan.reason === 'no-safe-cut') {
+    const pruned = pruneToolOutputsForModel(
+      ctx.modelMessages,
+      undefined,
+      Math.min(8, clampKeepRecent(ctx.opts.keepRecent))
+    )
+    if (pruned.prunedCount > 0) {
+      const afterPrune = estimateMessagesTokens(pruned.messages, ctx.systemPrompt)
+      // 服务商实测值通常高于本地估算；修剪只减掉确定删除的字符，
+      // 不能因为「估算已低于阈值」就无视实测值，否则下一请求仍可能溢出。
+      const savedByPrune = Math.max(0, plan.estimatedTokens - afterPrune)
+      const measured = planOptions.measuredTokens
+      const useMeasured = typeof measured === 'number' && measured > plan.estimatedTokens
+      const adjustedMeasured = useMeasured ? Math.max(afterPrune, measured - savedByPrune) : undefined
+      const replanned = planCompaction(pruned.messages, ctx.systemPrompt, ctx.opts.model.contextWindow, {
+        ...planOptions,
+        // 修剪后旧 usage 已不代表模型侧占用；有实测值时按修剪量折算，否则让本地估算重新判定。
+        measuredTokens: adjustedMeasured
+      })
+      const projected = adjustedMeasured ?? afterPrune
+      // 有实测值时留 10% 余量，避免估算偏差把请求推到窗口边缘。
+      const skipCeiling = plan.thresholdTokens * (useMeasured ? 0.9 : 1)
+      if (projected <= skipCeiling) {
+        ctx.modelMessages = pruned.messages
+        ctx.lastRequestUsage = null
+        ctx.emit({ type: 'usage_updated', usage: currentUsage(ctx) })
+        ctx.emit({
+          type: 'notice',
+          level: 'info',
+          message: `已修剪 ${pruned.prunedCount} 条超大工具输出（保留头尾），模型侧回到阈值内，本轮不需要摘要。`
+        })
+        return false
+      }
+      if (replanned.shouldCompact) {
+        plan = replanned
+        ctx.modelMessages = pruned.messages
+      }
+    }
+  }
   if (!plan.shouldCompact) {
     if (plan.reason === 'no-safe-cut' && plan.estimatedTokens > plan.thresholdTokens) {
       // 短历史/只有摘要时无法安全切段：只折叠模型侧过大的工具输出。
@@ -6234,7 +6295,13 @@ async function maybeCompact(
     newSummary = localExtractSummary(older)
     ctx.emit({ type: 'notice', level: 'warn', message: '自动摘要失败，已用本地摘要压缩历史，对话可以继续。' })
   }
-  const summaryText = composeCompactionSummary(plan.existingSummary, newSummary, ledger, Math.min(12_000, Math.max(1_200, Math.floor(ctx.opts.model.contextWindow * 0.08))))
+  const summaryText = composeCompactionSummary(
+    plan.existingSummary,
+    newSummary,
+    ledger,
+    Math.min(12_000, Math.max(1_200, Math.floor(ctx.opts.model.contextWindow * 0.08))),
+    runtimeCheckpointFor(ctx)
+  )
   // 压缩只改「模型侧」：完整记录里插入一条摘要标记（不替换、不删除），
   // 模型上下文由 modelMessagesFrom 从记录重新推导，避免两份数组各说各话。
   const outcome = applyModelCompaction(ctx.messages, ctx.modelMessages, plan, summaryText, {
@@ -6369,6 +6436,7 @@ async function summarizeHistory(
     '## 未完成与下一步',
     '## 故事/研究事实与关键数据（人物、设定、时间线、伏笔；非叙事任务写“无”）',
     '规则：路径、命令、数字、错误信息原文照抄；不编造；不调用工具；不向用户提问；只输出摘要正文。',
+    '系统会在摘要后追加「运行状态」（当前目标/计划/待办/最近指令），那是权威状态；历史里的旧计划若与它冲突，以运行状态为准，不要复述已过时的下一步。',
     '优先写“下一位 Agent 必须知道什么”，不要按时间流水账复述。'
   ].join('\n')
   const message: ChatMessage = {
@@ -6420,6 +6488,8 @@ export interface CompactSessionOptions {
   threshold?: number
   /** 压缩目标比例（占窗口，0.1–0.3，默认 0.15） */
   targetRatio?: number
+  /** 当前目标 / 计划 / 待办等权威运行状态；写入检查点，避免压缩后忘记下一步 */
+  runtimeCheckpoint?: string
 }
 
 export interface CompactSessionResult {
@@ -6445,7 +6515,11 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
   const contextLimit = model.contextWindow > 0 ? model.contextWindow : 128_000
   // 压缩只作用于模型侧：完整记录里只多一条摘要标记，界面/导出/搜索一条都不会少。
   const record = options.messages
-  const modelMessages = modelMessagesFrom(record)
+  const rawModelMessages = modelMessagesFrom(record)
+  // 手动 /compact 同样先修剪超大工具输出：摘要模型看到的是头尾与省略标记，
+  // 而不是被截断的日志开头；完整原文仍在 record 里。
+  const pruned = pruneToolOutputsForModel(rawModelMessages, undefined, Math.min(8, clampKeepRecent(options.keepRecent)))
+  const modelMessages = pruned.prunedCount > 0 ? pruned.messages : rawModelMessages
   const plan = planCompaction(modelMessages, systemPrompt, contextLimit, {
     keepRecent: options.keepRecent === undefined ? undefined : clampKeepRecent(options.keepRecent),
     threshold: options.threshold === undefined ? undefined : clampThreshold(options.threshold),
@@ -6476,7 +6550,13 @@ export async function compactSession(options: CompactSessionOptions): Promise<Co
     }
     newSummary = localExtractSummary(older)
   }
-  const summaryText = composeCompactionSummary(plan.existingSummary, newSummary, ledger, Math.min(12_000, Math.max(1_200, Math.floor(contextLimit * 0.08))))
+  const summaryText = composeCompactionSummary(
+    plan.existingSummary,
+    newSummary,
+    ledger,
+    Math.min(12_000, Math.max(1_200, Math.floor(contextLimit * 0.08))),
+    options.runtimeCheckpoint ?? ''
+  )
   const outcome = applyModelCompaction(record, modelMessages, plan, summaryText, {
     systemPrompt,
     contextLimit,

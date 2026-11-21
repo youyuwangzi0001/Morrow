@@ -53,7 +53,7 @@ export {
   type CompactionPlan
 } from './agent'
 
-export { modelMessagesFrom } from './compaction'
+export { buildRuntimeCheckpoint, modelMessagesFrom } from './compaction'
 
 export {
   createProvider,

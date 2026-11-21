@@ -4,7 +4,7 @@
  *
  * 为什么不用 GuiApp：本机 GUI 模式的 Electron 起不来（已知环境限制，见 A 轨报告）。
  * 但 relay 是纯 Node 的 HTTP 服务，不依赖窗口。所以这里的做法是：
- *   1. 用 esbuild 把 src/relay/server.ts 打成单文件（反映当前真实源码）；
+ *   1. 用 esbuild 把 src/main/relay-server.ts 打成单文件（反映当前真实源码）；
  *   2. 在独立 Node 子进程里启动它；
  *   3. 父进程用 netstat 从外部检查端口状态。
  *
@@ -60,13 +60,13 @@ async function waitFor(fn, timeoutMs, label) {
 try {
   // 直接用本地 esbuild 的 JS 入口，避免依赖 npx 在 PATH 中的可执行性
   const esbuild = join(ROOT, 'node_modules', 'esbuild', 'bin', 'esbuild')
-  execFileSync(process.execPath, [esbuild, 'src/relay/server.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${BUNDLE}`], {
+  execFileSync(process.execPath, [esbuild, 'src/main/relay-server.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${BUNDLE}`], {
     cwd: ROOT,
     stdio: 'pipe'
   })
-  record('打包 src/relay/server.ts 成功', existsSync(BUNDLE), `${(readFileSync(BUNDLE).length / 1024).toFixed(1)} KB`)
+  record('打包 src/main/relay-server.ts 成功', existsSync(BUNDLE), `${(readFileSync(BUNDLE).length / 1024).toFixed(1)} KB`)
 } catch (err) {
-  record('打包 src/relay/server.ts 成功', false, String(err).slice(0, 200))
+  record('打包 src/main/relay-server.ts 成功', false, String(err).slice(0, 200))
   console.log('\n0/1 通过')
   process.exit(1)
 }

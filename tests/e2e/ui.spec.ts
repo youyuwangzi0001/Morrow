@@ -288,6 +288,20 @@ test.describe('R5 UI 交互', () => {
     const dialog = page.locator('[role="dialog"]').first()
     await expect(dialog).toBeVisible()
 
+    // 新增子页后左栏仍保持 34px 行高；放不下的分类向下顺延并由滚动条承接，不被 flex 压扁。
+    const navMetrics = await page.evaluate(() => {
+      const nav = document.querySelector('.st-nav')
+      const items = Array.from(document.querySelectorAll('.st-nav-item'))
+      return {
+        heights: items.map((item) => Math.round(item.getBoundingClientRect().height)),
+        scrollHeight: nav?.scrollHeight ?? 0,
+        clientHeight: nav?.clientHeight ?? 0
+      }
+    })
+    expect(navMetrics.heights.length).toBeGreaterThanOrEqual(20)
+    expect(navMetrics.heights.every((height) => height >= 33 && height <= 34)).toBe(true)
+    expect(navMetrics.scrollHeight).toBeGreaterThan(navMetrics.clientHeight)
+
     // 模型页只保留云端服务；本地模型统一放到「本地」页
     await dialog.getByRole('button', { name: '选择模型服务' }).click()
     const providerOptions = dialog.getByRole('option')
@@ -659,23 +673,32 @@ test('@core:modes 计划模式：/plan 生成 → 拒绝 → 修订 → 批准�
     await page.evaluate(() => {
       ;(window as unknown as { __morrowStore: { getState: () => { closeCanvas: () => void } } }).__morrowStore.getState().closeCanvas()
     })
-    const progressDock = page.locator('.progress-dock')
-    await expect(progressDock).toBeVisible()
-    await expect(progressDock.locator('.progress-status')).toHaveText('等待你')
-    await expect(progressDock.locator('.progress-now-text')).toContainText('待继续')
-    await expect(progressDock.locator('.progress-todo')).toHaveCount(3)
-    await expect(progressDock.locator('.progress-todo-meta')).toContainText('待办 2/3')
-    const toastBox = await page.locator('.toasts').boundingBox()
-    const dockBox = await progressDock.boundingBox()
-    expect(toastBox).not.toBeNull()
-    expect(dockBox).not.toBeNull()
-    expect(toastBox!.x + toastBox!.width).toBeLessThanOrEqual(dockBox!.x + 1)
+    const progressFloat = page.locator('.progress-float')
+    await expect(progressFloat).toBeVisible()
+    await expect(progressFloat.locator('.progress-status')).toHaveText('等待你')
+    await expect(progressFloat.locator('.progress-now-text')).toContainText('待继续')
+    await expect(progressFloat.locator('.progress-todo')).toHaveCount(3)
+    await expect(progressFloat.locator('.progress-todo-meta')).toContainText('待办 2/3')
+    const mainBox = await page.locator('.app-main').boundingBox()
+    const conversationBox = await page.locator('.app-conversation').boundingBox()
+    const floatBox = await progressFloat.boundingBox()
+    const viewportHeight = await page.evaluate(() => window.innerHeight)
+    expect(mainBox).not.toBeNull()
+    expect(conversationBox).not.toBeNull()
+    expect(floatBox).not.toBeNull()
+    // 浮窗贴右上角，宽 300px、最高窗口 40%；不占布局宽度，对话列仍铺满主区域。
+    expect(floatBox!.x).toBeGreaterThan(mainBox!.x + mainBox!.width / 2)
+    expect(floatBox!.y - mainBox!.y).toBeLessThan(24)
+    expect(floatBox!.width).toBeGreaterThanOrEqual(290)
+    expect(floatBox!.width).toBeLessThanOrEqual(301)
+    expect(floatBox!.height).toBeLessThanOrEqual(viewportHeight * 0.4 + 1)
+    expect(conversationBox!.width).toBeCloseTo(mainBox!.width, 0)
     await page.screenshot({ path: screenshotPath('progress-todos.png') })
     await page.evaluate((artifactId) => {
       ;(window as unknown as { __morrowStore: { getState: () => { openCanvas: (id?: string) => void } } }).__morrowStore.getState().openCanvas(artifactId ?? undefined)
     }, canvasArtifactId)
     await expect(page.locator('.canvas-root')).toBeVisible()
-    await expect(page.locator('.progress-dock')).toHaveCount(0)
+    await expect(page.locator('.progress-float')).toHaveCount(0)
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
     })
@@ -1679,6 +1702,33 @@ test.describe('A4 深度研究模式', () => {
     await page.locator('.sources-head').click()
     await expect(page.locator('.sources-item')).toHaveCount(4)
     await page.locator('.sources-head').click()
+
+    // 画布打开时进展浮窗让位；关闭画布后检查底部来源摘要，再恢复画布。
+    const reportArtifactId = await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: {
+          getState: () => { canvas: { artifactId: string | null }; closeCanvas: () => void }
+        }
+      }).__morrowStore
+      const id = store.getState().canvas.artifactId
+      store.getState().closeCanvas()
+      return id
+    })
+    const researchFloat = page.locator('.progress-float')
+    await expect(researchFloat).toBeVisible()
+    const sourceGroup = researchFloat.locator('.progress-out-group[aria-label="来源"]')
+    await expect(sourceGroup).toBeVisible()
+    await expect(sourceGroup.locator('.progress-source')).toHaveCount(3)
+    await expect(sourceGroup).toContainText('还有 1 条来源')
+    await expect(sourceGroup.locator('.progress-source-host').first()).not.toBeEmpty()
+    await page.screenshot({ path: screenshotPath('progress-sources.png') })
+    await page.evaluate((artifactId) => {
+      const store = (window as unknown as {
+        __morrowStore: { getState: () => { openCanvas: (id?: string) => void } }
+      }).__morrowStore
+      store.getState().openCanvas(artifactId ?? undefined)
+    }, reportArtifactId)
+    await expect(page.locator('.canvas-root')).toBeVisible()
 
     await page.screenshot({ path: screenshotPath('a4-deep-research.png') })
     await page.evaluate(() => {
@@ -5990,6 +6040,12 @@ test('@core:superagent 协作成员可向主代理提问、回消息、维护待
 
     await expect(page.locator('.super-board .super-task')).toHaveCount(1, { timeout: 20_000 })
     await page.locator('.super-task-main').first().click()
+    await expect(page.locator('.super-member-head')).toContainText(/成员/)
+    await expect(page.locator('.super-member-summary')).toContainText('成员结论')
+    await expect(page.locator('.super-op').first()).toBeVisible()
+    await page.locator('.super-member-head').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(200)
+    await page.screenshot({ path: screenshotPath('super-member-head.png') })
     await expect(page.locator('.super-msg-list')).toContainText('要保留旧端口吗？', { timeout: 30_000 })
     await expect(page.locator('.super-worker-todos')).toContainText('确认兼容策略')
     await expect(page.locator('.super-op-diff')).toBeVisible({ timeout: 15_000 })
@@ -6028,6 +6084,46 @@ test('@core:superagent 协作成员可向主代理提问、回消息、维护待
     expect(bodies.some((body: string) => body.includes('【主代理新指令】再补一个回归测试'))).toBe(true)
     expect(bodies.some((body: string) => body.includes('收到答复，协作成员完成'))).toBe(true)
     await expect(page.locator('.super-task')).toContainText('第 2 次尝试')
+    // 长操作输出默认是可读摘要，点开“查看完整摘要”必须给出完整文本（含截断说明）。
+    const taskMain = page.locator('.super-task-main').first()
+    if ((await taskMain.getAttribute('aria-expanded')) !== 'true') await taskMain.click()
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __morrowStore: {
+          getState: () => { session: Record<string, unknown> | null }
+          setState: (patch: Record<string, unknown>) => void
+        }
+      }).__morrowStore
+      const session = store.getState().session as {
+        superAgent?: { tasks?: Array<Record<string, unknown>> }
+      } | null
+      const task = session?.superAgent?.tasks?.[0]
+      if (!session || !task) throw new Error('missing super task')
+      const longOutput = `${'成员已完成登录入口核对，保留旧端口并补充回归测试。'.repeat(12)}\n…（输出已截断，共 999 字符，仅显示前 240 字符）`
+      const operations = Array.isArray(task.operations) ? task.operations : []
+      store.setState({
+        session: {
+          ...session,
+          superAgent: {
+            ...session.superAgent,
+            tasks: [
+              {
+                ...task,
+                operations: [
+                  { ...(operations[0] as Record<string, unknown>), output: longOutput },
+                  ...operations.slice(1)
+                ]
+              },
+              ...(session.superAgent.tasks ?? []).slice(1)
+            ]
+          }
+        }
+      })
+    })
+    await expect(page.locator('.super-op-expand').first()).toBeVisible()
+    await page.locator('.super-op-expand').first().click()
+    await expect(page.locator('.super-op-output').first()).toContainText('输出已截断')
+    await page.locator('.super-task-detail').screenshot({ path: screenshotPath('super-member-detail.png') })
     await page.evaluate(() => {
       document.querySelectorAll<HTMLButtonElement>('[aria-label="收起通知"]').forEach((button) => button.click())
     })

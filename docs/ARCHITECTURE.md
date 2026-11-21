@@ -39,6 +39,7 @@ main (Electron)
   ├─ StudioService / StudioStore：创作台
   ├─ creative-masters / prompt-kit：内嵌大师方法与提示词基座（构建期产物）
   ├─ media：ComfyUI / ffmpeg / TTS / 模型目录
+  ├─ relay-*：跨设备远程通道（配对、加密帧、LAN 直连、中继与审计）
   └─ session / settings / secrets / projects / memory / skills / schedules
 ```
 
@@ -58,12 +59,14 @@ Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法�
 
 ## 扁平源码结构
 
-源码按职责扁平放在 `src/main`、`src/core`、`src/renderer/features`、`src/shared`。合并功能套组后不保留多层 `studio/`、`core/agent/` 目录；新增文件优先放到对应扁平目录。
+源码按职责扁平放在 `src/main`、`src/core`、`src/renderer/features`、`src/shared`。合并功能套组后不保留多层 `studio/`、`core/agent/` 目录；新增文件优先放到对应扁平目录。远程通道、搜索与云媒体同样按域收进这四个根目录，不再新建第五个顶层目录或嵌套子目录。
 
 - **协作域**：核心逻辑在 `src/core/collaboration.ts`，主进程服务在 `src/main/collaboration.ts`。成果、计划、验收、共享资源、成员名额与工具审计都在两个文件内。
 - **工具域**：`tool-kit`（公共层）、`tools`（注册表）、`tool-extra`（技能/MCP/任务）、`tool-files`（文件与文档）、`tool-media`（媒体/网页/搜索/浏览器/电脑/命令）。
+- **远程通道域**：`relay.ts`（设置与生命周期）、`relay-channel.ts`（通道选择/直连/轮询/重放）、`relay-crypto.ts`（信封、加密帧、TLS 材料）、`relay-pairing.ts`（配对/票据/设备与密钥存储）、`relay-server.ts`（中继服务、准入、审计、注册表）。
+- **搜索域**：`main/search.ts` 同时承载厂商原生搜索与内置多引擎检索；原生无来源时由内置检索补来源。
 - **渲染层**：每个功能域一个 `*.tsx` 组件加一个 `*.css`；跨 feature 复用的纯逻辑放 `*-core.ts`（如 `artifacts-core`、`files-core`、`studio-core`）。
-- **共享层**：`shared/types`、`shared/contracts`、`shared/studio`、`shared/studio-assistant`。
+- **共享层**：`shared/types`、`shared/contracts`、`shared/studio`、`shared/studio-assistant`；`shared/media-cloud.ts` 含云媒体预设与官方音色目录。
 - **测试**：`tests/unit` 按功能域合并入口；`tests/e2e` 按流程分文件；共用辅助平铺为 `helpers.ts`。
 
 ### 为什么保留少数分文件
@@ -72,6 +75,7 @@ Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法�
 - `*-core.ts` 被多个 feature 交叉引用；合并进单个组件文件会造成跨 feature 反向依赖。
 - `main/workspace-isolation.ts` 属于工作区隔离域（`@core:workspace`），不是协作域内部实现。
 - `studio-*.test.ts` 各自 mock 不同的 `electron` / `settings` 或独立 HTTP/TTS 生命周期；合并会把 mock 提升为整文件生效。
+- `relay-lifecycle.test.ts` 与 `relay-settings.test.ts` 同理：前者 mock 掉 `settings` 模块直连真实服务，后者要实例化真实 `SettingsStore` 并写真实 `settings.json`，两种 mock 不能共存于一个测试文件。
 
 ## 数据目录
 
@@ -137,9 +141,11 @@ Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法�
 
 - **两层结构**：`Session.messages` / `RunContext.messages` 是**完整记录**（界面、落盘、导出、搜索、分叉都读它，永不裁剪）；`RunContext.modelMessages` 只承载发给模型的那一份，压缩只作用于它。协作成员循环（`runMemberLoop`）同样维护独立模型侧数组。
 - **压缩只插入标记**：完整记录里在真实切点插入一条 `role=system` 摘要标记（带 `preservedMessageIds`、轮次、节省量），原文一条不删；模型侧由 `modelMessagesFrom()` 从最后一条标记处重建，旧会话（无标记）原样作为模型视图，无需迁移。
-- **折叠预算随标记持久化**：单条工具结果常比整个目标预算还大，压缩时会按 `targetRatio`（默认 0.15，范围 0.10–0.30）逐级收紧工具输出，并把实际截断长度写进标记的 `modelTrimChars`；`modelTrimThroughId` 限定只折叠压缩当时已有的内容，压缩后新增的消息保持原文。
+- **先修剪、后摘要**：达到压缩阈值后，先对模型侧较早的超大工具结果做确定性修剪（默认保留前 4096 + 后 1024 字符，中间写省略标记，最近几条消息保持原文），完整原文仍在会话记录里；修剪后已回到阈值内就跳过摘要模型，仍需摘要时摘要模型看到的也是修剪后的内容。短历史无法切段时同样只折叠模型侧，不删记录。
+- **运行状态检查点**：每次压缩都从当前 Goal / 计划 / 待办 / 最近用户指令 / 产物生成一段系统运行状态，附在摘要之后；它不交给摘要模型改写，压缩后仍以真实状态为准，避免长任务忘记下一步。保留顺序融合 Codex 的「最近用户消息优先」与 Qoder 式「工作集优先」：先保目标、计划、待办和最近指令，再让旧叙述让位。
+- **折叠预算随标记持久化**：单条工具结果常比整个目标预算还大，压缩时会按 `targetRatio`（默认 0.15，范围 0.10–0.30）逐级收紧工具输出，并把实际截断长度写进标记的 `modelTrimChars`；折叠同样保留头尾，`modelTrimThroughId` 限定只折叠压缩当时已有的内容，压缩后新增的消息保持原文。
 - **规划必须基于模型侧**：`planCompaction` 的输入是 `modelMessages`。用完整记录规划会因记录只增不减而每步重复触发压缩，且 `cutIndex` 与模型侧索引错位会清空当前窗口。
-- 上下文账本保留最近用户消息、关键事实、工具结果与任务约束。
+- 上下文账本保留最近用户消息、关键事实、工具结果与任务约束；账本与运行状态都按节替换，不会在多次压缩中重复累积。
 - 压缩 v2：确定性关键信息账本；不把摘要再次摘要；保留最近用户消息；压缩提示词带预算；Thrashing 保护避免反复压缩。
 - 压缩后仍校验工具配对与首条角色；恢复时合并进行中消息，避免丢分片。
 - 摘要消息记录其原文保留的消息 id；渲染层把“已压缩”标记放在保留段与后续内容的真实切点，而不是对话顶部。
@@ -240,6 +246,6 @@ npm run dist:final
 npm run smoke:packaged
 ```
 
-- 核心套组：670 项单元加 94 条 Electron 流程，42 个功能域；清单在 `tests/core-coverage.json`（维护预算 672 / 96）。
+- 核心套组：985 项单元加 96 条 Electron 流程，43 个功能域；清单在 `tests/core-coverage.json`（维护预算 985 / 96）。
 - 测试截图写 `tmp/e2e-screens`；文档截图由 `npm run docs:capture` 生成到 `docs/screens`，全部 2100×1200 原图。
 - 打包：`dist:final` 产出便携 exe 与安装包；流程见 [DEVELOPMENT.md](DEVELOPMENT.md)，交付证据见 [VERIFICATION.md](VERIFICATION.md)。

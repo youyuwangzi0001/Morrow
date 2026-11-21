@@ -22,7 +22,7 @@ import { newId } from '../core/util'
 import type { SessionStore } from './session'
 import { getSessionStore, deriveMeta } from './session'
 import type { Provider, RunAgentResult } from '@core/index'
-import { buildSystemPrompt, clearSessionPermissionGrants, compactSession, createProvider, estimateContextUsage, estimateMessageTokens, estimateMessagesTokens, runAgent } from '@core/index'
+import { buildRuntimeCheckpoint, buildSystemPrompt, clearSessionPermissionGrants, compactSession, createProvider, estimateContextUsage, estimateMessageTokens, estimateMessagesTokens, runAgent } from '@core/index'
 import type { MemoryEntry } from './memory'
 import { MemoryService, normalizeMemoryTags, sanitizeMemoryText, getEpisodePrompt } from './memory'
 import type { SkillView } from './memory'
@@ -4118,7 +4118,14 @@ export class AgentService {
         messages: session.messages,
         signal: controller.signal,
         force: true,
-        targetRatio
+        targetRatio,
+        runtimeCheckpoint: buildRuntimeCheckpoint({
+          goal: session.goal,
+          plan: session.plan,
+          todos: session.todos,
+          artifacts: session.artifacts,
+          messages: session.messages
+        })
       })
       if (result.error) {
         throw new Error(controller.signal.aborted ? '压缩超时，已取消；对话内容未改变。' : result.error.message)

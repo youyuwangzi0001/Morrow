@@ -2,6 +2,32 @@
 
 Morrow 的版本按发布线记录。每节先给完整中文，再给完整英文；两段内容对应，但不逐句对照。
 
+## 源码扁平化合并（2026-11-21）
+
+版本号仍为 0.2.0。这一轮不改功能，只按 [ARCHITECTURE.md](docs/ARCHITECTURE.md#扁平源码结构) 的「扁平源码结构」把生产源码与测试源码按功能域合并，然后重新出包。
+
+### 中文
+
+**变更概览**：合并 3 个功能域 · 删除 1 个顶层目录 · 单测入口 15→6 · 用例数不变
+
+- **远程通道域**：`src/relay/`（16 个文件，含嵌套 `net/` 子目录）收进 `src/main/relay.ts`、`relay-channel.ts`、`relay-crypto.ts`、`relay-pairing.ts`、`relay-server.ts` 五个扁平文件；不再保留第五个顶层源码目录，也不再有嵌套子目录。
+- **搜索域**：`native-search.ts` 与 `builtin-search.ts` 合为 `src/main/search.ts`；厂商原生搜索与内置多引擎检索的先后关系、超时与相关性核对都不变。
+- **云媒体域**：官方音色目录并入 `src/shared/media-cloud.ts`；`SafeStorageLike` 只保留一处定义（`relay-crypto` 定义、`relay-pairing` 再导出）。
+- **测试入口**：`tests/unit` 的 15 个 relay 测试文件合并为 6 个域入口，259 项用例逐条保留；`relay-lifecycle` 与 `relay-settings` 因 mock 隔离单独保留（见 ARCHITECTURE「为什么保留少数分文件」）。
+- **界面细化**：进展视图改为右上角浮窗（可收起为胶囊，不再占用侧栏竖轨），成员协作卡片补充状态与产出提示；`shared/progress.ts` 的聚合逻辑配套 7 项单测。
+- **验证与产物**：985 项单测、96 条 Electron 流程、43 个功能域；E2E 95 passed / 1 skipped；便携版与安装包重新出包，哈希见 [VERIFICATION.md](docs/VERIFICATION.md)。
+
+### English
+
+**Summary**: three domains merged · one top-level directory removed · unit-test entries 15→6 · case count unchanged
+
+- **Relay domain**: the 16-file `src/relay/` tree (including the nested `net/` folder) is folded into five flat files under `src/main/` — `relay.ts`, `relay-channel.ts`, `relay-crypto.ts`, `relay-pairing.ts`, `relay-server.ts`. No fifth top-level source root and no nested folder.
+- **Search domain**: `native-search.ts` and `builtin-search.ts` become `src/main/search.ts`; provider-native search still falls back to the built-in engines with the same timeout and relevance checks.
+- **Cloud media**: the official voice catalogue moves into `src/shared/media-cloud.ts`; `SafeStorageLike` is declared once (`relay-crypto`) and re-exported by `relay-pairing`.
+- **Test entries**: the 15 relay unit-test files become six domain entries with all 259 cases kept; `relay-lifecycle` and `relay-settings` stay separate because they mock different modules.
+- **Interface polish**: the progress view is now a top-right floating card that collapses into a pill instead of holding a sidebar rail, and collaboration member cards show status and output hints; seven unit cases cover the new `shared/progress.ts` aggregation helpers.
+- **Verification**: 985 unit cases, 96 Electron flows, 43 domains; E2E 95 passed / 1 skipped. Portable and installer rebuilt; hashes in [VERIFICATION.md](docs/VERIFICATION.md).
+
 ## v0.2.0
 
 发布：2026-10-27（GitHub Release）。2026-11-12 修复 issue 后重新打包并替换发布资产；随后两轮加固（见下）重新打包，版本号沿用 0.2.0。

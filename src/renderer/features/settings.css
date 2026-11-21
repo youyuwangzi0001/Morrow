@@ -503,6 +503,8 @@
   align-items: center;
   gap: var(--settings-nav-item-gap);
   height: var(--settings-nav-item-height);
+  /* 新增分类只允许向下顺延，不能被 flex 压扁；放不下的部分由 .st-nav 滚动。 */
+  flex: 0 0 auto;
   padding: var(--settings-nav-item-pad);
   border-radius: var(--r-xs);
   color: var(--text-2);

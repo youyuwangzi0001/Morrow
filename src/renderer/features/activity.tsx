@@ -2,7 +2,7 @@
 import './activity.css'
 import { useEffect, useState, useRef, useMemo, useId } from 'react'
 import { ExternalLink, Film, FolderOpen, Image as ImageIcon, Play, ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion, Check, ClipboardList, FileText, Pencil, RotateCcw, X, ListChecks, CornerDownLeft, MessageCircleQuestion, Activity, Square, Globe2, ChevronRight, Copy, Clapperboard, FileCode2, FilePen, FilePlus2, Globe, Search, Sparkles, Terminal, Undo2, Wrench, Layers } from 'lucide-react'
-import type { MediaToolMeta, PermissionDecision, PermissionRequest, SessionPlan, SuperAgentState, TodoItem, AskUserRequest, WebSearchSource, MemberTaskProgress, ToolUseBlock } from '@shared/types'
+import type { MediaToolMeta, PermissionDecision, PermissionRequest, SessionPlan, SuperAgentState, TodoItem, AskUserRequest, MemberTaskProgress, ToolUseBlock } from '@shared/types'
 import { formatBytes } from '@shared/types'
 import { isSuperAgentTool } from '@shared/types'
 import { previewFile } from './artifacts-core'
@@ -16,6 +16,7 @@ import { todoMatchesPlanStep } from '@shared/types'
 import { memberTasksFromMeta } from '@shared/types'
 import { openWorkbench } from './workbench-core'
 import { SuperAgentBoard } from './superagent'
+import { collectSourceGroups } from '@shared/progress'
 
 export function readMediaMeta(value: unknown): MediaToolMeta | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -863,56 +864,6 @@ export function RunCenter(): React.JSX.Element | null {
       ) : null}
     </section>
   )
-}
-
-interface SessionSource extends WebSearchSource {
-  query: string
-  provider: string
-}
-
-interface SourceGroup {
-  query: string
-  provider: string
-  sources: SessionSource[]
-}
-
-function collectSourceGroups(
-  session: ReturnType<typeof useAppStore.getState>['session']
-): SourceGroup[] {
-  if (!session) return []
-  const seen = new Set<string>()
-  const groups = new Map<string, SourceGroup>()
-  for (const message of session.messages) {
-    for (const block of message.content) {
-      if (block.type !== 'tool_use' || block.name !== 'web_search' || block.status !== 'success') continue
-      const meta = block.result?.meta
-      if (!meta || !Array.isArray(meta.sources)) continue
-      const query = typeof meta.query === 'string' ? meta.query : ''
-      const provider = typeof meta.provider === 'string' ? meta.provider : ''
-      const key = `${provider}\u0000${query}`
-      let group = groups.get(key)
-      if (!group) {
-        group = { query, provider, sources: [] }
-        groups.set(key, group)
-      }
-      for (const raw of meta.sources as Array<Record<string, unknown>>) {
-        const url = typeof raw.url === 'string' ? raw.url : ''
-        if (!/^https?:\/\//i.test(url) || seen.has(url)) continue
-        seen.add(url)
-        group.sources.push({
-          rank: typeof raw.rank === 'number' ? raw.rank : group.sources.length + 1,
-          title: typeof raw.title === 'string' ? raw.title : url,
-          url,
-          snippet: typeof raw.snippet === 'string' ? raw.snippet : '',
-          ...(typeof raw.publishedAt === 'string' ? { publishedAt: raw.publishedAt } : {}),
-          ...(typeof raw.engine === 'string' ? { engine: raw.engine } : {}),
-          query,
-          provider
-        })
-      }
-    }
-  }
-  return [...groups.values()].filter((group) => group.sources.length > 0)
 }
 
 /** 对话级来源面板：汇总所有 web_search 结果，点击用系统浏览器打开。 */

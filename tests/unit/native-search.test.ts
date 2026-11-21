@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelInfo, ProviderConfig } from '../../src/shared/types'
-import { nativeSearch, nativeSearchProtocol, nativeSearchSupported, NativeSearchError } from '../../src/main/native-search'
-import { decodeSearchHtml, parseBingHtml, parseDuckDuckGoHtml, rankSearchSources, unwrapBingUrl } from '../../src/main/builtin-search'
+import {
+  decodeSearchHtml,
+  nativeSearch,
+  nativeSearchProtocol,
+  nativeSearchSupported,
+  NativeSearchError,
+  parseBingHtml,
+  parseDuckDuckGoHtml,
+  rankSearchSources,
+  unwrapBingUrl
+} from '../../src/main/search'
 import { isProxyUnavailableError, parseProxyRule } from '../../src/core/web-proxy'
 
 function config(overrides: Partial<ProviderConfig> = {}): ProviderConfig {

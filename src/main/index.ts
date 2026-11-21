@@ -39,7 +39,7 @@ import {
   requestCloseFromIsland
 } from './runtime'
 import { log } from './logger'
-import { applyRelaySettings, shutdownRelay } from '../relay'
+import { applyRelaySettings, shutdownRelay } from './relay'
 import { isLoginSession } from './workspace'
 
 protocol.registerSchemesAsPrivileged([

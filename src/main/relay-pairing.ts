@@ -1,5 +1,12 @@
 import { createECDH, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import type { PairDeviceView, PairIssueResult, Result } from '../shared/types'
+import type { SafeStorageLike } from './relay-crypto'
 
+export type { SafeStorageLike }
+
+// ───── src/relay/pairing.ts ─────
 /**
  * 配对与密钥协商。
  *
@@ -575,3 +582,372 @@ export class PairingService {
     return this.tickets.size
   }
 }
+
+// ───── src/relay/keystore.ts ─────
+/**
+ * 桌面长期密钥持久化。
+ *
+ * 为什么必须有：B2 的 `PairingService` 每次构造都 `generateKeys()`，
+ * 密钥只活在进程内存里。Morrow 重启后桌面公钥变了，
+ * 之前所有手机算出的 ECDH 共享秘密全部失效 —— 用户每次开电脑都要重新扫码配对。
+ * 这不是「体验不佳」，是功能不可用：手机端会一直连不上。
+ *
+ * 设计上的三个约束：
+ *
+ * **一、私钥落盘必须加密。** 用 Electron 的 `safeStorage`（Windows 走 DPAPI，
+ * 绑定当前用户账户）。拿到文件也解不开 —— 明文私钥落盘等于把「曾配对过的所有手机」
+ * 的会话密钥交给任何能读文件的进程。
+ *
+ * **二、safeStorage 不可用时不能明文降级。** 有些 Linux 环境没有 keyring。
+ * 这时正确的做法是**拒绝持久化**（返回 null，让上层退化为「本次运行内有效」），
+ * 而不是偷偷写明文 —— 那会在用户不知情的情况下降低安全性。
+ *
+ * **三、写入用临时文件 + 重命名。** 直接写目标文件时若进程中途崩溃，
+ * 会留下半个文件，下次启动解析失败 → 又回到「重启要重配」。
+ * rename 在同一分区上是原子的。
+ */
+
+export interface KeyStoreOptions {
+  /** 用户数据目录 */
+  dataDir: string
+  /** Electron safeStorage；测试可注入假实现 */
+  safeStorage: SafeStorageLike
+}
+
+export interface LoadedKey {
+  /** P-256 私钥（未压缩点，base64） */
+  privateKey: string
+  /** 对应的公钥（base64） */
+  publicKey: string
+  /** 是否来自磁盘（false = 本次新生成） */
+  restored: boolean
+}
+
+/** 密钥文件路径：<dataDir>/relay/desktop-key.bin */
+export function keyPathIn(dataDir: string): string {
+  return join(dataDir, 'relay', 'desktop-key.bin')
+}
+
+/**
+ * 从私钥推导公钥。
+ *
+ * ECDH 的私钥是标量，公钥 = 标量 × 基点。Node 的 createECDH 支持
+ * `setPrivateKey(buf)` 后再 `getPublicKey()`，用它来校验与还原。
+ */
+function publicFromPrivate(privateKeyBase64: string): string {
+  const ecdh = createECDH('prime256v1')
+  ecdh.setPrivateKey(Buffer.from(privateKeyBase64, 'base64'))
+  return ecdh.getPublicKey().toString('base64')
+}
+
+/**
+ * 载入或生成长期密钥。
+ *
+ * 返回 `restored: true` 表示成功复用磁盘上的密钥（重启后设备仍有效）；
+ * `restored: false` 表示新生成（首次运行，或无法安全持久化）。
+ */
+export function loadOrCreateKey(options: KeyStoreOptions): LoadedKey {
+  const path = keyPathIn(options.dataDir)
+
+  // ── 先尝试复用 ──
+  if (existsSync(path)) {
+    try {
+      const encrypted = readFileSync(path)
+      if (!options.safeStorage.isEncryptionAvailable()) {
+        // 文件存在但当前环境无法解密：不覆盖它（可能是换了用户账户），
+        // 本次退化为临时密钥。直接删掉会让用户在换回原账户时永久丢失配对。
+        return generateTemporary()
+      }
+      const privateKey = options.safeStorage.decryptString(encrypted)
+      // 校验：能被 setPrivateKey 接受，且能导出公钥
+      if (!/^[A-Za-z0-9+/=]+$/.test(privateKey)) return generateTemporary()
+      const publicKey = publicFromPrivate(privateKey)
+      return { privateKey, publicKey, restored: true }
+    } catch {
+      // 文件损坏：不阻塞启动，退化为新密钥（旧配对失效，但没有更安全的选项）
+      return generateTemporary()
+    }
+  }
+
+  // ── 没有文件：生成并尝试持久化 ──
+  const ecdh = createECDH('prime256v1')
+  ecdh.generateKeys()
+  const privateKey = ecdh.getPrivateKey().toString('base64')
+  const publicKey = ecdh.getPublicKey().toString('base64')
+  const created: LoadedKey = { privateKey, publicKey, restored: false }
+
+  // safeStorage 不可用：**不写明文**，直接返回临时密钥
+  if (!options.safeStorage.isEncryptionAvailable()) return created
+
+  try {
+    const dir = dirname(path)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const encrypted = options.safeStorage.encryptString(privateKey)
+    // 原子写：临时文件 + rename
+    const tmp = `${path}.${randomBytes(4).toString('hex')}.tmp`
+    writeFileSync(tmp, encrypted, { mode: 0o600 })
+    renameSync(tmp, path)
+  } catch {
+    // 落盘失败不影响本次运行，只是下次要重新配对
+    return created
+  }
+  return created
+}
+
+function generateTemporary(): LoadedKey {
+  const ecdh = createECDH('prime256v1')
+  ecdh.generateKeys()
+  return {
+    privateKey: ecdh.getPrivateKey().toString('base64'),
+    publicKey: ecdh.getPublicKey().toString('base64'),
+    restored: false
+  }
+}
+
+/** 删除持久化密钥（用户主动「解除全部设备」时使用） */
+export function deleteKey(dataDir: string): boolean {
+  const path = keyPathIn(dataDir)
+  if (!existsSync(path)) return false
+  try {
+    unlinkSync(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ───── src/relay/device-store.ts ─────
+/**
+ * 已配对设备表持久化。
+ *
+ * 为什么必须有：B3 第一批只让**桌面公钥**跨重启不变，设备表仍在内存里。
+ * 探针实测：配对 1 台 → 重启 → `listDevices()` 返回 0 台，`requirePaired()` 抛
+ * `DEVICE_REVOKED`。用户的观感就是「每天开电脑都要重新扫码」——
+ * 这不是体验问题，是功能不可用。
+ *
+ * 三个安全约束：
+ *
+ * **一、必须加密，不能明文落盘。** 设备表里存着每台手机的 `sessionKey`，
+ * 它足以伪造该设备的全部请求签名（见 pairing.ts 的 verifyRequest）。
+ * 明文落盘等于把「冒充任意已配对手机」的能力交给任何能读文件的进程。
+ * 用 safeStorage（Windows DPAPI，绑定当前用户账户）。
+ *
+ * **二、`safeStorage` 不可用时不降级为明文。** 读不出就当作空表，
+ * 让用户重新配对 —— 宁可麻烦，也不能悄悄降低安全性。
+ *
+ * **三、撤销必须立即落盘。** 这是本文件里最容易漏、后果最严重的一条：
+ * 如果 `revokeDevice()` 只删内存不写盘，应用重启后那台被撤销的设备
+ * 会从文件里「复活」，等于撤销从来没发生过。用户的直觉是「我踢掉它了」，
+ * 而系统在下次启动时又把它请回来 —— 这是真实的安全漏洞，不是体验瑕疵。
+ */
+
+/** 文件格式版本，便于以后迁移 */
+const STORE_VERSION = 1
+
+interface StoreFile {
+  v: number
+  devices: PairedDevice[]
+}
+
+/** 设备表文件路径：<dataDir>/relay/devices.bin */
+export function devicesPathIn(dataDir: string): string {
+  return join(dataDir, 'relay', 'devices.bin')
+}
+
+export interface DeviceStoreOptions {
+  dataDir: string
+  safeStorage: SafeStorageLike
+}
+
+/**
+ * 读取设备表。
+ *
+ * 任何异常都退化为空表 —— 设备表损坏不该让整个 relay 启动失败，
+ * 用户重新配对即可恢复。但**不覆盖**损坏的文件：
+ * 万一只是临时读失败（比如换回原用户账户），旧数据还有救。
+ */
+export function loadDevices(options: DeviceStoreOptions): PairedDevice[] {
+  const path = devicesPathIn(options.dataDir)
+  if (!existsSync(path)) return []
+
+  if (!options.safeStorage.isEncryptionAvailable()) return []
+
+  try {
+    const encrypted = readFileSync(path)
+    const json = options.safeStorage.decryptString(encrypted)
+    const parsed = JSON.parse(json) as Partial<StoreFile>
+    if (parsed?.v !== STORE_VERSION || !Array.isArray(parsed.devices)) return []
+    // 逐条校验形状：损坏的条目直接丢弃，而不是让整个表失效
+    return parsed.devices.filter(isWellFormedDevice)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 写入设备表（全量覆盖）。
+ *
+ * 用临时文件 + rename 保证原子性：直接写目标文件时若进程崩在中间，
+ * 会留下半个文件，下次启动解析失败 → 回到「每次都要重配」。
+ *
+ * @returns 是否成功落盘（false 表示只存在内存里，重启会丢）
+ */
+export function saveDevices(options: DeviceStoreOptions, devices: PairedDevice[]): boolean {
+  if (!options.safeStorage.isEncryptionAvailable()) return false
+
+  const path = devicesPathIn(options.dataDir)
+  try {
+    const dir = dirname(path)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+
+    const payload: StoreFile = { v: STORE_VERSION, devices }
+    const encrypted = options.safeStorage.encryptString(JSON.stringify(payload))
+
+    const tmp = `${path}.${randomBytes(4).toString('hex')}.tmp`
+    writeFileSync(tmp, encrypted, { mode: 0o600 })
+    renameSync(tmp, path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 清空设备表（用户「解除全部设备」） */
+export function clearDevices(options: DeviceStoreOptions): boolean {
+  const path = devicesPathIn(options.dataDir)
+  if (!existsSync(path)) return true
+  try {
+    unlinkSync(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ───── src/relay/pair-api.ts ─────
+/**
+ * 设置页「手机配对」的后端逻辑。
+ *
+ * ## 为什么单独一层，而不是直接写在 IPC handler 里
+ *
+ * `ipcMain.handle` 的回调必须拿 `electron` 的环境，单元测试里既起不来也断言不了。
+ * 把逻辑抽到这里之后，测试可以对着**真实的 PairingService** 跑，
+ * IPC 那层只剩「转发 + 把异常翻成 Result」，不再承载任何判断。
+ *
+ * ## 为什么每个函数都接受 `PairingService | null`
+ *
+ * 远程通道默认关闭（`relayEnabled: false`）。关着的时候，配对服务**不存在** ——
+ * 这时候「生成配对码」必须明确报错，而不是：
+ * - 临时 new 一个（会生成新的桌面密钥，所有已配对手机立即失效）；
+ * - 返回一个空票据（用户扫了必然失败，且提示指向别处）。
+ *
+ * 所以错误码单列一个 `RELAY_DISABLED`，界面据此提示「先打开远程通道」。
+ */
+
+export const RELAY_DISABLED = 'RELAY_DISABLED'
+
+/** 把内部异常翻成界面上能用的错误码，不把栈信息丢给渲染进程 */
+function toResultError(err: unknown): { code: string; message: string } {
+  if (err instanceof PairingError) {
+    return { code: err.code, message: err.message }
+  }
+  return { code: 'PAIR_FAILED', message: err instanceof Error ? err.message : '配对操作失败' }
+}
+
+/**
+ * 签发票据。
+ *
+ * 调用方要给 `phonePubKey` —— 票据里的 `pubKey` 必须**是手机自己的公钥**
+ * （手机侧会校验归属，见 `EcdhPairing` 的 §4.5）。所以桌面不能凭空生成一张票，
+ * 必须先拿到手机侧的配对请求。
+ *
+ * 这也是当前「手动粘贴」方案的真实代价：没有相机扫码时，
+ * 手机侧要把 deviceId + 公钥给到桌面一次。报告里如实记着这一点。
+ */
+export function issuePairTicket(
+  pairing: PairingService | null,
+  input: { deviceId: string; phonePubKey: string; relayHint?: string }
+): Result<PairIssueResult> {
+  if (!pairing) {
+    return {
+      ok: false,
+      error: { code: RELAY_DISABLED, message: '远程通道没有开启。先在「远程通道」里打开它，再生成配对码。' }
+    }
+  }
+  try {
+    const { ticket, code, qr } = pairing.issueTicket(input.deviceId, input.phonePubKey, input.relayHint)
+    return {
+      ok: true,
+      data: {
+        qr,
+        code,
+        // 用票据里的 exp，不是「现在 + TTL」—— 那样界面倒计时会与票据真实寿命差几毫秒
+        expiresAt: ticket.exp,
+        nonce: ticket.nonce,
+        // 指纹缺失时手机侧会拒绝完成配对，界面必须当场提示而不是让用户白扫
+        hasFingerprint: typeof ticket.fingerprint === 'string' && ticket.fingerprint.length > 0
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: toResultError(err) }
+  }
+}
+
+/** 已配对设备。不返回 sessionKey（界面上不需要，泄露了也没用，但没必要送出去）。 */
+export function listPairDevices(pairing: PairingService | null): Result<PairDeviceView[]> {
+  if (!pairing) {
+    return {
+      ok: false,
+      error: { code: RELAY_DISABLED, message: '远程通道没有开启。' }
+    }
+  }
+  try {
+    return { ok: true, data: pairing.listDevices() }
+  } catch (err) {
+    return { ok: false, error: toResultError(err) }
+  }
+}
+
+/**
+ * 撤销设备。
+ *
+ * `PairingService.revokeDevice` 每次都查内存表、且撤销后立即落盘，
+ * 所以撤销之后**下一次** `requirePaired` 就会抛 `DEVICE_REVOKED` —— 同一请求内生效。
+ * 这里把「不存在的设备」与「撤销成功」区分开：前者返回 `revoked: false`，
+ * 让界面能提示「这台设备已经不在了」而不是假装成功。
+ */
+export function revokePairDevice(
+  pairing: PairingService | null,
+  deviceId: string
+): Result<{ revoked: boolean }> {
+  if (!pairing) {
+    return {
+      ok: false,
+      error: { code: RELAY_DISABLED, message: '远程通道没有开启。' }
+    }
+  }
+  if (!deviceId || typeof deviceId !== 'string') {
+    return { ok: false, error: { code: 'INVALID_DEVICE_ID', message: '设备标识为空' } }
+  }
+  try {
+    return { ok: true, data: { revoked: pairing.revokeDevice(deviceId) } }
+  } catch (err) {
+    return { ok: false, error: toResultError(err) }
+  }
+}
+
+/**
+ * 票据剩余毫秒数。界面倒计时用它，**不用自己减** ——
+ * 渲染进程与主进程的时钟可能有偏差，而 `exp` 是主进程算的。
+ */
+export function remainingMs(expiresAt: number, now = Date.now()): number {
+  return Math.max(0, expiresAt - now)
+}
+
+/** 票据是否已过期。界面据此把「扫这里」换成「已过期，重新生成」。 */
+export function isExpired(expiresAt: number, now = Date.now()): boolean {
+  return now > expiresAt
+}
+
+/** 供界面显示的票据 TTL（秒），避免渲染进程里写死 90 */
+export const PAIR_TTL_SECONDS = Math.round(TICKET_TTL_MS / 1000)

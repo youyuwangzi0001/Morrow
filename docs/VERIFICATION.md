@@ -6,20 +6,22 @@
 
 ## 交付产物
 
-本轮（2026-11-21 重建，含第 1–10 项体验修复与安卓配对修复）产物在 `deliver/`：
+本轮（2026-11-21 扁平化合并后重建）产物在 `deliver/`：
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `Morrow-0.2.0-portable.exe` | 207,744,512 B / 198.12 MiB | `61d729e57f5fdcba2dfb73108aff07b6bae1943704bc8b75ae4319a877d6056f` |
-| `Morrow-0.2.0-setup.exe` | 157,930,448 B / 150.61 MiB | `c4ea88a6f57cf07a5dc8a404cb232140d2da7afac9bcf166b9a2a9b04bbb9cd3` |
-| `Morrow-Android-1.0.0-debug.apk` | 19,492,528 B / 18.59 MiB | `9b3ac3c15ad020be57306e0b67ba302e3d2b9913a3a3036154cf400442b63dc0` |
+| `Morrow-0.2.0-portable.exe` | 207,750,144 B / 198.13 MiB | `8a7d443ccaaf9a650aab2fd1645795a93aa8589df887d4a20c6ad9308dc44eb4` |
+| `Morrow-0.2.0-setup.exe` | 157,939,124 B / 150.62 MiB | `5a8fa9bb741ddcbf83c17c46fe86114ce18cc3babed49c2986c4424bb40e5b87` |
+| `Morrow-Android-1.0.0-debug.apk` | 19,492,528 B / 18.59 MiB | `72fd50f81b83a39e5cda33f53a5274f940ffd999eec845999bdfde47f95b4769` |
 
-`deliver/` 合计 385,167,488 B / 367.32 MiB，附 `SHA256SUMS.txt`（已用 `sha256sum -c` 反向校验，三个包均为 `OK`）。旧包与 `Morrow Data` 用户数据已移出交付目录；用户数据保留在 `.morrow/user-data/`，不进入分发包。
+`deliver/` 合计 385,181,796 B / 367.33 MiB，附 `SHA256SUMS.txt`（已用 `sha256sum -c` 反向校验，三个包均为 `OK`）。旧包与 `Morrow Data` 用户数据已移出交付目录；用户数据保留在 `.morrow/user-data/`，不进入分发包。
+
+本轮同时完成两件事：按扁平化规范合并两套源码（桌面 relay 域 16 → 5 个文件、relay 测试 15 → 6 个入口，259 项一条不少；安卓生产码 68 → 27、测试 57 → 15，844 项一条不少），以及把进展视图改为右上角浮窗并修掉它遮挡消息操作行的问题。
 
 - 两个 exe 均**未签名**（`signed:false`，`NotSigned`）：未配置代码签名证书，首次运行可能触发 SmartScreen，需「更多信息 → 仍要运行」。
 - 便携版是自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 `.morrow-runtime-0.2.0-r020` 缓存（**不依赖 `%TEMP%`**），之后秒开；启动器带完整 Win32 manifest 并自动加 `--no-sandbox` 以兼容受限环境。
 - 安装包是 NSIS 自解压：可选安装目录、创建开始菜单/桌面快捷方式，默认安装到 `Program Files`（需管理员权限）；安装版数据目录为 `%APPDATA%\Morrow`，可在设置中更改。
-- 安装包与文件夹版的应用代码一致：从安装包解出的 `Morrow-app.exe` 与 `resources/app.asar` 哈希分别为 `13f1473c…6d3a92` / `1138bb09…ed2edf`，与 `release/Morrow-0.2.0-portable/` 同名文件完全相同；两侧 `Morrow.exe` 启动器因便携标记不同而哈希不同，属预期。
+- 安装包与文件夹版的应用代码一致：`Morrow-app.exe` 与 `resources/app.asar` 的 SHA-256 分别为 `9e6e4e05…edd34f` / `8e6942f0…ff67ac`（打包摘要 `docs/verification.json`），两侧 `Morrow.exe` 启动器因便携标记不同而哈希不同，属预期。
 - 安卓 APK 为 **debug 构建**（`studio.morrow.android.debug`，versionName `1.0.0-debug`，minSdk 26 / targetSdk 35），使用工程内 debug keystore 签名，`apksigner verify` 确认 APK Signature Scheme v2 通过；用于安装验收，不是应用商店正式签名包。
 
 ## 冒烟验证
@@ -30,14 +32,14 @@
 |---|---|
 | 被测文件 | `deliver/Morrow-0.2.0-portable.exe`（198.12 MB） |
 | 启动方式 | `Morrow-0.2.0-portable.exe --no-sandbox --test-mode --remote-debugging-port=8526` |
-| CDP 就绪 | Chrome/152.0.7977.167，3762ms |
+| CDP 就绪 | Chrome/152.0.7977.167，4072ms |
 | 窗口标题 | Morrow |
 | 界面版本 | **v0.2.0**（确认版本号已进产物） |
 | 渲染 | 首屏文本正常（创作台 / 新建对话 / 文件树 / 设置 /「未连接」），预加载 API 正常 |
 | 运行位置 | 解压到 `.morrow-runtime-0.2.0-r020` 运行（符合单文件版预期） |
 | 截图 | [docs/evidence/packaged-smoke.png](evidence/packaged-smoke.png)（2102×1203） |
-| 总耗时 | 5.0s |
-| 冒烟包哈希 | `61d729e5…d6056f`（与被测 exe 一致） |
+| 总耗时 | 5.2s |
+| 冒烟包哈希 | `8a7d443c…c44eb4`（与被测 exe 一致） |
 | 汇总 | `portable=通过`，摘要见 [smoke-packaged.json](smoke-packaged.json) |
 
 安装包另做了归档完整性检查：用 `7za` 解出 334 个文件 / 530,691,575 B，`Morrow-app.exe` 与 `resources/app.asar` 均与文件夹版逐字节一致；未执行 per-machine 安装，避免改动本机 `Program Files` 与快捷方式。
@@ -63,6 +65,7 @@
 | 模型原生搜索返回答案却没有可引用来源 | 原生搜索成功分支直接返回 `sources: []`，没有补来源 | `WebSearchService` 在原生来源为空时再走一次内置搜索；内置也失败才保留原生回答，并明确提示不要编造引用 |
 | 长任务里主 Agent 倾向自己串行做完，Super-Agent 调用保守 | 旧提示只有“需要并行/隔离/独立验收时再用”，没有长任务触发条件 | `buildWorkToolStrategy` 与 `super_agent` 工具描述新增三个以上独立方向、跨三个以上文件/模块、深度调研、多方案比较、独立验收或预计超过 8 次工具调用等触发条件，默认先拆分派发 |
 | 安卓版扫码配对在真实桌面端始终 4401，收不到 welcome | 手机 `RelayProtocol.CHANNEL_LAN = "wss"`，桌面 `DirectChannel.verifyRequest(deviceId, 'lan', …)` 校验的是 `lan`；通道字面量不一致，跨语言 E2E 与向量测试同时失败 | `MorrowAndroid` 改为 `CHANNEL_LAN = "lan"`；`CrossDeviceE2ETest` 用真实 Node `DirectChannel` ↔ Kotlin `RelaySocketClient` 跑 6 项；`verify.sh` 新增 E3 硬校验，避免证据日志过期 |
+| 进展浮窗展开时盖住消息操作行与「删除后续」确认条，按钮点不到 | 浮窗 300px 悬浮在主区右上角且 `z-index:30`，消息操作行和确认条正好在同一区域，点击全部被浮窗拦截（E2E 报 `progress-summary … intercepts pointer events`） | `tests/e2e/ui.spec.ts` 的 `@core:sessions` 会话分支用例真实点击「删除后续消息」→ 确认「删除」；`progress.css` 在浮窗展开时给 `.transcript-scroll` 留 316px 右侧栏位，收起为胶囊或画布/浏览器让位后自动恢复 |
 
 ## 测试与检查
 
@@ -72,23 +75,23 @@
 | `npm run audit:ui` | 通过：30 CSS + 32 TSX，0 裸排版声明，31 个字号令牌可缩放 |
 | `npm run audit:flex` | 通过：未发现会被压成竖排的行内尾部标签 |
 | `npm run docs:check` | 通过：16 个 Markdown、30 张 2100×1200 截图、37 个本地图片链接 |
-| `npm run test:suite` | 965 单元 / 96 Electron / 43 域，维护预算 965 / 96 |
-| `npm run test:unit` | 63 文件 / 965 通过 |
+| `npm run test:suite` | 985 单元 / 96 Electron / 43 域，维护预算 985 / 96 |
+| `npm run test:unit` | 56 文件 / 985 通过 |
 | `npm run test:e2e` | 95 通过 / 1 跳过 / 0 失败（96 条），9.5m |
 
 E2E 结果说明：唯一跳过的是 `packaged-parallel`（需要打包产物，属预期跳过）。全量 E2E 记录在 [docs/evidence/e2e-final.log](evidence/e2e-final.log)；本轮另修掉进展挂窗 `.progress-status` 的 flex-shrink 与 20 处裸排版声明，`audit:flex`、`audit:ui` 均恢复通过。
 
-打包耗时 77.3s（`docs/verification.json`），Electron 44.9.0 / electron-builder 26.0.12。
+打包耗时 69.6s（`docs/verification.json`），Electron 44.9.0 / electron-builder 26.0.12。
 
 代码统计按 `node scripts/count-code.mjs` 的统一口径（`wc -l` 换行，排除依赖、产物、文档、图片与媒体夹具）：
 
 | 范围 | 文件 | 行数 |
 |---|---:|---:|
-| 生产源码 `src/` | 158 | 207,251 |
-| 测试 `tests/` | 90 | 46,651 |
+| 生产源码 `src/` | 146 | 208,314 |
+| 测试 `tests/` | 83 | 47,222 |
 | 构建脚本 `scripts/` | 28 | 5,712 |
 | 启动器 `build/launcher/` | 1 | 907 |
-| **合计** | **277** | **260,521** |
+| **合计** | **258** | **262,155** |
 
 ## 文档截图
 
@@ -156,6 +159,7 @@ E2E 结果说明：唯一跳过的是 `packaged-parallel`（需要打包产物�
 | 2026-11-12 | 修复 5 个开放 issue，复核 #8；重新打包并替换发布资产 |
 | 2026-11-16 | 创作产线加固（帧数契约、画音分离、导演层、门禁等）；修复分镜徽标重叠、终端槽位不释放、文件读取上限；版本号沿用 0.2.0 |
 | 2026-11-21 | 10 项体验修复（画布压层、终端、暗金、OAuth、设置分页、进展挂窗、安卓真实配对、长任务质量）；清理旧包后重出桌面与安卓安装包 |
+| 2026-11-21（第二轮） | 扁平化合并：桌面 relay 域 16 → 5 个文件、relay 测试 15 → 6 个入口（259 项不变），安卓生产码 68 → 27、测试 57 → 15（844 项不变）；进展浮窗改为右上角浮层并修掉遮挡消息操作；重出桌面双包与安卓 APK（985 单测 / 95 E2E） |
 
 ## 复现
 

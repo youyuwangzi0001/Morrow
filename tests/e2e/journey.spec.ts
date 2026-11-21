@@ -261,15 +261,15 @@ test.describe('Morrow 完整旅程', () => {
       expect(await page.evaluate(() => document.activeElement?.classList.contains('perm-btn-deny'))).toBe(true)
       await expect(page.locator('[data-a11y="assertive"]')).toContainText('需要你确认工具操作：run_command', { timeout: 5_000 })
       await page.waitForTimeout(250)
-      const progressDock = page.locator('.progress-dock')
-      await expect(progressDock).toBeVisible()
-      await expect(progressDock.locator('.progress-item').filter({ hasText: '等待你确认' })).toBeVisible()
-      await expect(progressDock.locator('.progress-item').filter({ hasText: '运行命令' })).toBeVisible()
+      const progressFloat = page.locator('.progress-float')
+      await expect(progressFloat).toBeVisible()
+      await expect(progressFloat.locator('.progress-item').filter({ hasText: '等待你确认' })).toBeVisible()
+      await expect(progressFloat.locator('.progress-item').filter({ hasText: '运行命令' })).toBeVisible()
       await page.screenshot({ path: screenshotPath('command-sandbox-unavailable.png') })
       await clickPermissionCard(page, 'deny')
       await waitForRunFinished(page, 60_000)
-      await expect(progressDock.locator('.progress-status')).toHaveText('已完成')
-      await expect(progressDock.locator('.progress-item').filter({ hasText: '确认完成' })).toBeVisible()
+      await expect(progressFloat.locator('.progress-status')).toHaveText('已完成')
+      await expect(progressFloat.locator('.progress-item').filter({ hasText: '确认完成' })).toBeVisible()
     } finally {
       await morrow.close()
       await mock.close()
@@ -676,41 +676,45 @@ test('@core:memory 强信号任务自动复盘，建议可采纳为真实记忆�
       await store.getState().updateSettings({ evolutionEnabled: true })
     })
 
-    // 右栏未展开时，右侧常驻「进展更新」；可收起成细轨，再展开恢复。
-    const progressDock = page.locator('.progress-dock')
-    await expect(progressDock).toBeVisible()
-    await expect(progressDock.getByRole('heading', { name: '进展更新' })).toBeVisible()
-    await progressDock.getByRole('button', { name: '收起进展更新' }).click()
-    await expect(page.locator('.progress-dock')).toHaveCount(0)
+    // 进展更新是右上角浮窗：不占布局宽度；收起后是同位置的胶囊，可再展开。
+    const progressFloat = page.locator('.progress-float')
+    await expect(progressFloat).toBeVisible()
+    await expect(progressFloat.getByRole('heading', { name: '进展更新' })).toBeVisible()
+    await progressFloat.getByRole('button', { name: '收起进展更新' }).click()
+    await expect(page.locator('.progress-float')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '展开进展更新' })).toBeVisible()
-    const railGeometry = await page.evaluate(() => {
-      const rail = document.querySelector('.progress-rail')?.getBoundingClientRect()
+    // 胶囊有 140ms 入场动画；截图前等它落位，避免抓到 opacity 0 的中间帧。
+    await page.waitForTimeout(200)
+    const floatGeometry = await page.evaluate(() => {
+      const chip = document.querySelector('.progress-chip')?.getBoundingClientRect()
       const main = document.querySelector('.app-main')?.getBoundingClientRect()
       const conversation = document.querySelector('.app-conversation')?.getBoundingClientRect()
       return {
         viewport: window.innerWidth,
-        rail: rail ? { left: rail.left, right: rail.right, width: rail.width } : null,
+        chip: chip ? { left: chip.left, right: chip.right, top: chip.top, width: chip.width } : null,
         main: main ? { left: main.left, right: main.right, width: main.width } : null,
         conversation: conversation ? { left: conversation.left, right: conversation.right } : null
       }
     })
-    expect(railGeometry.rail).not.toBeNull()
-    expect(railGeometry.main).not.toBeNull()
-    expect(railGeometry.conversation).not.toBeNull()
-    expect(railGeometry.rail!.right).toBeCloseTo(railGeometry.main!.right, 0)
-    expect(railGeometry.conversation!.right).toBeLessThanOrEqual(railGeometry.rail!.left + 1)
-    await page.screenshot({ path: screenshotPath('progress-rail.png') })
+    expect(floatGeometry.chip).not.toBeNull()
+    expect(floatGeometry.main).not.toBeNull()
+    expect(floatGeometry.conversation).not.toBeNull()
+    expect(floatGeometry.chip!.right).toBeLessThanOrEqual(floatGeometry.main!.right)
+    expect(floatGeometry.chip!.left).toBeGreaterThan(floatGeometry.main!.left + floatGeometry.main!.width / 2)
+    // 浮窗/胶囊都不挤压对话列：对话列仍铺满主区域宽度。
+    expect(floatGeometry.conversation!.right).toBeCloseTo(floatGeometry.main!.right, 0)
+    await page.screenshot({ path: screenshotPath('progress-chip.png') })
     await page.getByRole('button', { name: '展开进展更新' }).click()
-    await expect(page.locator('.progress-dock')).toBeVisible()
+    await expect(page.locator('.progress-float')).toBeVisible()
     await installEventCollector(page)
 
     await sendMessageViaStore(page, '帮我整理一份清单。')
     await waitForRunFinished(page, 60_000)
-    await expect(progressDock.locator('.progress-item').first()).toBeVisible({ timeout: 15_000 })
-    await expect(progressDock.locator('.progress-item').filter({ hasText: '开始执行任务' })).toBeVisible()
-    await page.screenshot({ path: screenshotPath('progress-dock.png') })
+    await expect(progressFloat.locator('.progress-item').first()).toBeVisible({ timeout: 15_000 })
+    await expect(progressFloat.locator('.progress-item').filter({ hasText: '开始执行任务' })).toBeVisible()
+    await page.screenshot({ path: screenshotPath('progress-float.png') })
     await setThemeViaStore(page, 'light')
-    await page.screenshot({ path: screenshotPath('progress-dock-light.png') })
+    await page.screenshot({ path: screenshotPath('progress-float-light.png') })
     await setThemeViaStore(page, 'dark')
     await clearEvents(page)
     await sendMessageViaStore(page, '不要用表格，改成纯文本；以后都按季度口径。')

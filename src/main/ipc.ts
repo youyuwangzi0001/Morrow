@@ -38,8 +38,8 @@ import { getSettingsStore } from './settings'
 import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
-import { applyRelaySettings, currentPairing } from '../relay'
-import { issuePairTicket, listPairDevices, revokePairDevice } from '../relay/pair-api'
+import { applyRelaySettings, currentPairing } from './relay'
+import { issuePairTicket, listPairDevices, revokePairDevice } from './relay-pairing'
 import {
   getCollaborationRuntime,
   getCollaborationStore,

@@ -1114,15 +1114,15 @@ test('@core:terminal 一次性任务结束自动收起标签与空的终端面�
 
     // 打开终端会自动建一个真实 Shell；先关掉它，留下一个空面板。
     await expect(page.locator('.terminal-tab')).toHaveCount(1, { timeout: 30_000 })
-    await expect(page.locator('.progress-dock')).toBeVisible()
+    await expect(page.locator('.progress-float')).toBeVisible()
 
-    // 打开画布：右侧栏展开，进展挂窗让位；终端只能贴在 Agent 对话列下方，不能伸到画布下面。
+    // 打开画布：右侧栏展开，进展浮窗让位；终端只能贴在 Agent 对话列下方，不能伸到画布下面。
     await page.evaluate(() => {
       const store = (window as unknown as { __morrowStore: { getState: () => { openCanvas: () => void } } }).__morrowStore
       store.getState().openCanvas()
     })
     await expect(page.locator('.canvas-root')).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('.progress-dock')).toHaveCount(0)
+    await expect(page.locator('.progress-float')).toHaveCount(0)
     const layout = await page.evaluate(() => {
       const read = (selector: string): { left: number; right: number; width: number } | null => {
         const element = document.querySelector(selector)

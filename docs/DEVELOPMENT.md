@@ -27,7 +27,7 @@
 
 | 目录 | 内容 |
 |---|---|
-| `src/main/` | Electron 主进程、窗口、Agent/Session/Studio/媒体/订阅 |
+| `src/main/` | Electron 主进程、窗口、Agent/Session/Studio/媒体/订阅、远程通道与搜索 |
 | `src/core/` | Agent 循环、Provider、工具、权限、上下文、协作 |
 | `src/renderer/` | React 界面、features、样式、store |
 | `src/shared/` | IPC 与数据契约、共享工具 |
@@ -36,7 +36,7 @@
 | `docs/` | 文档、封面与 `screens/` 原图 |
 | `scripts/` | 构建、测试、打包、冒烟、截图与文档检查 |
 
-源码按职责扁平放置；不要重新引入多层 `studio/`、`core/agent/` 目录。协作域已合并为 `src/core/collaboration.ts` 与 `src/main/collaboration.ts`；测试辅助平铺为 `tests/unit/helpers.ts`、`tests/e2e/helpers.ts`。保留少数分文件的理由见 [ARCHITECTURE.md](ARCHITECTURE.md#为什么保留少数分文件)。
+源码按职责扁平放置；不要重新引入多层 `studio/`、`core/agent/` 目录，也不要新建 `src/relay/` 这类第五个顶层目录。协作域已合并为 `src/core/collaboration.ts` 与 `src/main/collaboration.ts`；远程通道域按职责合为 `src/main/relay{,-channel,-crypto,-pairing,-server}.ts`；搜索域合为 `src/main/search.ts`；测试辅助平铺为 `tests/unit/helpers.ts`、`tests/e2e/helpers.ts`。保留少数分文件的理由见 [ARCHITECTURE.md](ARCHITECTURE.md#为什么保留少数分文件)。
 
 ## 开发边界
 

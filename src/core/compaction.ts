@@ -144,10 +144,233 @@ export function extractCompactionLedger(messages: ChatMessage[], maxChars = 6000
   return text.length > maxChars ? text.slice(0, maxChars) : text
 }
 
+/** 只移除指定的一节（到下一个二级标题为止），不误删它后面的历史摘要。 */
+function stripSummarySection(summary: string, heading: RegExp): string {
+  const match = heading.exec(summary)
+  if (!match || match.index === undefined) return summary.trim()
+  const start = match.index
+  // 从本节标题所在行的下一行开始找下一个二级标题；否则会把本节自己的标题当成“下一节”。
+  const lineEnd = summary.indexOf('\n', start + match[0].length)
+  const bodyStart = lineEnd >= 0 ? lineEnd : summary.length
+  const next = summary.slice(bodyStart).search(/\n##\s/)
+  const end = next >= 0 ? bodyStart + next : summary.length
+  return `${summary.slice(0, start)}${summary.slice(end)}`.trim()
+}
+
 /** 去掉旧摘要里由系统生成的账本段，避免重复累积。 */
 function stripLedger(summary: string): string {
-  const marker = summary.search(/\n*## 关键信息账本/)
-  return (marker >= 0 ? summary.slice(0, marker) : summary).trim()
+  return stripSummarySection(summary, /\n*## 关键信息账本/)
+}
+
+/** 去掉上一次压缩写入的运行状态；每次压缩都从当前真实状态重新生成。 */
+function stripRuntimeCheckpoint(summary: string): string {
+  return stripSummarySection(summary, /\n*## 运行状态（系统记录/)
+}
+
+export interface RuntimeCheckpointInput {
+  goal?: {
+    objective?: string
+    status?: string
+    round?: number
+    maxRounds?: number
+    nextStep?: string
+    blockedReason?: string
+  } | null
+  plan?: {
+    title?: string
+    status?: string
+    steps?: Array<{ text?: string }>
+  } | null
+  todos?: Array<{ text: string; status: string }>
+  artifacts?: Array<{ title: string; kind?: string; path?: string }>
+  /** 完整对话；用于自动取最近一条用户指令，避免调用方各自实现。 */
+  messages?: ChatMessage[]
+  lastUserText?: string
+}
+
+const PLAN_STATUS_TEXT: Record<string, string> = {
+  pending: '待批准',
+  executing: '执行中',
+  completed: '已完成',
+  rejected: '已驳回'
+}
+
+const TODO_STATUS_MARK: Record<string, string> = {
+  completed: '[x]',
+  in_progress: '[~]',
+  pending: '[ ]'
+}
+
+const TODO_STATUS_ORDER: Record<string, number> = {
+  in_progress: 0,
+  pending: 1,
+  completed: 2
+}
+
+function lastUserMessageText(messages: ChatMessage[] | undefined): string {
+  if (!messages) return ''
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'user') continue
+    const text = message.content
+      .filter((block): block is Extract<ChatMessage['content'][number], { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim()
+    if (text) return text
+  }
+  return ''
+}
+
+/**
+ * 压缩检查点的「系统运行状态」。
+ *
+ * 这一段不交给摘要模型改写，直接从当前目标 / 计划 / 待办 / 最近用户指令 / 产物生成。
+ * 长任务里模型最容易在压缩后忘记「下一步做什么」，而历史摘要里的待办往往已经过时；
+ * 这里以运行时真实状态为准，压缩后仍然逐字可见。
+ *
+ * 保留顺序参考 DSH 的 Pending Jobs / Current Work / Next Step，并沿用 Codex 的
+ * 「最近用户消息是最高密度约束」与 Qoder 式「工作集优先」：先保目标、计划、待办、
+ * 最近指令和产物，再让旧叙述让位。
+ */
+export function buildRuntimeCheckpoint(input: RuntimeCheckpointInput, maxChars = 2400): string {
+  const lines: string[] = []
+  const safe = (value: string | undefined, max: number): string => {
+    const line = cleanLine(value ?? '', max)
+    if (!line || SECRET_PATTERN.test(line)) return ''
+    return line
+  }
+  const push = (label: string, value: string | undefined, max = 280): void => {
+    const line = safe(value, max)
+    if (line) lines.push(`- ${label}：${line}`)
+  }
+
+  if (input.goal?.objective) {
+    const round = input.goal.round
+    const maxRounds = input.goal.maxRounds
+    const progress = round ? `（第 ${round}${maxRounds ? `/${maxRounds}` : ''} 轮）` : ''
+    push('当前目标', `${input.goal.objective}${progress}`, 360)
+    if (input.goal.nextStep) push('目标下一步', input.goal.nextStep, 260)
+    if (input.goal.blockedReason) push('阻塞原因', input.goal.blockedReason, 220)
+  }
+
+  if (input.plan?.title) {
+    const status = PLAN_STATUS_TEXT[input.plan.status ?? ''] ?? input.plan.status ?? ''
+    push('当前计划', `${input.plan.title}${status ? `（${status}）` : ''}`, 240)
+    const steps = (input.plan.steps ?? []).map((step) => safe(step.text, 140)).filter(Boolean).slice(0, 6)
+    for (const step of steps) lines.push(`  - ${step}`)
+    if ((input.plan.steps?.length ?? 0) > steps.length) {
+      lines.push(`  - …还有 ${(input.plan.steps?.length ?? 0) - steps.length} 步未列出`)
+    }
+  }
+
+  if (input.todos && input.todos.length > 0) {
+    lines.push('- 当前待办：')
+    const sorted = [...input.todos].sort(
+      (a, b) => (TODO_STATUS_ORDER[a.status] ?? 9) - (TODO_STATUS_ORDER[b.status] ?? 9)
+    )
+    const shown = sorted.slice(0, 12)
+    for (const todo of shown) {
+      const text = safe(todo.text, 140)
+      if (text) lines.push(`  - ${TODO_STATUS_MARK[todo.status] ?? '[ ]'} ${text}`)
+    }
+    if (sorted.length > shown.length) lines.push(`  - …还有 ${sorted.length - shown.length} 项未列出`)
+  }
+
+  const lastUser = input.lastUserText ?? lastUserMessageText(input.messages)
+  if (lastUser) push('最近用户指令', lastUser, 420)
+
+  if (input.artifacts && input.artifacts.length > 0) {
+    const names = input.artifacts
+      .slice(-5)
+      .map((artifact) => safe(`${artifact.title}${artifact.path ? `（${artifact.path}）` : ''}`, 160))
+      .filter(Boolean)
+    if (names.length > 0) push('最近产物', names.join('、'), 360)
+  }
+
+  return lines.join('\n').slice(0, maxChars)
+}
+
+/** 头尾保留的中间折叠：比只截头部多留下工具输出的最终结论、测试结果和错误尾行。 */
+export function pruneMiddle(text: string, maxChars: number, note = '内容已折叠'): string {
+  if (maxChars <= 0) return ''
+  if (text.length <= maxChars) return text
+  if (maxChars < 120) return truncateText(text, maxChars, note)
+  let marker = `\n…（${note}）…\n`
+  let room = maxChars - marker.length
+  for (let round = 0; round < 2; round += 1) {
+    if (room < 60) return truncateText(text, maxChars, note)
+    const omitted = Math.max(0, text.length - room)
+    marker = `\n…（${note}：中间省略 ${omitted} 字符，共 ${text.length} 字符）…\n`
+    room = maxChars - marker.length
+  }
+  if (room < 40) return truncateText(text, maxChars, note)
+  const head = Math.max(1, Math.floor(room * 0.72))
+  const tail = Math.max(1, room - head)
+  return `${text.slice(0, head)}${marker}${text.slice(-tail)}`
+}
+
+export interface ToolPruneConfig {
+  thresholdChars: number
+  headChars: number
+  tailChars: number
+}
+
+/** 与 DSH 的 tool-result-pruner 对齐：只在超大时保留头尾，完整原文仍在会话记录里。 */
+export const DEFAULT_TOOL_RESULT_PRUNE: ToolPruneConfig = {
+  thresholdChars: 8192,
+  headChars: 4096,
+  tailChars: 1024
+}
+
+export interface ToolPruneResult {
+  messages: ChatMessage[]
+  prunedCount: number
+  savedChars: number
+}
+
+function pruneToolText(text: string, config: ToolPruneConfig): string {
+  if (text.length <= config.thresholdChars) return text
+  const head = Math.max(1, config.headChars)
+  const tail = Math.max(1, config.tailChars)
+  const omitted = Math.max(0, text.length - head - tail)
+  const marker = `\n\n…（工具输出中段已修剪：省略 ${omitted} 字符；完整原文保留在会话日志）…\n\n`
+  return `${text.slice(0, head)}${marker}${text.slice(-tail)}`
+}
+
+/** 压缩触发后先对模型侧做一次确定性修剪；不改完整记录，也不发起模型调用。 */
+export function pruneToolOutputsForModel(
+  messages: ChatMessage[],
+  config: ToolPruneConfig = DEFAULT_TOOL_RESULT_PRUNE,
+  keepRecent = 0
+): ToolPruneResult {
+  let prunedCount = 0
+  let savedChars = 0
+  // 最近几条消息往往是「当前正在处理的结果」，保留原文；
+  // 只修剪较早的大日志，避免为了省 token 把刚读到的关键行折掉。
+  const protectedFrom = keepRecent > 0 ? Math.max(0, messages.length - keepRecent) : messages.length
+  const next = messages.map((message, index) => {
+    if (index >= protectedFrom) return message
+    if (isCompactionSummaryMessage(message)) return message
+    let changed = false
+    const content = message.content.map((block) => {
+      if (block.type !== 'tool_use' || !block.result) return block
+      const output = block.result.output ?? ''
+      const error = block.result.error ?? ''
+      const nextOutput = pruneToolText(output, config)
+      const nextError = pruneToolText(error, config)
+      if (nextOutput === output && nextError === error) return block
+      changed = true
+      prunedCount += (nextOutput !== output ? 1 : 0) + (nextError !== error ? 1 : 0)
+      savedChars += output.length - nextOutput.length + (error.length - nextError.length)
+      return {
+        ...block,
+        result: { ...block.result, output: nextOutput, error: nextError }
+      }
+    })
+    return changed ? { ...message, content } : message
+  })
+  return { messages: next, prunedCount, savedChars }
 }
 
 /**
@@ -158,19 +381,23 @@ export function composeCompactionSummary(
   previousSummary: string | undefined,
   newSummary: string,
   ledger: string,
-  maxChars = 16_000
+  maxChars = 16_000,
+  runtimeCheckpoint = ''
 ): string {
-  const previous = stripLedger(previousSummary ?? '')
+  const previous = stripLedger(stripRuntimeCheckpoint(previousSummary ?? ''))
   const ledgerPart = ledger.trim() ? `## 关键信息账本（系统原文保留，不参与重写）\n${ledger.trim()}` : ''
+  const runtimePart = runtimeCheckpoint.trim()
+    ? `## 运行状态（系统记录，压缩时刷新）\n${runtimeCheckpoint.trim()}`
+    : ''
   const previousPart = previous ? `## 历史交接摘要（原文保留）\n${previous}` : ''
   const newPart = newSummary.trim() ? `## 新增历史摘要\n${newSummary.trim()}` : ''
-  if (!ledgerPart) {
+  const fixedPart = [ledgerPart, runtimePart].filter(Boolean).join('\n\n')
+  if (!fixedPart) {
     return [previousPart, newPart].filter(Boolean).join('\n\n').slice(0, maxChars)
   }
-  const headerBudget = ledgerPart.length + newPart.length + 64
-  const previousRoom = Math.max(0, maxChars - headerBudget)
+  const previousRoom = Math.max(0, maxChars - fixedPart.length - newPart.length - 32)
   const trimmedPrevious = previousPart.slice(0, previousRoom)
-  return [ledgerPart, trimmedPrevious, newPart].filter(Boolean).join('\n\n').slice(0, maxChars)
+  return [fixedPart, trimmedPrevious, newPart].filter(Boolean).join('\n\n').slice(0, maxChars)
 }
 
 /**
@@ -188,12 +415,12 @@ function shrinkForModelView(messages: ChatMessage[], trimChars: number): ChatMes
             ...block,
             result: {
               ...block.result,
-              output: truncateText(block.result.output ?? '', trimChars),
-              error: truncateText(block.result.error ?? '', trimChars)
+              output: pruneMiddle(block.result.output ?? '', trimChars, '工具输出已折叠'),
+              error: pruneMiddle(block.result.error ?? '', trimChars, '工具错误已折叠')
             }
           }
         }
-        if (block.type === 'text') return { ...block, text: truncateText(block.text, Math.max(1200, trimChars * 3)) }
+        if (block.type === 'text') return { ...block, text: pruneMiddle(block.text, Math.max(1200, trimChars * 3)) }
         return block
       })
     }

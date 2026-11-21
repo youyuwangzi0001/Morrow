@@ -412,13 +412,88 @@
 .super-task-chevron.is-open { transform: rotate(180deg); }
 
 .super-task-detail {
-  padding: 0 10px 11px 35px;
+  padding: 0 10px 14px 35px;
   border-top: 1px solid var(--line);
 }
 
-.super-detail-block { margin-top: 9px; }
-.super-detail-block p {
-  margin: 5px 0 0;
+/* 成员身份条：与主窗口消息的作者行对齐，先说明“谁在做什么”。 */
+.super-member-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 0 10px;
+}
+
+.super-member-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-sm);
+  color: var(--gold);
+  background: var(--gold-ghost);
+}
+
+.super-member-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.super-member-id strong {
+  color: var(--text);
+  font-size: var(--fs-base-plus);
+  font-weight: var(--fw-mid);
+}
+
+.super-member-id > span {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.super-member-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.super-member-status.is-running {
+  border-color: var(--line-gold);
+  color: var(--gold);
+}
+
+.super-member-status.is-completed { color: var(--patina); }
+.super-member-status.is-failed,
+.super-member-status.is-stalled,
+.super-member-status.is-blocked { color: var(--rust); }
+
+/* 成员结论按一条主消息展示，而不是夹在元信息里的一行小字。 */
+.super-member-summary {
+  padding: 2px 0 10px;
+}
+
+.super-member-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--ls-caps);
+}
+
+.super-member-summary p {
+  margin: 0;
   color: var(--text-2);
   font-size: var(--text-permission-desc-size);
   line-height: var(--lh-loose);
@@ -426,38 +501,140 @@
   overflow-wrap: anywhere;
 }
 
-.super-ops {
+.super-member-work {
+  margin-top: 4px;
+}
+
+.super-member-work-head {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 6px 0 0;
-  padding: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.super-member-work-count {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+/* 工作记录沿用主窗口成员时间线：金色左轨 + 工具图标，不再层层套小卡片。 */
+.super-ops {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 2px 2px;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--line-gold);
   list-style: none;
 }
 
-.super-ops li {
+.super-op {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 5px 7px;
-  border-left: 2px solid var(--line);
-  background: var(--surface-inset);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-2);
-  font-size: var(--text-permission-summary-size);
 }
 
-.super-ops li.is-error { border-left-color: var(--rust); }
-.super-ops li em {
+.super-op-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.super-op-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
   color: var(--text-3);
-  font-style: normal;
+}
+
+.super-op.is-success .super-op-mark { color: var(--patina); }
+.super-op.is-error .super-op-mark,
+.super-op.is-denied .super-op-mark { color: var(--rust); }
+.super-op.is-running .super-op-mark,
+.super-op.is-waiting .super-op-mark { color: var(--gold); }
+
+.super-op-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.super-op-copy strong {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-ui);
   overflow-wrap: anywhere;
 }
 
+.super-op-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.super-op-meta code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.super-op-meta em {
+  font-style: normal;
+}
+
+.super-op-output {
+  margin-left: 23px;
+}
+
+.super-op-output p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs-plus);
+  line-height: var(--lh-ui);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.super-op-expand {
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.super-op-expand:hover { text-decoration: underline; }
+
+.super-detail-block {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
 .super-detail-empty {
-  margin: 9px 0 0;
+  margin: 10px 0 0;
   color: var(--text-3);
   font-size: var(--text-permission-summary-size);
+}
+.super-op-diff {
+  margin-left: 23px;
 }
 
 .super-empty {

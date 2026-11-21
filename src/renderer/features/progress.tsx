@@ -1,31 +1,36 @@
-// progress 功能域组件：右侧常驻的「进展更新」挂窗。
+// progress 功能域组件：右上角「进展更新」浮窗。
 // 数据来自真实的 RuntimeEvent 与主进程 IslandSnapshot，不另造进度状态。
+// 浮窗不参与主布局，收起后变成右上角胶囊，不保留任何侧栏/竖轨结构。
 import './progress.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   Circle,
-  Clock3,
+  ExternalLink,
   FileText,
+  FolderOpen,
+  Globe2,
   ListChecks,
   Loader2,
-  PanelRightClose,
-  PanelRightOpen,
+  Minus,
   ShieldAlert,
   Sparkles,
-  Users,
-  Wrench
+  Users
 } from 'lucide-react'
 import type { IslandSnapshot, IslandStatus, SessionPlan, SuperAgentState, TodoItem } from '@shared/types'
 import { IconButton } from '../components'
 import { useAppStore } from '../store'
 import { useStudioStore } from './studio-core'
+import { collectOutputFiles, collectSourceGroups, hostnameOf, type OutputFile } from '@shared/progress'
 
-const COLLAPSED_KEY = 'morrow.progressDock.collapsed'
+const COLLAPSED_KEY = 'morrow.progressFloat.collapsed'
 const EMPTY_TODOS: TodoItem[] = []
 const MAX_ITEMS = 60
+const MAX_SOURCES = 3
+const MAX_OUTPUTS = 3
 
 type ProgressTone = 'active' | 'done' | 'error' | 'waiting' | 'info'
 
@@ -176,15 +181,28 @@ function superItem(state: SuperAgentState): ProgressItem {
   }
 }
 
+/** 产出文件的次级说明：保留目录，帮助区分同名文件。 */
+function pathHint(file: OutputFile): string {
+  const path = file.path ?? ''
+  if (!path || path === file.title) return ''
+  const normalized = path.replace(/[\\/]+$/, '')
+  const index = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  return index > 0 ? normalized.slice(0, index) : ''
+}
+
 export function ProgressDock(): React.JSX.Element | null {
-  const sessionId = useAppStore((s) => s.session?.id ?? null)
-  const sessionTitle = useAppStore((s) => s.session?.title ?? '')
-  const todos = useAppStore((s) => s.session?.todos ?? EMPTY_TODOS)
-  const plan = useAppStore((s) => s.session?.plan ?? null)
-  const superAgent = useAppStore((s) => s.session?.superAgent ?? null)
+  const session = useAppStore((s) => s.session)
+  const sessionId = session?.id ?? null
+  const sessionTitle = session?.title ?? ''
+  const todos = session?.todos ?? EMPTY_TODOS
+  const plan = session?.plan ?? null
+  const superAgent = session?.superAgent ?? null
   const canvasOpen = useAppStore((s) => s.canvas.open)
   const sideChatOpen = useAppStore((s) => s.sideChatOpen)
   const studioOpen = useStudioStore((s) => s.open)
+  const openExternal = useAppStore((s) => s.openExternal)
+  const revealArtifact = useAppStore((s) => s.revealArtifact)
+  const openCanvas = useAppStore((s) => s.openCanvas)
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(COLLAPSED_KEY) === '1'
@@ -226,16 +244,6 @@ export function ProgressDock(): React.JSX.Element | null {
       // localStorage 不可用时只保留本次会话内的展开状态
     }
   }, [collapsed])
-
-  useEffect(() => {
-    const body = document.body
-    const visible = Boolean(sessionId) && !canvasOpen && !sideChatOpen && !studioOpen
-    body.classList.toggle('has-progress-dock', visible && !collapsed)
-    body.classList.toggle('has-progress-rail', visible && collapsed)
-    return () => {
-      body.classList.remove('has-progress-dock', 'has-progress-rail')
-    }
-  }, [sessionId, canvasOpen, sideChatOpen, studioOpen, collapsed])
 
   useEffect(() => {
     let active = true
@@ -399,9 +407,7 @@ export function ProgressDock(): React.JSX.Element | null {
       if (event.type === 'permission_requested') {
         permissionTools.current.set(event.request.id, event.request.toolUseId)
         setItems((prev) =>
-          prev.map((item) =>
-            item.id === event.request.toolUseId ? { ...item, tone: 'waiting' as const } : item
-          )
+          prev.map((item) => (item.id === event.request.toolUseId ? { ...item, tone: 'waiting' as const } : item))
         )
         upsert({
           id: `permission-${event.request.id}`,
@@ -524,7 +530,9 @@ export function ProgressDock(): React.JSX.Element | null {
   const elapsed = startedAt && agentActive ? formatElapsed(now - startedAt) : null
   const activeItem = items.find((item) => item.tone === 'active' || item.tone === 'waiting')
   const outcomeItem = items.find((item) => item.id.startsWith('run-end-'))
-  const nextTodo = visibleTodos.find((todo) => todo.status === 'in_progress') ?? visibleTodos.find((todo) => todo.status === 'pending')
+  const nextTodo =
+    visibleTodos.find((todo) => todo.status === 'in_progress') ??
+    visibleTodos.find((todo) => todo.status === 'pending')
   const detail =
     status === 'running' || explicitWaiting
       ? islandForSession?.detail || activeItem?.title || items[0]?.title || '等待任务开始'
@@ -537,7 +545,15 @@ export function ProgressDock(): React.JSX.Element | null {
         : status === 'done'
           ? '本轮已完成'
           : outcomeItem?.title || items[0]?.title || islandForSession?.detail || '等待任务开始'
-  const superRunning = superAgent?.tasks.filter((task) => task.status === 'running' || task.status === 'queued').length ?? 0
+  const superRunning =
+    superAgent?.tasks.filter((task) => task.status === 'running' || task.status === 'queued').length ?? 0
+
+  const sources = useMemo(() => {
+    const groups = collectSourceGroups(session)
+    // 最近一次搜索排在最前；组内仍保持排名顺序。
+    return [...groups].reverse().flatMap((group) => group.sources)
+  }, [session])
+  const outputFiles = useMemo(() => collectOutputFiles(session), [session])
 
   useEffect(() => {
     if (status !== 'running' && status !== 'waiting') return undefined
@@ -557,22 +573,26 @@ export function ProgressDock(): React.JSX.Element | null {
     return (
       <button
         type="button"
-        className="progress-rail"
+        className="progress-chip"
         aria-label="展开进展更新"
         title="展开进展更新"
         onClick={() => setCollapsed(false)}
       >
-        <span className="progress-rail-icon" aria-hidden>
-          <PanelRightOpen size={15} strokeWidth={1.6} />
+        <span className="progress-chip-mark" data-status={status} aria-hidden>
+          <Activity size={13} strokeWidth={1.7} />
         </span>
-        <span className="progress-rail-label">进展</span>
-        {status === 'running' || status === 'waiting' ? <span className="progress-rail-dot" aria-hidden /> : null}
+        <span className="progress-chip-title">进展</span>
+        <span className="progress-chip-status" data-status={status}>
+          {statusText(status)}
+        </span>
+        {elapsed ? <span className="progress-chip-elapsed mono">{elapsed}</span> : null}
+        <ChevronDown size={12} strokeWidth={1.7} className="progress-chip-chevron" aria-hidden />
       </button>
     )
   }
 
   return (
-    <aside className="progress-dock" aria-label="进展更新">
+    <aside className="progress-float" aria-label="进展更新">
       <header className="progress-head">
         <div className="progress-head-title">
           <span className="progress-mark" data-status={status} aria-hidden>
@@ -591,121 +611,184 @@ export function ProgressDock(): React.JSX.Element | null {
           </div>
         </div>
         <IconButton label="收起进展更新" size={26} onClick={() => setCollapsed(true)}>
-          <PanelRightClose size={14} strokeWidth={1.6} />
+          <Minus size={14} strokeWidth={1.7} />
         </IconButton>
       </header>
 
-      <div className="progress-summary">
-        <div className="progress-now">
-          <span className="progress-now-dot" data-status={status} aria-hidden />
-          <span className="progress-now-text" title={detail}>
-            {detail}
-          </span>
-          {elapsed ? <span className="progress-elapsed mono">{elapsed}</span> : null}
-        </div>
-        {visibleTodos.length > 0 ? (
-          <>
-            <div className="progress-todo-meta">
-              <span>
-                <ListChecks size={12} strokeWidth={1.7} aria-hidden /> 待办 {todoDone}/{visibleTodos.length}
+      <div className="progress-scroll">
+        <div className="progress-summary">
+          <div className="progress-now">
+            <span className="progress-now-dot" data-status={status} aria-hidden />
+            <span className="progress-now-text" title={detail}>
+              {detail}
+            </span>
+            {elapsed ? <span className="progress-elapsed mono">{elapsed}</span> : null}
+          </div>
+          {visibleTodos.length > 0 ? (
+            <>
+              <div className="progress-todo-meta">
+                <span>
+                  <ListChecks size={12} strokeWidth={1.7} aria-hidden /> 待办 {todoDone}/{visibleTodos.length}
+                </span>
+                <span className="mono">{todoPercent}%</span>
+              </div>
+              <div
+                className="progress-bar"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={visibleTodos.length}
+                aria-valuenow={todoDone}
+                aria-label="待办完成进度"
+              >
+                <span style={{ width: `${todoPercent}%` }} />
+              </div>
+              <ul className="progress-todos">
+                {visibleTodos.slice(0, 4).map((todo) => (
+                  <li key={todo.id} className="progress-todo" data-status={todo.status}>
+                    <span className="progress-todo-icon" aria-hidden>
+                      {todo.status === 'completed' ? (
+                        <CheckCircle2 size={12} />
+                      ) : todo.status === 'in_progress' ? (
+                        <Loader2 size={12} className="progress-spin" />
+                      ) : (
+                        <Circle size={12} />
+                      )}
+                    </span>
+                    <span className="progress-todo-text" title={todo.text}>
+                      {todo.text}
+                    </span>
+                  </li>
+                ))}
+                {visibleTodos.length > 4 ? (
+                  <li className="progress-todo-more">还有 {visibleTodos.length - 4} 项</li>
+                ) : null}
+              </ul>
+            </>
+          ) : null}
+          {planSummary ? (
+            <div className="progress-plan">
+              <FileText size={12} strokeWidth={1.7} aria-hidden />
+              <span className="truncate">{planSummary}</span>
+            </div>
+          ) : null}
+          {superAgent && superAgent.tasks.length > 0 ? (
+            <div className="progress-plan">
+              <Users size={12} strokeWidth={1.7} aria-hidden />
+              <span className="truncate">
+                协作成员 {superRunning} 进行 / {superAgent.tasks.length} 项
               </span>
-              <span className="mono">{todoPercent}%</span>
             </div>
-            <div
-              className="progress-bar"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={visibleTodos.length}
-              aria-valuenow={todoDone}
-              aria-label="待办完成进度"
-            >
-              <span style={{ width: `${todoPercent}%` }} />
+          ) : null}
+        </div>
+
+        <div className="progress-feed-head">
+          <span>实时动态</span>
+          <span className="mono">{items.length}</span>
+        </div>
+        <div className="progress-feed" role="log" aria-label="实时进展">
+          {items.length === 0 ? (
+            <div className="progress-empty">
+              <Sparkles size={16} strokeWidth={1.5} aria-hidden />
+              <p>任务开始后，这里会实时显示工具调用、待办和成果更新。</p>
             </div>
-            <ul className="progress-todos">
-              {visibleTodos.slice(0, 4).map((todo) => (
-                <li key={todo.id} className="progress-todo" data-status={todo.status}>
-                  <span className="progress-todo-icon" aria-hidden>
-                    {todo.status === 'completed' ? (
-                      <CheckCircle2 size={12} />
-                    ) : todo.status === 'in_progress' ? (
-                      <Loader2 size={12} className="progress-spin" />
-                    ) : (
-                      <Circle size={12} />
-                    )}
+          ) : (
+            <ol>
+              {items.map((item) => (
+                <li key={item.id} className="progress-item" data-tone={item.tone}>
+                  <span className="progress-item-icon" aria-hidden>
+                    {toneIcon(item.tone)}
                   </span>
-                  <span className="progress-todo-text" title={todo.text}>
-                    {todo.text}
-                  </span>
+                  <div className="progress-item-body">
+                    <div className="progress-item-title">
+                      <span className="truncate">{item.title}</span>
+                      {item.tag ? <span className="progress-item-tag mono">{item.tag}</span> : null}
+                    </div>
+                    {item.detail ? (
+                      <p className="progress-item-detail" title={item.detail}>
+                        {item.detail}
+                      </p>
+                    ) : null}
+                    {typeof item.percent === 'number' ? (
+                      <div className="progress-item-bar" aria-hidden>
+                        <span style={{ width: `${Math.max(0, Math.min(100, item.percent))}%` }} />
+                      </div>
+                    ) : null}
+                  </div>
+                  <time className="progress-item-time mono" dateTime={new Date(item.at).toISOString()}>
+                    {formatClock(item.at)}
+                  </time>
                 </li>
               ))}
-              {visibleTodos.length > 4 ? (
-                <li className="progress-todo-more">还有 {visibleTodos.length - 4} 项</li>
-              ) : null}
-            </ul>
-          </>
-        ) : null}
-        {planSummary ? (
-          <div className="progress-plan">
-            <FileText size={12} strokeWidth={1.7} aria-hidden />
-            <span className="truncate">{planSummary}</span>
-          </div>
-        ) : null}
-        {superAgent && superAgent.tasks.length > 0 ? (
-          <div className="progress-plan">
-            <Users size={12} strokeWidth={1.7} aria-hidden />
-            <span className="truncate">
-              协作成员 {superRunning} 进行 / {superAgent.tasks.length} 项
-            </span>
-          </div>
-        ) : null}
-      </div>
+            </ol>
+          )}
+        </div>
 
-      <div className="progress-feed-head">
-        <span>实时动态</span>
-        <span className="mono">{items.length}</span>
+      {sources.length > 0 || outputFiles.length > 0 ? (
+        <section className="progress-outs" aria-label="来源与产出">
+          {sources.length > 0 ? (
+            <section className="progress-out-group" aria-label="来源">
+              <div className="progress-out-head">
+                <Globe2 size={11} strokeWidth={1.7} aria-hidden />
+                <span>来源</span>
+                <span className="progress-out-count mono">{sources.length}</span>
+              </div>
+              <ul className="progress-out-list">
+                {sources.slice(0, MAX_SOURCES).map((source) => (
+                  <li key={source.url}>
+                    <button
+                      type="button"
+                      className="progress-source"
+                      title={`${source.title || source.url}\n${source.url}`}
+                      onClick={() => void openExternal(source.url)}
+                    >
+                      <span className="progress-source-host mono">{hostnameOf(source.url)}</span>
+                      <span className="progress-source-title truncate">{source.title || source.url}</span>
+                      <ExternalLink size={10} strokeWidth={1.6} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+                {sources.length > MAX_SOURCES ? (
+                  <li className="progress-out-more">还有 {sources.length - MAX_SOURCES} 条来源</li>
+                ) : null}
+              </ul>
+            </section>
+          ) : null}
+          {outputFiles.length > 0 ? (
+            <section className="progress-out-group" aria-label="产出文件">
+              <div className="progress-out-head">
+                <FileText size={11} strokeWidth={1.7} aria-hidden />
+                <span>产出文件</span>
+                <span className="progress-out-count mono">{outputFiles.length}</span>
+              </div>
+              <ul className="progress-out-list">
+                {outputFiles.slice(0, MAX_OUTPUTS).map((file) => (
+                  <li key={file.key}>
+                    <button
+                      type="button"
+                      className="progress-output"
+                      title={file.path ?? file.title}
+                      onClick={() => {
+                        if (file.kind === 'artifact' && file.artifactId) openCanvas(file.artifactId)
+                        else if (file.absolutePath) void revealArtifact(file.absolutePath)
+                      }}
+                    >
+                      <span className="progress-output-name truncate">{file.title}</span>
+                      {pathHint(file) ? (
+                        <span className="progress-output-path truncate mono">{pathHint(file)}</span>
+                      ) : null}
+                      <FolderOpen size={10} strokeWidth={1.6} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+                {outputFiles.length > MAX_OUTPUTS ? (
+                  <li className="progress-out-more">还有 {outputFiles.length - MAX_OUTPUTS} 个产出</li>
+                ) : null}
+              </ul>
+            </section>
+          ) : null}
+        </section>
+      ) : null}
       </div>
-      <div className="progress-feed" role="log" aria-label="实时进展">
-        {items.length === 0 ? (
-          <div className="progress-empty">
-            <Sparkles size={17} strokeWidth={1.5} aria-hidden />
-            <p>任务开始后，这里会实时显示工具调用、待办和成果更新。</p>
-          </div>
-        ) : (
-          <ol>
-            {items.map((item) => (
-              <li key={item.id} className="progress-item" data-tone={item.tone}>
-                <span className="progress-item-icon" aria-hidden>
-                  {toneIcon(item.tone)}
-                </span>
-                <div className="progress-item-body">
-                  <div className="progress-item-title">
-                    <span className="truncate">{item.title}</span>
-                    {item.tag ? <span className="progress-item-tag mono">{item.tag}</span> : null}
-                  </div>
-                  {item.detail ? (
-                    <p className="progress-item-detail" title={item.detail}>
-                      {item.detail}
-                    </p>
-                  ) : null}
-                  {typeof item.percent === 'number' ? (
-                    <div className="progress-item-bar" aria-hidden>
-                      <span style={{ width: `${Math.max(0, Math.min(100, item.percent))}%` }} />
-                    </div>
-                  ) : null}
-                </div>
-                <time className="progress-item-time mono" dateTime={new Date(item.at).toISOString()}>
-                  {formatClock(item.at)}
-                </time>
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
-      <footer className="progress-foot">
-        <Clock3 size={11} strokeWidth={1.7} aria-hidden />
-        <span>{status === 'idle' ? '空闲时也会保留最近动态' : '随执行实时刷新'}</span>
-        <Wrench size={11} strokeWidth={1.7} aria-hidden />
-      </footer>
     </aside>
   )
 }
