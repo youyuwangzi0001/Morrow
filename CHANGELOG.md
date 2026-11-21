@@ -2,6 +2,40 @@
 
 Morrow 的版本按发布线记录。每节先给完整中文，再给完整英文；两段内容对应，但不逐句对照。
 
+## 双端补齐交付（2026-11-21）
+
+版本号 0.2.0。桌面重新打包，安卓从 1.0.0-debug 升级为同版本号的 release 签名包；两端共用加密中继通道。
+
+### 中文
+
+**变更概览**：安卓补齐 13 项能力 · 桌面同步 4 项通道能力 · 30 张截图重拍 · 三个分发文件重新出包
+
+- **安卓页面接线**：工位、对话、协作、审批、作品、配对、设置七个页面接入真实事件流；对话消息、协作成员、审批队列、作品摘要不再停在空态。
+- **审批与安全**：审批允许接入系统生物识别，取消、锁定或验证失败一律拒绝；拒绝回执落盘并在重连后补发。
+- **通知与后台**：四个通知渠道、审批动作、完成/卡住/进度提醒、深链定位；长任务由前台服务保活，后台结束时停服务并断开。
+- **协作干预**：手机可停止成员、重试失败成员、发送新指令；桌面下发项目、会话与成员任务 id，缺任何一项时手机保持只读。
+- **作品预览**：新增 `works.preview` 上行与手机预览页，支持图片、PDF 首页、受限 WebView 中的 HTML 与系统解码器支持的视频，单件上限 4 MiB。
+- **设置与偏好**：主题持久化、通知状态跳转、两步清除配对、版本与生物识别状态展示。
+- **桌面通道**：配对票据自动补局域网地址、首连补发快照、运行时事件下行、手机上行白名单（审批/停止/发消息/作品/预览/协作）。
+- **构建修复**：修复 Windows 上 esbuild 处理超大 chunk 时的临时文件删除失败；`runtime` 改用应用根目录解析 renderer/preload，避免拆 chunk 后岛窗口加载失败。
+- **文档与验证**：13 篇正文按任务重排并校正事实；30 张桌面截图全部用当前构建重拍；新增安卓 release 证据；桌面 1014 项单测、95 条 E2E 通过，安卓 919 项 JVM 与 265 项静态验收通过。
+- **已知限制**：安卓没有真机或模拟器运行证据，通知投递、生物识别弹窗与后台保活未在实体设备验证；未接 FCM，进程被杀后收不到推送；桌面 exe 未签名。
+
+### English
+
+**Summary**: 13 Android capabilities completed · 4 relay capabilities synced to desktop · 30 screenshots recaptured · three distribution files rebuilt
+
+- **Android pages**: the workbench, conversation, collaboration, approvals, works, pairing and settings pages now consume the real event stream; conversations, members, approvals and work summaries no longer sit in empty states.
+- **Approvals and security**: allowing a request goes through system biometrics; cancellation, lockout or failure is a denial. Denial receipts are persisted and replayed after a reconnect.
+- **Notifications and background**: four notification channels, approval actions, completion/stuck/progress alerts and deep links; the foreground service keeps long tasks alive, stops when the run ends, and disconnects afterwards.
+- **Collaboration controls**: stop a member, retry a failed member, or send a new instruction. The desktop supplies project, session and member task ids; the phone stays read-only when any id is missing.
+- **Work previews**: a new `works.preview` request and a phone preview screen for images, the first PDF page, HTML inside a restricted WebView and system-decoded video, capped at 4 MiB per file.
+- **Settings and preferences**: persisted theme, notification-status shortcut, two-step pairing removal, version and biometric status.
+- **Desktop relay**: pairing tickets include the LAN address, the first connection receives a full snapshot, runtime events stream down, and the phone invoke allowlist covers approvals, stop, messages, works, previews and collaboration.
+- **Build fix**: esbuild no longer fails while deleting temporary files for oversized chunks on Windows; `runtime` resolves renderer/preload from the app root so the island window keeps working after chunk splitting.
+- **Docs and verification**: 13 body pages reorganised by task with corrected facts; all 30 desktop screenshots recaptured from the current build; Android release evidence added; 1014 desktop unit cases and 95 E2E flows pass, alongside 919 Android JVM cases and 265 static checks.
+- **Known limits**: no real-device or emulator evidence for Android, so notification delivery, the biometric prompt and background keep-alive are unverified on hardware; no FCM, so a killed process receives no push; the Windows executables are unsigned.
+
 ## 文档体系重写（2026-11-21）
 
 版本号仍为 0.2.0。这一轮只改文档与文档校验脚本，不改功能、不改二进制，也不改写已发布的标签与附件。
