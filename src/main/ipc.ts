@@ -40,6 +40,8 @@ import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
 import { setPhoneSnapshotProvider } from './phone-bridge'
 import { setPhoneInvokeHandler } from './phone-invoke'
+import { phoneWorks } from './phone-works'
+import { getStudioService } from './studio'
 import { applyRelaySettings, currentPairing, lanHint } from './relay'
 import { issuePairTicket, listPairDevices, revokePairDevice } from './relay-pairing'
 import {
@@ -2003,6 +2005,12 @@ export function registerIpcHandlers(): void {
       }
       case 'snapshot.get':
         return { ok: true, result: service.phoneSnapshot() }
+      case 'works.get':
+        // 作品库按需拉取（不放进状态帧）：摘要只有几 KB，但它是打开页面才需要的。
+        // 失败回 failed，手机保留「未知」而不是显示「没有作品」。
+        return getStudioService()
+          .list()
+          .then((list) => ({ ok: true as const, result: { works: phoneWorks(list.projects) } }))
       case 'message.send': {
         // 手机会话里发消息 = 在桌面同一个会话里启动一轮。返回 runId 让手机
         // 能在 result 里确认「发出去了」；后续进度仍走事件下行。

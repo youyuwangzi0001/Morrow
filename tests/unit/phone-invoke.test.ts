@@ -112,6 +112,12 @@ describe('手机上行 invoke', () => {
     expect(called).toBe(false)
   })
 
+  it('@core:relay works.get 不需要参数并原样回传结果', async () => {
+    setPhoneInvokeHandler(() => ({ ok: true, result: { works: [{ id: 'w1' }] } }))
+    const result = await dispatchPhoneInvoke({ id: 'w1', method: 'works.get', params: {} })
+    expect(result).toEqual({ ok: true, result: { works: [{ id: 'w1' }] } })
+  })
+
   it('@core:relay 未注册处理器时回 unavailable', async () => {
     const result = await dispatchPhoneInvoke({ id: '1', method: 'snapshot.get', params: {} })
     expect(result.ok).toBe(false)

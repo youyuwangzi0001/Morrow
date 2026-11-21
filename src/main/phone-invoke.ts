@@ -37,7 +37,7 @@ export interface PhoneInvokeResult {
 export type PhoneInvokeHandler = (request: PhoneInvokeRequest) => PhoneInvokeResult | Promise<PhoneInvokeResult>
 
 /** 白名单：每一项都在 ipc.ts 有对应实现，新增方法必须同时改两端与测试。 */
-export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'message.send', 'ping'] as const
+export const PHONE_METHODS = ['approval.decide', 'run.stop', 'snapshot.get', 'message.send', 'works.get', 'ping'] as const
 
 const MAX_ID = 120
 const MAX_METHOD = 80
