@@ -38,7 +38,7 @@ import { getSettingsStore } from './settings'
 import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
-import { applyRelaySettings, currentPairing } from './relay'
+import { applyRelaySettings, currentPairing, lanHint } from './relay'
 import { issuePairTicket, listPairDevices, revokePairDevice } from './relay-pairing'
 import {
   getCollaborationRuntime,
@@ -424,8 +424,19 @@ export function registerIpcHandlers(): void {
    */
   ipcMain.handle(
     IPC.relayPairIssue,
-    (_e, input: { deviceId: string; phonePubKey: string; relayHint?: string }): Result<unknown> =>
-      issuePairTicket(currentPairing(), input)
+    (_e, input: { deviceId: string; phonePubKey: string; relayHint?: string }): Result<unknown> => {
+      // 连接地址由主进程兜底补：界面不传、传空、或只传了空白时，
+      // 都用「当前 LAN 直连端口 + 本机私网 IPv4」。没有可用地址时保留缺失，
+      // 让手机侧按真实原因拒绝（不猜地址、不编一个连不上的值）。
+      const explicit = typeof input?.relayHint === 'string' ? input.relayHint.trim() : ''
+      const auto = explicit ? null : lanHint()
+      const relayHint = explicit || auto
+      return issuePairTicket(currentPairing(), {
+        deviceId: input.deviceId,
+        phonePubKey: input.phonePubKey,
+        ...(relayHint ? { relayHint } : {})
+      })
+    }
   )
 
   ipcMain.handle(IPC.relayPairList, (): Result<unknown> => listPairDevices(currentPairing()))

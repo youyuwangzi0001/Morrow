@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { networkInterfaces } from 'node:os'
 import { app, safeStorage } from 'electron'
 import { log } from './logger'
 import { getSettingsStore } from './settings'
@@ -225,6 +226,54 @@ export function channelView(): ChannelView | null {
 /** 局域网直连端口（诊断用）。未启用时为 null */
 export function lanPort(): number | null {
   return directChannel?.port() ?? null
+}
+
+/**
+ * 本机可被同一局域网访问的 IPv4。
+ *
+ * 选路顺序：`192.168.*` → `10.*` → `172.16–31.*` → 其它非回环地址。
+ * 之所以要排序而不是取第一个：Windows 上虚拟网卡（Hyper-V、WSL、VPN）
+ * 常常排在物理网卡前面，取第一个会签出一张手机根本路由不到的票据。
+ * 回环地址一律排除 —— 它只能在同一台机器上访问，写进票据等于必然失败。
+ */
+export function firstLanIpv4(): string | null {
+  const candidates: string[] = []
+  for (const list of Object.values(networkInterfaces())) {
+    for (const net of list ?? []) {
+      if (net.family !== 'IPv4' || net.internal) continue
+      // 169.254.* 是自动私有地址（DHCP 失败），不能作为稳定入口
+      if (net.address.startsWith('169.254.')) continue
+      candidates.push(net.address)
+    }
+  }
+  const rank = (ip: string): number =>
+    ip.startsWith('192.168.')
+      ? 0
+      : ip.startsWith('10.')
+        ? 1
+        : /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+          ? 2
+          : 3
+  candidates.sort((a, b) => rank(a) - rank(b))
+  return candidates[0] ?? null
+}
+
+/**
+ * 配对票据里的连接地址（`host:port`）。
+ *
+ * 手机上这张票是唯一知道自己该连哪里的地方：缺了它，手机会拒绝完成配对
+ * （见安卓 `MainActivity.onPairingCode` 的 `relayHint` 校验）。
+ * 所以桌面**必须**在签发时自己补，而不是指望界面记得传 ——
+ * 界面漏传过一次，表现就是「配对码生成了，手机却说没有连接地址」。
+ *
+ * 局域网直连没起来（或没有可用网卡）时返回 null：
+ * 此时票据如实缺少该字段，手机给出明确原因，而不是连一个猜出来的地址。
+ */
+export function lanHint(): string | null {
+  const port = lanPort()
+  if (!port) return null
+  const host = firstLanIpv4()
+  return host ? `${host}:${port}` : null
 }
 
 /**

@@ -885,7 +885,12 @@ export function issuePairTicket(
         expiresAt: ticket.exp,
         nonce: ticket.nonce,
         // 指纹缺失时手机侧会拒绝完成配对，界面必须当场提示而不是让用户白扫
-        hasFingerprint: typeof ticket.fingerprint === 'string' && ticket.fingerprint.length > 0
+        hasFingerprint: typeof ticket.fingerprint === 'string' && ticket.fingerprint.length > 0,
+        // 连接地址同样由手机强校验；回带给界面，配对面板可以直接显示
+        // 「手机要连的地址」，出问题时不用再去翻日志。
+        ...(typeof ticket.relayHint === 'string' && ticket.relayHint.length > 0
+          ? { relayHint: ticket.relayHint }
+          : {})
       }
     }
   } catch (err) {

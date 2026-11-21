@@ -249,6 +249,21 @@ export function PairingTab(): React.JSX.Element {
                     </span>
                   </div>
 
+                  {/*
+                    连接地址是手机能不能连上的前提：票据里缺 relayHint 时，
+                    手机会在校验阶段直接拒绝保存凭据。这里必须当场说清，
+                    而不是让用户拿着票反复试。
+                  */}
+                  {ticket.relayHint ? (
+                    <p className="st-hint">
+                      手机将连接 <code className="mono">{ticket.relayHint}</code>（需在同一局域网）
+                    </p>
+                  ) : (
+                    <p className="st-pair-error">
+                      配对码里没有连接地址：局域网直连没起来，或本机没有可用的私网 IPv4。手机侧会拒绝保存 —— 先检查网络与端口占用，再重新生成。
+                    </p>
+                  )}
+
                   <div className="st-pair-code-row">
                     <span className="st-pair-code mono">{ticket.code}</span>
                     <span className="st-pair-code-label">
