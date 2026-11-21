@@ -1,180 +1,177 @@
-# Morrow · 明日工坊
+<p align="center">
+  <img src="docs/cover.png" alt="Morrow desktop window on the left and the Studio timeline on the right, both from the running application" width="100%">
+</p>
 
-> 住在你电脑里的 AI 工作伙伴。说清想要的结果，Morrow 会读文件、写代码、运行命令、检查成品，并把结果放回你的工作区。
+<h1 align="center">Morrow</h1>
 
-Morrow 是一个面向 Windows 10/11 x64 的本地桌面 AI Agent：Electron 44 + React 19 + TypeScript。它把对话、工作模式、计划、深度研究、长期目标、文件编辑、画布、真实终端、Git、内置浏览器、项目记忆、技能、MCP、定时任务和本机多媒体放在同一个工作台里。模型可以来自 API Key、官方 Agent 订阅，或本机 llama.cpp / Ollama / LM Studio；所有数据默认留在本机。
+<p align="center">A local-first AI workbench for Windows. You say what you want; a finished file is waiting where you work.</p>
 
-![Morrow 主界面](docs/guide/screens/02-chat-home-dark.png)
+<p align="center"><a href="README.zh.md">中文</a></p>
 
-## 核心能力
+<p align="center">
+  <a href="https://www.electronjs.org/docs/latest"><img alt="Electron 44" src="https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white"></a>
+  <a href="https://react.dev"><img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black"></a>
+  <a href="https://www.typescriptlang.org/docs"><img alt="TypeScript 5.9" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white"></a>
+  <a href="https://learn.microsoft.com/windows/"><img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white"></a>
+  <a href="https://developer.android.com/jetpack/compose"><img alt="Android Companion" src="https://img.shields.io/badge/Android-companion-3DDC84?logo=android&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2EA043"></a>
+  <a href="https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0"><img alt="Release v0.2.0" src="https://img.shields.io/badge/release-v0.2.0-2EA043"></a>
+</p>
 
-### 从一句话到可验收的成品
+<p align="center">
+  <a href="docs/README.md">Docs map</a> ·
+  <a href="docs/GETTING-STARTED.md">Get started</a> ·
+  <a href="docs/PAIRING.md">Pair a phone</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-- **聊天 / 工作 / 计划 / 深度研究 / 长期目标**五种工作方式。聊天模式只读；工作模式可以写文件和执行命令；计划模式先给出可审阅的计划；研究模式会查证并保留来源；目标模式可以跨轮持续推进，直到交付可验证的结果。
-- **审批卡**把“它想做什么、会影响什么”写清楚。只读、询问、完全访问三档权限；危险命令、越界路径和外部副作用动作始终逐次确认。
-- **代码与成品**：文件树、CodeMirror 编辑器、多标签画布、HTML/Markdown/PDF/Office/图片/音视频预览、版本历史、导出与另存为。
-- **可恢复**：每个用户轮次有检查点，写文件前有快照；支持会话回退、文件回退和冲突校验。
+## Overview
 
-### 真实终端、Git 与浏览器
+Morrow is a desktop AI agent for Windows 10/11 (x64). You describe the result you want — a cleaned-up spreadsheet, an HTML review, a report, a working script — and Morrow reads your folder, edits files, runs commands, checks its own output, and leaves an artifact you can open. Sessions, memory, workspace files and API keys stay on your machine; you choose which model provider to plug in.
 
-- **真实 PTY 终端**：多标签、后台任务、复制粘贴、拖动调高。默认终端是 **Git Bash**；旧版 Windows PowerShell 5.1 和 CMD 选项已移除，仍可选择 PowerShell 7 / WSL。
-- **Git 工作台**：变更、diff、暂存、提交、分支、历史、放弃改动；diff 超长时截断展示。
-- **内置浏览器**：多标签、地址栏、前进后退、真实网页内容；登录窗口与普通浏览共用同一套安全边界。
+Three surfaces share one product. The **desktop app** is where work happens. **Studio** writes long-form work — short stories, serialized novels and 60–120 second comic dramas — from one sentence to a deliverable file. The **Android companion** shows progress on your phone, lets you approve permission requests, and browses finished work. The phone is a viewer and an approval surface: every tool call still executes on the desktop.
 
-![终端与工作台](docs/guide/screens/10-terminal-dark.png)
+## What you can do
 
-### 模型、订阅与账号元信息
+### Work inside a folder you choose
 
-- 内置 OpenAI 兼容（DeepSeek、Kimi、Qwen、GLM、MiniMax、MiMo、Gemini、Grok、Meta 等）与 Anthropic Claude 接入；也支持任意 OpenAI 兼容网关和本机服务。
-- **官方 Agent 订阅**：ChatGPT/Codex、Qoder、Kimi Code、GLM Coding Plan、MiniMax Code、Step Plan、Command Code、Cline Pass、Google Antigravity、OpenCode，以及第三方 coding plan。
-- **Qoder 账号驱动目录**：登录后读取账号接口返回的模型、200K/400K/1M 上下文档位与真实思考档位；设置页可按模型调整默认上下文。Morrow 不维护 Qoder 静态模型表。
-- **模型能力契约**：选择器只显示原始模型名；思考强度只列模型真实支持的档位；不支持时显示“不支持思考”；未知模型只保留“自动”。DeepSeek 的关闭思考在请求层映射为官方 `none`，Qoder 代理保持自己的 `off`。
-- **本机多媒体**：ComfyUI、llama.cpp、Ollama、LM Studio；图片/视频生成、编辑、抽帧、拼接、审看。媒体审看始终优先当前对话模型，当前模型不支持或失败后才回退到声明视觉能力的本地模型。
+- Five ways to work: chat, work, plan, deep research and long-running goals. Chat only reads; research stays inside a tool allowlist; goals keep running across turns until there is real file evidence of completion.
+- A real file tree, a CodeMirror editor, a multi-tab canvas, and previews for HTML, Markdown, PDF, Office files, images, audio and video.
+- A real PTY terminal (Git Bash by default, PowerShell 7 or WSL), a Git panel, a multi-tab browser and Windows UI Automation for desktop tasks.
+- Three permission levels — read-only, ask, full access — plus per-call approval cards. Read-only refuses every write; ask auto-runs ordinary work inside the folder and asks about destructive commands, outside paths and external side effects; full access stops asking and should only be used on work you trust.
+- One checkpoint per ordinary work turn, with file snapshots taken before writes. Rewinding restores the conversation and the files together, and refuses to proceed if the current files no longer match the recorded hashes.
 
-### 项目、记忆与自动化
+![Agent session: a completed plan and the generated report hint](docs/screens/guide-chat.png)
 
-- **项目主页**：项目背景、说明与资料、项目内会话、当前文件夹范围。
-- **记忆中心**：项目记忆、全局长期记忆、任务经验、注入预览与自进化建议。
-- **技能库**：内置技能与工作区 `.morrow/skills`；支持 Markdown 技能包与安全安装。
-- **MCP**：stdio / Streamable HTTP / 旧版 SSE；工具、资源、提示词、OAuth 与工作区信任。
-- **定时任务**：一次/每天/每周，只读或可改文件；无人值守时自动拒绝需要审批的动作。
-- **集群与侧聊**：1–10 个集群成员并行处理独立子任务；`/btw` 侧聊不写主会话。
+Screenshots in this README come from the application's test mode and built-in demo workspace; the interface is the released one.
 
-### 本地优先与稳定性
+### Finish long-form work in Studio
 
-- 数据、会话、快照、日志与密钥都在本机；密钥用系统加密（Windows DPAPI / safeStorage）保存，渲染层永远拿不到明文。
-- 打包版启用本地崩溃转储；主进程未捕获异常、未处理 Promise、子进程消失与渲染进程崩溃都会记录；主窗口渲染进程崩溃会自动恢复（有频率上限），并记录无响应事件。
-- 应用不内置 Antigravity OAuth secret；使用 Antigravity 订阅时需自行设置 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
+- Short story (18,000 words by default, presets at 30k / 50k / 80k), serialized novel (300,000 by default, presets up to one million) and comic drama (96 seconds by default, presets at 60 / 96 / 120).
+- Ten stages — blueprint, outline, writing, storyboard, visuals, voice, music, timeline, review, delivery — with a subset per form. The blueprint is generated by a real text model and billed; later stages only start after you confirm it, and they are billed separately.
+- A paper-page editor, a storyboard board, a node canvas for drama shots, a six-track timeline (picture, dialogue, ambience, music, sound effects, subtitles) and real waveforms.
+- A collaborator that turns plain-language feedback into a reviewable edit plan; nothing is applied until you confirm, and an applied plan can be undone while no newer edits exist.
+- Eight check categories. Errors block the final export; intermediate files can still be exported. Without a real model or engine the step fails loudly instead of inventing a result.
+- Delivery as TXT, MD, DOCX, EPUB, PDF, cover, subtitles or a project package; drama adds MP4/MOV/MKV/WebM, WAV/MP3/AAC/FLAC, four-panel comics and a publish bundle.
 
-## 快速开始
+![Studio timeline: monitor, six tracks and a real audio waveform](docs/screens/studio-timeline.png)
 
-### 环境
+The works shown are built-in samples seeded by the test harness.
 
-- Windows 10/11 x64
-- Node.js 22+（开发）
-- Git（推荐；默认终端使用 Git Bash）
-- 可选：PowerShell 7、WSL、ComfyUI、llama.cpp、Ollama、LM Studio、ffmpeg
+### Watch and approve from your phone
 
-### 从源码运行
+- The Android companion renders a workbench (device state, running task, pending decisions, today's counters, recent artifacts), the approval queue, member tasks, works and the pairing screen.
+- It is designed to talk to your desktop over the local network only: the desktop opens a WSS channel with a self-signed certificate, and the phone pins the certificate fingerprint it received in the pairing ticket. Public relay is not implemented.
+- Your action is the approval. Dangerous tools cannot be allowed from the phone, and the desktop keeps executing everything.
+
+![Pairing panel on the desktop: channel switch, generated request and paired devices](docs/screens/pair-panel-devices.png)
+
+The companion is no longer built or released from this repository: its source, documentation and APK live in [Morrow-Android](https://github.com/youyuwangzi0001/Morrow-Android), and the two projects now version and ship independently. This repository owns the desktop app and the shared channel protocol.
+
+### Keep models, memory and automation in one place
+
+- 15 provider configurations (OpenAI-compatible services, Anthropic native, and Ollama, llama.cpp or LM Studio on the same machine), 12 subscription routes including ChatGPT/Codex and nine coding-plan channels, and seven thinking levels.
+- 20 built-in skills, workspace skills under `.morrow/skills`, eight MCP catalog entries, projects, a memory center where suggestions only land after you accept them, and scheduled tasks.
+- 17 cloud media presets (image, video, speech, music) next to local ComfyUI, FFmpeg and TTS engines.
+
+![Approval card: tool, target, scope and arguments before anything runs](docs/screens/guide-permission.png)
+
+## Install
+
+| File | What it is |
+|---|---|
+| `Morrow-0.2.0-portable.exe` | Single-file portable build; extracts its runtime next to the exe on first run |
+| `Morrow-0.2.0-setup.exe` | NSIS installer; choose a directory, creates shortcuts |
+
+Download from the [v0.2.0 release](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0) and check the files against `SHA256SUMS.txt`. Both Windows builds are signed with a self-signed certificate: the chain is not trusted by a CA, so SmartScreen may still block the first launch — choose **More info → Run anyway**.
+
+The Android companion (API 26+, sideload, release-signed) is published from its own repository: [Morrow-Android releases](https://github.com/youyuwangzi0001/Morrow-Android/releases).
+
+## Quick start
+
+1. Launch Morrow and finish the three-step onboarding: meet Morrow, connect a model, choose a working folder.
+2. Say what you want in plain language, for example “turn this sales export into an HTML review and flag the anomalies”.
+3. Approve what needs approval. When it finishes, open the artifact from the canvas, the workspace or Studio.
+
+No API key yet? A subscription route such as ChatGPT/Codex reuses a local login, or you can start with the offline demo that spends no quota. Phone pairing takes three minutes and is documented step by step in [docs/PAIRING.md](docs/PAIRING.md).
+
+## Build from source
+
+Requirements: Windows 10/11 x64, Node.js 22.12+, Git (Git Bash is the default terminal).
 
 ```powershell
 npm install
 npm run dev
 ```
 
-构建并运行构建产物：
+A clean clone cannot build on its own: the prompt bundle is generated at build time from a private source (`%APPDATA%\Morrow-build\prompts`, override with `MORROW_PROMPT_SOURCE`) and `src/generated/` is not committed, so `npm run build` fails loudly without it. This is documented in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Common checks:
 
 ```powershell
-npm run build
-npm start
+npm run typecheck    # both processes
+npm run test:unit    # 1014 unit tests
+npm run test:e2e     # 96 Electron flows (builds first)
+npm run docs:check   # links, anchors, screenshot sizes
+npm run verify       # the full local chain
 ```
 
-### 使用发布包
+## Documentation
 
-发布包提供单文件便携版与 NSIS 安装包：
+| Start here | What it covers |
+|---|---|
+| [docs/README.md](docs/README.md) | Map of the whole documentation set and the rules it follows |
+| [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) | Install, onboarding, first task, first phone pairing |
+| [docs/DESKTOP-GUIDE.md](docs/DESKTOP-GUIDE.md) | Interface, modes, permissions, checkpoints, terminal, Git, browser |
+| [docs/STUDIO.md](docs/STUDIO.md) | Studio: forms, stages, checks, delivery |
+| [docs/MOBILE.md](docs/MOBILE.md) | Phone side from the desktop's point of view; pages and limits live in the [Morrow-Android](https://github.com/youyuwangzi0001/Morrow-Android) repository |
+| [docs/PAIRING.md](docs/PAIRING.md) | Desktop–phone pairing, LAN channel, protocol |
+| [docs/MODELS.md](docs/MODELS.md) | Providers, subscriptions, local models, thinking levels |
+| [docs/MEDIA.md](docs/MEDIA.md) | Cloud media presets, ComfyUI, FFmpeg, TTS |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Shortcuts, data paths, environment variables, skills, commands |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-first troubleshooting, including phone pairing |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Processes, IPC, agent loop, permission order, Studio pipeline, phone channel |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Environment, tests, CI, screenshots, packaging, licenses |
+| [docs/VERIFICATION.md](docs/VERIFICATION.md) | Artifacts, hashes, checks, screenshot inventory, what is not verified |
 
-- 便携版首次运行会在 exe 同级解压 `.morrow-runtime-0.1.0-r019`；之后启动更快，运行中不要删除。
-- 便携版数据默认在 exe 同级的 `Morrow Data`；安装版默认在 `%APPDATA%\Morrow`。可在「设置 → 关于」更改数据目录。
-- 当前构建未配置代码签名，首次运行可能触发 SmartScreen；请用 `SHA256SUMS.txt` 校验。
-
-### 首次使用
-
-1. 连接一个模型：设置 → 模型，填 API Key 或选择本地服务；也可以先在设置 → 订阅接入已有账号。
-2. 选择一个工作文件夹；Morrow 只在这个文件夹范围内读写。
-3. 在输入框描述结果，按 Enter 发送。需要审批的动作会显示审批卡。
-4. 需要精确编辑或预览时，使用右侧画布；需要命令时打开底部终端。
-
-## 文档地图
-
-| 文档 | 适合谁 | 内容 |
-|---|---|---|
-| [用户指南](docs/USER-GUIDE.md) | 所有用户 | 从安装、首次启动到日常任务的完整操作手册 |
-| [功能参考](docs/FEATURES.md) | 所有用户 | 功能清单、入口、限制与状态 |
-| [模型与思考档位](docs/MODELS.md) | 配置模型的人 | 内置模型、上下文、思考档位、Qoder 账号目录、同步规则 |
-| [订阅接入](docs/SUBSCRIPTIONS.md) | 使用官方账号的人 | 10 个 Agent 渠道与第三方 plan 的登录、代理、额度和边界 |
-| [多媒体与本地模型](docs/MEDIA-MODELS.md) | 做图片/视频的人 | 引擎、模型目录、生成/编辑/审看、ffmpeg 与显存 |
-| [架构说明](docs/ARCHITECTURE.md) | 开发者 | 进程、IPC、Agent 循环、权限、持久化、Provider、测试 |
-| [设计系统](docs/DESIGN-SYSTEM.md) | 设计与前端 | 色彩、字体、间距、圆角、组件与可访问性 |
-| [安全与隐私](docs/SECURITY-PRIVACY.md) | 谨慎的用户/审计者 | 数据位置、密钥、权限、网络与已知边界 |
-| [排障指南](docs/TROUBLESHOOTING.md) | 遇到问题的人 | 启动、模型、订阅、媒体、终端、数据恢复 |
-| [评测规范](docs/EVALUATION.md) | 想复现质量的人 | 单测、E2E、Agent 质量指标与真实任务 |
-| [验收记录](docs/verification/VERIFICATION.md) | 发布/验收 | 当前版本的门禁、证据、交付哈希与边界 |
-| [贡献指南](CONTRIBUTING.md) | 贡献者 | 开发环境、边界、提交规范 |
-| [安全策略](SECURITY.md) | 安全研究者 | 漏洞报告与支持范围 |
-
-指南截图集中在 [`docs/guide/screens/`](docs/guide/screens/manifest.json)；截图由 E2E 在真实 Electron 窗口中生成，记录在 manifest 中。
-
-## 架构一览
+## Project structure
 
 ```text
-┌──────────────────────────── renderer (React 19) ────────────────────────────┐
-│ TitleBar · Sidebar · Transcript · Composer · Canvas · Workbench · Island    │
-│ Zustand store ── window.morrow 白名单 API ── preload（contextIsolation）     │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │ IPC / feature:*
-┌───────────────────────────────────▼─────────────────────────────────────────┐
-│ main (Electron)                                                             │
-│ AgentService ─ core/agent ─ providers（OpenAI 兼容 / Anthropic / demo）      │
-│ tools（文件/命令/终端/搜索/技能/MCP/浏览器/媒体） · permissions · snapshots  │
-│ session/settings/secrets/projects/memory/skills/schedules · 订阅代理        │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │
-                  工作区文件 / 本机引擎 / 模型 API / 本机数据目录
+src/main/       Electron main process: windows, agent, Studio, media, relay, subscriptions
+src/core/       Agent loop, providers, tools, permissions, context, compaction
+src/renderer/   React interface, feature components and styles
+src/shared/     IPC contracts and data types
+src/generated/  Prompt bundle generated at build time (not committed)
+tests/          Vitest unit suites and Playwright Electron flows
+docs/           Documentation, screenshots, diagrams and evidence
+scripts/        Build, test, packaging, smoke and documentation checks
 ```
 
-更细的进程边界、事件流、数据格式和重要不变量见 [架构说明](docs/ARCHITECTURE.md)。
+The Android companion's source, documentation and distribution package live in the [Morrow-Android](https://github.com/youyuwangzi0001/Morrow-Android) repository; this repository contains no Android source. The channel protocol and pairing flow the two sides share are documented in [docs/PAIRING.md](docs/PAIRING.md).
 
-## 项目规模
+## Releases
 
-> 统计口径：`wc -l`；代码包含 `src/`、`tests/`（含 E2E）、`scripts/`、`build/`；文档为根目录与 `docs/` 下的 Markdown；不含 `node_modules`、构建产物、JSON 清单与图片。
+Desktop builds, checksums and release notes live in [Releases](https://github.com/youyuwangzi0001/Morrow/releases); per-version bilingual notes are in [CHANGELOG.md](CHANGELOG.md). The Android companion is released from [Morrow-Android](https://github.com/youyuwangzi0001/Morrow-Android/releases).
 
-| 范围 | 文件 | 行数 |
-|---|---:|---:|
-| 生产源码 `src/` | 314 | 125,812 |
-| 测试 `tests/`（含 E2E） | 66 | 43,456 |
-| 其中 E2E 套组 `tests/e2e/` | 20 | 19,236 |
-| 构建脚本 `scripts/` + `build/` | 11 | 2,896 |
-| **代码合计** | **391** | **172,164** |
-| Markdown 文档 | 15 | 2,142 |
+## Security
 
-## 测试与质量
+- The renderer runs with `contextIsolation` and sandboxing, `nodeIntegration` is off, and system access goes through a preload allowlist.
+- File tools stay inside the workspace; reading outside it requires an explicit attachment.
+- Keys are encrypted with the OS credential store and are never echoed back in the interface.
+- Web pages, MCP servers and desktop content are treated as untrusted input.
+- The phone channel pins a certificate fingerprint and encrypts every frame; see [docs/PAIRING.md](docs/PAIRING.md).
 
-```powershell
-npm run typecheck     # 主进程 + 渲染层
-npm run audit:ui      # 设计 token / 裸排版值审计
-npm run test:unit     # Vitest
-npm run test:e2e      # Playwright（完整套件约 11 分钟）
-```
+Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
-当前基线：单元 **14 个套件 / 952 个用例**（944 passed + 8 skipped）；E2E **17 个套件 / 209 个用例**。打包版冒烟与真实账号登录、媒体链路、订阅代理另有专项用例。Agent 质量评测定义与结果见 [评测规范](docs/EVALUATION.md)。
+## Known limitations
 
-## 开发与打包
-
-```powershell
-npm run build          # 类型检查 + electron-vite build
-npm run dist           # 单文件便携版
-npm run dist:all       # 便携版 + 安装包
-npm run pack:source    # 从当前提交生成源码包
-```
-
-打包脚本会把 Electron 缓存、临时解包目录与交付暂存放到可清理目录；交付目录保留五个分发文件、源码包和用户数据 `Morrow Data`。详细约定见 [贡献指南](CONTRIBUTING.md)。
-
-## 安全与隐私
-
-- 默认不把工作区内容上传到 Morrow 服务器；模型请求直接发往你选择的模型服务。
-- API Key 与订阅凭据使用系统加密保存；渲染层只看到“已保存”状态。
-- 文件路径必须落在已登记工作区内；外部 URL 只允许 http(s)；网页、MCP 与浏览器内容按不可信数据处理。
-- 不内置第三方 OAuth secret；Antigravity 需要 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
-- 详细威胁模型与已知边界见 [安全与隐私](docs/SECURITY-PRIVACY.md)。
-
-## 已知限制
-
-- Windows 10/11 x64 是唯一正式交付平台；WSL 需系统已安装发行版。
-- 便携版/安装包未签名，SmartScreen 可能提示。
-- 终端默认 Git Bash；在受限令牌/低完整性环境中 Git Bash 的 MSYS 共享内存可能不可用，可在设置里切 PowerShell 7。
-- 真实本地模型、ffmpeg、ComfyUI 与视频生成依赖本机硬件和模型是否就绪；未配置时会如实报错，不会伪造结果。
-- 订阅渠道的服务端接口可能变化；Morrow 会在登录/额度/模型目录失败时明确提示。
+- Windows x64 only for the desktop build; no other platform is built or tested.
+- The two Windows executables are signed with a self-signed certificate (`CN=Morrow Studio`); SmartScreen still prompts because the certificate is not issued by a trusted CA. It is not a store-distributed build.
+- ComfyUI, FFmpeg, local model servers and TTS models are not bundled; when they are missing the related action fails with a message instead of producing a placeholder.
+- Studio sample works are seeded by the test harness. The packaged build does not ship the demo media, so a fresh install starts with an empty library.
+- The Android companion is released from its own repository and is a viewer and approval surface, not a remote control for arbitrary commands: the channel works on the same local network only, there is no cloud messaging, product preview is capped at 4 MiB per file, and editing or exporting works is desktop-only. It has no real-device evidence either; the limits are listed one by one in the [Android documentation](https://github.com/youyuwangzi0001/Morrow-Android/blob/main/docs/SCREENS.md).
+- Model quality, engine speed and long-media behaviour depend on your own environment and accounts.
 
 ## License
 
-MIT。见 [LICENSE](LICENSE)。
+MIT, see [LICENSE](LICENSE). Third-party components and built-in skill sources are listed in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

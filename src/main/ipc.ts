@@ -4,15 +4,18 @@ import { writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { IPC, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/ipc'
-import { DEFAULT_MODEL, findModel } from '../shared/models'
-import { isReasoningEffort } from '../shared/models'
+import { IPC, type CompleteOnboardingInput, type GoalActionResult, type GoalStartInput, type IslandOpenMainInput, type IslandQuickSendInput, type IslandStudioSyncInput, type PlanActionResult, type ProviderTestInput, type SaveProviderInput, type SaveWebSearchInput, type UpdateSettingsInput, type WebSearchTestResult } from '../shared/contracts'
+import type { SaveCloudMediaProviderInput } from '../shared/types'
+import type { CloudMediaCapability } from '../shared/media-cloud'
+import { DEFAULT_MODEL, findModel } from '../shared/contracts'
+import { isReasoningEffort } from '../shared/contracts'
 import type {
   Artifact,
   ArtifactExportFormat,
   ArtifactVersionInfo,
   AskUserAnswer,
   Attachment,
+  CollaborationProjection,
   CreateSessionInput,
   FileSearchResult,
   ModelRef,
@@ -29,19 +32,32 @@ import type {
   WorkspaceInfo
 } from '../shared/types'
 import { getMainWindow } from './index'
-import { createBootstrap } from './services/bootstrap'
-import { getSettingsStore } from './services/settings-store'
+import { createBootstrap } from './runtime'
+import { takePendingFocusSession } from './runtime'
+import { getSettingsStore } from './settings'
+import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
-import { getAgentService } from './services/agent-service'
-import { openExternalUrl } from './services/external-open'
-import { deriveMeta, getSessionStore } from './services/session-store'
-import { getCheckpointService } from './services/checkpoint-service'
-import { sessionExportContent } from './services/session-export'
-import { getWebSearchService } from './services/web-search'
-import { syncProviderModels } from './services/model-sync'
-import { restoreSnapshotSafely } from './services/snapshot-restore'
-import { registerArtifactHtml } from './services/artifact-preview'
-import { buildExportHtml, buildExportMarkdown, buildExportText } from './services/artifact-export'
+import { getAgentService } from './agent'
+import { setPhoneSnapshotProvider } from './relay-phone'
+import { setPhoneInvokeHandler } from './relay-phone'
+import { phoneWorks } from './relay-phone'
+import { getStudioService } from './studio'
+import { applyRelaySettings, currentPairing, lanHint, onPairDevicesChanged } from './relay'
+import { issuePairTicket, listPairDevices, revokePairDevice } from './relay'
+import {
+  getCollaborationRuntime,
+  getCollaborationStore,
+  getSharedResourceManager
+} from './collaboration'
+import { openExternalUrl } from './workspace'
+import { deriveMeta, getSessionStore } from './session'
+import { getCheckpointService } from './session'
+import { sessionExportContent } from './session'
+import { getWebSearchService } from './memory'
+import { syncProviderModels } from './settings'
+import { restoreSnapshotSafely } from './session'
+import { registerArtifactHtml } from './artifacts'
+import { buildExportHtml, buildExportMarkdown, buildExportText } from './artifacts'
 import {
   clearIslandSession,
   getIslandSnapshot,
@@ -50,10 +66,10 @@ import {
   quickSendToMain,
   resetIslandAfterClear,
   setIslandExpanded,
-  syncIslandSession,
+  syncIslandStudio,
   syncIslandVisibility
-} from './services/island'
-import { resolveWindowClose, setAppIconTheme } from './services/lifecycle'
+} from './runtime'
+import { resolveWindowClose, setAppIconTheme } from './runtime'
 import {
   createDemoWorkspace,
   describeWorkspace,
@@ -61,30 +77,29 @@ import {
   pickWorkspace,
   readTextSafe,
   searchWorkspaceFiles
-} from './services/workspace'
-import { describeAttachment } from './services/attachments'
-import { clearScheduleSessionReferences } from './services/schedule-runtime'
-import { abortAllSideChats } from './features/sidechat'
+} from './workspace'
+import { describeAttachment } from './artifacts'
+import { clearScheduleSessionReferences } from './schedules'
+import { abortAllSideChats } from './features'
 import {
   clearSearchIndex,
   getArtifactVersionStore,
   getTokenActivityService,
   initializeTokenActivity,
   invalidateSearchSession
-} from './services/runtime'
-import { openPathFromUserShell, revealInFileManager } from './services/reveal'
-import { log } from './services/logger'
-import { cleanTargetDataDir, copyUserDataForMigration } from './services/paths'
+} from './runtime'
+import { openPathFromUserShell, revealInFileManager } from './workspace'
+import { log } from './logger'
+import { cleanTargetDataDir, copyUserDataForMigration } from './workspace'
 import {
   canChangeDataDir,
-  dataDirInfo,
   isNestedPath,
   readDataLocation,
   removeDataLocation,
   resolveDefaultDataDir,
   samePath,
   writeDataLocation
-} from './services/paths'
+} from './workspace'
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
 const fail = (code: string, message: string, hint?: string): Result<never> => ({
@@ -172,8 +187,6 @@ function resolveWorkspacePath(raw: unknown, kind: 'file' | 'dir'): string | null
   }
   return null
 }
-
-/* ── 成品保存 ─────────────────────────────────────────────────── */
 
 const ARTIFACT_CONTENT_MAX_BYTES = 32 * 1024 * 1024
 const CODE_EXT: Record<string, string> = {
@@ -385,7 +398,6 @@ function pushSessionMeta(meta: SessionMeta): void {
 }
 
 export function registerIpcHandlers(): void {
-  /* ── 启动 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.bootstrap, async (): Promise<Result<unknown>> => {
     try {
       return ok(await createBootstrap())
@@ -404,16 +416,44 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.appInfo, (): Result<unknown> => {
-    return ok({
-      version: app.getVersion(),
-      electron: process.versions.electron,
-      chrome: process.versions.chrome,
-      node: process.versions.node,
-      platform: process.platform,
-      ...dataDirInfo()
-    })
+  /**
+   * 手机配对三条通道。
+   */
+  ipcMain.handle(
+    IPC.relayPairIssue,
+    (_e, input: { deviceId: string; phonePubKey: string; relayHint?: string }): Result<unknown> => {
+      // 连接地址由主进程兜底补：界面不传、传空、或只传了空白时，
+      // 都用「当前 LAN 直连端口 + 本机私网 IPv4」。没有可用地址时保留缺失，
+      // 让手机侧按真实原因拒绝（不猜地址、不编一个连不上的值）。
+      const explicit = typeof input?.relayHint === 'string' ? input.relayHint.trim() : ''
+      const auto = explicit ? null : lanHint()
+      const relayHint = explicit || auto
+      return issuePairTicket(currentPairing(), {
+        deviceId: input.deviceId,
+        phonePubKey: input.phonePubKey,
+        ...(relayHint ? { relayHint } : {})
+      })
+    }
+  )
+
+  ipcMain.handle(IPC.relayPairList, (): Result<unknown> => listPairDevices(currentPairing()))
+
+  /**
+   * 设备表变更 → 推给所有窗口。
+   *
+   * 放在这里是「主进程唯一出口」原则：渲染层不轮询，也不自己猜测
+   * 配对是否完成 —— 手机配完那一刻桌面就收到这一帧。
+   */
+  onPairDevicesChanged((devices) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.relayPairChanged, devices)
+    }
   })
+
+  ipcMain.handle(
+    IPC.relayPairRevoke,
+    (_e, payload: { deviceId: string }): Result<unknown> => revokePairDevice(currentPairing(), payload?.deviceId)
+  )
 
   ipcMain.handle(IPC.openExternal, async (_e, payload: { url: string }): Promise<Result<void>> => {
     const url = payload?.url ?? ''
@@ -516,7 +556,6 @@ export function registerIpcHandlers(): void {
           try {
             cleanTargetDataDir(target)
           } catch {
-            // ignore
           }
         }
         return fail('DATA_DIR_SAVE_FAILED', `保存数据目录失败：${err instanceof Error ? err.message : String(err)}`)
@@ -525,6 +564,14 @@ export function registerIpcHandlers(): void {
       return ok({ restarted: !dataDirTestMode(), path: target, files })
     }
   )
+
+  ipcMain.handle(IPC.takeLaunchFocus, (): Result<string | null> => {
+    try {
+      return ok(takePendingFocusSession())
+    } catch (err) {
+      return fail('LAUNCH_FOCUS_FAILED', err instanceof Error ? err.message : '读取启动目标失败')
+    }
+  })
 
   ipcMain.handle(IPC.resetDataDir, async (): Promise<Result<{ restarted: boolean; canceled?: boolean }>> => {
     if (!canChangeDataDir()) {
@@ -549,7 +596,6 @@ export function registerIpcHandlers(): void {
     return ok({ restarted: !dataDirTestMode() })
   })
 
-  /* ── 窗口 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.windowMinimize, (): Result<void> => {
     windowOf()?.minimize()
     return ok(undefined)
@@ -585,15 +631,50 @@ export function registerIpcHandlers(): void {
     })
   })
 
-  /* ── 设置 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.settingsGet, (): Result<unknown> => ok(getSettingsStore().get()))
 
-  ipcMain.handle(IPC.settingsUpdate, (_e, patch: UpdateSettingsInput): Result<unknown> => {
+  ipcMain.handle(IPC.settingsUpdate, async (_e, patch: UpdateSettingsInput): Promise<Result<unknown>> => {
     try {
+      const previous = getSettingsStore().get()
       const settings = getSettingsStore().update(patch)
       if (Object.prototype.hasOwnProperty.call(patch ?? {}, 'islandEnabled')) syncIslandVisibility()
+      if (
+        Object.prototype.hasOwnProperty.call(patch ?? {}, 'shortcuts') &&
+        previous.shortcuts.island !== settings.shortcuts.island
+      ) {
+        const status = refreshGlobalShortcut()
+        if (!status.available) {
+          getSettingsStore().update({ shortcuts: previous.shortcuts })
+          refreshGlobalShortcut()
+          throw new Error(`快捷键没有保存：${status.reason ?? '系统拒绝了全局快捷键。'}`)
+        }
+      }
+      // 远程通道开关必须**当场生效**。不重启 relay 的话会出现两种错：
+      // 打开开关后点「生成配对码」得到「远程通道没有开启」（开关明明是开的）；
+      // 关掉开关后监听端口还开着（用户以为关了，其实没关 —— 安全含义更重）。
+      //
+      // 失败不回滚设置：开关状态是用户意图，起不来是环境问题
+      // （端口被占 / 证书生成失败）。回滚会让用户看到「打开 → 又变回关」
+      // 却不知道原因。改成如实报错，让人能重试或改端口。
+      let relayError: string | null = null
+      if (
+        Object.prototype.hasOwnProperty.call(patch ?? {}, 'relayEnabled') ||
+        Object.prototype.hasOwnProperty.call(patch ?? {}, 'relayPort')
+      ) {
+        try {
+          await applyRelaySettings()
+        } catch (err) {
+          relayError = err instanceof Error ? err.message : '远程通道没能启动'
+        }
+      }
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) win.webContents.send(IPC.settingsChanged, settings)
+      }
+      if (relayError) {
+        log.warn('relay settings saved but relay failed to start', { error: relayError })
+        // 设置已落盘（上面已广播 settingsChanged），但通道没起来。
+        // 用 fail 是为了让界面能立刻提示，而不是让用户下一次点配对才发现。
+        return fail('RELAY_START_FAILED', `设置已保存，但远程通道没能启动：${relayError}`)
       }
       return ok(settings)
     } catch (err) {
@@ -601,15 +682,10 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 桌面灵动岛 ───────────────────────────────────────── */
   ipcMain.handle(IPC.islandState, (): Result<unknown> => ok(getIslandSnapshot()))
 
-  ipcMain.handle(IPC.islandSyncSession, (_e, payload: { sessionId?: unknown } | undefined): Result<void> => {
-    const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.trim() ? payload.sessionId.trim() : null
-    const active = sessionId
-      ? getAgentService(getSettingsStore(), getSessionStore()).activeRunInfo(sessionId)
-      : null
-    syncIslandSession(sessionId, active)
+  ipcMain.handle(IPC.islandSyncStudio, (_e, payload: IslandStudioSyncInput): Result<void> => {
+    syncIslandStudio(payload ?? { active: false })
     return ok(undefined)
   })
 
@@ -659,6 +735,33 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC.settingsSaveMediaProvider, (_e, input: SaveCloudMediaProviderInput): Result<unknown> => {
+    try {
+      return ok(getSettingsStore().saveCloudMediaProvider(input))
+    } catch (err) {
+      return fail('MEDIA_PROVIDER_SAVE_FAILED', err instanceof Error ? err.message : '保存多媒体服务失败')
+    }
+  })
+
+  ipcMain.handle(IPC.settingsRemoveMediaProvider, (_e, payload: { providerId: string }): Result<unknown> => {
+    try {
+      return ok(getSettingsStore().removeCloudMediaProvider(payload.providerId))
+    } catch (err) {
+      return fail('MEDIA_PROVIDER_REMOVE_FAILED', err instanceof Error ? err.message : '删除多媒体服务失败')
+    }
+  })
+
+  ipcMain.handle(
+    IPC.settingsSetMediaDefault,
+    (_e, payload: { capability: CloudMediaCapability; providerId: string | null }): Result<unknown> => {
+      try {
+        return ok(getSettingsStore().setMediaDefault(payload.capability, payload.providerId))
+      } catch (err) {
+        return fail('MEDIA_DEFAULT_FAILED', err instanceof Error ? err.message : '保存默认多媒体服务失败')
+      }
+    }
+  )
+
   ipcMain.handle(IPC.settingsTestProvider, async (_e, input: ProviderTestInput): Promise<Result<unknown>> => {
     const store = getSettingsStore()
     const settings = store.get()
@@ -688,8 +791,18 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.settingsTestWebSearch, async (): Promise<Result<WebSearchTestResult>> => {
     const startedAt = Date.now()
     try {
-      const service = getWebSearchService(getSettingsStore())
-      const result = await service.search({ query: 'Morrow 联网搜索连接测试', maxResults: 3 })
+      const store = getSettingsStore()
+      const settings = store.get()
+      const provider = settings.providers.find((item) => item.id === settings.defaultModel.providerId)
+      const model = provider?.models.find((item) => item.id === settings.defaultModel.modelId) ?? provider?.models[0]
+      const service = getWebSearchService(store)
+      const result = await service.search({
+        query: 'Morrow 联网搜索连接测试',
+        maxResults: 3,
+        ...(provider && model
+          ? { native: { config: provider, model, apiKey: store.getApiKey(provider.id) } }
+          : {})
+      })
       return ok({
         ok: true,
         provider: result.provider,
@@ -786,7 +899,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 会话 ─────────────────────────────────────────────── */
   ipcMain.handle(IPC.sessionList, (): Result<SessionMeta[]> => ok(getSessionStore().list()))
 
   ipcMain.handle(IPC.sessionCreate, (_e, input: CreateSessionInput): Result<Session> => {
@@ -835,8 +947,9 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.sessionLoad, (_e, payload: { sessionId: string }): Result<Session> => {
-    const session = getSessionStore().get(payload.sessionId)
-    if (!session) return fail('SESSION_NOT_FOUND', '这个对话不存在了。')
+    const stored = getSessionStore().get(payload.sessionId)
+    if (!stored) return fail('SESSION_NOT_FOUND', '这个对话不存在了。')
+    let session: Session = stored
     // 老会话可能引用已下线的模型（如 deepseek-chat）：迁移到该提供方当前第一个模型
     const settings = getSettingsStore().get()
     let changed = false
@@ -866,8 +979,243 @@ export function registerIpcHandlers(): void {
       changed = true
     }
     if (changed) getSessionStore().save(session)
+    // 合并运行中的内存消息（含正在生成的思考内容）；只进入本次响应，不写盘
+    session = getAgentService(getSettingsStore(), getSessionStore()).snapshotSession(payload.sessionId, session) ?? session
+    const collaborationProject = session.superAgent?.projectId
+    if (collaborationProject) {
+      const collaborationStore = getCollaborationStore()
+      const storedProject = collaborationStore.rawProject(collaborationProject)
+      // 协作存储是动作与项目状态的事实源；会话文件可能因节流落后几百毫秒。
+      if (storedProject?.superAgent) session.superAgent = storedProject.superAgent
+      session.collaboration = collaborationStore.projection(collaborationProject)
+    }
     return ok(session)
   })
+
+  ipcMain.handle(
+    IPC.collaborationStopTask,
+    (_e, payload: { projectId?: string; taskId?: string }): Result<{ stopped: boolean }> => {
+      if (!payload?.projectId || !payload.taskId) {
+        return fail('COLLABORATION_STOP_INVALID', '缺少项目或任务编号。')
+      }
+      const stopped = getCollaborationRuntime().stopTask(payload.projectId, payload.taskId)
+      if (!stopped) return fail('COLLABORATION_TASK_NOT_RUNNING', '这项任务已经结束或不在本机运行。')
+      return ok({ stopped: true })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationDismissStuck,
+    (_e, payload: { projectId?: string; taskId?: string }): Result<{ dismissed: boolean }> => {
+      if (!payload?.projectId || !payload.taskId) {
+        return fail('COLLABORATION_DISMISS_INVALID', '缺少项目或任务编号。')
+      }
+      const dismissed = getCollaborationRuntime().dismissTaskStuck(payload.projectId, payload.taskId)
+      if (!dismissed) return fail('COLLABORATION_STUCK_NOT_FOUND', '这条提醒已经关闭，或任务不在本机运行。')
+      return ok({ dismissed: true })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationRetryTask,
+    (
+      e,
+      payload: { sessionId?: string; projectId?: string; taskId?: string }
+    ): Result<{ started: boolean }> => {
+      if (!payload?.sessionId || !payload.projectId || !payload.taskId) {
+        return fail('COLLABORATION_RETRY_INVALID', '缺少会话、项目或任务编号。')
+      }
+      try {
+        const window = BrowserWindow.fromWebContents(e.sender)
+        getAgentService(getSettingsStore(), getSessionStore()).retrySuperTask(
+          payload.sessionId,
+          payload.projectId,
+          payload.taskId,
+          window
+        )
+        return ok({ started: true })
+      } catch (err) {
+        return fail(
+          'COLLABORATION_RETRY_FAILED',
+          err instanceof Error ? err.message : '单独重试失败，请稍后再试。'
+        )
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationReactivate,
+    (
+      e,
+      payload: { sessionId?: string; projectId?: string; taskId?: string; text?: string }
+    ): Result<{ started: boolean }> => {
+      if (!payload?.sessionId || !payload.projectId || !payload.taskId || !payload.text?.trim()) {
+        return fail('COLLABORATION_REACTIVATE_INVALID', '缺少会话、项目、任务编号或新指令。')
+      }
+      try {
+        const window = BrowserWindow.fromWebContents(e.sender)
+        getAgentService(getSettingsStore(), getSessionStore()).reactivateSuperTask(
+          payload.sessionId,
+          payload.projectId,
+          payload.taskId,
+          payload.text,
+          window
+        )
+        return ok({ started: true })
+      } catch (err) {
+        return fail(
+          'COLLABORATION_REACTIVATE_FAILED',
+          err instanceof Error ? err.message : '重新激活协作成员失败，请稍后再试。'
+        )
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationResolveConflict,
+    async (
+      e,
+      payload: { sessionId?: string; projectId?: string; conflictId?: string; choice?: string }
+    ): Promise<Result<{ resolved: boolean }>> => {
+      if (
+        !payload?.sessionId ||
+        !payload.projectId ||
+        !payload.conflictId ||
+        (payload.choice !== 'current' && payload.choice !== 'incoming')
+      ) {
+        return fail('COLLABORATION_CONFLICT_INVALID', '缺少会话、冲突编号或处理方式。')
+      }
+      try {
+        await getAgentService(getSettingsStore(), getSessionStore()).resolveWorkspaceConflict(
+          payload.sessionId,
+          payload.conflictId,
+          payload.choice,
+          BrowserWindow.fromWebContents(e.sender)
+        )
+        return ok({ resolved: true })
+      } catch (err) {
+        return fail(
+          'COLLABORATION_CONFLICT_FAILED',
+          err instanceof Error ? err.message : '处理文件冲突失败。'
+        )
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationRevokeArtifact,
+    async (
+      e,
+      payload: { sessionId?: string; projectId?: string; name?: string; version?: number; reason?: string }
+    ): Promise<Result<{ revoked: boolean }>> => {
+      if (!payload?.sessionId || !payload.projectId || !payload.name?.trim() || !Number.isFinite(payload.version)) {
+        return fail('COLLABORATION_ARTIFACT_INVALID', '缺少会话、项目、成果名或版本。')
+      }
+      try {
+        await getAgentService(getSettingsStore(), getSessionStore()).revokeArtifact(
+          payload.sessionId,
+          payload.projectId,
+          payload.name.trim(),
+          Math.max(1, Math.round(payload.version!)),
+          payload.reason?.trim(),
+          BrowserWindow.fromWebContents(e.sender)
+        )
+        return ok({ revoked: true })
+      } catch (err) {
+        return fail(
+          'COLLABORATION_ARTIFACT_REVOKE_FAILED',
+          err instanceof Error ? err.message : '撤回成果版本失败，请稍后再试。'
+        )
+      }
+    }
+  )
+
+  ipcMain.handle(IPC.collaborationResources, (): Result<import('../shared/types').SharedResourceView[]> => {
+    return ok(
+      getSharedResourceManager()
+        .snapshot()
+        .map((lease) => ({
+          id: lease.id,
+          kind: lease.kind,
+          resource: lease.resource,
+          ownerLabel: lease.owner.label,
+          ownerId: lease.owner.ownerId,
+          sessionId: lease.owner.sessionId,
+          ...(lease.owner.taskId ? { taskId: lease.owner.taskId } : {}),
+          acquiredAt: lease.acquiredAt,
+          expiresAt: lease.expiresAt
+        }))
+    )
+  })
+
+  ipcMain.handle(
+    IPC.collaborationSendMessage,
+    (
+      _e,
+      payload: { sessionId?: string; projectId?: string; taskId?: string; text?: string; clientMessageId?: string; replyTo?: string }
+    ): Result<{ message: import('../shared/types').CollaborationMessage; projection: CollaborationProjection }> => {
+      try {
+        const session = payload?.sessionId ? getSessionStore().get(payload.sessionId) : null
+        if (!session) return fail('SESSION_NOT_FOUND', '这个对话不存在了。')
+        const projectId = payload.projectId || session.superAgent?.projectId || session.collaboration?.projectId
+        if (!projectId || !payload.taskId) return fail('COLLABORATION_MESSAGE_INVALID', '请选择要补充的任务。')
+        const text = String(payload.text ?? '').trim()
+        if (!text) return fail('COLLABORATION_MESSAGE_EMPTY', '补充要求不能为空。')
+        if (text.length > 8_000) return fail('COLLABORATION_MESSAGE_TOO_LONG', '补充要求最多 8000 字。')
+        if (!getCollaborationRuntime().hasTask(projectId, payload.taskId)) {
+          return fail('COLLABORATION_TASK_NOT_RUNNING', '这项任务已经结束或不在运行；请把新要求发给协调助手。')
+        }
+        const message = getCollaborationStore().enqueueMessage({
+          projectId,
+          taskId: payload.taskId,
+          text,
+          idempotencyKey: payload.clientMessageId?.trim() || `clientmsg_${randomUUID()}`,
+          direction: 'main',
+          kind: payload.replyTo ? 'answer' : 'directive',
+          ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
+        })
+        return ok({ message, projection: getCollaborationStore().projection(projectId) })
+      } catch (err) {
+        return fail('COLLABORATION_MESSAGE_FAILED', err instanceof Error ? err.message : '补充要求保存失败。')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.collaborationCancelMessage,
+    (_e, payload: { projectId?: string; messageId?: string }): Result<CollaborationProjection> => {
+      if (!payload?.projectId || !payload.messageId) {
+        return fail('COLLABORATION_MESSAGE_INVALID', '缺少项目或消息编号。')
+      }
+      try {
+        return ok(getCollaborationStore().cancelMessage(payload.projectId, payload.messageId))
+      } catch (err) {
+        return fail('COLLABORATION_MESSAGE_FAILED', err instanceof Error ? err.message : '取消补充要求失败。')
+      }
+    }
+  )
+
+  ipcMain.handle(IPC.collaborationProjection, (_e, payload: { projectId?: string }): Result<CollaborationProjection> => {
+    if (!payload?.projectId) return fail('COLLABORATION_MESSAGE_INVALID', '缺少项目编号。')
+    return ok(getCollaborationStore().projection(payload.projectId))
+  })
+
+  ipcMain.handle(
+    IPC.collaborationConfirm,
+    (_e, payload: { projectId?: string; actionId?: string }): Result<CollaborationProjection> => {
+      if (!payload?.projectId || !payload.actionId) {
+        return fail('COLLABORATION_CONFIRM_INVALID', '缺少项目或动作编号。')
+      }
+      try {
+        return ok(getCollaborationStore().confirmAction(payload.projectId, payload.actionId, 'user'))
+      } catch (err) {
+        return fail(
+          'COLLABORATION_CONFIRM_FAILED',
+          err instanceof Error ? err.message : '标记核对失败，请重试。'
+        )
+      }
+    }
+  )
 
   ipcMain.handle(IPC.sessionRename, (_e, payload: { sessionId: string; title: string }): Result<SessionMeta> => {
     const meta = getSessionStore().rename(payload.sessionId, payload.title)
@@ -1059,14 +1407,12 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 目标（Goal 模式） ─────────────────────────────────── */
   const goalService = (): ReturnType<typeof getAgentService> => getAgentService(getSettingsStore(), getSessionStore())
 
   ipcMain.handle(IPC.goalStart, async (e, input: GoalStartInput): Promise<Result<GoalActionResult>> => {
     try {
       const window = BrowserWindow.fromWebContents(e.sender)
       const result = await goalService().startGoal(input.sessionId, input.objective, input.maxRounds ?? 0, window, {
-        maxToolCalls: input.maxToolCalls,
         maxActiveMs: input.maxActiveMs,
         maxNoProgressRounds: input.maxNoProgressRounds
       })
@@ -1108,7 +1454,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 计划模式（P0-2） ───────────────────────────────────── */
   ipcMain.handle(IPC.planSetMode, (e, payload: { sessionId: string; enabled: boolean }): Result<SessionMeta> => {
     try {
       if (!payload || typeof payload.enabled !== 'boolean') return fail('INVALID_PLAN_MODE', '计划模式参数无效。')
@@ -1148,7 +1493,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 检查点与回退（P0-3） ─────────────────────────────── */
   const checkpointService = (): ReturnType<typeof getCheckpointService> => getCheckpointService(getSessionStore())
 
   ipcMain.handle(IPC.checkpointList, (_e, payload: { sessionId: string }): Result<unknown> => {
@@ -1168,6 +1512,35 @@ export function registerIpcHandlers(): void {
         return ok(checkpointService().preview(session, payload.checkpointId))
       } catch (err) {
         return fail('CHECKPOINT_PREVIEW_FAILED', err instanceof Error ? err.message : '检查文件失败')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.checkpointReplayPreview,
+    (_e, payload: { sessionId: string; checkpointId: string }): Result<unknown> => {
+      try {
+        const session = getSessionStore().get(payload.sessionId)
+        if (!session) return fail('SESSION_NOT_FOUND', '这个对话不存在了。')
+        return ok(checkpointService().replayPreview(session, payload.checkpointId))
+      } catch (err) {
+        return fail('CHECKPOINT_REPLAY_PREVIEW_FAILED', err instanceof Error ? err.message : '检查恢复步骤失败')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.checkpointResume,
+    (e, payload: { sessionId: string; checkpointId: string }): Result<unknown> => {
+      try {
+        const result = agentService().resumeCheckpoint(
+          payload.sessionId,
+          payload.checkpointId,
+          BrowserWindow.fromWebContents(e.sender)
+        )
+        return ok(result)
+      } catch (err) {
+        return fail('CHECKPOINT_RESUME_FAILED', err instanceof Error ? err.message : '从检查点恢复失败')
       }
     }
   )
@@ -1223,7 +1596,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 运行中排队（P0-5） ─────────────────────────────────── */
   ipcMain.handle(IPC.queueList, (_e, payload: { sessionId: string }): Result<unknown> => {
     try {
       return ok(goalService().listQueue(payload.sessionId))
@@ -1265,7 +1637,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 工作区 ───────────────────────────────────────────── */
   ipcMain.handle(IPC.workspacePick, async (): Promise<Result<WorkspaceInfo | null>> => {
     try {
       const info = await pickWorkspace()
@@ -1291,17 +1662,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.workspaceRecent, (): Result<WorkspaceInfo[]> => {
-    const settings = getSettingsStore().get()
-    const list = [settings.lastWorkspace, ...settings.recentWorkspaces]
-      .filter((p): p is string => Boolean(p))
-      .filter((p, i, arr) => arr.indexOf(p) === i)
-      .slice(0, 6)
-      .map((p) => describeWorkspace(p))
-      .filter((info) => info.exists)
-    return ok(list)
-  })
-
   ipcMain.handle(IPC.workspaceCreateDemo, (): Result<WorkspaceInfo> => {
     try {
       return ok(createDemoWorkspace())
@@ -1310,18 +1670,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.demoInfo, (): Result<unknown> => {
-    const settings = getSettingsStore().get()
-    return ok({
-      available: true,
-      title: '季度销售分析 · 一场安静的工作',
-      description: '离线演示：Morrow 会读取数据、发现异常、生成一份可直接分享的分析报告。',
-      workspace: settings.recentWorkspaces.find((p) => p.includes('demo-workspace')) ?? null,
-      steps: 10
-    })
-  })
-
-  /* ── 文件 ─────────────────────────────────────────────── */
   ipcMain.handle(
     IPC.fileSearch,
     (_e, payload: { root?: unknown; query?: unknown; limit?: unknown } | undefined): Result<FileSearchResult[]> => {
@@ -1359,7 +1707,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  /* ── 产物 ─────────────────────────────────────────────── */
   ipcMain.handle(
     IPC.artifactRead,
     async (
@@ -1632,9 +1979,147 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── 对话与 Agent 运行 ────────────────────────────────── */
   const agentService = (): ReturnType<typeof getAgentService> =>
     getAgentService(getSettingsStore(), getSessionStore())
+
+  // 手机首连时由 LAN 通道调用。放在这里而不是 relay.ts：
+  // 只有 IPC 层同时拿得到 settingsStore / sessionStore 与 agentService 单例，
+  // relay.ts 自己构造会造出第二个 AgentService（两份运行状态）。
+  setPhoneSnapshotProvider(() => agentService().phoneSnapshot())
+
+  // 手机上行指令（白名单与参数校验在 phone-invoke.ts；这里只做动作）。
+  // 返回 false 不抛出：手机需要看到「这条审批已失效」，而不是通道断开。
+  setPhoneInvokeHandler((request) => {
+    const service = agentService()
+    switch (request.method) {
+      case 'approval.decide': {
+        const requestId = String(request.params.requestId)
+        const decision = request.params.decision as 'once' | 'deny'
+        const accepted = service.respondPermission(requestId, decision)
+        return accepted
+          ? { ok: true, result: { requestId, decision } }
+          : { ok: false, error: { code: 'not_found', message: '审批请求已失效或已处理' } }
+      }
+      case 'run.stop': {
+        const runId = String(request.params.runId)
+        const stopped = service.cancel(runId)
+        return stopped
+          ? { ok: true, result: { runId } }
+          : { ok: false, error: { code: 'not_found', message: '这一轮已经结束或不存在' } }
+      }
+      case 'snapshot.get':
+        return { ok: true, result: service.phoneSnapshot() }
+      case 'works.get':
+        // 作品库按需拉取（不放进状态帧）：摘要只有几 KB，但它是打开页面才需要的。
+        // 失败回 failed，手机保留「未知」而不是显示「没有作品」。
+        return getStudioService()
+          .list()
+          .then((list) => ({
+            ok: true as const,
+            result: {
+              works: phoneWorks(list.projects, (id) => getStudioService().productSummaries(id))
+            }
+          }))
+      case 'works.preview': {
+        // 成片预览取件：只允许取该作品 deliveries 里的产物，受 4 MiB 上限约束。
+        // 太大回 too_large（手机显示「在桌面打开」），不把半份文件发过去。
+        const workId = String(request.params.workId ?? '')
+        const productId = String(request.params.productId ?? '')
+        try {
+          const preview = getStudioService().deliveryPreview(workId, productId)
+          if (preview.tooLarge) {
+            const mb = Math.round((preview.bytes / 1024 / 1024) * 10) / 10
+            return {
+              ok: false as const,
+              error: { code: 'too_large', message: `文件 ${mb} MB，超过手机预览上限 4 MB，请在桌面打开` }
+            }
+          }
+          return {
+            ok: true as const,
+            result: { preview: { workId, productId, ...preview } }
+          }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'not_found', message: err instanceof Error ? err.message : '预览取件失败' }
+          }
+        }
+      }
+      case 'swarm.stopMember': {
+        // 手机端「停止成员」：只停这一个任务，不动整个协作。
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        const stopped = getCollaborationRuntime().stopTask(projectId, taskId)
+        return stopped
+          ? { ok: true as const, result: { stopped: true } }
+          : { ok: false as const, error: { code: 'not_found', message: '这项任务已经结束或不在本机运行' } }
+      }
+      case 'swarm.retryMember': {
+        const sessionId = String(request.params.sessionId ?? '')
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        try {
+          getAgentService(getSettingsStore(), getSessionStore()).retrySuperTask(
+            sessionId,
+            projectId,
+            taskId,
+            null
+          )
+          return { ok: true as const, result: { started: true } }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'failed', message: err instanceof Error ? err.message : '单独重试失败' }
+          }
+        }
+      }
+      case 'swarm.instruction': {
+        // 「发新指令」在桌面语义里是重新激活这个成员（reactivate），
+        // 不是往正在跑的成员里插话 —— 后者会把一条消息塞进错误的回合。
+        const sessionId = String(request.params.sessionId ?? '')
+        const projectId = String(request.params.projectId ?? '')
+        const taskId = String(request.params.taskId ?? '')
+        const text = String(request.params.text ?? '').trim()
+        try {
+          getAgentService(getSettingsStore(), getSessionStore()).reactivateSuperTask(
+            sessionId,
+            projectId,
+            taskId,
+            text,
+            null
+          )
+          return { ok: true as const, result: { started: true } }
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: { code: 'failed', message: err instanceof Error ? err.message : '下发新指令失败' }
+          }
+        }
+      }
+      case 'message.send': {
+        // 手机会话里发消息 = 在桌面同一个会话里启动一轮。返回 runId 让手机
+        // 能在 result 里确认「发出去了」；后续进度仍走事件下行。
+        return service
+          .send(
+            {
+              sessionId: String(request.params.sessionId),
+              text: String(request.params.text)
+            },
+            // 手机发起的一轮没有对应的桌面窗口：进度通过下行事件到手机，
+            // 桌面窗口若开着也能从同一条事件流看到（forward 会走存在的窗口）。
+            null
+          )
+          .then((sent) => ({
+            ok: true as const,
+            result: { runId: sent.runId, assistantMessageId: sent.assistantMessageId }
+          }))
+      }
+      case 'ping':
+        return { ok: true, result: { at: Date.now() } }
+      default:
+        return { ok: false, error: { code: 'unsupported', message: '不支持的方法' } }
+    }
+  })
 
   ipcMain.handle(IPC.chatSend, async (_e, input: Parameters<ReturnType<typeof getAgentService>['send']>[0]): Promise<Result<unknown>> => {
     try {
@@ -1740,8 +2225,8 @@ export function registerIpcHandlers(): void {
     return ok(undefined)
   })
 
-  ipcMain.handle(IPC.permissionRespond, (_e, payload: { requestId: string; decision: PermissionDecision }): Result<void> => {
-    if (!agentService().respondPermission(payload.requestId, payload.decision)) {
+  ipcMain.handle(IPC.permissionRespond, (_e, payload: { requestId: string; decision: PermissionDecision; sandbox?: boolean }): Result<void> => {
+    if (!agentService().respondPermission(payload.requestId, payload.decision, payload.sandbox === true)) {
       return fail('PERMISSION_EXPIRED', '这个审批已经失效了。')
     }
     return ok(undefined)
@@ -1762,3 +2247,4 @@ export function disposeAgentRuntime(): void {
     // 内核可能尚未初始化
   }
 }
+

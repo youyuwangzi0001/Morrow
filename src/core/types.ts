@@ -15,6 +15,8 @@ import type {
   PermissionMode,
   RuntimeEvent,
   SessionPlan,
+  StructuredOutputMode,
+  StructuredResponseFormat,
   TodoItem,
   ToolCategory,
   TerminalProcessInfo,
@@ -44,6 +46,8 @@ export type {
   RunFinishReason,
   RuntimeEvent,
   SessionPlan,
+  StructuredOutputMode,
+  StructuredResponseFormat,
   TodoItem,
   ToolCategory,
   ToolResult,
@@ -110,6 +114,8 @@ export interface ProviderStreamRequest {
   reasoning?: { effort: import('../shared/types').ReasoningEffort; style: 'effort' | 'thinking' }
   /** 本会话覆盖的上下文上限；由支持该参数的本地代理读取 */
   contextWindow?: number
+  /** 响应级结构化约束；Provider 会在能力不足时自动降级并发出 notice */
+  responseFormat?: StructuredResponseFormat
 }
 
 /** Provider 层产出的细粒度流事件，由 Agent 循环聚合成 RuntimeEvent */
@@ -120,7 +126,7 @@ export type ProviderStreamEvent =
   | { type: 'tool_call_delta'; index: number; argsDelta: string }
   | { type: 'tool_call_end'; index: number; id: string; name: string; input: Record<string, unknown>; parseError?: string }
   | { type: 'usage'; usage: Usage }
-  | { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string }
+  | { type: 'notice'; level: 'info' | 'warn' | 'success'; message: string; code?: 'max_tokens' | 'content_filter' | 'stream_resume' | 'structured_degraded'; structuredMode?: StructuredOutputMode }
   /** demo 引擎专用：驱动 UI 演示进度条，真实 provider 不会产出 */
   | { type: 'demo_step'; index: number; total: number; caption: string }
 
@@ -128,10 +134,10 @@ export interface Provider {
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent>
 }
 
-/* ── 集群成员 ───────────────────────────────────────────────────── */
+/* ── 协作成员 ───────────────────────────────────────────────────── */
 
-export interface SwarmMemberRole {
-  /** 小写名字（task/swarm 的 agent 字段） */
+export interface MemberRole {
+  /** 小写名字（super_agent 的 agent 字段） */
   name: string
   title: string
   description: string
@@ -140,29 +146,302 @@ export interface SwarmMemberRole {
   source?: 'builtin' | 'project' | 'user'
 }
 
-export interface SwarmMemberRequest {
+/** 主进程协作运行时的最小端口：登记/撤销单个任务停止控制，不把实现细节带进内核。 */
+export interface CollaborationTaskControl {
+  projectId: string
+  sessionId: string
+  taskId: string
+  attemptId: string
+  stop: () => void
+  /** 负责人选择“继续等待”：关闭当前卡住提醒但不停止协作成员 */
+  dismissStuck?: () => void
+  /** 协作成员进入/离开审批等待：看门狗暂停计时，避免把等人批准误判为停滞 */
+  setWaiting?: (waiting: boolean) => void
+}
+
+export interface CollaborationRuntimePort {
+  registerTask(control: CollaborationTaskControl): void
+  unregisterTask(input: { projectId: string; taskId: string; attemptId: string }): void
+  /** 主进程把协作成员的审批等待状态转给任务控制（看门狗暂停/恢复） */
+  setTaskWaiting?(input: { projectId: string; taskId: string; attemptId: string; waiting: boolean }): void
+  /** 当前项目任务表（局部修订计划时优先用实时状态） */
+  projectState?(projectId: string): import('../shared/types').SuperAgentState | null
+  /** 单独停止一个任务；返回 false 表示已结束或不在本机 */
+  stopTask?(projectId: string, taskId: string): boolean
+  /** 关闭某任务的卡住提醒（保留协作成员继续工作） */
+  dismissTaskStuck?(projectId: string, taskId: string): boolean
+  /** 等任务真正退出，避免修订计划时新旧尝试同时写文件 */
+  waitForTaskStop?(projectId: string, taskId: string, timeoutMs?: number): Promise<boolean>
+  /** 安全步取走补充要求（标记 delivered）；第二次取不到同一条 */
+  drainTaskMessages?(input: { projectId: string; taskId: string; attemptId: string }): import('../shared/types').CollaborationMessage[]
+  /** 协作成员主动发消息给主代理（note/question），返回刚落盘的消息与最新投影 */
+  postTaskMessage?(input: {
+    projectId: string
+    taskId: string
+    attemptId?: string
+    text: string
+    kind: 'note' | 'question'
+    author?: string
+  }): { message: import('../shared/types').CollaborationMessage; projection: import('../shared/types').CollaborationProjection }
+  /** 协作成员提问后等主代理答复；超时/取消返回 null */
+  waitForTaskReply?(input: {
+    projectId: string
+    taskId: string
+    questionId: string
+    signal: AbortSignal
+  }): Promise<{ text: string; messageId: string } | null>
+  markTaskMessagesRead?(input: { projectId: string; messageIds: string[] }): void
+  markTaskMessagesAdopted?(input: { projectId: string; messageIds: string[] }): void
+}
+
+/* ── 独立工作副本与共享资源 ─────────────────────────────────────── */
+
+export interface WorkspaceCopy {
+  copyId: string
+  projectId: string
+  taskId: string
+  attemptId: string
+  sourceWorkspace: string
+  path: string
+  basePath: string
+  baseVersion: string
+  baselineHash: string
+  mode: 'git-worktree' | 'copy'
+  fileCount: number
+  createdAt: number
+  /** 体积过大而改为共享链接的目录（工作区相对路径），合并时不会写回主工作区。 */
+  sharedDirs?: string[]
+}
+
+export interface WorkspaceMergeApplied {
+  path: string
+  action: 'created' | 'modified' | 'deleted'
+  afterHash: string | null
+  diffAdded?: number
+  diffRemoved?: number
+}
+
+export interface WorkspaceMergeConflict {
+  path: string
+  currentPath: string
+  incomingPath: string
+  basePath?: string
+  baseHash?: string
+  currentHash?: string
+  incomingHash: string
+  reason: 'content' | 'delete' | 'create' | 'binary' | 'path-alias'
+  /** 供冲突提示展示的两份改动（文本截断） */
+  currentPreview?: string
+  incomingPreview?: string
+}
+
+export interface WorkspaceMergeResult {
+  copy: WorkspaceCopy
+  applied: WorkspaceMergeApplied[]
+  conflicts: WorkspaceMergeConflict[]
+}
+
+export interface WorkspaceIsolationPort {
+  /** 给写文件的协作成员创建独立副本，并记录起始版本与清单 */
+  prepare(input: {
+    workspace: string
+    projectId: string
+    sessionId: string
+    taskId: string
+    attemptId: string
+    label: string
+  }): Promise<WorkspaceCopy>
+  /** 逐份比对后合并回主工作区；冲突保留两份，不覆盖主文件 */
+  merge(input: {
+    copy: WorkspaceCopy
+    projectId: string
+    taskId: string
+    attemptId: string
+    label: string
+  }): Promise<WorkspaceMergeResult>
+  /** 任务/会话结束后清理副本（保留证据时可不调用） */
+  discard?(copy: WorkspaceCopy): Promise<void>
+  /** 按 copyId 释放（重试换 attempt 时手里只剩编号） */
+  discardById?(projectId: string, copyId: string): Promise<void>
+}
+
+export type SharedResourceKind = 'desktop' | 'port'
+
+export interface SharedResourceOwner {
+  ownerId: string
+  sessionId: string
+  runId?: string
+  taskId?: string
+  attemptId?: string
+  label: string
+}
+
+export interface SharedResourceLease {
+  id: string
+  kind: SharedResourceKind
+  resource: string
+  owner: SharedResourceOwner
+  acquiredAt: number
+  expiresAt: number
+}
+
+export interface SharedResourcePort {
+  acquire(input: {
+    kind: SharedResourceKind
+    resource: string
+    owner: SharedResourceOwner
+    ttlMs?: number
+    waitMs?: number
+  }): Promise<{ ok: true; lease: SharedResourceLease } | { ok: false; holder?: SharedResourceLease; reason: string }>
+  releaseOwner(input: { ownerId: string }): Promise<void> | void
+  snapshot?(): SharedResourceLease[]
+}
+
+export interface CollaborationArtifactPublishInput {
+  projectId: string
+  taskId?: string
+  attemptId?: string
+  name: string
+  /** 相对工作区的文件路径 */
+  path: string
+  workspace: string
+  version?: number
+  status: 'draft' | 'ready'
+  summary?: string
+}
+
+export interface CollaborationArtifactOutcome {
+  state: import('../shared/types').SuperAgentState
+  artifact: import('../shared/types').CollaborationArtifact
+  staleTaskIds: string[]
+  restoredTaskIds: string[]
+}
+
+export interface CollaborationArtifactReadResult {
+  state: import('../shared/types').SuperAgentState
+  artifact: import('../shared/types').CollaborationArtifact
+  content: string
+  usage?: import('../shared/types').CollaborationArtifactUsage
+}
+
+export interface CollaborationVerificationCandidate {
+  version: string
+  files: import('../shared/types').CollaborationVerificationFile[]
+}
+
+export interface CollaborationVerificationRun extends CollaborationVerificationCandidate {
+  command?: import('../shared/types').CollaborationVerificationCommand
+  /** 命令执行后的候选版本；与执行前不同说明验收过程改了交付文件 */
+  candidateAfter: string
+}
+
+export interface CollaborationVerificationPort {
+  /** 只计算候选版本，不执行命令；用于发现“验收后文件又变了” */
+  candidate(input: {
+    workspace: string
+    files: string[]
+    required: string[]
+  }): CollaborationVerificationCandidate
+  /** 在候选工作区核对必需文件并运行验收命令 */
+  run(input: {
+    sessionId: string
+    projectId: string
+    taskId: string
+    workspace: string
+    files: string[]
+    required: string[]
+    command?: string
+    timeoutMs?: number
+    attempt: number
+  }): Promise<CollaborationVerificationRun>
+}
+
+export interface CollaborationLimits {
+  /** 本机同时运行的协作成员上限（已按 CPU/设置收敛） */
+  maxWorkers: number
+  /** 自动上限：CPU 核数留一核给界面 */
+  hostLimit: number
+  auto: boolean
+  /** 成员可能卡住时提示负责人；关闭只停止提醒 */
+  stuckAlerts?: boolean
+  /** 测试可覆盖：多久没有有效进展算卡住（毫秒） */
+  stuckIdleMs?: number
+  stuckRepeats?: number
+  stuckSteps?: number
+}
+
+export interface WorkerSlotLease {
+  release(): void
+}
+
+export interface WorkerSlotPort {
+  acquire(input: { ownerId: string; signal?: AbortSignal }): Promise<WorkerSlotLease | null>
+  snapshot?(): { active: number; waiting: number; limit: number }
+}
+
+export interface CollaborationArtifactPort {
+  /** 同步读取项目成果，供调度器判断依赖是否已提前可用 */
+  list(projectId: string, name?: string): import('../shared/types').CollaborationArtifact[]
+  publish(input: CollaborationArtifactPublishInput): Promise<CollaborationArtifactOutcome>
+  read(input: {
+    projectId: string
+    taskId?: string
+    attemptId?: string
+    name: string
+    version?: number
+  }): Promise<CollaborationArtifactReadResult>
+  revoke(input: {
+    projectId: string
+    name: string
+    version: number
+    reason?: string
+  }): Promise<CollaborationArtifactOutcome>
+}
+
+export interface MemberRunRequest {
   /** 一句话任务描述（展示用） */
   description: string
-  /** 完整指令，作为集群成员的用户消息 */
+  /** 完整指令，作为协作成员的用户消息 */
   prompt: string
   /** 父代理任务上下文摘要（可选） */
   context?: string
   /** 自定义角色；缺省为 general */
-  role?: SwarmMemberRole
-  /** swarm 子任务身份：让进度事件能精确更新对应任务 */
-  swarmTask?: { index: number; title: string; agent: string }
+  role?: MemberRole
+  /** 成员子任务身份：让进度事件能精确更新对应任务 */
+  memberTask?: { index: number; title: string; agent: string }
+  /** 稳定项目 id：补充要求按项目/任务投递 */
+  projectId?: string
+  /** 稳定任务 id（协作升级 T03 前先用成员节点的 id） */
+  taskId?: string
+  /** 本次执行/重试的独立 id：用于隔离协作成员授权与审批记忆 */
+  attemptId?: string
+  /** 重新激活时带上的压缩对话历史 */
+  history?: import('../shared/types').WorkerHistoryEntry[]
+  /** 重新激活时追加的新指令 */
+  instruction?: string
+  /** 独立工作副本路径；缺省使用父工作区。所有文件/命令工具都以此目录为根。 */
+  workspace?: string
+  /** 单个协作成员的取消信号（看门狗/用户停止） */
+  signal?: AbortSignal
+  /** 协作成员进度回传（用来刷新主界面成员协作卡片与卡住判断） */
+  onProgress?: (
+    note: string,
+    stepCount?: number,
+    operations?: import('../shared/types').MemberOperation[],
+    workerTodos?: import('../shared/types').WorkerTodo[]
+  ) => void
 }
 
-export type SwarmMemberStatus = 'completed' | 'failed' | 'cancelled' | 'exhausted'
+export type MemberRunStatus = 'completed' | 'failed' | 'cancelled' | 'exhausted'
 
-export interface SwarmMemberResult {
+export interface MemberRunResult {
   /**
-   * 集群成员终态。只有 `completed` 表示集群成员给出了可采用最终结论；
+   * 协作成员终态。只有 `completed` 表示协作成员给出了可采用最终结论；
    * failed=模型请求失败、死循环或没有结论，cancelled=父任务取消（以 AbortError 向上传递）。
    * exhausted 仅用于兼容旧版本会话数据，当前内核不再限制成员步数。
    */
-  status: SwarmMemberStatus
-  /** 集群成员最后的文本结论（失败/耗尽时可能只是中间文字，父任务不得当成完成） */
+  status: MemberRunStatus
+  /** 协作成员最后的文本结论（失败/耗尽时可能只是中间文字，父任务不得当成完成） */
   summary: string
   /** 实际使用的角色名 */
   role?: string
@@ -170,12 +449,16 @@ export interface SwarmMemberResult {
   usage: Usage
   /** 真实失败原因（模型错误 / 步数耗尽说明），父任务必须保留 */
   error?: string
-  /** 集群成员执行期间失败的工具（名称 + 错误），父任务必须保留，不得被“完成”文字覆盖 */
+  /** 协作成员执行期间失败的工具（名称 + 错误），父任务必须保留，不得被“完成”文字覆盖 */
   failedTools?: string[]
-  /** 集群成员写/编辑过的文件（检查点登记用：absolutePath/beforeHash/afterHash/snapshotPath/created） */
+  /** 协作成员写/编辑过的文件（检查点登记用：absolutePath/beforeHash/afterHash/snapshotPath/created） */
   changedFiles?: Array<Record<string, unknown>>
-  /** 成员实际执行过的全部工具操作，供集群卡片展开查看 */
-  operations?: import('../shared/types').SwarmOperation[]
+  /** 成员实际执行过的全部工具操作，供成员卡片展开查看 */
+  operations?: import('../shared/types').MemberOperation[]
+  /** 协作成员自管待办的最终状态 */
+  workerTodos?: import('../shared/types').WorkerTodo[]
+  /** 压缩后的对话历史，供完成后重新激活 */
+  history?: import('../shared/types').WorkerHistoryEntry[]
 }
 
 /* ── 工具运行时上下文 ─────────────────────────────────────────── */
@@ -227,12 +510,19 @@ export interface ToolContext {
   /** 写文件前的备份根目录：<snapshotDir>/<toolUseId>/<filename> */
   snapshotDir: string
   signal: AbortSignal
-  /** 集群成员深度：0 = 主 Agent；1 = 集群成员；集群成员不允许再嵌套 */
+  /** 协作成员深度：0 = 主代理；1 = 协作成员；协作成员不允许再嵌套 */
   depth: number
-  /** 工具层只读兜底：即使调用方绕过权限层也只允许只读工具（主流程与集群成员共用权限链，通常为 false） */
+  /** 工具层只读兜底：即使调用方绕过权限层也只允许只读工具（主流程与协作成员共用权限链，通常为 false） */
   readOnly: boolean
   /** 本次调用已获准越出工作区（由审批层设置） */
   escapeApproved: boolean
+  /** 用户在审批卡里选择了沙箱执行；仅 run_command 使用 */
+  sandbox?: { image: string }
+  /** 协作成员自管待办：只在该成员上下文存在，不写主会话待办 */
+  workerTodos?: {
+    get(): import('../shared/types').WorkerTodo[]
+    set(todos: import('../shared/types').WorkerTodo[]): void
+  }
   /** 用户在本会话用户消息中显式附加的文件（只读白名单；不含模型自行生成的路径） */
   attachedFiles?: readonly string[]
   demo: boolean
@@ -240,6 +530,31 @@ export interface ToolContext {
   goal: Goal | null
   /** 当前是否处于计划模式（submit_plan 只在计划模式可用） */
   planMode: boolean
+  /** 主进程协作运行时：登记单个任务停止控制 */
+  collaborationRuntime?: CollaborationRuntimePort
+    /** 协作成员的协作任务身份（独立副本/资源租约使用） */
+  taskId?: string
+  attemptId?: string
+  /** 当前协作项目编号（成果版本工具使用） */
+  projectId?: string
+  /** 共享资源租约 owner；主代理为 main:<runId>，协作成员为 task:<taskId> */
+  resourceOwnerId?: string
+  /** 独立工作副本服务 */
+  workspaceIsolation?: WorkspaceIsolationPort
+  /** 桌面/端口等共享资源租约 */
+  sharedResources?: SharedResourcePort
+  /** 版本化成果：发布、读取与撤回（协作项目） */
+  collaborationArtifacts?: CollaborationArtifactPort
+  /** 独立验收：候选版本、必需文件与验收命令 */
+  verification?: CollaborationVerificationPort
+  /** 全局限流：本机同时运行的协作成员槽位 */
+  workerSlots?: WorkerSlotPort
+  /** 本机并发与项目用量限制 */
+  collaborationLimits?: CollaborationLimits
+  /** 主进程从本机记录发起单项重试：只运行这一项，沿用原 taskId 与历史 */
+  resumeMemberTask?: import('../shared/types').SuperTaskRetryRequest
+  /** 当前项目任务表：修订计划时按稳定 id 合并 */
+  superAgentState?: import('../shared/types').SuperAgentState
   /** 读取本轮已提交的计划（未提交/非计划模式为 null） */
   getPlan(): SessionPlan | null
   /** 提交/替换本轮计划并广播 plan_updated（计划产物由 submit_plan 工具登记） */
@@ -254,17 +569,17 @@ export interface ToolContext {
   getArtifacts(): Artifact[]
   addArtifact(artifact: Artifact): void
   askUser(request: AskUserRequest): Promise<AskUserAnswer>
-  /** 集群成员/长任务进度：映射为 RuntimeEvent.tool_progress */
-  progress(note: string, opts?: { title?: string; status?: ToolStatus; percent?: number; swarmTask?: import('../shared/types').SwarmTaskProgress }): void
+  /** 协作成员/长任务进度：映射为 RuntimeEvent.tool_progress */
+  progress(note: string, opts?: { title?: string; status?: ToolStatus; percent?: number; memberTask?: import('../shared/types').MemberTaskProgress }): void
   /** 写入记忆中心（主进程注入）；未注入时 remember 回退旧 MEMORY.md */
   remember?: (input: {
     text: string
     scope: 'project' | 'global'
     tags?: string[]
   }) => Promise<{ scope: 'project' | 'global'; text: string }>
-  runSwarmMember(req: SwarmMemberRequest): Promise<SwarmMemberResult>
-  /** 本轮可用的集群成员角色（含内置与自定义；测试上下文可省略） */
-  agents?: SwarmMemberRole[]
+  runMemberTask(req: MemberRunRequest): Promise<MemberRunResult>
+  /** 本轮可用的协作成员角色（含内置与自定义；测试上下文可省略） */
+  agents?: MemberRole[]
   /** 联网搜索（由主进程注入；未配置时为 undefined，web_search 工具不会暴露） */
   searchWeb?: (input: { query: string; maxResults?: number; signal: AbortSignal }) => Promise<WebSearchResponse>
   /** 本机 PDF OCR（由主进程注入；未注入时扫描件会明确报错） */
@@ -273,14 +588,30 @@ export interface ToolContext {
   terminal?: TerminalToolHandler
   /** 本地多媒体引擎（由主进程注入；未注入时媒体工具明确报错） */
   media?: MediaToolHandler
+  /** 创作台作品服务（由主进程注入；绑定作品后可用） */
+  studio?: StudioToolHandler
   /** 当前对话的 Provider/模型；支持视觉时优先用于 describe_media */
   vision?: { provider: Provider; model: ModelInfo }
   /** 用户设置的默认终端（run_command 与一次性命令使用） */
   commandShell?: CommandShell
 }
 
+/** 创作台专用动作处理器（主进程注入；只走作品服务，不直接改文件）。 */
+export interface StudioToolRequest {
+  action: string
+  projectId?: string
+  [key: string]: unknown
+}
+
+export interface StudioToolResponse {
+  summary: string
+  data?: unknown
+}
+
+export type StudioToolHandler = (input: StudioToolRequest) => Promise<StudioToolResponse>
+
 export interface TerminalToolInput {
-  action: 'list' | 'start' | 'run' | 'read' | 'write' | 'stop' | 'restart'
+  action: 'list' | 'start' | 'run' | 'read' | 'write' | 'stop' | 'close' | 'restart'
   id?: string
   command?: string
   title?: string
@@ -300,6 +631,8 @@ export interface TerminalToolResponse {
   exitCode?: number
   error?: string
   hint?: string
+  /** read 实际等待了多久（毫秒）：>0 表示这次读取真的等过输出 */
+  waitedMs?: number
 }
 
 export type TerminalToolHandler = (input: TerminalToolInput) => Promise<TerminalToolResponse>
@@ -329,6 +662,8 @@ export interface MediaGenerateImageInput {
   seed?: number
   signal: AbortSignal
   onProgress: (update: MediaProgressUpdate) => void
+  /** ComfyUI 返回的外部任务号；用于断电后对账与续跑。 */
+  onPromptId?: (promptId: string) => void
 }
 
 export interface MediaGenerateVideoInput {
@@ -346,6 +681,7 @@ export interface MediaGenerateVideoInput {
   seed?: number
   signal: AbortSignal
   onProgress: (update: MediaProgressUpdate) => void
+  onPromptId?: (promptId: string) => void
 }
 
 export interface MediaFilmShot {
@@ -454,7 +790,7 @@ export interface MediaRunWorkflowInput {
   workspace: string
   modelId: string
   modelLabel: string
-  workflow: import('../shared/media-models').MediaWorkflowSpec
+  workflow: import('../shared/studio').MediaWorkflowSpec
   prompt: string
   negativePrompt?: string
   referencePaths: string[]
@@ -482,21 +818,21 @@ export interface MediaRenderAnimationInput {
 }
 
 export interface MediaCatalogHandler {
-  status(): Promise<import('../shared/media-models').MediaCatalogStatus>
-  manifest(id: string): Promise<import('../shared/media-models').MediaModelManifest>
+  status(): Promise<import('../shared/studio').MediaCatalogStatus>
+  manifest(id: string): Promise<import('../shared/studio').MediaModelManifest>
   installModel(
     id: string,
     onProgress: (update: MediaProgressUpdate) => void,
     signal: AbortSignal
-  ): Promise<import('../shared/media-models').MediaCatalogStatus>
-  uninstallModel(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  installEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  startEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  stopEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  registerModel(manifest: Record<string, unknown>): Promise<import('../shared/media-models').MediaCatalogStatus>
-  removeModel(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
-  registerEngine(manifest: Record<string, unknown>): Promise<import('../shared/media-models').MediaCatalogStatus>
-  removeEngine(id: string): Promise<import('../shared/media-models').MediaCatalogStatus>
+  ): Promise<import('../shared/studio').MediaCatalogStatus>
+  uninstallModel(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  installEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  startEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  stopEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  registerModel(manifest: Record<string, unknown>): Promise<import('../shared/studio').MediaCatalogStatus>
+  removeModel(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
+  registerEngine(manifest: Record<string, unknown>): Promise<import('../shared/studio').MediaCatalogStatus>
+  removeEngine(id: string): Promise<import('../shared/studio').MediaCatalogStatus>
 }
 
 export interface MediaToolHandler {
@@ -526,7 +862,7 @@ export interface BuildSystemPromptOptions {
   date?: Date
   demo?: boolean
   todos?: TodoItem[]
-  /** 本次可用的工具定义（主代理/集群成员按各自工具集传入） */
+  /** 本次可用的工具定义（主代理/协作成员按各自工具集传入） */
   tools?: ToolDefinition[]
   /** Goal 模式：active 时注入目标上下文与每轮行为规范 */
   goal?: Goal | null
@@ -534,14 +870,16 @@ export interface BuildSystemPromptOptions {
   planMode?: boolean
   /** 是否配置了联网搜索；false 时从工具清单中移除 web_search */
   webSearchAvailable?: boolean
-  /** 可用集群成员角色（工作模式注入；聊天/计划模式忽略） */
-  agents?: SwarmMemberRole[]
+  /** 可用协作成员角色（工作模式注入；聊天/计划模式忽略） */
+  agents?: MemberRole[]
   /** 全局回答风格；缺省按平衡风格 */
   answerStyle?: AnswerStyleId
   /** answerStyle=custom 时使用的用户偏好 */
   answerStyleCustom?: string
   /** 当前默认终端（注入环境段与命令语法提示） */
   terminalShell?: { id: string; label: string }
+  /** 当前项目任务表：让主代理能看到已有任务、交付物与等待理由 */
+  superAgentState?: import('../shared/types').SuperAgentState
 }
 
 /* ── 其它 ─────────────────────────────────────────────────────── */

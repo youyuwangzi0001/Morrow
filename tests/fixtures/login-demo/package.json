@@ -1,0 +1,8 @@
+{
+  "name": "morrow-login-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/login-check.mjs test/lockout-check.mjs"
+  }
+}

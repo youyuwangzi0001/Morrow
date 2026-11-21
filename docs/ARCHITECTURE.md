@@ -1,230 +1,229 @@
-# Morrow 架构说明
+# 架构说明
 
-本文描述 Morrow 0.1.0（r019）的实际实现，而不是设计愿景。目标是让新贡献者在一小时内理解：进程如何分工、一次对话如何变成工具调用、数据写到哪里、哪些边界不可越过。
+这一篇写给要改代码或评估风险的人：先讲主进程与渲染层的分工，再讲内核的循环、权限与上下文，最后讲创作台、手机通道、设计系统与构建链路。产品行为与操作步骤见 [DESKTOP-GUIDE.md](DESKTOP-GUIDE.md)，跑起来与打包见 [DEVELOPMENT.md](DEVELOPMENT.md)，交付证据见 [VERIFICATION.md](VERIFICATION.md)。
 
-## 1. 进程模型
+文中只写当前实现里稳定的边界。具体字段以 `src/shared` 的契约和测试为准；判断某个行为是否成立时，先看对应测试，再看这篇的描述。
 
-```text
-┌─────────────────────────────── main (Electron) ───────────────────────────────┐
-│ index.ts        启动、单实例、窗口/灵动岛/托盘、安全策略、崩溃处理            │
-│ ipc.ts          chat/session/settings/window 等基础 IPC                       │
-│ feature-ipc.ts  feature:* 白名单注册与 Result 包装                            │
-│ services/       AgentService、订阅代理、终端、Git、媒体、记忆、项目、MCP...  │
-│ core/           agent 循环、工具、权限、上下文、Provider                       │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-                                    │ contextBridge / ipcRenderer.invoke
-┌───────────────────────────────────▼───────────────────────────────────────────┐
-│ preload（contextIsolation + sandbox）                                         │
-│ 只暴露 window.morrow 白名单；所有 invoke 返回 Result<T>，不暴露 ipcRenderer   │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────▼───────────────────────────────────────────┐
-│ renderer（React 19 + Zustand）                                                │
-│ TitleBar/Sidebar/Transcript/Composer/Canvas/Workbench/Settings/Island        │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
+## 目录
 
-主窗口与灵动岛都启用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，禁用 `<webview>`。渲染层不能直接读文件、执行命令或访问密钥。
+仓库根只放源码、脚本、测试、文档与交付目录，运行时生成的东西一律不进仓库。
 
-### 1.1 启动顺序
+| 路径 | 内容 |
+|---|---|
+| `src/` | 应用源码，内部按 `main`、`core`、`renderer`、`shared`、`generated`、`preload` 分区 |
+| `scripts/` | 构建、测试、打包、冒烟、截图与文档校验脚本 |
+| `tests/` | `unit/` 的 Vitest 用例与 `e2e/` 的 Playwright Electron 流程 |
+| `docs/` | 中文文档、`screens/` 截图与 `diagrams/` 示意图；打包摘要与证据属于生成物，不入库 |
+| `deliver/` | 便携版、安装包与 `SHA256SUMS.txt`，不入库 |
+| `resources/`、`build/` | 随包脚本、图标、托盘图与启动器 |
+| `.github/workflows/` | L1 质量门槛 |
 
-1. 解析数据目录：`--data-dir` → `%LOCALAPPDATA%\Morrow\data-location.json` → `portable.marker` → `PORTABLE_EXECUTABLE_DIR` → `%APPDATA%\Morrow`。
-2. 在单实例锁之前 `app.setPath('userData', dataDir)`；否则多个便携副本会互相顶掉。
-3. 获取单实例锁；第二个实例只唤醒已有主窗。
-4. 注册 `morrow-file` / `morrow-artifact` 私有协议。
-5. `whenReady`：安全策略 → 协议处理器 → 菜单置空 → 基础 IPC → feature 模块 → 订阅恢复 → Token 账本 → 主窗 → 灵动岛 → 托盘 → 定时任务 → 全局快捷键。
-6. 打包版启动本地 crashReporter；主进程安装未捕获异常/未处理 Promise/子进程消失日志。
+`out/`、`release/`、`tmp/`、`docs/verification/` 与 `src/generated/` 都是生成物，已在 `.gitignore` 里忽略。
 
-### 1.2 窗口与生命周期
+## 进程模型
 
-- 主窗默认按 2100×1200 物理像素换算 DIP；最小 1200×760 物理像素左右。
-- 关闭动作由 `settings.closeAction` 决定：每次询问、最小化到任务栏、完全退出。
-- `window-all-closed` 不退出进程；托盘/灵动岛仍可运行后台任务。
-- 退出时清理终端、Agent、订阅代理、定时任务、托盘；4 秒未完成强制 `app.exit(0)`。
-- 主窗口渲染进程崩溃后 800ms 自动 reload；60 秒内最多两次，避免崩溃循环。无响应事件写入日志。
+![Morrow 进程与数据流示意：渲染层、preload、IPC 与主进程服务](diagrams/architecture.png)
 
-## 2. 目录与数据
+示意图：这张图画的是进程分层与数据流，不是界面截图，也不代表某次真实运行。
 
-数据目录初始化时创建：
+Morrow 是 Electron 应用，但系统能力只在一个进程里。渲染层负责画界面，主进程负责所有会碰文件、进程、网络与设备的动作。
 
 ```text
-<dataDir>/
-  sessions/          会话 JSON
-  snapshots/         文件写入前快照
-  checkpoints/       每轮检查点
-  logs/main.log      主进程日志
-  providers/         Provider 相关状态
-  attachments/       附件临时/持久文件
-  schedules/         定时任务
-  skills/            用户技能
-  memories/          全局记忆
-  projects/          项目元信息
-  artifact-versions/ 成品版本
-  usage/             Token 日账
-  permissions/       审批日志
-  secrets.json       safeStorage 加密的 API Key
-  settings.json      脱敏设置
+renderer（React 19 + Zustand）
+   │ window.morrow（preload 白名单）
+preload（contextIsolation、sandbox、无 nodeIntegration）
+   │ ipcRenderer.invoke / feature:* / morrow:event
+main（Electron 主进程）
+   ├─ 窗口、生命周期、单实例、托盘、灵动岛
+   ├─ Agent 循环、会话、检查点、权限
+   ├─ 创作台、媒体、订阅、搜索
+   ├─ 终端、Git、浏览器、电脑操作
+   └─ relay（局域网通道、配对、中继占位）
 ```
 
-工作区内另有：
+- 主进程持有窗口、Agent、创作台、媒体、订阅、终端、Git 与 relay。渲染层不直接读文件、不起进程、不建连接。
+- 创建窗口时固定 `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`，并关闭 `webviewTag`；渲染层只能经 preload 暴露的 `window.morrow` 调白名单方法。
+- 启动顺序是硬约束：先在单实例锁之前解析数据目录并 `app.setPath('userData')`，再创建主窗口与灵动岛，然后注册 IPC、拉起按需服务、恢复上次会话。顺序反了会出现两把锁或两套数据。
+- 主进程的服务按域分文件，跨域只走显式端口，例如 `CollaborationRuntimePort`、`TerminalToolHandler`、`MediaToolHandler`。不靠可变的全局单例在域之间传状态。
+- 渲染进程崩溃会自动重载，并有频率上限。会话状态由主进程持有，重载不会重跑已经完成的工具。
+- 后台行为分两类：创作台任务随应用退出停止（下次打开改成待复核），定时任务要求应用仍在运行。两者都不做系统级常驻。
 
-```text
-<workspace>/.morrow/
-  memories.json      项目记忆
-  episodes.json      任务经验
-  skills/            工作区技能
-  commands/          自定义命令
-  agents/            自定义角色
-  mcp.json           工作区 MCP 配置
-  mcp-trust.json     MCP 信任登记
-```
+## 扁平源码结构
 
-`deliver/Morrow Data` 是用户数据；构建脚本保留但从不计入交付。
+源码只保留五个根，文件按功能域平铺。新增能力放进已有域，不新建第六个顶层目录。
 
-## 3. IPC 与事件
-
-- 基础 IPC 覆盖 chat/send、session CRUD、settings、window、数据目录、归档等。
-- feature IPC 只挂载已注册的精确 `feature:*` 频道；返回值统一 `{ok:true,data}` 或 `{ok:false,error}`，避免 Electron 原始异常泄漏。
-- 渲染层通过 preload 的 `window.morrow` 调用；没有裸 `ipcRenderer`。
-- Agent 运行产生 `RuntimeEvent`（started/delta/tool/permission/usage/compaction/notice/finished 等），带 `seq/runId/sessionId/at`；主进程先做敏感值脱敏、持久化、检查点登记、灵动岛更新，再广播 `morrow:event`。
-- feature 事件走 `feature:*` 并广播所有窗口；设置变更只发主窗。
-- 网页/浏览器/MCP 内容按不可信数据处理，不作为系统指令。
-
-## 4. Agent 循环
-
-一次 `chat:send` 的主路径：
-
-1. `user_prompt_submit` 钩子（返回码 2 可阻断发送）。
-2. 同会话互斥检查；已有运行则拒绝或排队。
-3. 创建本轮检查点与快照目录。
-4. 解析 Provider/Model/Key/权限/上下文覆盖。
-5. 写入用户消息、自动标题（首条可见消息截 26 字，仅在标题仍是“新对话/临时对话”时）。
-6. `runAgent`：构建 system prompt、历史、工具列表；流式调用 Provider；聚合文本/思考/工具调用；执行工具；回填 tool_result；循环直到完成/步数/预算/中止。
-7. 每个工具调用前做权限判断；审批/提问全局按 run 串行。
-8. 运行结束持久化消息、usage、todo、artifact、goal/plan/research；执行 `run_finished` 钩子、队列/目标/研究后续。
-9. 清理临时状态；迟到事件不再覆盖新运行。
-
-### 4.1 模式与限制
-
-- `chat`：只读工具集合 + ask_user/web_search；内核拒绝写/命令/记忆/集群。
-- `work`：默认；完整工具。
-- `plan`：仅工作模式；固定只读 + `submit_plan`；最多 2 步；批准后转执行。
-- `research`：固定只读权限 `auto`，但有研究白名单；计划阶段不暴露工具；检索轮以隐藏消息续跑。
-- `goal`：仅工作模式；2–256 轮；预算含工具调用、有效时间、连续无进展；完成需证据文件；全局同时一个目标。
-- `temporary`：不写项目记忆、不持久化；不提供回退/成品版本。
-- `demo`：一次性演示工作区，跳过审批但真实执行工具，约 35–50 秒。
-
-### 4.2 工具注册
-
-工具按固定顺序注册：文件、PDF/DOCX/XLSX/PPTX、搜索、命令、技能、元工具、联网、终端、MCP、浏览器、computer-use、多媒体。`submit_plan/update_goal` 按模式注入。
-
-- 主代理工具调用串行执行；单个工具异常转 `ToolResult`，不炸整轮。
-- 连续 4 次完全相同工具调用判死循环。
-- 工具结果、参数、MCP 配置等都有大小上限；文件/终端/媒体路径必须在工作区内。
-
-## 5. 权限与审批
-
-权限模型在 `core/permissions.ts`，持久化在 `services/permission-rules.ts`。
-
-| 档位 | 普通写/命令 | 危险命令 | 越界路径 | 外部副作用 |
-|---|---|---|---|---|
-| 只读 | 拒绝 | 拒绝 | 拒绝 | 拒绝 |
-| 询问 | 工作区内放行 | 询问 | 询问 | 询问 |
-| 完全访问 | 放行 | 询问 | 询问 | 询问 |
-
-- “始终允许”按工具 + 目标 + 参数哈希形成会话 grant，并落为工作区 allow 规则。
-- deny 规则优先；allow 不能越过危险/越界/外部动作。
-- 危险命令、越界路径、终端 stdin 等始终逐次确认，不提供“始终允许”。
-- 审批日志在 `permissions/approval-log.jsonl`，规则在 `permissions.json`。
-- 无人值守运行/定时任务自动拒绝审批和提问，不会挂起。
-
-## 6. 上下文、压缩与恢复
-
-- 自动压缩默认阈值 0.8、保留最近 8 条；可配 0.5–0.98、2–50。
-- 只在完整消息边界切；保留首条用户锚点与当前请求；有未回填 `tool_use` 时拒绝压缩。
-- 优先模型摘要；失败退本地摘要；仍超目标再 `aggressiveTrim`。
-- 上下文溢出最多强制压缩重试 2 次；手动 `/compact` 需空闲、至少 4 条消息、90s 超时、压缩前后校验消息签名。
-- 每轮检查点最多 100 个；回退范围 code/conversation/both；命令副作用不可通用追踪。
-- 写文件前快照记录 before/after 哈希；恢复前校验会话根、清单哈希和当前文件哈希，冲突拒绝。
-
-## 7. Provider 层
-
-### 7.1 工厂
-
-- `demo`：离线剧本，真实执行工具。
-- `anthropic`：Anthropic Messages。
-- 其他：OpenAI 兼容 Chat Completions。
-- 真实 Provider 外包 `ToolProtocolProvider`：剔除正文中的文本工具协议，缺失结构化 tool_calls 时解析为工具事件，未知工具忽略并提示。
-
-### 7.2 OpenAI 兼容
-
-- `/chat/completions` + SSE + `stream_options.include_usage`。
-- tool_calls 按 index 拼接；`reasoning_content/reasoning` → `thinking_delta`。
-- `reasoning_effort` 透传；DeepSeek 直接 Provider 的 `off` 映射为 `none`；Qoder 代理保持 `off`。
-- 支持 `x-morrow-context-window` 会话级上下文覆盖。
-- 图片消息使用 content 数组 + `image_url` data URL。
-
-### 7.3 Anthropic
-
-- system 顶层；user/assistant 交替；tool_use/tool_result 块。
-- 思考档位映射 `thinking.budget_tokens`（low 1024 … max 32768），强制 temperature=1；`off` 不发送 thinking。
-- 缓存读写计入总输入；不使用 Morrow 的 context-window 头。
-
-### 7.4 重试
-
-- 408/409/425/429/5xx 与网络错误可重试，最多 3 次，退避 800/2000/5000ms。
-- 只有“尚未产出任何内容”才重试；abort 立即停止。
-
-## 8. 持久化
-
-| 数据 | 位置 | 说明 |
+| 根 | 职责 | 典型文件 |
 |---|---|---|
-| 会话 | `sessions/<id>.json` | 整份 JSON；临时文件 + rename；临时会话仅内存；列表最多 300 |
-| 设置 | `settings.json` | 脱敏配置；内置 Provider 每次启动与代码预设合并 |
-| 密钥 | `secrets.json` | safeStorage 加密；加密不可用时拒绝保存；旧 `b64:` 只读兼容 |
-| 项目 | `projects/projects.json` | 背景、资料、会话、范围 |
-| 记忆 | 工作区 `.morrow/memories.json` / 全局 `memories/global.json` | 项目/全局长期记忆 |
-| 任务经验 | `.morrow/episodes.json` / `episodes/global.json` | 任务复盘 |
-| 成品版本 | `artifact-versions/<session>/<artifact>/` | 最多 30 版、单版 8MB |
-| 技能 | `skills/` / 工作区 `.morrow/skills` | 用户/工作区技能 |
-| MCP | `mcp.json` / 工作区 `.morrow/mcp.json` | 工作区需 `mcp-trust.json` |
-| 定时任务 | `schedules/tasks.json` | 最多 50 |
-| Token 账 | `usage/token-activity.json` | 日账 |
-| 日志 | `logs/main.log` | 主进程 JSON 行日志 |
+| `src/main` | 系统能力、持久化与服务编排 | `agent.ts`、`studio.ts`、`media.ts`、`terminal-manager.ts`、`relay*.ts` |
+| `src/core` | 与 Electron 解耦的 Agent 内核 | `agent.ts`、`providers.ts`、`tools.ts`、`compaction.ts` |
+| `src/renderer` | React 界面、feature 组件与样式 | `App.tsx`、`store.ts`、`features/`、`styles.css` |
+| `src/shared` | 跨进程契约与纯逻辑 | `contracts.ts`、`types.ts`、`gate.ts`、`scene-integrity.ts` |
+| `src/generated` | 构建期提示词产物，不入库 | `prompts.bundle.ts` |
 
-## 9. 订阅与代理
+- 为什么扁平：跨域 import 只有一层，重构按域搬文件即可；多层的 `core/agent/`、`studio/` 会让路由与循环依赖一起变复杂。
+- 域内合并的例子：远程通道由五个文件承担（`relay.ts` 设置与生命周期、`relay-channel.ts` 通道选择、`relay-crypto.ts` 信封与 TLS 材料、`relay-pairing.ts` 票据与设备、`relay-server.ts` 中继占位）；协作域是 `core/collaboration.ts` 加 `main/collaboration.ts`；搜索域是 `main/search.ts`。
+- `src/core` 不 import Electron，文件系统、网络、PTY 与窗口能力都由 `src/main` 注入。这样内核可以只靠类型与端口在 Vitest 里跑。
+- `src/renderer` 每个功能域一个组件加一个 `*-core.ts` 纯逻辑文件；跨 feature 复用放 `shared`，不让两个 feature 互相 import。
+- `src/generated/prompts.bundle.ts` 由 `scripts/embed-prompts.mjs` 生成，`.gitignore` 已忽略；干净 clone 里这个文件不存在，构建时缺私有提示词源会直接失败（见 [DEVELOPMENT.md](DEVELOPMENT.md)）。
+- 测试同样平铺：`tests/unit` 按功能域合并入口，`tests/e2e` 按流程分文件，共用 `helpers.ts`，不恢复 `helpers/` 子目录。
 
-订阅服务在 `main/services/*-subscription.ts`，协议在 `*-protocol.ts`。共同结构：
+## 数据目录
 
-- 登录/导入 → 凭据加密落盘 → 账号/额度校验 → 模型目录 → 本地回环代理 → Provider。
-- 回环代理只绑 `127.0.0.1` 随机端口，要求随机本地 Bearer；上游 token 不进入渲染层。
-- 401/403 只刷新一次后重试；刷新先落盘再使用。
-- 官方接口变化时返回真实错误，不假装已连接。
-- 各渠道细节见 [订阅接入](SUBSCRIPTIONS.md)。
+数据目录决定单实例锁、日志、会话与作品落盘的位置，所以它在创建窗口之前就确定，运行中不迁移。
 
-## 10. 终端、Git、浏览器与媒体
+解析顺序如下，前面的命中就停止：
 
-- `TerminalManager`：node-pty / ConPTY；Git Bash 默认；PowerShell 7 / WSL 可选；Windows PowerShell 5.1 与 CMD 移除（CMD 仅在无其他 Shell 时兼容回退）。
-- Git：`git-service` 封装工作区仓库操作；拒绝越界与父仓库根操作；diff 超长截断。
-- 浏览器：`BrowserService` 管理多标签/原生视图；普通页面与登录 session 分离；导航白名单、下载、权限与错误页有独立处理。
-- 媒体：`MediaService` + `media-catalog` 管理引擎/模型/下载/启动；ComfyUI、llama.cpp、Ollama、LM Studio；ffmpeg 由系统或设置提供；产物写入 `media/`。
+1. `--data-dir=<绝对路径>`：显式指定，测试与多开用。
+2. `%LOCALAPPDATA%\Morrow\data-location.json` 里的自定义指针；目录不可用时回退默认目录，但保留指针给设置页修复。
+3. exe 同级存在 `portable.marker`，或进程带 `PORTABLE_EXECUTABLE_DIR`：使用 `<exe 目录>\Morrow Data`。
+4. 启动器解压出的 `.morrow-runtime-*` 宿主目录：向上回溯到便携版所在目录。
+5. 默认 `%APPDATA%\Morrow`。
 
-## 11. 安全边界
+目录内按域分文件或子目录：会话、检查点与快照、设置、加密凭据、项目、记忆、技能、定时任务、用量、创作台作品与协作数据各占一份。逐项路径见 [REFERENCE.md](REFERENCE.md)。
 
-- 文件 IPC 必须 realpath 后位于最近工作区/会话工作区。
-- 外部 URL 仅 http(s)；`window.open` 拒绝；webview 禁止。
-- 打包版 CSP；画布 HTML 走独立 `morrow-artifact` 协议与独立 CSP。
-- 密钥永不下发渲染层；日志脱敏；输出守卫遮蔽邮箱/用户名/token。
-- 网页、MCP、浏览器内容不可信；不执行页面指令。
-- Antigravity 不内置 OAuth secret，需 `MORROW_ANTIGRAVITY_CLIENT_SECRET`。
-- 详见 [安全与隐私](SECURITY-PRIVACY.md)。
+- 工作区里的 `.morrow/` 属于工作区，不属于数据目录：项目记忆、经验、技能、命令、角色与 MCP 配置都在这里，换工作区就换一套。
+- 写入统一用临时文件加同目录重命名；读取时校验，损坏的文件保留回滚清单而不是静默重建。
+- 密钥经系统安全存储加密，界面不回显明文；日志脱敏后按 JSON 行追加，敏感字段不落盘。
+- 创作台作品由 `StudioStore` 单一写入口：超长章节按内容哈希写入独立分片，`project.json` 成功后才清理旧分片；读取时逐章校验，只从历史版本恢复损坏章节。
 
-## 12. 构建、打包与测试
+## IPC 与事件
 
-- 构建：`npm run build`（typecheck + electron-vite）。
-- 打包：`npm run dist` / `dist:all`；便携版使用自研 C# 启动器，内嵌 zip，首次解压到 exe 同级 `.morrow-runtime-<version>-<revision>`。
-- 安装包：NSIS，按当前用户安装。
-- 单元测试：Vitest，14 个套件 / 952 用例。
-- E2E：Playwright `_electron`，17 个套件 / 209 用例；打包版另跑 5 个用例。
-- 真实账号/媒体用例默认跳过，需环境变量与本机引擎。
-- 评测指标与复现命令见 [评测规范](EVALUATION.md)。
+渲染层与主进程之间只有两类通道：请求与事件。请求走 `ipcMain.handle`，事件走单向广播。
+
+- 基础 IPC 之外，扩展功能统一注册为 `feature:<name>:<action>` 精确频道；preload 与主进程两侧都只接受已注册的频道，未注册的直接拒绝。
+- 创作台的混合入口 `feature:studio:action` 按 `payload.type` 二分到动作与查询，避免为每个动作开一条频道。
+- 请求统一返回 `{ ok: true, data }` 或 `{ ok: false, error }`；错误带可读的 `code` 与 `message`，渲染层不解析异常字符串。
+- `RuntimeEvent` 的公共字段是 `seq`、`runId`、`sessionId`、`at`。主进程先脱敏、持久化、登记检查点、更新灵动岛，再广播 `morrow:event`。
+- 流式增量按帧合并后推送，渲染层再做一层兜底合并；一 token 一条消息会把 IPC 打满。
+- `sessionLoad` 会把内存中仍在进行的消息合并进快照并返回 `liveMessageId`；切回运行中的会话时，界面从实时分片继续，而不是从下一个分片重新开始。
+- 工具执行前校验执行身份（主代理、分发层、协作成员）的 token、工具白名单、会话与运行、有效期与写入目录；允许与拒绝写入协作审计日志，日志不含工具参数与文件内容。
+- preload 只导出方法与事件订阅；事件回调在组件卸载时取消，不把 `ipcRenderer` 暴露给页面。
+
+## Agent 循环
+
+内核在 `src/core/agent.ts`，主进程只注入 Provider、工具实现、权限上下文与运行时端口。一个普通工作轮次的顺序是：组装上下文、请求模型、落盘消息、执行工具、写检查点、累计用量。
+
+- 默认步数不限：`DEFAULT_MAX_STEPS = Infinity`，长任务不会因为固定步数被截断。计划模式、测试与高级调用方可以传 `maxSteps` 设硬上限，达到上限时先让模型给出已完成与剩余事项，再结束本轮。
+- 并行安全工具一批最多 4 个并发执行，其余按顺序执行。并行批次共享 `parallelGroup`，结果按调用顺序回填，模型看到的顺序与发起顺序一致。
+- 每个工具调用先按 JSON Schema 校验参数。坏 JSON 有确定的修复路径：去代码围栏、修非法转义与裸换行、截断时明确报截断并带回出错片段；修不好就作为工具错误回给模型，不猜参数。
+- Provider 默认重试 3 次，退避 800 / 2000 / 5000 ms。4xx（429 除外）与主动中断不重试；断流时已有正文就续接，只有思考没有正文就重发。
+- 工具结果统一为 `ok` 或 `error`；错误带人类可读原因与 `hint`，模型据此换方案，而不是反复重试同一个坏调用。
+- 每个普通工作轮次写一个检查点，单会话最多 100 个；演示模式与临时对话不写；回退同时恢复对话与文件，文件哈希冲突时整体拒绝。
+- 基础工具 94 个，另有 5 个条件工具：`submit_plan`、`update_goal`、`worker_message`、`worker_ask`、`worker_todo_write`，只在计划、目标或协作模式挂载。
+- 停止条件是你主动中断、步数上限、Provider 不可恢复错误或目标预算耗尽。只有思考或空内容不算完成：内核先在本步重试，仍无正文时给出明确错误，不静默停止。
+
+## 权限与审批
+
+所有工具调用都过 `evaluatePermission`。它按固定顺序返回 `allow`、`ask` 或 `deny`，先命中的分支先返回结果；顺序本身就是安全边界。
+
+判定顺序：
+
+1. 聊天或研究模式的工具限制。聊天只放行只读工具、`ask_user` 与 `web_search`；研究只放行资料检索、计划与画布。写文件、跑命令直接拒绝，与权限档位无关。
+2. 演示模式直通。演示剧本固定，不弹审批。
+3. 只读档拒绝。写文件、命令、外部工具与会写盘的元工具（如 `remember`）直接拒绝；越界写也在这里一并拒绝，不会降级成“询问”。
+4. 越界。目标在工作区外时，完全访问直接执行并标记 `escape`；其余档位逐次审批，不提供“始终允许”。你显式附件的文件只读访问不算越界。
+5. 工作区 `deny` 规则。命中即拒绝，先于任何放行判断。
+6. `meta` 与 `read` 放行。无副作用的元工具与只读工具直接允许。
+7. 外部动作。`web_fetch`、`mcp_call` 在询问档逐次审批；被托管的浏览器被动操作放行，点击与输入仍审批；`web_fetch` 可按站点记住到本会话。
+8. 命令与终端。危险命令、工作区外路径、外部副作用命令与终端 stdin 写入逐次审批；完全访问直接执行。这些动作没有“始终允许”。
+9. 工作区 `allow` 规则。到这一步才生效，不能越过前面的危险命令、越界、外部动作与只读限制。
+10. 会话签名。你在本次会话里批准过的同一目标签名直接放行；签名绑定执行身份与参数，换身份或过期后失效。
+11. 放行或弹审批。完全访问与询问档在工作区内的普通写与执行直接放行；需要审批时生成审批卡，展示工具、目标、影响范围与预览。
+
+| 档位 | 判定结果 |
+|---|---|
+| 只读 | 写文件、跑命令、外部动作一律拒绝，只允许读 |
+| 询问 | 工作区内普通写与命令放行；越界、危险命令、外部动作、终端写入逐次审批 |
+| 完全访问 | 除聊天与研究模式的限制外全部放行，越界直接执行 |
+
+- `deny` 优先于 `allow`；规则在设置 › 权限 › 文件夹权限规则里维护，删改后下一次调用立即生效。
+- 审批卡有三个动作：允许一次、始终允许、拒绝。高危动作与终端写入不显示“始终允许”；拒绝结果会回灌给模型，并明确要求不要重试同一操作。
+- 定时任务无人值守时，任何审批自动拒绝，错误文案说明需要你手动处理；这是定时任务只有只读与自动两档的原因。
+- 工具执行身份与审批绑定：协作成员不能用主代理的批准，过期签名与换运行都不放行。
+
+## 上下文与压缩
+
+上下文分两层，这一点决定了压缩能不能撤销、历史会不会丢。
+
+- `Session.messages` 是完整记录：界面、落盘、导出、搜索与分叉都读它，永不裁剪。`RunContext.modelMessages` 才是发给模型的那一份，压缩只作用于它。
+- 触发阈值默认是上下文窗口的 80%，界面可调 50–95%；压缩时保留最近 8 条消息原文。
+- 先修剪、后摘要：达到阈值后先对较早的超大工具结果做确定性修剪（保留头尾，中间写省略标记），修剪后回到阈值内就跳过摘要模型；仍需摘要时，摘要模型看到的也是修剪后的内容。
+- 摘要以一条 `role=system` 标记插入模型侧，带 `preservedMessageIds`、轮次与节省量；完整记录里原文一条不删，界面把“已压缩”标记画在真实切点。
+- 摘要前会从目标、计划、待办、最近指令与产物生成一段运行状态，附在摘要之后；它不交给摘要模型改写，压缩后仍以真实状态为准。
+- 规划压缩必须基于 `modelMessages`。用完整记录规划会因记录只增不减而反复触发压缩，还会让 `cutIndex` 与模型侧索引错位。
+- 用量有服务商真实占用时标注“API 精确”，否则标“估算”；压缩节省量按同一口径展示。
+- 目标比例 0.15 只在内核使用，界面不暴露；工具输出折叠长度写进标记，压缩后新增的消息保持原文。
+
+## 长期目标、研究与定时任务
+
+三者跑在同一个 Agent 循环里，差别是续跑条件、来源门槛与无人值守策略。
+
+| 能力 | 运行边界 | 停止或完成条件 |
+|---|---|---|
+| 长期目标 | 单段 2–256 轮；用尽仍在推进自动 +12 轮，硬上限 2000；至少 60 分钟有效运行 | 连续 3 轮无进展、你主动停止；完成需工作区内真实文件证据 |
+| 深度研究 | 快速 2 轮且至少 4 个来源；标准 4 轮且至少 10 个；深入 6 轮且至少 20 个；先规划再检索 | 来源不足，或没有带引用的报告，都不算完成 |
+| 定时任务 | 一次、每天或每周；最多 50 个；5 秒 tick；全局串行；单次 30 分钟超时 | 错过超过 1 小时标 `missed`；应用不运行就不执行 |
+
+- 目标完成由 `update_goal` 声明，必须给出工作区内真实存在的文件路径。只有文字总结不算完成。
+- 研究来源要与真实搜索与读取记录比对，编造的 URL 不计入来源数；报告必须带引用。
+- 定时任务只有只读与自动两档，没有“询问”；无人值守时任何审批自动拒绝。
+- 三者都走同一套工具、权限与事件；定时任务触发时如果已有任务在跑，会排队而不是并行。
+
+## 创作台架构
+
+创作台是主进程里的 `StudioService` 加作品存储 `StudioStore`；渲染层只发动作、订阅事件。
+
+- 产线是一条单向链：形态 → 阶段 → 任务队列 → 检查 → 导出。形态有三种（中短篇、长篇、漫剧），阶段有 10 个（蓝图、大纲、写作、分镜、画面、配音、音乐、时间线、检查、交付），按形态取子集。
+- 任务队列有 10 种类型（文本、图片、视频、配音、音乐、音效、渲染、导出、审稿、导入）与 6 种状态（`queued`、`running`、`review`、`done`、`failed`、`cancelled`）。队列在内存与作品文件里各有一份，退出应用后不继续执行。
+- 检查有 8 类（连续性、画面、音频、字幕、缺失、价格、配音、质量）。本地确定性检查先跑，模型审稿另计费；存在未解决的 `error` 时禁止导出最终稿，中间文件可以先导出。
+- `shared/gate.ts` 把可计算检查汇总成统一门禁，`ERROR > 0` 阻断出包；新增检查项必须同时登记到 `GATE_CHECKS`，`missingGateChecks` 会拦住“加了检查但没接进门禁”。
+- 纯判定模块放 `src/shared`：`gate`、`scene-integrity`、`seam-audit`、`director-layer`、`reference-image`。抽帧、FFmpeg、引擎探测与提示词解包留在 `src/main`，因为要碰进程与文件。
+- 作品上限：单作品 512 MB、单素材 2 GB、工程包 300 MB；任务记录保留 120 条。退出时把 `running` 与 `queued` 改成 `review`，下次打开不会假装任务还在跑。
+- 蓝图由文本模型生成并按 token 计费；确认蓝图后才进入后续阶段，后续步骤另计费。没有真实模型或引擎时明确失败，不用占位素材冒充。
+- 提示词基座只来自构建期产物 `src/generated/prompts.bundle.ts`，由 `main/prompt-kit` 在运行时解包；仓库与本机都不保留明文副本。
+
+## 手机通道架构
+
+手机端是桌面端的旁观与审批端，不执行任何工具。桌面端提供通道与配对，Android 端负责连接与展示，两端共享同一套帧格式。
+
+- 桌面端四个文件加一个占位：`relay.ts` 管设置与生命周期，`relay-channel.ts` 做通道选择与直连探测，`relay-crypto.ts` 管信封、AES-GCM 帧与自签证书，`relay-pairing.ts` 管票据、六位码与设备密钥，`relay-server.ts` 是公网中继的占位实现。
+- 连接范围是同一局域网内的 `wss://` 直连：证书自签，手机在配对时记住指纹并固定，不验证证书链。公网中继只在本机监听，不承载手机流量，跨网络不可用。
+- 通道选择器有三级（局域网直连、中继、推送）。直连持续不可达满宽限期才降级，避免一个丢包让状态来回抖；中继当前不可用，所以实际只有直连与“未连接”。
+- 配对：桌面生成一次性票据（90 秒有效、`MORROWPAIR1.` 文本），手机回传公钥与 nonce；六位码由双方公钥派生、两端本地比对，最多错 3 次；ECDH P-256 协商后经 HKDF-SHA256 派生双向密钥。
+- 帧用 AES-256-GCM，AAD 绑定方向、设备与单调计数。重复计数与篡改分别以 4402 与 4403 关闭连接，4401 表示未授权；这三个关闭码都不重连。
+- Android 端源码不在本仓，在独立仓库 [Morrow-Android](https://github.com/youyuwangzi0001/Morrow-Android)。WebSocket 客户端与 RFC 6455 帧编解码是手写的，`SecureChannel` 负责双向密钥、AAD 与防重放；本仓只保留桌面侧的通道实现。
+- 手机端没有桌面连接时停在未配对状态，不编造数据；页面与数据来源见安卓仓库的 `docs/SCREENS.md`，两端共享的协议细节见 [PAIRING.md](PAIRING.md)。
+- Android 侧的测试规模与验证边界由那个仓库自己的文档负责，本页不重复摘录。
+
+## 设计系统
+
+界面只有两套主题，所有排版值都走 token。这样切换字号与主题时不会出现局部写死。
+
+- 主题是墨夜（默认）与素纸，共享同一套 token，不新增第三套。破坏性确认使用低饱和酒红。
+- 字号阶梯从两个基值推导：`styles.css` 定义 `--font-ui-size` 与 `--font-code-size`，其余 `--fs-*` 全部用 `var()` 从基值算出。切换字号只改基值。
+- `ui-token-audit` 是硬门槛：CSS 与 TSX 里禁止裸 `font-size: 13px`、裸 `font-weight`、裸 `line-height`、写死的 `letter-spacing` 与 `outline: 2px`；字号必须走 `var(--fs-*)`、继承或相对单位。
+- 焦点环统一 `--focus-ring-width: 2px`；输入框、文本域与下拉使用 `--control-radius` 微圆角与 `--control-focus-shadow` 内嵌焦点环。
+- 动效短、只用于状态变化与空间关系；系统开启减少动效时不阻塞操作；正文不使用斜体。
+- 样式分三处：`src/renderer/styles.css` 放 token 与基础，`components.css` 放通用组件，各 feature 的 `*.css` 放局部样式。文档与导出预览的 iframe 允许保留自身排版字号，审计里单独放行。
+
+## 安全边界
+
+安全边界由进程隔离、路径限制、审批顺序与密钥处理四条线组成。任何一条被绕过，其余三条都补不回来。
+
+- 进程隔离：`contextIsolation`、`sandbox`、关闭 `nodeIntegration`、禁用 webview；preload 只暴露白名单方法。
+- 页面与 CSP：生产包收紧 CSP，只允许应用自身页面与受控预览协议；`window.open` 被拒绝，外链只走系统浏览器。
+- 路径：文件工具限制在工作区；工作区外只允许显式附件的只读访问，写入仍走权限审批。
+- 命令：危险命令、越界路径、外部副作用与终端 stdin 逐次审批；命令环境过滤敏感变量，不把整份环境交给子进程。
+- 不可信内容：网页、MCP 工具结果与桌面窗口内容都按不可信数据处理；浏览器只允许 http(s)；MCP 信任按工作区授予。
+- 密钥：系统安全存储加密，界面不回显，日志脱敏；网络请求带 SSRF 防护，本机与局域网模型不误走厂商原生搜索。
+- 已知边界：两个 exe 用自签名证书签名（`CN=Morrow Studio`，非受信任 CA，SmartScreen 仍会提示）；ComfyUI、FFmpeg、TTS 模型与音乐服务不随包；Android 是 release 签名包但无真机证据；公网中继未实现；真实模型质量与账号额度由服务商决定。
+
+## 构建、测试与打包
+
+源码构建有一个容易踩的前置：创作台提示词不在仓库里。`prebuild` 调 `scripts/embed-prompts.mjs`，从 `%APPDATA%\Morrow-build\prompts`（可用 `MORROW_PROMPT_SOURCE` 覆盖）读取私有源并生成 `src/generated/prompts.bundle.ts`。缺源时 `npm run build` 明确失败；干净 clone 只能先跑 `typecheck`（`pretypecheck` 用占位产物），不能直接构建。
+
+- `verify` 链是 `typecheck → audit:ui → audit:flex → docs:check → test:suite → test:unit → test:e2e`，任何一步失败都返回非零。
+- 测试真值：1014 个单元用例（59 个文件）、96 条 Electron 流程（16 个文件，95 通过加 1 跳过）、43 个功能域。`test:suite` 只做覆盖登记与数量预算的静态校验，不执行用例。
+- 打包：`dist:final` 等于 `npm run build` 加 `dist-portable --two-files`，产出便携版与 NSIS 安装包；`smoke:packaged` 真实启动便携包并检查首屏。
+- CI：`.github/workflows/quality-gates.yml` 只跑 typecheck、audit:ui、docs:check、test:suite。L2（单测、E2E、打包、冒烟）需要自托管 Windows runner，尚未接入；`audit:flex` 只在本地 `verify` 跑。
+- 文档与截图：`docs:capture` 产 27 张、`test:pair-panel` 产 1 张、E2E 顺手产 2 张；`docs:check` 校验链接、锚点、截图尺寸与“每张图被引用”。细节见 [DEVELOPMENT.md](DEVELOPMENT.md)。

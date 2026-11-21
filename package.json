@@ -1,7 +1,7 @@
 {
   "name": "morrow",
   "productName": "Morrow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Morrow — 住在你电脑里的 AI 工作伙伴",
   "author": "Morrow Studio",
   "license": "MIT",
@@ -13,18 +13,30 @@
     "postinstall": "node scripts/ensure-electron.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "build": "npm run typecheck && electron-vite build",
+    "test": "npm run test:unit",
+    "test:suite": "node scripts/check-test-suite.mjs",
+    "bench:compaction": "node scripts/compaction-benchmark.mjs",
+    "bench:collaboration": "node scripts/collaboration-benchmark.mjs",
     "test:unit": "vitest run",
-    "test:eval": "vitest run tests/unit/core/agent.test.ts -t \"agent-quality\"",
+    "pretest:e2e": "node scripts/build-for-tests.mjs",
     "test:e2e": "playwright test",
-    "probe:live": "node scripts/probe-live.mjs",
     "dist": "npm run build && node scripts/dist-portable.mjs --portable",
     "dist:all": "npm run build && node scripts/dist-portable.mjs",
+    "dist:final": "npm run build && node scripts/dist-portable.mjs --two-files",
     "dist:dir": "npm run build && node scripts/dist-portable.mjs --dir",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "pack:source": "node scripts/pack-source.mjs",
-    "verify": "npm run typecheck && npm run audit:ui && npm run test:unit && npm run test:e2e",
-    "test:mock": "node --test tests/fixtures/mock-llm.test.mjs",
-    "audit:ui": "node scripts/ui-token-audit.mjs"
+    "verify": "npm run typecheck && npm run audit:ui && npm run audit:flex && npm run docs:check && npm run test:suite && npm run test:unit && npm run test:e2e",
+    "audit:ui": "node scripts/ui-token-audit.mjs",
+    "audit:flex": "node scripts/audit-flex-tail.mjs",
+    "produce:demo-film": "node scripts/produce-demo-film.mjs",
+    "docs:capture": "playwright test --config playwright.docs.config.ts",
+    "docs:check": "node scripts/check-docs.mjs",
+    "predocs:capture": "npm run build",
+    "prebuild": "node scripts/embed-prompts.mjs",
+    "embed:prompts": "node scripts/embed-prompts.mjs",
+    "pretypecheck": "node scripts/embed-prompts.mjs --placeholder-ok",
+    "test:pair-panel": "playwright test --config playwright.pair.config.ts"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -49,6 +61,7 @@
     "@types/node": "24.10.0",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "5.0.4",
     "diff": "7.0.0",
     "electron": "^44.9.0",
@@ -61,13 +74,14 @@
     "remark-cjk-friendly": "^2.3.2",
     "remark-gfm": "4.0.1",
     "shiki": "3.23.0",
+    "terser": "^5.51.4",
     "typescript": "5.9.3",
     "vite": "7.1.7",
     "vitest": "3.2.4",
     "zustand": "5.0.8"
   },
   "build": {
-    "appId": "studio.morrow.agent",
+    "appId": "studio.morrow.agent.desktop",
     "productName": "Morrow",
     "copyright": "Copyright © 2026 Morrow Studio",
     "directories": {
@@ -109,12 +123,24 @@
         "to": "icon-light.png"
       },
       {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "build/icon-light.ico",
+        "to": "icon-light.ico"
+      },
+      {
         "from": "build/tray-dark.png",
         "to": "tray-dark.png"
       },
       {
         "from": "build/tray-light.png",
         "to": "tray-light.png"
+      },
+      {
+        "from": "resources/tts",
+        "to": "tts"
       }
     ],
     "compression": "maximum",
@@ -136,7 +162,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
@@ -154,6 +180,8 @@
     "mammoth": "^1.13.0",
     "node-pty": "^1.1.0",
     "pdf-parse": "^1.1.1",
-    "pdfjs-dist": "^6.4.299"
+    "pdfjs-dist": "^6.4.299",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.23.0"
   }
 }

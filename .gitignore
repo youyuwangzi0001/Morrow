@@ -2,11 +2,12 @@ node_modules/
 out/
 release/
 deliver/
+deliver-new/
+deliver-clean/
+deliver-r2/
 dist/
 test-results/
 playwright-report/
-docs/verification/screens/
-docs/verification/screens/**/*.tmp
 *.log
 .DS_Store
 Thumbs.db
@@ -15,6 +16,11 @@ Thumbs.db
 probe/
 
 tmp/
+.morrow/
+
+# 便携版在本目录运行时解压出的自身运行时缓存与用户数据；不能提交，也不能在打包时带入
+Morrow-0.2.0/
+.morrow-runtime-*
 *.tsbuildinfo
 .qoder/
 docs/audit/
@@ -23,3 +29,33 @@ docs/verification/logs/
 docs/verification/media/
 
 release-*/
+deliver-latest/
+release-latest/
+deliver-composer-fix/
+release-composer-fix/
+
+deliver-test/
+
+# 提示词内嵌产物：构建期生成，不进仓库、不进源码包
+src/generated/
+
+# 自签名代码签名材料：pfx 含私钥，只在本地出包时使用，不随仓库分发（cer 与说明可以入库）
+build/signing/*.pfx
+build/signing/*.snk
+
+# ── 生成物：每次打包或冒烟都会重写，进仓库只会留下过期快照 ──
+# 它们的内容属于「最近一次本机运行」，不是可复现的事实来源；
+# 交付哈希与检查结论写在 docs/VERIFICATION.md 里。
+docs/verification.json
+docs/smoke-packaged.json
+docs/evidence/
+docs/cards/
+
+# ── 一次性运维脚本：不在 npm 脚本里，也不被测试或文档引用 ──
+# 留在这里会让人以为它们是可维护的工具链；需要时从历史里取。
+scripts/verify-lan-direct.mjs
+scripts/verify-packaged-fix.mjs
+scripts/verify-relay-netstat.mjs
+scripts/upload-release-asset.mjs
+scripts/install-local-tts.ps1
+scripts/trim-blank-lines.mjs
