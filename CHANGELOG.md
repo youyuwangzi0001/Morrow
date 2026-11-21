@@ -2,6 +2,32 @@
 
 Morrow 的版本按发布线记录。每节先给完整中文，再给完整英文；两段内容对应，但不逐句对照。
 
+## 文档体系重写（2026-11-21）
+
+版本号仍为 0.2.0。这一轮只改文档与文档校验脚本，不改功能、不改二进制，也不改写已发布的标签与附件。
+
+### 中文
+
+**变更概览**：正文 13 篇 · 首页双语重写 · 新增手机端与配对两篇 · 新增 3 张示意图 · 修正一批与源码不符的表述
+
+- **结构**：`docs/` 从 11 篇整编为 13 篇，全部平铺：新增「手机端」与「配对」两篇，原「用户指南」改名「桌面端指南」并重写，其余按任务重排；`docs/README.md` 改为唯一的导航页，并写清写作约定。
+- **首页**：`README.md` 与 `README.zh.md` 按同一骨架重写，顶部换成新封面，徽章补齐安卓伴侣端，正文分成桌面端、创作台、手机端、模型与自动化四块，文档表列全 13 篇入口。
+- **事实校正**：测试规模统一为 985 项单元、96 条 Electron 流程、43 个功能域；三档权限改写为界面原文，并明确「询问档不是每步都问、完全访问档不再逐次审批」；手机通道改写为「同一局域网 WSS 直连」，公网中继标注为未实现；配对明确没有扫码，用的是复制文本加六位码；创作台改为默认 1.8 万字与 96 秒、六轨时间线、8 类检查；设置改为 21 个扁平分页。
+- **手机端如实记录**：四个页面在生产路径未接数据源、通知未接 FCM、点通知不导航、生物识别门未实现；本轮另核对出 APK 未声明 `INTERNET` 权限、桌面票据未携带 `relayHint`，两处叠加使端到端连接当前不可用，修复点写在正文里。
+- **视觉**：新增封面与三张示意图（进程与数据流、配对九步时序、六页与数据来源）；桌面截图沿用上一批真实窗口图，来源拆成 27 张文档截图、1 张配对面板、2 张 E2E 顺手产出，并在验证页分开写明。
+- **校验加强**：`docs:check` 现在递归扫描 `docs/` 正文、校验 HTML 图片链接、检查手机截图与示意图是否被引用、校验封面比例，并要求每张桌面截图都是 2100×1200 且被引用。
+
+### English
+
+**Summary**: 13 body pages · bilingual front pages rewritten · two new pages for the phone and pairing · three new diagrams · a batch of statements that contradicted the source corrected
+
+- **Structure**: `docs/` is reorganised from 11 flat pages into 13: the phone companion and pairing pages are new, the old user guide becomes the desktop guide and is rewritten, and `docs/README.md` is now the single navigation page that also states the writing rules.
+- **Front pages**: `README.md` and `README.zh.md` follow one skeleton, open with a new cover, add an Android badge, and split the body into desktop, Studio, phone and models/automation; the documentation table lists all 13 entries.
+- **Facts corrected**: test scale is now stated once as 985 unit cases, 96 Electron flows and 43 domains; the three permission levels quote the interface, and the text says plainly that "ask" does not prompt for every step and "full access" stops prompting; the phone channel is described as a same-LAN WSS connection with public relay marked as not implemented; pairing is documented as copy-and-paste text plus a six-digit code, with no QR scanning; Studio defaults are 18,000 words and 96 seconds with a six-track timeline and eight check categories; settings are 21 flat pages.
+- **Phone companion, stated honestly**: four pages are not connected to live data, notifications are not wired, tapping a notification does not navigate, and the biometric gate is not implemented. This round also found that the APK does not declare the `INTERNET` permission and that desktop tickets carry no `relayHint`, so an end-to-end connection is not possible today; both fix points are written into the documentation.
+- **Visuals**: a new cover and three diagrams (process and data flow, the nine pairing steps, the six pages and their data sources). Desktop screenshots are the existing real windows, split by origin into 27 documentation captures, one pairing-panel capture and two taken during E2E runs, all listed separately on the verification page.
+- **Checks tightened**: `docs:check` now walks every page under `docs/`, validates HTML image and anchor links, requires phone screenshots and diagrams to be referenced, checks the cover aspect ratio, and keeps every desktop screenshot at 2100×1200 and referenced.
+
 ## 源码扁平化合并（2026-11-21）
 
 版本号仍为 0.2.0。这一轮不改功能，只按 [ARCHITECTURE.md](docs/ARCHITECTURE.md#扁平源码结构) 的「扁平源码结构」把生产源码与测试源码按功能域合并，然后重新出包。

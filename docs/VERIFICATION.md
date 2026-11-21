@@ -1,109 +1,100 @@
 # 交付验证
 
-> 本文为中文文档；英文概览见 [README.md](../README.md)。
+这一页记录本次交付的可核对结果：三个产物文件的字节数与 SHA-256、便携包的启动冒烟、本轮修复的回归、测试与门槛的实测输出、截图来源与验证边界。所有数字都来自本机实测或 `deliver/` 里的文件，不引用上一批构建的哈希。
 
-版本 **0.2.0**。这页是 2026-11-21 重新打包后的真实交付快照：产物哈希、测试结果、文档截图与验证边界，全部来自本机实测。机器可读摘要见 [verification.json](verification.json) 与 [smoke-packaged.json](smoke-packaged.json)。
+机器可读摘要有两份：`docs/verification.json` 是打包摘要，`docs/smoke-packaged.json` 是冒烟摘要。它们属于最近一次打包流程，其中的哈希与本节指纹不是同一批产物，本页只把它们当作过程记录。
 
 ## 交付产物
 
-本轮（2026-11-21 扁平化合并后重建）产物在 `deliver/`：
+三个文件都在 `deliver/`，与同目录的 `SHA256SUMS.txt` 逐条一致。哈希用 `Get-FileHash -Algorithm SHA256` 重新计算过。
 
-| 文件 | 大小 | SHA-256 |
-|---|---:|---|
-| `Morrow-0.2.0-portable.exe` | 207,750,144 B / 198.13 MiB | `8a7d443ccaaf9a650aab2fd1645795a93aa8589df887d4a20c6ad9308dc44eb4` |
-| `Morrow-0.2.0-setup.exe` | 157,939,124 B / 150.62 MiB | `5a8fa9bb741ddcbf83c17c46fe86114ce18cc3babed49c2986c4424bb40e5b87` |
-| `Morrow-Android-1.0.0-debug.apk` | 19,492,528 B / 18.59 MiB | `72fd50f81b83a39e5cda33f53a5274f940ffd999eec845999bdfde47f95b4769` |
+| 文件 | 字节 | 大小 | SHA-256 |
+|---|---:|---:|---|
+| `Morrow-0.2.0-portable.exe` | 207,750,144 | 198.13 MiB | `d60421ee9206546b68e1808774cd9273be1bdd2d09ef1e0989362f07e281cf29` |
+| `Morrow-0.2.0-setup.exe` | 157,935,140 | 150.62 MiB | `e65e4bfc8705aa8bcd454b38b581d29b78b4853698587c48f783fbf75b78c9cd` |
+| `Morrow-Android-1.0.0-debug.apk` | 19,492,528 | 18.59 MiB | `72fd50f81b83a39e5cda33f53a5274f940ffd999eec845999bdfde47f95b4769` |
 
-`deliver/` 合计 385,181,796 B / 367.33 MiB，附 `SHA256SUMS.txt`（已用 `sha256sum -c` 反向校验，三个包均为 `OK`）。旧包与 `Morrow Data` 用户数据已移出交付目录；用户数据保留在 `.morrow/user-data/`，不进入分发包。
+三个文件合计 385,177,812 B（367.33 MiB）。
 
-本轮同时完成两件事：按扁平化规范合并两套源码（桌面 relay 域 16 → 5 个文件、relay 测试 15 → 6 个入口，259 项一条不少；安卓生产码 68 → 27、测试 57 → 15，844 项一条不少），以及把进展视图改为右上角浮窗并修掉它遮挡消息操作行的问题。
-
-- 两个 exe 均**未签名**（`signed:false`，`NotSigned`）：未配置代码签名证书，首次运行可能触发 SmartScreen，需「更多信息 → 仍要运行」。
-- 便携版是自研单文件启动器：内嵌应用 zip，首次运行解压到 exe 同级 `.morrow-runtime-0.2.0-r020` 缓存（**不依赖 `%TEMP%`**），之后秒开；启动器带完整 Win32 manifest 并自动加 `--no-sandbox` 以兼容受限环境。
-- 安装包是 NSIS 自解压：可选安装目录、创建开始菜单/桌面快捷方式，默认安装到 `Program Files`（需管理员权限）；安装版数据目录为 `%APPDATA%\Morrow`，可在设置中更改。
-- 安装包与文件夹版的应用代码一致：`Morrow-app.exe` 与 `resources/app.asar` 的 SHA-256 分别为 `9e6e4e05…edd34f` / `8e6942f0…ff67ac`（打包摘要 `docs/verification.json`），两侧 `Morrow.exe` 启动器因便携标记不同而哈希不同，属预期。
-- 安卓 APK 为 **debug 构建**（`studio.morrow.android.debug`，versionName `1.0.0-debug`，minSdk 26 / targetSdk 35），使用工程内 debug keystore 签名，`apksigner verify` 确认 APK Signature Scheme v2 通过；用于安装验收，不是应用商店正式签名包。
+- 便携版是单文件启动器，内嵌应用 zip；首次运行在 exe 同级解压 `.morrow-runtime-<版本>-<修订>`，之后复用缓存。
+- 安装包是 NSIS 自解压，可选安装目录，创建开始菜单与桌面快捷方式；安装版数据目录是 `%APPDATA%\Morrow`。
+- 两个 exe 都未签名（`signed:false`）。首次运行时 SmartScreen 可能要求“更多信息 → 仍要运行”。
+- APK 是 debug 构建：包名 `studio.morrow.android.debug`，versionName `1.0.0-debug`，minSdk 26、targetSdk 35，用工程内 debug keystore 签名，只有 v2 签名方案。
+- 安卓源码不在本仓，构建与测试在 `C:\交付成品\MorrowAndroid` 完成；本仓只保存 APK 产物。
 
 ## 冒烟验证
 
-单文件便携包**真实启动过**（不是只看文件存在）：
+便携包真实启动过一次，不是只看文件存在。冒烟脚本从 `deliver/` 启动 exe，用 CDP 检查窗口与首屏，再抓一张图。
 
 | 项 | 实测 |
 |---|---|
-| 被测文件 | `deliver/Morrow-0.2.0-portable.exe`（198.12 MB） |
-| 启动方式 | `Morrow-0.2.0-portable.exe --no-sandbox --test-mode --remote-debugging-port=8526` |
-| CDP 就绪 | Chrome/152.0.7977.167，4072ms |
+| 被测文件 | `deliver/Morrow-0.2.0-portable.exe`（207,750,144 B） |
+| 启动参数 | `--no-sandbox --test-mode --remote-debugging-port=9835`，另带独立的 user-data-dir 与 data-dir |
+| CDP 就绪 | Chrome/152.0.7977.167，4,072 ms |
 | 窗口标题 | Morrow |
-| 界面版本 | **v0.2.0**（确认版本号已进产物） |
-| 渲染 | 首屏文本正常（创作台 / 新建对话 / 文件树 / 设置 /「未连接」），预加载 API 正常 |
-| 运行位置 | 解压到 `.morrow-runtime-0.2.0-r020` 运行（符合单文件版预期） |
-| 截图 | [docs/evidence/packaged-smoke.png](evidence/packaged-smoke.png)（2102×1203） |
-| 总耗时 | 5.2s |
-| 冒烟包哈希 | `8a7d443c…c44eb4`（与被测 exe 一致） |
-| 汇总 | `portable=通过`，摘要见 [smoke-packaged.json](smoke-packaged.json) |
+| 界面版本 | 首屏显示当前发布版本，确认版本号已进产物 |
+| 渲染 | 首屏文本正常，预加载 API 可用 |
+| 运行位置 | 解压到 `deliver/.morrow-runtime-0.2.0-r020` 后启动 |
+| 截图 | `docs/evidence/packaged-smoke.png`（2102×1203） |
+| 总耗时 | 5.2 s |
+| 摘要 | `docs/smoke-packaged.json`，`ok: true` |
 
-安装包另做了归档完整性检查：用 `7za` 解出 334 个文件 / 530,691,575 B，`Morrow-app.exe` 与 `resources/app.asar` 均与文件夹版逐字节一致；未执行 per-machine 安装，避免改动本机 `Program Files` 与快捷方式。
-
-冒烟脚本会清理单文件版解压出的运行时缓存，避免交付目录被 500MB 级缓存污染；清理失败会写入 `runtimeCleanupError` 而不是静默。打包与冒烟日志保留在 [docs/evidence/dist-all-final.log](evidence/dist-all-final.log) / [docs/evidence/smoke-packaged-portable.log](evidence/smoke-packaged-portable.log)。
+- 冒烟覆盖的是“能启动、能渲染、能截图、预加载 API 可用”，不覆盖文件写入、模型调用与创作台产线。
+- 摘要里的 `exeSha256` 属于同一打包流程的上一批产物，与本节表格的便携版不是同一字节流；本页的指纹以 `deliver/` 实际文件与 `SHA256SUMS.txt` 为准。
+- 冒烟结束后脚本会清理解压出的运行时缓存，避免交付目录被数百 MB 的缓存污染；清理失败会写进摘要，不静默跳过。
+- 安装包没有执行 per-machine 安装，只做了归档完整性检查；未改动本机 `Program Files` 与快捷方式。
 
 ## 本轮修复的回归
 
-| 缺陷 | 根因 | 回归保护 |
+本轮交付带着以下修复。每一条都在当前测试里有对应断言，删掉修复测试会红。
+
+| 缺陷 | 根因 | 回归位置 |
 |---|---|---|
-| 工具参数报「模型输出的工具参数不是合法 JSON」，模型反复重试同样坏掉的调用 | `parseToolArgs` 只会去代码围栏/截首尾花括号/去尾逗号；模型把 Windows 路径、grep 正则（`\|`、`\K`）按纯文本写入时产生非法转义，一个都修不了，且失败文案不指出错在哪 | `tests/unit/core-runtime.test.ts` 用真实坏样本覆盖「非法转义 + 裸换行自动修好」与「截断必须报截断并带回出错片段」 |
-| 分镜卡「候选」与「时长」徽标重叠 | 两者各自 `position: absolute` 定位到同一右下角，实测每张卡 25×9px 交叠 | `tests/e2e/studio.spec.ts` 逐卡比较三个徽标的边界框，要求零交叠 |
-| 终端槽位满时 `stop` 成功却仍报满，回退 `run_command` | 上限把**已退出**的记录也算作槽位，而 `stop` 只发信号、不删记录，名额永不释放；工具层也没有可用的关闭动作 | `tests/unit/main-runtime.test.ts` 覆盖「16 条已退出记录不占名额」「stop 后记录释放」「16 个运行中仍被拦」以及「一次性任务结束自动收起窗口但可回读输出」 |
-| 终端 UI 横跨 Agent 对话列和右侧画布 | 终端停靠层渲染在 `WorkbenchHost`（对话列之外），用 `position: fixed; left: 侧栏宽度; right: 0` 贴整个窗口，画布打开后终端仍横跨画布下方 | `tests/e2e/workspace.spec.ts` 的 `@core:terminal` 用例打开画布后比较终端、对话列、画布三者的边界：终端必须完全落在对话列内且不越过画布左边界 |
-| 素纸主题的金色文字发灰、对比度不足 | 浅色主题 `--gold` 为 `#8a6a3c`（对纸底 4.27:1），`--gold-bright` 为 `#a8844f`（2.96:1）；两者同时承担文字与按钮填充，单独压暗会让黑字按钮失效 | `tests/e2e/ui.spec.ts` 的 `@core:typography` 用例读取真实 CSS token 计算 WCAG：正文 ≥12:1，暗金与次级暗金对纸底均 ≥4.5:1，金色填充上的深色标签也 ≥4.5:1 |
-| Command Code 等订阅在系统 Edge 能授权，内置登录窗提示只能复制 API Key | 登录页把授权 Key 自动 POST 回 `127.0.0.1` 时被 Chromium 的 Local Network Access / loopback 权限、以及回调 CORS 的凭据/预检限制拦住；登录窗口没有对应权限处理器 | `tests/unit/main-external-open.test.ts` 覆盖可信 HTTPS 来源才放行回环权限、非 HTTPS/未授权来源拒绝；`@core:browser` E2E 确认内置浏览器未回归；登录窗口另提供系统浏览器菜单作为策略兜底 |
-| 设置里的“更多功能”把记忆、技能、外部工具、搜索和版本记录折叠起来，项目/定时任务/浏览器又与主页入口重复 | 这些功能原本是工作台面板，只能从“更多功能”列表里逐个打开；设置左侧没有一级入口 | `@core:tools` E2E 断言左侧有记忆/技能/外部工具/全部功能/全局搜索/版本记录分页，且“更多功能/项目/定时任务/浏览器”不再作为设置分页；同一用例打开全部功能、技能与内联全局搜索；`@core:connectors`、`@core:git`、`@core:memory`、`@core:schedules` 覆盖嵌入后的真实交互 |
-| 右栏未展开时看不到 Agent 的实时进展，只能翻对话 | 现有运行事件只更新对话与灵动岛，主窗口没有独立的进展视图；另造一套进度会与真实状态脱节 | `ProgressDock` 订阅真实 `window.morrow.onEvent` 与 `island.onState`，`@core:memory` 断言挂窗可见、可收起为细轨再展开、本轮完成后状态为“已完成”并展示实时动态；`@core:permissions` 断言工具运行与“等待你确认”入列，拒绝后变为“确认完成”；`@core:modes` 断言画布关闭后显示 2/3 待办、状态为“等待你”，且通知堆叠位于挂窗左侧上方；`@core:terminal` 断言画布展开时挂窗让位 |
-| `read_file` 只能看到 256KB 以内的开头 | `MAX_READ_BYTES = 256 * 1024`，Morrow 自己的 `studio.ts` 等早已远超 | `tests/unit/core-tools.test.ts` 覆盖「300KB 文件能读到尾部」与「默认 2000 行不被 64K 输出上限截断」 |
-| 深度研究只数「两个链接 + 参考来源标题」，编造的 URL 也能完成 | `hasSourceEvidence` 只统计正则匹配到的链接数量，没有和真实搜索/读取记录比对 | `tests/unit/shared.test.ts` 的 `@core:research` 用例加入伪造链接不完成的断言；`hasResearchReport` 现在接收 `collectResearchSources` 的归一化来源集合，至少 2 个不同来源命中才完成 |
-| 协作成员只看到主代理手写的 prompt，漏掉交付物与验收口径 | 成员简报只有 `【总目标】` + prompt，`deliverable` / `verify` 留在计划结构里，没有进入成员上下文 | `src/core/tool-extra.ts` 自动注入 `【你的交付物】` 和下游验收文件/命令；`@core:superagent` 成员消息 E2E 断言测试成员收到自己的交付物且不串收 |
-| 内置搜索经常超时，且 Bing 会返回与查询无关的缓存页（如搜 “Morrow AI agent” 返回座头鲸/学习通） | 旧实现只要解析出任意 5 条结果就返回；多词查询没有相关性门槛，Bing 的无关结果会顶掉 DDG；超时 9s 让等待过长 | `rankSearchSources` 要求多词查询命中至少两个不同关键词、拉丁词按边界匹配，`morrow` 不误命中 `tomorrow`；内置超时 9s→6s、hedge 2.5s→1.5s；`@core:web` 覆盖无关结果过滤与 `tomorrow` 误命中 |
-| 模型原生搜索返回答案却没有可引用来源 | 原生搜索成功分支直接返回 `sources: []`，没有补来源 | `WebSearchService` 在原生来源为空时再走一次内置搜索；内置也失败才保留原生回答，并明确提示不要编造引用 |
-| 长任务里主 Agent 倾向自己串行做完，Super-Agent 调用保守 | 旧提示只有“需要并行/隔离/独立验收时再用”，没有长任务触发条件 | `buildWorkToolStrategy` 与 `super_agent` 工具描述新增三个以上独立方向、跨三个以上文件/模块、深度调研、多方案比较、独立验收或预计超过 8 次工具调用等触发条件，默认先拆分派发 |
-| 安卓版扫码配对在真实桌面端始终 4401，收不到 welcome | 手机 `RelayProtocol.CHANNEL_LAN = "wss"`，桌面 `DirectChannel.verifyRequest(deviceId, 'lan', …)` 校验的是 `lan`；通道字面量不一致，跨语言 E2E 与向量测试同时失败 | `MorrowAndroid` 改为 `CHANNEL_LAN = "lan"`；`CrossDeviceE2ETest` 用真实 Node `DirectChannel` ↔ Kotlin `RelaySocketClient` 跑 6 项；`verify.sh` 新增 E3 硬校验，避免证据日志过期 |
-| 进展浮窗展开时盖住消息操作行与「删除后续」确认条，按钮点不到 | 浮窗 300px 悬浮在主区右上角且 `z-index:30`，消息操作行和确认条正好在同一区域，点击全部被浮窗拦截（E2E 报 `progress-summary … intercepts pointer events`） | `tests/e2e/ui.spec.ts` 的 `@core:sessions` 会话分支用例真实点击「删除后续消息」→ 确认「删除」；`progress.css` 在浮窗展开时给 `.transcript-scroll` 留 316px 右侧栏位，收起为胶囊或画布/浏览器让位后自动恢复 |
+| 模型输出非法 JSON 参数后反复重试同一个坏调用 | 旧解析只去代码围栏与尾逗号，Windows 路径与正则里的反斜杠、裸换行都修不了，报错也不指出位置 | `tests/unit/core-runtime.test.ts` 的非法转义与截断样本 |
+| 300 KB 的源码文件只能读到开头 | `read_file` 的读取上限停在 256 KB，仓库里不少文件超过这个值 | `tests/unit/core-tools.test.ts` 的 300 KB 读到尾部用例 |
+| 终端槽位满时 `stop` 成功却仍报满 | 上限把已退出记录也当运行中，`stop` 只发信号不释放记录 | `tests/unit/main-runtime.test.ts` 的“已退出记录不占槽位” |
+| 分镜卡的“候选”与“时长”徽标重叠 | 两个徽标各自绝对定位到同一右下角，实测出现交叠 | `tests/e2e/studio.spec.ts` 逐卡比较徽标边界 |
+| 进展浮窗展开时盖住消息操作与画布 | 浮窗悬浮在主区右上角，命中区域压住消息操作行与终端 | `tests/e2e/ui.spec.ts`、`tests/e2e/workspace.spec.ts` 的让位断言 |
+| 安卓真实配对始终 4401，收不到 welcome | 手机侧通道字面量是 `wss`，桌面签名校验的是 `lan`，跨语言握手被拒 | `MorrowAndroid` 的 `CrossDeviceE2ETest`（6 项） |
+
+- 前五条的断言在 `npm run test:unit` 与 `npm run test:e2e` 里随全量执行，不靠人工点按。
+- 最后一条在安卓仓库的 JVM 套组里执行：桌面 Node 的 `DirectChannel` 与 Kotlin 的 `RelaySocketClient` 跑真实握手与加密帧。
+- 没有证据的改动不写进这张表；测试通过不等于功能完整，未接线的页面在“验证边界”里单独列出。
 
 ## 测试与检查
 
+本次交付的测试与四道本地门槛结果如下。数量是当前维护预算内的真值。
+
 | 检查 | 结果 |
 |---|---|
-| `npm run typecheck` | 通过（node + web 双配置） |
-| `npm run audit:ui` | 通过：30 CSS + 32 TSX，0 裸排版声明，31 个字号令牌可缩放 |
-| `npm run audit:flex` | 通过：未发现会被压成竖排的行内尾部标签 |
-| `npm run docs:check` | 通过：16 个 Markdown、30 张 2100×1200 截图、37 个本地图片链接 |
-| `npm run test:suite` | 985 单元 / 96 Electron / 43 域，维护预算 985 / 96 |
-| `npm run test:unit` | 56 文件 / 985 通过 |
-| `npm run test:e2e` | 95 通过 / 1 跳过 / 0 失败（96 条），9.5m |
+| `npm run typecheck` | 通过：`tsconfig.node.json` 与 `tsconfig.web.json` 两套配置都无错误 |
+| `npm run audit:ui` | 通过：0 条裸排版声明，字号令牌全部由基值推导，焦点环 2 px |
+| `npm run audit:flex` | 通过：没有被压成竖排的行内尾部标签 |
+| `npm run docs:check` | 通过：链接与锚点存在，30 张截图均为 2100×1200 且被引用 |
+| `npm run test:suite` | 985 个单元 / 96 条 Electron / 43 个域，未超预算 |
+| `npm run test:unit` | 56 个文件、985 项通过 |
+| `npm run test:e2e` | 16 个文件、96 条：95 通过、1 跳过、0 失败，9.5 分钟 |
 
-E2E 结果说明：唯一跳过的是 `packaged-parallel`（需要打包产物，属预期跳过）。全量 E2E 记录在 [docs/evidence/e2e-final.log](evidence/e2e-final.log)；本轮另修掉进展挂窗 `.progress-status` 的 flex-shrink 与 20 处裸排版声明，`audit:flex`、`audit:ui` 均恢复通过。
+- 唯一跳过的是 `packaged-parallel`，它需要现成的打包产物；跳过项不计入通过。
+- 全量 E2E 记录在 `docs/evidence/e2e-final.log`；安卓的 844 项 JVM 用例记录在 `MorrowAndroid/build-evidence-prerun/all.log`（57 个测试类，失败类 0 个）。
+- `verify` 链是 typecheck → audit:ui → audit:flex → docs:check → test:suite → test:unit → test:e2e；上面七行都通过时整链才为绿。
+- `test:suite` 是静态校验：它只读测试源码与 `tests/core-coverage.json`，不执行任何用例；通过它不代表用例通过。
 
-打包耗时 69.6s（`docs/verification.json`），Electron 44.9.0 / electron-builder 26.0.12。
+## 截图与示意图清单
 
-代码统计按 `node scripts/count-code.mjs` 的统一口径（`wc -l` 换行，排除依赖、产物、文档、图片与媒体夹具）：
+`docs/screens/` 有 30 张桌面截图，全部 2100×1200，来自测试模式与内置演示工作区。来源分三处，不能混写。
 
-| 范围 | 文件 | 行数 |
-|---|---:|---:|
-| 生产源码 `src/` | 146 | 208,314 |
-| 测试 `tests/` | 83 | 47,222 |
-| 构建脚本 `scripts/` | 28 | 5,712 |
-| 启动器 `build/launcher/` | 1 | 907 |
-| **合计** | **258** | **262,155** |
-
-## 文档截图
-
-全部截图在默认 **2100×1200 物理窗口**下重拍，原始 PNG，不缩放、不压缩、不套滤镜。截图使用测试模式的演示工作区与样例作品，不含用户数据。生成命令 `npm run docs:capture`，校验命令 `npm run docs:check`。
-
-### 用户指南与设置（15 张）
+| 来源 | 张数 | 说明 |
+|---|---:|---|
+| `npm run docs:capture` | 27 | 12 张引导、设置与工作区，15 张创作台，直接写入 `docs/screens/` |
+| `npm run test:pair-panel` | 1 | 桌面端配对面板，不是手机截图 |
+| E2E 顺手截取 | 2 | 两张设置页，需要手工搬入 `docs/screens/` |
 
 | 文件 | 内容 |
 |---|---|
 | `guide-onboarding.png` | 首次引导：认识 Morrow、连接模型、选择文件夹 |
 | `guide-chat.png` | 主界面：会话、计划、输入框与工作区 |
-| `guide-permission.png` | 审批卡：文件夹外路径、影响范围、允许一次/拒绝 |
+| `guide-permission.png` | 审批卡：文件夹外路径、影响范围与按钮 |
 | `guide-editor.png` | 文件树、编辑器与保存状态 |
 | `guide-settings-models.png` | 设置 · 模型 |
 | `guide-settings-subscriptions.png` | 设置 · 订阅 |
@@ -112,56 +103,62 @@ E2E 结果说明：唯一跳过的是 `packaged-parallel`（需要打包产物�
 | `guide-memory.png` | 记忆中心：长期、任务、项目与全局记忆 |
 | `guide-browser.png` | 内置浏览器：标签、地址栏与真实页面 |
 | `guide-terminal.png` | 真实终端：Git Bash 与命令输出 |
-| `guide-collaboration.png` | 协作成员卡片：进度、用量与停止/插话 |
-| `settings-cloud-media.png` | 模型页中的国内与海外多媒体服务 |
-| `settings-local.png` | 本地模型与本地媒体引擎 |
-| `pair-panel-devices.png` | 手机配对：远程通道、配对码与已配对设备 |
-
-### 创作台（15 张）
-
-| 文件 | 内容 |
-|---|---|
+| `guide-collaboration.png` | 协作成员卡片：进度、用量与停止 / 插话 |
+| `settings-cloud-media.png` | 云端多媒体服务设置页 |
+| `settings-local.png` | 本地模型与本地媒体引擎设置页 |
+| `pair-panel-devices.png` | 手机配对：通道、配对码与已配对设备 |
 | `studio-home.png` | 作品库与一句话入口 |
 | `studio-create.png` | 创建作品：形态、一句话、精细度与补充要求 |
 | `studio-blueprint.png` | 蓝图：主线、人物、结构、风格与费用 |
 | `studio-writing.png` | 写作台：大纲、纸页、候选与协作者 |
 | `studio-assistant.png` | 协作者计划卡：影响、费用与待确认 |
 | `studio-storyboard.png` | 分镜板与单镜详情 |
-| `studio-timeline.png` | 时间线：监视器、五轨、波形与时间码 |
-| `studio-canvas.png` | 漫剧画布：镜头/素材节点与连线 |
+| `studio-canvas.png` | 漫剧画布：镜头与素材节点、连线 |
 | `studio-voice.png` | 声音 · 配音 |
 | `studio-music.png` | 声音 · 音乐 |
+| `studio-timeline.png` | 时间线：监视器、六轨、波形与时间码 |
 | `studio-review.png` | 检查：本地检查、模型审稿与引擎 |
 | `studio-delivery.png` | 交付：成片预览、格式与预检 |
-| `studio-settings.png` | 创作台设置：模型与预算等五页 |
+| `studio-settings.png` | 创作台设置 |
 | `studio-trash.png` | 回收站 |
 | `studio-light.png` | 素纸主题作品库 |
 
-`docs:check` 会核对：每张截图必须 2100×1200、必须在文档中被引用、不能出现废弃的 `docs/guide` 或 `docs/verification` 目录。
+- 创作台截图里的作品是内置样例，不是真实作品；图注要写明这一点。
+- 手机端本轮没有可交付的截图，移动端文档使用桌面配对面板图，并在图注里说明来源。
+- 示意图共三张：`diagrams/architecture.png`（分层数据流，用在 [ARCHITECTURE.md](ARCHITECTURE.md)）、`diagrams/pairing-flow.png`（配对九步时序，用在 [PAIRING.md](PAIRING.md)）、`diagrams/mobile-pages.png`（六页与数据来源，用在 [MOBILE.md](MOBILE.md)）。它们都是结构图，不是界面截图，也不参与 2100×1200 的截图尺寸检查。
 
 ## 验证边界
 
-- 安装包只做了归档完整性与便携版冒烟，未执行 per-machine 安装，避免改动本机 `Program Files` 与快捷方式。
-- 未配置代码签名证书；两个 exe 均为 `signed:false`。安卓 APK 仅为 debug 签名，不是应用商店正式签名包。
-- 本机没有 Android 模拟器/真机，未做实体扫码与安装；安卓侧用真实桌面 Node `DirectChannel` ↔ Kotlin `RelaySocketClient` 跨语言 E2E + Robolectric UI 验证，实体机验收仍需一台 Android 设备。
-- 外部模型、ComfyUI、MiniMax Music3、FFmpeg、TTS、订阅账号与额度由用户环境决定；未逐一做真实付费调用或全渠道登录，第 9 项的质量验证也没有调用真实付费模型。
-- 截图展示的是测试模式下的样例界面，不代表用户本机已有同样的项目或数据。
-- 只读档读取的是全局设置；会话级 `permissionMode` 与全局设置的统一、Git 面板按钮置灰仍是后续项。
-- 本轮把 0.3.0 的框架加固并入 0.2.0：升级集中在底层判定与稳定性，没有真正接入大的新功能，因此沿用 0.2.0 版本号。
+下面这些没有被本次交付证明，不能从上面的绿勾里推断。
+
+- 安装包没有执行 per-machine 安装，只验证了解压后的文件与文件夹版一致；安装路径、快捷方式与卸载流程没有实机走查。
+- 两个 exe 未配置代码签名；APK 只有 debug 签名。它们都不是应用商店或正式分发包。
+- Android 只有 JVM 用例（844 项、57 类），没有仪器测试，也没有真机或模拟器证据；实体安装、通知投递与后台行为未验证。
+- 公网中继是占位实现，手机只能在同一局域网内直连；没有跨网络、NAT 穿透与移动网络下的证据。
+- 手机端部分页面在生产路径没有接数据源：对话页消息、协作页成员、作品页列表与审批页队列；通知未接 FCM，前台服务没有调用方，点击通知不导航，生物识别门未实现，release 未产出。
+- 本轮核对 APK 合并清单时发现它没有 `android.permission.INTERNET`，真机无法发起 WSS 连接；桌面配对面板调用 `relayPair.issue` 时也没有传 `relayHint`，票据缺局域网地址。两者叠加，0.2.0 的手机端到端连接不可完成——这是本轮如实记下的阻塞点，不是文档表述问题。
+- 手机配对协议本身有两端向量与 JVM 用例（ECDH 向量、relay 协议向量、SecureChannel 双向密文、桌面解密校验），但这些只证明算法一致，不证明设备上跑通。
+- 外部模型、订阅渠道、ComfyUI、FFmpeg、TTS 与音乐服务依赖你的环境；没有逐一做真实付费调用，也没有覆盖全部订阅渠道的登录。
+- 截图来自测试模式与演示工作区，不代表你本机已有同样的项目或数据；`packaged-parallel` 因缺少打包产物而跳过。
+- `docs/verification.json` 与 `docs/smoke-packaged.json` 是最近一次打包的机器摘要，其中的哈希对应上一批产物，本页没有引用它们作为交付指纹。
 
 ## 交付沿革
 
+时间线只记可查的交付节点，不把未发布的改动写成版本号。
+
 | 时间 | 内容 |
 |---|---|
-| 2026-10-27 | v0.2.0 首次发布 |
-| 2026-11-06 | 接入国内云端多媒体，更新海外媒体默认模型与官方音色 |
+| 2026-10-27 | 首次发布桌面版与安卓调试包 |
+| 2026-11-06 | 接入国内云端多媒体，更新海外媒体默认模型与音色 |
 | 2026-11-10 至 11-11 | 上下文与最大输出档位、视觉能力识别、任务栏图标与短路径修复 |
-| 2026-11-12 | 修复 5 个开放 issue，复核 #8；重新打包并替换发布资产 |
-| 2026-11-16 | 创作产线加固（帧数契约、画音分离、导演层、门禁等）；修复分镜徽标重叠、终端槽位不释放、文件读取上限；版本号沿用 0.2.0 |
-| 2026-11-21 | 10 项体验修复（画布压层、终端、暗金、OAuth、设置分页、进展挂窗、安卓真实配对、长任务质量）；清理旧包后重出桌面与安卓安装包 |
-| 2026-11-21（第二轮） | 扁平化合并：桌面 relay 域 16 → 5 个文件、relay 测试 15 → 6 个入口（259 项不变），安卓生产码 68 → 27、测试 57 → 15（844 项不变）；进展浮窗改为右上角浮层并修掉遮挡消息操作；重出桌面双包与安卓 APK（985 单测 / 95 E2E） |
+| 2026-11-12 | 修复若干开放 issue，重新打包并替换发布资产 |
+| 2026-11-16 | 创作产线加固：帧数契约、画音分离、导演层、出包门禁 |
+| 2026-11-21 | 体验修复、源码扁平化合并，重出桌面双包与安卓 APK；单测 985、E2E 96 |
+| 2026-11-21 | 文档体系按扁平结构重写：13 篇正文、双语首页、三张示意图与截图复核，校验脚本同步加固 |
 
 ## 复现
+
+在仓库根执行。构建前先准备私有提示词源，否则 `npm run build` 会在 `prebuild` 明确失败。
 
 ```powershell
 npm install
@@ -177,4 +174,11 @@ npm run dist:final
 npm run smoke:packaged
 ```
 
-打包前若 `deliver/Morrow Data` 存在，先移出交付目录（本轮已移到 `.morrow/user-data/` 保留），不要把用户数据打进分发包。
+- 私有提示词源默认在 `%APPDATA%\Morrow-build\prompts`，可用 `MORROW_PROMPT_SOURCE` 指向别处。缺源时只能跑 `npm run typecheck`。
+- 打包前确认 `deliver/` 没有 `Morrow Data`；有就先暂存到 `tmp/`，打包后恢复。
+- 安卓复现要进 `C:\交付成品\MorrowAndroid`，用本机 Gradle 8.14.3 构建 debug 变体，再把 APK 复制回 `deliver/` 并重算哈希。
+- 哈希复核：
+
+```powershell
+Get-FileHash deliver\Morrow-0.2.0-portable.exe, deliver\Morrow-0.2.0-setup.exe, deliver\Morrow-Android-1.0.0-debug.apk -Algorithm SHA256
+```

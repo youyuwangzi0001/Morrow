@@ -1,69 +1,100 @@
 <p align="center">
-  <img src="docs/cover.png" alt="Morrow 桌面窗口：左侧是工作区文件树，中间是 AI 协作会话与已完成的计划" width="100%">
+  <img src="docs/cover.png" alt="Morrow 桌面窗口与创作台时间线，均来自运行中的应用" width="100%">
 </p>
 
 <h1 align="center">Morrow 明日工坊</h1>
-<p align="center">住在 Windows 里的本地优先 AI 工作台：说清结果，直接交付成品。</p>
+
+<p align="center">面向 Windows 的本地优先 AI 工作台：你说清想要什么，成品就留在你干活的文件夹里。</p>
+
 <p align="center"><a href="README.md">English</a></p>
 
 <p align="center">
-  <a href="https://www.electronjs.org/docs/latest"><img alt="Electron" src="https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white"></a>
-  <a href="https://react.dev"><img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black"></a>
-  <a href="https://www.typescriptlang.org/docs"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white"></a>
+  <a href="https://www.electronjs.org/docs/latest"><img alt="Electron 44" src="https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white"></a>
+  <a href="https://react.dev"><img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black"></a>
+  <a href="https://www.typescriptlang.org/docs"><img alt="TypeScript 5.9" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white"></a>
   <a href="https://learn.microsoft.com/windows/"><img alt="Windows 10 与 11" src="https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white"></a>
+  <a href="https://developer.android.com/jetpack/compose"><img alt="安卓伴侣端" src="https://img.shields.io/badge/Android-%E4%BC%B4%E4%BE%A3%E7%AB%AF-3DDC84?logo=android&logoColor=white"></a>
   <a href="LICENSE"><img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-2EA043"></a>
-  <a href="https://github.com/youyuwangzi0001/Morrow/releases"><img alt="版本" src="https://img.shields.io/badge/release-v0.2.0-2EA043"></a>
+  <a href="https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0"><img alt="版本 v0.2.0" src="https://img.shields.io/badge/release-v0.2.0-2EA043"></a>
+</p>
+
+<p align="center">
+  <a href="docs/README.md">文档地图</a> ·
+  <a href="docs/GETTING-STARTED.md">上手</a> ·
+  <a href="docs/PAIRING.md">接上手机</a> ·
+  <a href="CHANGELOG.md">变更记录</a>
 </p>
 
 ## 简介
 
-Morrow 是面向 Windows 10/11 x64 的桌面 AI 智能体。你只说想要的结果，它会读工作区、改文件、跑命令、检查自己的产出，把可打开的成品留在原地。会话、记忆、工作区与密钥都保存在本机，模型来源由你接入。
+Morrow 是 Windows 10/11（x64）上的桌面 AI 智能体。你描述想要的结果——整理好的表格、一份 HTML 复盘、一篇报告、一个能跑的脚本——它读你的文件夹、改文件、跑命令、检查自己的产出，最后留下一个能直接打开的文件。会话、记忆、工作区文件和 API Key 都留在本机，模型来源由你接入。
 
-它还有一个创作台，负责长内容：中短篇、长篇或 30–180 秒的漫剧，从一句话到可交付文件。蓝图由真实文本模型生成并按 token 计费；确认蓝图后才开始写正文、分镜、画面或媒体，这些步骤另计费用。
+三个面共用一套产品。**桌面端**负责干活；**创作台**负责长内容，从一句话写到可交付的中短篇、长篇或 60–120 秒漫剧；**安卓伴侣端**负责在手机上看进度、批权限、翻成品。手机是旁观与审批端——所有工具调用仍然在桌面执行。
 
-## 核心特性
+## 能做什么
 
-### 在你选定的文件夹里真正干活
+### 在你选定的文件夹里干活
 
-- 五种工作方式：聊天、工作、计划、深度研究与长期目标。
+- 五种工作方式：聊天、工作、计划、深度研究与长期目标。聊天只读；研究限制在工具白名单内；长期目标跨轮续跑，直到有真实文件作为完成证据。
 - 真实文件树、CodeMirror 编辑器、多标签画布，以及 HTML、Markdown、PDF、Office、图片、音频与视频预览。
-- 真实 PTY 终端（默认 Git Bash，可选 PowerShell 7 / WSL）、Git 工作台、多标签浏览器与 Windows UI Automation。
-- 只读 / 询问 / 完全访问三档权限。危险命令、越界路径与外部副作用动作逐次审批，拒绝始终优先于允许。
-- 每个用户轮次一个检查点，写文件前留快照，会话与文件都能回退。
+- 真实 PTY 终端（默认 Git Bash，可选 PowerShell 7 或 WSL）、Git 面板、多标签浏览器，以及用于桌面任务的 Windows UI Automation。
+- 三档权限——只读、询问、完全访问——外加逐次审批卡。只读拒绝所有写入；询问档自动执行文件夹内的普通操作，只对危险命令、越界路径和外部副作用发问；完全访问不再发问，只用在完全信任的任务上。
+- 每个普通工作轮次一个检查点，写文件前留快照。回退会同时恢复对话与文件；如果当前文件已经和记录时的哈希对不上，整体拒绝执行。
 
-![Agent 会话：已完成的计划与已生成报告提示](docs/screens/guide-chat.png)
+![智能体会话：已完成的计划与生成的报告提示](docs/screens/guide-chat.png)
 
-### 能把作品做完的创作台
+本 README 的截图来自应用的测试模式与内置演示工作区，界面与发布版一致。
 
-- 中短篇（3–8 万字）、长篇（20–100 万字）与漫剧（30–180 秒）。
-- 蓝图、大纲、分镜、画面、声音、时间线、检查与交付；纸页编辑器、五轨时间线与漫剧节点画布。
-- 协作者先把大白话拆成可审阅的修改计划，确认后才应用，改动可撤销。
-- 本地确定性检查加真实模型审稿；没有模型或引擎时明确失败，不用假结果冒充。
+### 在创作台里把长内容做完
 
-![创作台时间线：监视器、五条轨道与真实音频波形](docs/screens/studio-timeline.png)
+- 中短篇（默认 1.8 万字，档位 3 万 / 5 万 / 8 万）、长篇（默认 30 万字，档位最高 100 万）与漫剧（默认 96 秒，档位 60 / 96 / 120 秒）。
+- 十个阶段——蓝图、大纲、写作、分镜、画面、配音、音乐、时间线、检查、交付——按形态取子集。蓝图由真实文本模型生成并计费；确认蓝图后才开始后续阶段，这些阶段另计费用。
+- 纸页编辑器、分镜板、漫剧节点画布、六轨时间线（画面、对白、环境床、音乐、音效、字幕）与真实波形。
+- 协作者把大白话拆成可审阅的修改计划：确认后才应用，只要之后没有更新的改动就能撤销这次修改。
+- 八类检查。存在未解决的错误时禁止导出最终稿，中间文件仍可导出。没有真实模型或引擎时这一步会明确失败，不用假结果顶替。
+- 交付为 TXT、MD、DOCX、EPUB、PDF、封面、字幕或工程包；漫剧另有 MP4/MOV/MKV/WebM、WAV/MP3/AAC/FLAC、四格漫画与发布套组。
+
+![创作台时间线：监视器、六条轨道与真实音频波形](docs/screens/studio-timeline.png)
+
+图中的作品是测试环境播种的内置样例。
+
+### 在手机上查看与审批
+
+- 安卓伴侣端渲染工位（设备状态、运行中的任务、待你决定、今日统计、最近成品）、审批队列、成员任务、作品与配对页。
+- 设计上只走局域网：桌面开一条 WSS 通道，用自签证书；手机固定配对票据里拿到的证书指纹。公网中继尚未实现。
+- 手机上的动作就是审批本身。危险工具不能在手机上允许，执行端始终在桌面。
+
+![桌面端配对面板：通道开关、生成的配对请求与已配对设备](docs/screens/pair-panel-devices.png)
+
+伴侣端是预览状态，不是完成的功能：随包 APK 没有声明 `INTERNET` 权限，桌面面板签发的配对票据也没有局域网地址，所以 0.2.0 还不能完成一次真实连接；其中四个页面也尚未接入真实数据。逐条差异见 [docs/MOBILE.md](docs/MOBILE.md)。
 
 ### 模型、记忆与自动化放在一处
 
-- OpenAI 兼容与 Anthropic 原生 API Key、多种订阅渠道，以及 Ollama、llama.cpp、LM Studio 本机模型。
-- 项目、记忆中心、20 个内置技能、工作区技能、MCP 与定时任务。
-- 云端图片、视频、配音、配乐服务，与本地 ComfyUI、FFmpeg、TTS 引擎并列管理。
+- 15 个 Provider 配置（OpenAI 兼容服务、Anthropic 原生，以及同机的 Ollama、llama.cpp、LM Studio）、12 类订阅渠道（含 ChatGPT/Codex 与九种编程订阅），以及七档思考强度。
+- 20 个内置技能、`.morrow/skills` 下的工作区技能、8 个 MCP 目录项、项目、记忆中心（建议采纳后才写入）与定时任务。
+- 17 个云端媒体预设（图片、视频、配音、音乐），与本地 ComfyUI、FFmpeg、TTS 引擎并列管理。
 
-![审批卡：写清工具、目标、影响范围与参数](docs/screens/guide-permission.png)
+![审批卡：执行前写清工具、目标、影响范围与参数](docs/screens/guide-permission.png)
 
 ## 安装
 
-### 使用发布包
-
-从[本版本 v0.2.0 的发布页](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0)下载：
-
 | 文件 | 说明 |
 |---|---|
-| `Morrow-0.2.0-portable.exe` | 单文件便携版；首次运行在 exe 同级解压运行时缓存 |
+| `Morrow-0.2.0-portable.exe` | 单文件便携版；首次运行在 exe 同级解压运行时 |
 | `Morrow-0.2.0-setup.exe` | NSIS 安装包；可选安装目录，创建快捷方式 |
+| `Morrow-Android-1.0.0-debug.apk` | 安卓伴侣端（API 26 及以上），侧载安装，debug 签名 |
 
-两个 exe 均未签名，Windows 可能提示“已保护你的电脑”，选择“更多信息 → 仍要运行”。运行前请对照 `SHA256SUMS.txt` 校验。
+从 [v0.2.0 发布页](https://github.com/youyuwangzi0001/Morrow/releases/tag/v0.2.0)下载，并对照 `SHA256SUMS.txt` 校验。三个包都没有代码签名：Windows 可能提示“已保护你的电脑”，选择“更多信息 → 仍要运行”；APK 需要打开“安装未知应用”，且不是应用商店版本。
 
-### 从源码运行
+## 上手
+
+1. 启动 Morrow，完成三步引导：认识 Morrow、连接模型、选择工作文件夹。
+2. 用大白话说清结果，例如“把这份销售明细做成 HTML 复盘，标出异常订单”。
+3. 该批的就批。完成后从画布、工作区或创作台打开成品。
+
+还没有 API Key？可以走 ChatGPT/Codex 这类订阅路线复用本机登录，也可以先用离线演示——它不消耗额度。手机配对大约三分钟，步骤见 [docs/PAIRING.md](docs/PAIRING.md)。
+
+## 从源码运行
 
 环境：Windows 10/11 x64、Node.js 22.12+、Git（默认终端使用 Git Bash）。
 
@@ -72,60 +103,74 @@ npm install
 npm run dev
 ```
 
+干净 clone 不能直接构建：提示词包在构建期从私有源生成（`%APPDATA%\Morrow-build\prompts`，可用 `MORROW_PROMPT_SOURCE` 覆盖），`src/generated/` 不入库，缺源时 `npm run build` 会明确失败。说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
 常用检查：
 
 ```powershell
 npm run typecheck    # 两个进程的类型检查
-npm run test:unit    # 539 项单元测试
-npm run test:e2e     # 86 条 Electron 流程（会先构建）
-npm run verify       # 类型、UI、文档、清单、单元与 Electron
-npm run dist:final   # 重建两个发布 exe
+npm run test:unit    # 985 项单元测试
+npm run test:e2e     # 96 条 Electron 流程（会先构建）
+npm run docs:check   # 链接、锚点与截图尺寸
+npm run verify       # 本地完整链路
 ```
 
-## 使用方式
+## 文档
 
-1. 启动 Morrow，完成三步引导：认识 Morrow、连接模型、选择工作文件夹。
-2. 用大白话说清结果，例如“把这份销售明细做成 HTML 复盘，标出异常订单”。
-3. 需要时批准动作；完成后从画布、工作区或创作台作品库打开成品。
-
-还没有 API Key 时，可以走 ChatGPT / Codex 订阅路线，复用本机 Codex 登录。完整步骤、成功标准与卡住时的处理见 [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)。
-
-## 配置
-
-模型、订阅与媒体引擎都在应用的**设置**里配置。安装版数据默认在 `%APPDATA%\Morrow`，便携版在 exe 同级的 `Morrow Data`；也可以用 `MORROW_DATA_DIR` 指定。
-
-Provider、订阅渠道、媒体服务、快捷键、数据路径与环境变量的完整清单见 [docs/REFERENCE.md](docs/REFERENCE.md)。
+| 从这里开始 | 内容 |
+|---|---|
+| [docs/README.md](docs/README.md) | 整套文档的地图与写作约定 |
+| [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) | 安装、引导、第一个任务、第一次配对 |
+| [docs/DESKTOP-GUIDE.md](docs/DESKTOP-GUIDE.md) | 界面、模式、权限、检查点、终端、Git、浏览器 |
+| [docs/STUDIO.md](docs/STUDIO.md) | 创作台：形态、阶段、检查、交付 |
+| [docs/MOBILE.md](docs/MOBILE.md) | 安卓伴侣端：页面、边界、隐私 |
+| [docs/PAIRING.md](docs/PAIRING.md) | 桌面与手机配对、局域网通道、协议 |
+| [docs/MODELS.md](docs/MODELS.md) | Provider、订阅、本机模型、思考档位 |
+| [docs/MEDIA.md](docs/MEDIA.md) | 云端媒体预设、ComfyUI、FFmpeg、TTS |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | 快捷键、数据路径、环境变量、技能、命令 |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 按现象索引的排错，含手机配对 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 进程、IPC、Agent 循环、权限顺序、创作台产线、手机通道 |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 环境、测试、CI、截图、打包、许可 |
+| [docs/VERIFICATION.md](docs/VERIFICATION.md) | 交付物、哈希、检查结果、截图清单与未验证项 |
 
 ## 项目结构
 
 ```text
-src/main/       Electron 主进程：窗口、Agent、创作台、媒体、订阅
-src/core/       Agent 循环、Provider、工具、权限、上下文、协作
+src/main/       Electron 主进程：窗口、Agent、创作台、媒体、relay、订阅
+src/core/       Agent 循环、Provider、工具、权限、上下文与压缩
 src/renderer/   React 界面、功能组件与样式
-src/shared/     IPC 与数据契约
+src/shared/     IPC 契约与数据类型
+src/generated/  构建期生成的提示词包（不入库）
 tests/          Vitest 单元与 Playwright Electron 流程
-docs/           文档与 2100×1200 截图
+docs/           文档、截图、示意图与证据
 scripts/        构建、测试、打包、冒烟与文档检查
 ```
 
+安卓伴侣端的源码在独立目录，本仓库只放 APK 产物；它的技术栈与为什么不在本仓构建，记在 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
 ## 发布
 
-发布包、源码包与校验文件见 [Releases](https://github.com/youyuwangzi0001/Morrow/releases)。逐版本的中英文变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+安装包、校验文件与发布说明见 [Releases](https://github.com/youyuwangzi0001/Morrow/releases)；逐版本的中英文变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 安全
 
-- 渲染层开启 `contextIsolation` 与沙箱，关闭 `nodeIntegration`，只通过 preload 白名单访问系统能力。
+- 渲染层开启 `contextIsolation` 与沙箱，关闭 `nodeIntegration`，系统能力只经 preload 白名单访问。
 - 文件工具限制在工作区内；读取工作区外文件必须显式作为附件。
-- 密钥由系统凭据存储加密，界面不再回显明文。
-- 网页、MCP 与桌面内容一律按不可信输入处理。漏洞报告方式见 [SECURITY.md](SECURITY.md)。
+- 密钥由系统凭据存储加密，界面不回显明文。
+- 网页、MCP 服务与桌面内容一律按不可信输入处理。
+- 手机通道固定证书指纹，并对每一帧加密；细节见 [docs/PAIRING.md](docs/PAIRING.md)。
+
+漏洞报告方式见 [SECURITY.md](SECURITY.md)。
 
 ## 已知限制
 
-- 仅提供 Windows x64 构建；两个 exe 均未签名。
-- ComfyUI、llama.cpp、Ollama、LM Studio、FFmpeg、MiniMax Music3 与 TTS 引擎不随包内置，缺失时相关动作会明确失败。
-- 订阅登录态与额度由服务商决定；未在本机验证的渠道不会显示为“已连接”。
-- 模型质量、引擎速度与长媒体表现取决于你的环境。
+- 桌面端只构建 Windows x64，其他平台没有构建也没有测试。
+- 没有代码签名：两个 exe 未签名，APK 是 debug 签名。
+- ComfyUI、FFmpeg、本机模型服务与 TTS 模型都不随包内置；缺失时相关动作会明确失败，而不是给出占位结果。
+- 创作台的样例作品由测试环境播种。打包版不带演示素材，全新安装的作品库是空的。
+- 安卓伴侣端是预览版，不是任意命令的遥控器：发布的 APK 缺 `INTERNET` 权限，桌面签发的票据不带局域网地址，其中四个页面尚未接入真实数据，通知链路尚未接通，通道只在同一局域网可用。
+- 模型质量、引擎速度与长媒体表现取决于你自己的环境与账号。
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。第三方组件与内置技能来源见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#第三方组件与许可)。
+MIT，见 [LICENSE](LICENSE)。第三方组件与内置技能来源列在 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。

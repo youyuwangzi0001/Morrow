@@ -1,7 +1,7 @@
 name: Quality gates
 
 # L1：只需要 node_modules、几秒钟就能跑完的门槛，在每次 push / PR 上执行。
-# 对应 docs/DEVELOPMENT.md「持续集成」一节与 README「质量门槛」。
+# 对应 docs/DEVELOPMENT.md 的「持续集成」一节。
 #
 # 为什么是 ubuntu-latest：这四道门槛都是纯 Node 脚本（tsc / 脚本审计 / 文档检查 /
 # 测试清单解析），与平台无关；而实测本仓库账号拿不到 hosted Windows runner

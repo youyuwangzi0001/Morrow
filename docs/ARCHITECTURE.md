@@ -1,251 +1,229 @@
 # 架构说明
 
-> 本文为中文文档；英文概览见 [README.md](../README.md)。
+这一篇写给要改代码或评估风险的人：先讲主进程与渲染层的分工，再讲内核的循环、权限与上下文，最后讲创作台、手机通道、设计系统与构建链路。产品行为与操作步骤见 [DESKTOP-GUIDE.md](DESKTOP-GUIDE.md)，跑起来与打包见 [DEVELOPMENT.md](DEVELOPMENT.md)，交付证据见 [VERIFICATION.md](VERIFICATION.md)。
 
-Morrow 是 Electron 桌面应用：主进程负责系统能力与持久化，preload 提供白名单 API，renderer 用 React 19 / Zustand 呈现界面。本文只写当前实现的稳定边界；具体行为以源码与测试为准。
+文中只写当前实现里稳定的边界。具体字段以 `src/shared` 的契约和测试为准；判断某个行为是否成立时，先看对应测试，再看这篇的描述。
 
 ## 目录
 
-- [进程模型](#进程模型)
-- [扁平源码结构](#扁平源码结构)
-- [数据目录](#数据目录)
-- [IPC 与事件](#ipc-与事件)
-- [Agent 循环](#agent-循环)
-- [权限与审批](#权限与审批)
-- [协作任务](#协作任务)
-- [上下文与压缩](#上下文与压缩)
-- [Provider 与订阅](#provider-与订阅)
-- [持久化](#持久化)
-- [创作台架构](#创作台架构)
-- [设计系统](#设计系统)
-- [安全边界](#安全边界)
-- [构建、测试与打包](#构建测试与打包)
+仓库根只放源码、脚本、测试、文档与交付目录，运行时生成的东西一律不进仓库。
+
+| 路径 | 内容 |
+|---|---|
+| `src/` | 应用源码，内部按 `main`、`core`、`renderer`、`shared`、`generated`、`preload` 分区 |
+| `scripts/` | 构建、测试、打包、冒烟、截图与文档校验脚本 |
+| `tests/` | `unit/` 的 Vitest 用例与 `e2e/` 的 Playwright Electron 流程 |
+| `docs/` | 中文文档、`screens/` 截图、`evidence/` 机器证据与两份打包摘要 |
+| `deliver/` | 便携版、安装包、APK 与 `SHA256SUMS.txt`，不入库 |
+| `resources/`、`build/` | 随包脚本、图标、托盘图与启动器 |
+| `.github/workflows/` | L1 质量门槛 |
+
+`out/`、`release/`、`tmp/`、`docs/verification/` 与 `src/generated/` 都是生成物，已在 `.gitignore` 里忽略。
 
 ## 进程模型
 
+![Morrow 进程与数据流示意：渲染层、preload、IPC 与主进程服务](diagrams/architecture.png)
+
+示意图：这张图画的是进程分层与数据流，不是界面截图，也不代表某次真实运行。
+
+Morrow 是 Electron 应用，但系统能力只在一个进程里。渲染层负责画界面，主进程负责所有会碰文件、进程、网络与设备的动作。
+
 ```text
-renderer (React 19 / Zustand)
-  │  window.morrow（preload 白名单）
-  ▼
-preload（contextIsolation，sandbox，无 nodeIntegration）
-  │  IPC / feature:*
-  ▼
-main (Electron)
-  ├─ index：窗口、生命周期、单实例、协议、CSP、托盘、灵动岛
-  ├─ AgentService / core/agent：循环、工具、权限、压缩
-  ├─ core/collaboration：成果、计划、验收、资源探测、卡住判断
-  ├─ main/collaboration：成果存储、运行时、项目存储、验收、共享资源、成员名额、工具审计
-  ├─ provider 工厂：OpenAI 兼容 / Anthropic / 本机 / demo
-  ├─ StudioService / StudioStore：创作台
-  ├─ creative-masters / prompt-kit：内嵌大师方法与提示词基座（构建期产物）
-  ├─ media：ComfyUI / ffmpeg / TTS / 模型目录
-  ├─ relay-*：跨设备远程通道（配对、加密帧、LAN 直连、中继与审计）
-  └─ session / settings / secrets / projects / memory / skills / schedules
+renderer（React 19 + Zustand）
+   │ window.morrow（preload 白名单）
+preload（contextIsolation、sandbox、无 nodeIntegration）
+   │ ipcRenderer.invoke / feature:* / morrow:event
+main（Electron 主进程）
+   ├─ 窗口、生命周期、单实例、托盘、灵动岛
+   ├─ Agent 循环、会话、检查点、权限
+   ├─ 创作台、媒体、订阅、搜索
+   ├─ 终端、Git、浏览器、电脑操作
+   └─ relay（局域网通道、配对、中继占位）
 ```
 
-### 启动顺序
-
-1. 解析 `--data-dir` / 数据目录指针 / `portable.marker` / `%APPDATA%`，在单实例锁之前 `setPath`。
-2. 创建主窗口与灵动岛；主窗口 `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`，禁用 webview。
-3. 注册基础 IPC 与 `feature:*` 精确通道。
-4. 启动 Agent 运行时、Studio 服务、媒体/终端/订阅等按需服务。
-5. 恢复上次会话/工作区；渲染崩溃自动 reload（800ms，60 秒内最多 2 次）。
-
-### 窗口与图标
-
-窗口目标为 **2100×1200 物理像素**，按主屏缩放比换算为 DIP；最小 1200×760。主窗口无边框，灵动岛是独立窗口。文档截图保持默认窗口，输出 2100×1200 物理像素原图。
-
-Windows 会按 AUMID 缓存任务栏图标，空白缓存一旦形成就无法通过换窗口图标刷新。便携版因此不设显式 AUMID，任务栏直接使用窗口/启动器图标；安装版沿用与开始菜单快捷方式一致的 `studio.morrow.agent.desktop`。窗口图标来自 extraResources 的 ICO/PNG，路径比较统一用 `realpathSync.native` 展开 8.3 短名。
+- 主进程持有窗口、Agent、创作台、媒体、订阅、终端、Git 与 relay。渲染层不直接读文件、不起进程、不建连接。
+- 创建窗口时固定 `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`，并关闭 `webviewTag`；渲染层只能经 preload 暴露的 `window.morrow` 调白名单方法。
+- 启动顺序是硬约束：先在单实例锁之前解析数据目录并 `app.setPath('userData')`，再创建主窗口与灵动岛，然后注册 IPC、拉起按需服务、恢复上次会话。顺序反了会出现两把锁或两套数据。
+- 主进程的服务按域分文件，跨域只走显式端口，例如 `CollaborationRuntimePort`、`TerminalToolHandler`、`MediaToolHandler`。不靠可变的全局单例在域之间传状态。
+- 渲染进程崩溃会自动重载，并有频率上限。会话状态由主进程持有，重载不会重跑已经完成的工具。
+- 后台行为分两类：创作台任务随应用退出停止（下次打开改成待复核），定时任务要求应用仍在运行。两者都不做系统级常驻。
 
 ## 扁平源码结构
 
-源码按职责扁平放在 `src/main`、`src/core`、`src/renderer/features`、`src/shared`。合并功能套组后不保留多层 `studio/`、`core/agent/` 目录；新增文件优先放到对应扁平目录。远程通道、搜索与云媒体同样按域收进这四个根目录，不再新建第五个顶层目录或嵌套子目录。
+源码只保留五个根，文件按功能域平铺。新增能力放进已有域，不新建第六个顶层目录。
 
-- **协作域**：核心逻辑在 `src/core/collaboration.ts`，主进程服务在 `src/main/collaboration.ts`。成果、计划、验收、共享资源、成员名额与工具审计都在两个文件内。
-- **工具域**：`tool-kit`（公共层）、`tools`（注册表）、`tool-extra`（技能/MCP/任务）、`tool-files`（文件与文档）、`tool-media`（媒体/网页/搜索/浏览器/电脑/命令）。
-- **远程通道域**：`relay.ts`（设置与生命周期）、`relay-channel.ts`（通道选择/直连/轮询/重放）、`relay-crypto.ts`（信封、加密帧、TLS 材料）、`relay-pairing.ts`（配对/票据/设备与密钥存储）、`relay-server.ts`（中继服务、准入、审计、注册表）。
-- **搜索域**：`main/search.ts` 同时承载厂商原生搜索与内置多引擎检索；原生无来源时由内置检索补来源。
-- **渲染层**：每个功能域一个 `*.tsx` 组件加一个 `*.css`；跨 feature 复用的纯逻辑放 `*-core.ts`（如 `artifacts-core`、`files-core`、`studio-core`）。
-- **共享层**：`shared/types`、`shared/contracts`、`shared/studio`、`shared/studio-assistant`；`shared/media-cloud.ts` 含云媒体预设与官方音色目录。
-- **测试**：`tests/unit` 按功能域合并入口；`tests/e2e` 按流程分文件；共用辅助平铺为 `helpers.ts`。
+| 根 | 职责 | 典型文件 |
+|---|---|---|
+| `src/main` | 系统能力、持久化与服务编排 | `agent.ts`、`studio.ts`、`media.ts`、`terminal-manager.ts`、`relay*.ts` |
+| `src/core` | 与 Electron 解耦的 Agent 内核 | `agent.ts`、`providers.ts`、`tools.ts`、`compaction.ts` |
+| `src/renderer` | React 界面、feature 组件与样式 | `App.tsx`、`store.ts`、`features/`、`styles.css` |
+| `src/shared` | 跨进程契约与纯逻辑 | `contracts.ts`、`types.ts`、`gate.ts`、`scene-integrity.ts` |
+| `src/generated` | 构建期提示词产物，不入库 | `prompts.bundle.ts` |
 
-### 为什么保留少数分文件
-
-- `feature-ipc` 被 `features`、`agent` 与多个服务复用；合并进 `features` 会让 `agent → features → agent` 形成循环。
-- `*-core.ts` 被多个 feature 交叉引用；合并进单个组件文件会造成跨 feature 反向依赖。
-- `main/workspace-isolation.ts` 属于工作区隔离域（`@core:workspace`），不是协作域内部实现。
-- `studio-*.test.ts` 各自 mock 不同的 `electron` / `settings` 或独立 HTTP/TTS 生命周期；合并会把 mock 提升为整文件生效。
-- `relay-lifecycle.test.ts` 与 `relay-settings.test.ts` 同理：前者 mock 掉 `settings` 模块直连真实服务，后者要实例化真实 `SettingsStore` 并写真实 `settings.json`，两种 mock 不能共存于一个测试文件。
+- 为什么扁平：跨域 import 只有一层，重构按域搬文件即可；多层的 `core/agent/`、`studio/` 会让路由与循环依赖一起变复杂。
+- 域内合并的例子：远程通道由五个文件承担（`relay.ts` 设置与生命周期、`relay-channel.ts` 通道选择、`relay-crypto.ts` 信封与 TLS 材料、`relay-pairing.ts` 票据与设备、`relay-server.ts` 中继占位）；协作域是 `core/collaboration.ts` 加 `main/collaboration.ts`；搜索域是 `main/search.ts`。
+- `src/core` 不 import Electron，文件系统、网络、PTY 与窗口能力都由 `src/main` 注入。这样内核可以只靠类型与端口在 Vitest 里跑。
+- `src/renderer` 每个功能域一个组件加一个 `*-core.ts` 纯逻辑文件；跨 feature 复用放 `shared`，不让两个 feature 互相 import。
+- `src/generated/prompts.bundle.ts` 由 `scripts/embed-prompts.mjs` 生成，`.gitignore` 已忽略；干净 clone 里这个文件不存在，构建时缺私有提示词源会直接失败（见 [DEVELOPMENT.md](DEVELOPMENT.md)）。
+- 测试同样平铺：`tests/unit` 按功能域合并入口，`tests/e2e` 按流程分文件，共用 `helpers.ts`，不恢复 `helpers/` 子目录。
 
 ## 数据目录
 
-解析顺序：`--data-dir` → `%LOCALAPPDATA%\Morrow\data-location.json` → 便携版 `portable.marker` → `%APPDATA%\Morrow`。
+数据目录决定单实例锁、日志、会话与作品落盘的位置，所以它在创建窗口之前就确定，运行中不迁移。
 
-数据目录的完整分工与逐项说明见 [REFERENCE.md](REFERENCE.md#数据路径)：会话、快照/检查点、模型配置与加密凭据、设置、创作台作品、用量、定时任务、用户技能、审批日志与协作数据各占一个子目录。
+解析顺序如下，前面的命中就停止：
 
-工作区内 `.morrow/` 存项目记忆、经验、技能、命令、角色与 MCP 配置。
+1. `--data-dir=<绝对路径>`：显式指定，测试与多开用。
+2. `%LOCALAPPDATA%\Morrow\data-location.json` 里的自定义指针；目录不可用时回退默认目录，但保留指针给设置页修复。
+3. exe 同级存在 `portable.marker`，或进程带 `PORTABLE_EXECUTABLE_DIR`：使用 `<exe 目录>\Morrow Data`。
+4. 启动器解压出的 `.morrow-runtime-*` 宿主目录：向上回溯到便携版所在目录。
+5. 默认 `%APPDATA%\Morrow`。
 
-### 作品数据
+目录内按域分文件或子目录：会话、检查点与快照、设置、加密凭据、项目、记忆、技能、定时任务、用量、创作台作品与协作数据各占一份。逐项路径见 [REFERENCE.md](REFERENCE.md)。
 
-`StudioStore` 是唯一写入口：原子读写项目 JSON、超长章节分片、版本快照、素材指纹与回收站索引。超长章节按内容哈希写入独立目录，`project.json` 成功后才清理旧分片；读取时逐章校验，只从历史版本恢复损坏章节。作品保存蓝图、章节、分镜、镜头、素材、时间线、任务、检查、审稿覆盖与交付；候选稿与版本在章节内部。
+- 工作区里的 `.morrow/` 属于工作区，不属于数据目录：项目记忆、经验、技能、命令、角色与 MCP 配置都在这里，换工作区就换一套。
+- 写入统一用临时文件加同目录重命名；读取时校验，损坏的文件保留回滚清单而不是静默重建。
+- 密钥经系统安全存储加密，界面不回显明文；日志脱敏后按 JSON 行追加，敏感字段不落盘。
+- 创作台作品由 `StudioStore` 单一写入口：超长章节按内容哈希写入独立分片，`project.json` 成功后才清理旧分片；读取时逐章校验，只从历史版本恢复损坏章节。
 
 ## IPC 与事件
 
-- 基础 IPC 加精确 `feature:*` 注册；统一返回 `{ ok, data }` 或 `{ ok, error }`。
-- 渲染层不直接使用 `ipcRenderer`，只通过 `window.morrow` 白名单调用。
-- `RuntimeEvent` 带 `seq/runId/sessionId/at`；主进程先脱敏、持久化、登记检查点、更新灵动岛，再广播 `morrow:event`。
-- 消息增量在主流式路径按 40ms 合并后广播，渲染层再按 24ms 兜底合并；`sessionLoad` 合并内存中的进行中消息并返回 `liveMessageId`，切回运行中的会话不会从下一个分片重新开始。
-- 工具执行前校验执行身份（主代理 / 分发层 / 协作成员）的 token、工具白名单、会话与运行、有效期和写入目录；“始终允许”按身份与尝试隔离并过期。允许/拒绝写入 `collaboration/tool-audit.jsonl`，不含工具参数或文件内容。
+渲染层与主进程之间只有两类通道：请求与事件。请求走 `ipcMain.handle`，事件走单向广播。
+
+- 基础 IPC 之外，扩展功能统一注册为 `feature:<name>:<action>` 精确频道；preload 与主进程两侧都只接受已注册的频道，未注册的直接拒绝。
+- 创作台的混合入口 `feature:studio:action` 按 `payload.type` 二分到动作与查询，避免为每个动作开一条频道。
+- 请求统一返回 `{ ok: true, data }` 或 `{ ok: false, error }`；错误带可读的 `code` 与 `message`，渲染层不解析异常字符串。
+- `RuntimeEvent` 的公共字段是 `seq`、`runId`、`sessionId`、`at`。主进程先脱敏、持久化、登记检查点、更新灵动岛，再广播 `morrow:event`。
+- 流式增量按帧合并后推送，渲染层再做一层兜底合并；一 token 一条消息会把 IPC 打满。
+- `sessionLoad` 会把内存中仍在进行的消息合并进快照并返回 `liveMessageId`；切回运行中的会话时，界面从实时分片继续，而不是从下一个分片重新开始。
+- 工具执行前校验执行身份（主代理、分发层、协作成员）的 token、工具白名单、会话与运行、有效期与写入目录；允许与拒绝写入协作审计日志，日志不含工具参数与文件内容。
+- preload 只导出方法与事件订阅；事件回调在组件卸载时取消，不把 `ipcRenderer` 暴露给页面。
 
 ## Agent 循环
 
-`core/agent` 负责：
+内核在 `src/core/agent.ts`，主进程只注入 Provider、工具实现、权限上下文与运行时端口。一个普通工作轮次的顺序是：组装上下文、请求模型、落盘消息、执行工具、写检查点、累计用量。
 
-- 组装系统提示词、角色、规则、技能与上下文；
-- 调 Provider 流式生成，处理文本、思考、工具调用与错误；
-- 执行工具、写检查点、广播事件、累计用量；
-- 处理中断、重试、压缩与 Goal/Plan 模式；
-- 维护权限签名与审批。
-
-工具结果统一为 `ok/error`，错误带可读原因；工具参数按 schema 校验。文件工具限制在工作区内，工作区外读取只允许显式附件，写入仍走权限。
+- 默认步数不限：`DEFAULT_MAX_STEPS = Infinity`，长任务不会因为固定步数被截断。计划模式、测试与高级调用方可以传 `maxSteps` 设硬上限，达到上限时先让模型给出已完成与剩余事项，再结束本轮。
+- 并行安全工具一批最多 4 个并发执行，其余按顺序执行。并行批次共享 `parallelGroup`，结果按调用顺序回填，模型看到的顺序与发起顺序一致。
+- 每个工具调用先按 JSON Schema 校验参数。坏 JSON 有确定的修复路径：去代码围栏、修非法转义与裸换行、截断时明确报截断并带回出错片段；修不好就作为工具错误回给模型，不猜参数。
+- Provider 默认重试 3 次，退避 800 / 2000 / 5000 ms。4xx（429 除外）与主动中断不重试；断流时已有正文就续接，只有思考没有正文就重发。
+- 工具结果统一为 `ok` 或 `error`；错误带人类可读原因与 `hint`，模型据此换方案，而不是反复重试同一个坏调用。
+- 每个普通工作轮次写一个检查点，单会话最多 100 个；演示模式与临时对话不写；回退同时恢复对话与文件，文件哈希冲突时整体拒绝。
+- 基础工具 94 个，另有 5 个条件工具：`submit_plan`、`update_goal`、`worker_message`、`worker_ask`、`worker_todo_write`，只在计划、目标或协作模式挂载。
+- 停止条件是你主动中断、步数上限、Provider 不可恢复错误或目标预算耗尽。只有思考或空内容不算完成：内核先在本步重试，仍无正文时给出明确错误，不静默停止。
 
 ## 权限与审批
 
-| 档位 | 行为 |
+所有工具调用都过 `evaluatePermission`。它按固定顺序返回 `allow`、`ask` 或 `deny`，先命中的分支先返回结果；顺序本身就是安全边界。
+
+判定顺序：
+
+1. 聊天或研究模式的工具限制。聊天只放行只读工具、`ask_user` 与 `web_search`；研究只放行资料检索、计划与画布。写文件、跑命令直接拒绝，与权限档位无关。
+2. 演示模式直通。演示剧本固定，不弹审批。
+3. 只读档拒绝。写文件、命令、外部工具与会写盘的元工具（如 `remember`）直接拒绝；越界写也在这里一并拒绝，不会降级成“询问”。
+4. 越界。目标在工作区外时，完全访问直接执行并标记 `escape`；其余档位逐次审批，不提供“始终允许”。你显式附件的文件只读访问不算越界。
+5. 工作区 `deny` 规则。命中即拒绝，先于任何放行判断。
+6. `meta` 与 `read` 放行。无副作用的元工具与只读工具直接允许。
+7. 外部动作。`web_fetch`、`mcp_call` 在询问档逐次审批；被托管的浏览器被动操作放行，点击与输入仍审批；`web_fetch` 可按站点记住到本会话。
+8. 命令与终端。危险命令、工作区外路径、外部副作用命令与终端 stdin 写入逐次审批；完全访问直接执行。这些动作没有“始终允许”。
+9. 工作区 `allow` 规则。到这一步才生效，不能越过前面的危险命令、越界、外部动作与只读限制。
+10. 会话签名。你在本次会话里批准过的同一目标签名直接放行；签名绑定执行身份与参数，换身份或过期后失效。
+11. 放行或弹审批。完全访问与询问档在工作区内的普通写与执行直接放行；需要审批时生成审批卡，展示工具、目标、影响范围与预览。
+
+| 档位 | 判定结果 |
 |---|---|
-| 只读 | 拒绝写文件、命令、记忆与外部副作用动作 |
-| 询问 | 工作区内写入/普通命令放行；危险命令、越界、外部动作、终端 stdin 逐次询问 |
-| 完全访问 | 全部放行，只用于可信任务 |
+| 只读 | 写文件、跑命令、外部动作一律拒绝，只允许读 |
+| 询问 | 工作区内普通写与命令放行；越界、危险命令、外部动作、终端写入逐次审批 |
+| 完全访问 | 除聊天与研究模式的限制外全部放行，越界直接执行 |
 
-审批卡显示工具、目标、影响范围与参数；危险动作没有“始终允许”。拒绝优先于允许；审批请求与执行身份绑定，过期或换身份后失效。
-
-只读档按功能域登记读动作，域内未登记的动作默认按写处理（fail-closed）。覆盖文件、Git、终端、历史、媒体、定时任务、权限、创作台、订阅与浏览器；混合通道 `feature:studio:action` 按 `payload.type` 二分。
-
-## 协作任务
-
-工作模式没有独立的协作开关：主代理保留完整工具，简单工作直接完成；需要并行、隔离或独立验收时调用 `super_agent` 派发协作成员。协作状态由 `core/agent`、`core/collaboration` 与 `main/collaboration` 驱动：
-
-- **固定编号**：每次协作使用固定 `projectId` / `taskId`，每次重试生成新的 `attemptId`；状态记录来源（worker/verifier/user/system/legacy）、`revision` 与 `createdAt`，拒绝重复通知和晚到的旧 run。
-- **执行前落盘**：协作动作在执行前写入 `collaboration/projects/<projectId>.json`；`pending` 可恢复，崩溃后遗留的 `running/executed` 转为 `uncertain` 等待人工核对，`done` 不会再次领取。会话文件只保存项目/任务编号。
-- **独立工作副本**：协作成员在隔离副本中读写，结束后按任务文件清单合并；同文件同处冲突保留两版交给用户选择；用户未提交的改动保留。
-- **成果版本**：发布时把文件复制到用户数据目录的只读快照；依赖成员读取快照，不受发布者后续修改影响；记录谁用了哪一版，新版本让旧使用记录过期。
-- **独立验收**：verifier 在候选版本上运行安全命令并检查必需文件；失败退回作者返工，超过次数交负责人；验收后交付文件变化会作废旧结论并重新验收。
-- **并发与用量**：协作成员名额受本机并发限制；用量只统计展示，不设硬预算或自动停止。
-- **卡住判断**：只有重复无成果、审批等待或稳定产出等有依据的情况才提醒；停止或继续等待不影响其他成员。
-- **补充与重试**：成员卡片可向运行中成员发送补充要求；失败/停滞任务可单项重试或带新指令重新激活。
-- **主界面驾驶舱**：`SuperAgentState.toolUseId` 记录最近一次派发的 super_agent 工具调用，渲染层据此把完整状态挂回主对话里的成员卡片；历史协作只保留静态摘要。
-
-实现位置：`core/collaboration.ts`（成果、计划、验收、资源探测、卡住判断）与 `main/collaboration.ts`（存储、运行时、验收、共享资源、成员名额、工具审计）。
+- `deny` 优先于 `allow`；规则在设置 › 权限 › 文件夹权限规则里维护，删改后下一次调用立即生效。
+- 审批卡有三个动作：允许一次、始终允许、拒绝。高危动作与终端写入不显示“始终允许”；拒绝结果会回灌给模型，并明确要求不要重试同一操作。
+- 定时任务无人值守时，任何审批自动拒绝，错误文案说明需要你手动处理；这是定时任务只有只读与自动两档的原因。
+- 工具执行身份与审批绑定：协作成员不能用主代理的批准，过期签名与换运行都不放行。
 
 ## 上下文与压缩
 
-- **两层结构**：`Session.messages` / `RunContext.messages` 是**完整记录**（界面、落盘、导出、搜索、分叉都读它，永不裁剪）；`RunContext.modelMessages` 只承载发给模型的那一份，压缩只作用于它。协作成员循环（`runMemberLoop`）同样维护独立模型侧数组。
-- **压缩只插入标记**：完整记录里在真实切点插入一条 `role=system` 摘要标记（带 `preservedMessageIds`、轮次、节省量），原文一条不删；模型侧由 `modelMessagesFrom()` 从最后一条标记处重建，旧会话（无标记）原样作为模型视图，无需迁移。
-- **先修剪、后摘要**：达到压缩阈值后，先对模型侧较早的超大工具结果做确定性修剪（默认保留前 4096 + 后 1024 字符，中间写省略标记，最近几条消息保持原文），完整原文仍在会话记录里；修剪后已回到阈值内就跳过摘要模型，仍需摘要时摘要模型看到的也是修剪后的内容。短历史无法切段时同样只折叠模型侧，不删记录。
-- **运行状态检查点**：每次压缩都从当前 Goal / 计划 / 待办 / 最近用户指令 / 产物生成一段系统运行状态，附在摘要之后；它不交给摘要模型改写，压缩后仍以真实状态为准，避免长任务忘记下一步。保留顺序融合 Codex 的「最近用户消息优先」与 Qoder 式「工作集优先」：先保目标、计划、待办和最近指令，再让旧叙述让位。
-- **折叠预算随标记持久化**：单条工具结果常比整个目标预算还大，压缩时会按 `targetRatio`（默认 0.15，范围 0.10–0.30）逐级收紧工具输出，并把实际截断长度写进标记的 `modelTrimChars`；折叠同样保留头尾，`modelTrimThroughId` 限定只折叠压缩当时已有的内容，压缩后新增的消息保持原文。
-- **规划必须基于模型侧**：`planCompaction` 的输入是 `modelMessages`。用完整记录规划会因记录只增不减而每步重复触发压缩，且 `cutIndex` 与模型侧索引错位会清空当前窗口。
-- 上下文账本保留最近用户消息、关键事实、工具结果与任务约束；账本与运行状态都按节替换，不会在多次压缩中重复累积。
-- 压缩 v2：确定性关键信息账本；不把摘要再次摘要；保留最近用户消息；压缩提示词带预算；Thrashing 保护避免反复压缩。
-- 压缩后仍校验工具配对与首条角色；恢复时合并进行中消息，避免丢分片。
-- 摘要消息记录其原文保留的消息 id；渲染层把“已压缩”标记放在保留段与后续内容的真实切点，而不是对话顶部。
-- 断流重连：已有正文时断点续接；只有思考、还没有正文时重发原请求；空闲超时标记为可重试；重试耗尽在错误里注明重试次数。
-- 模型只返回思考/空内容不视为任务完成：内核自动重试本步（最多 2 次），仍无正文时给出明确错误，不静默停止。
+上下文分两层，这一点决定了压缩能不能撤销、历史会不会丢。
 
-## Provider 与订阅
+- `Session.messages` 是完整记录：界面、落盘、导出、搜索与分叉都读它，永不裁剪。`RunContext.modelMessages` 才是发给模型的那一份，压缩只作用于它。
+- 触发阈值默认是上下文窗口的 80%，界面可调 50–95%；压缩时保留最近 8 条消息原文。
+- 先修剪、后摘要：达到阈值后先对较早的超大工具结果做确定性修剪（保留头尾，中间写省略标记），修剪后回到阈值内就跳过摘要模型；仍需摘要时，摘要模型看到的也是修剪后的内容。
+- 摘要以一条 `role=system` 标记插入模型侧，带 `preservedMessageIds`、轮次与节省量；完整记录里原文一条不删，界面把“已压缩”标记画在真实切点。
+- 摘要前会从目标、计划、待办、最近指令与产物生成一段运行状态，附在摘要之后；它不交给摘要模型改写，压缩后仍以真实状态为准。
+- 规划压缩必须基于 `modelMessages`。用完整记录规划会因记录只增不减而反复触发压缩，还会让 `cutIndex` 与模型侧索引错位。
+- 用量有服务商真实占用时标注“API 精确”，否则标“估算”；压缩节省量按同一口径展示。
+- 目标比例 0.15 只在内核使用，界面不暴露；工具输出折叠长度写进标记，压缩后新增的消息保持原文。
 
-Provider 工厂支持 OpenAI 兼容、Anthropic 原生与 demo；本机模型走 OpenAI 兼容地址。订阅渠道使用独立适配器，处理 OAuth、本机登录、用量与模型目录；协议差异集中在 `src/main/subscriptions.ts`。订阅创建的 Provider 带 `managedBySubscription` 标记，只在订阅页管理，模型页只列官方 API 与自定义服务。
+## 长期目标、研究与定时任务
 
-模型上下文档位由用户按完整窗口选择（3 档），以 `contextEdited` 标记随模型保存；最大输出档位（32K / 64K / 128K，1M 上下文模型追加 256K）以 `maxOutputEdited` 保存；订阅恢复/同步时设置存储保留用户选择，不会被目录默认值覆盖。
+三者跑在同一个 Agent 循环里，差别是续跑条件、来源门槛与无人值守策略。
 
-自定义服务的模型元数据可整体编辑（上下文 / 输出 / 思考档位与映射 / 图片输入 / 工具调用），写入同一套 `ModelInfo` 标记，刷新模型列表不会覆盖手动值。服务级另有 `ProviderConfig.retry`（`maxRetries` + `delays`）：`resolveRetryPolicy` 按「调用方覆盖 > 配置 > `DEFAULT_PROVIDER_RETRY`」合并并对越界值收敛；4xx（429 除外）与主动中断不重试。网关不声明长度时 `fallbackModelWindow` 按已知模型家族兜底，本机服务不猜测。
+| 能力 | 运行边界 | 停止或完成条件 |
+|---|---|---|
+| 长期目标 | 单段 2–256 轮；用尽仍在推进自动 +12 轮，硬上限 2000；至少 60 分钟有效运行 | 连续 3 轮无进展、你主动停止；完成需工作区内真实文件证据 |
+| 深度研究 | 快速 2 轮且至少 4 个来源；标准 4 轮且至少 10 个；深入 6 轮且至少 20 个；先规划再检索 | 来源不足，或没有带引用的报告，都不算完成 |
+| 定时任务 | 一次、每天或每周；最多 50 个；5 秒 tick；全局串行；单次 30 分钟超时 | 错过超过 1 小时标 `missed`；应用不运行就不执行 |
 
-## 持久化
-
-- 会话、设置、项目、记忆、技能、定时任务、用量与协作项目均为本机文件/JSON。
-- 写入采用临时文件加重命名；读取校验并保留回滚清单。
-- 密钥通过系统安全存储加密；界面不回显明文。
-- 日志脱敏后写 JSON 行；敏感字段不落日志。
+- 目标完成由 `update_goal` 声明，必须给出工作区内真实存在的文件路径。只有文字总结不算完成。
+- 研究来源要与真实搜索与读取记录比对，编造的 URL 不计入来源数；报告必须带引用。
+- 定时任务只有只读与自动两档，没有“询问”；无人值守时任何审批自动拒绝。
+- 三者都走同一套工具、权限与事件；定时任务触发时如果已有任务在跑，会排队而不是并行。
 
 ## 创作台架构
 
-- `StudioService` 负责动作、任务、模型调用、媒体与导出；`StudioStore` 是唯一写入口。
-- 蓝图由文本模型生成并按 token 计费；确认蓝图后才写正文/分镜、做画面，这些步骤另计费用；候选稿、历史版本、覆盖范围、任务状态与交付记录都在作品内。
-- 三套大师方法与提示词基座只来自构建期产物 `src/generated/prompts.bundle.ts`（`main/prompt-kit` 解包）；该产物不进仓库，本地不保留明文副本。
-- 协作者使用统一动作契约：预览影响、确认后应用、可撤销、下游过期；不直接改用户文件。
-- 漫剧：蓝图 → 大纲 → 分镜 → 画面 → 配音/配乐 → 时间线 → 检查 → 交付；画布只组织工作流，不替代时间线。
-- 导出：图片、视频、音频、PDF、DOCX、EPUB 与工程包；FFmpeg、字体与引擎缺失时明确失败。
+创作台是主进程里的 `StudioService` 加作品存储 `StudioStore`；渲染层只发动作、订阅事件。
 
-### 产线判定层
+- 产线是一条单向链：形态 → 阶段 → 任务队列 → 检查 → 导出。形态有三种（中短篇、长篇、漫剧），阶段有 10 个（蓝图、大纲、写作、分镜、画面、配音、音乐、时间线、检查、交付），按形态取子集。
+- 任务队列有 10 种类型（文本、图片、视频、配音、音乐、音效、渲染、导出、审稿、导入）与 6 种状态（`queued`、`running`、`review`、`done`、`failed`、`cancelled`）。队列在内存与作品文件里各有一份，退出应用后不继续执行。
+- 检查有 8 类（连续性、画面、音频、字幕、缺失、价格、配音、质量）。本地确定性检查先跑，模型审稿另计费；存在未解决的 `error` 时禁止导出最终稿，中间文件可以先导出。
+- `shared/gate.ts` 把可计算检查汇总成统一门禁，`ERROR > 0` 阻断出包；新增检查项必须同时登记到 `GATE_CHECKS`，`missingGateChecks` 会拦住“加了检查但没接进门禁”。
+- 纯判定模块放 `src/shared`：`gate`、`scene-integrity`、`seam-audit`、`director-layer`、`reference-image`。抽帧、FFmpeg、引擎探测与提示词解包留在 `src/main`，因为要碰进程与文件。
+- 作品上限：单作品 512 MB、单素材 2 GB、工程包 300 MB；任务记录保留 120 条。退出时把 `running` 与 `queued` 改成 `review`，下次打开不会假装任务还在跑。
+- 蓝图由文本模型生成并按 token 计费；确认蓝图后才进入后续阶段，后续步骤另计费。没有真实模型或引擎时明确失败，不用占位素材冒充。
+- 提示词基座只来自构建期产物 `src/generated/prompts.bundle.ts`，由 `main/prompt-kit` 在运行时解包；仓库与本机都不保留明文副本。
 
-创作台的「能不能播」由一组纯逻辑模块判定，它们放在 `src/shared/`，只做可计算检查，不依赖 Electron，可单独测试：
+## 手机通道架构
 
-| 模块 | 职责 |
-|---|---|
-| `shared/scene-integrity` | 帧数契约（有实测帧数就只信实测，不足缩短、超额截断；剪辑不补帧、不放慢）+ 任务归属核对（请求参数 vs 实测特征） |
-| `shared/seam-audit` + `main/seam-probe` | 接缝/静帧审计（抽首/中/末帧算 MD5 + PSNR，PSNR > 30dB 判静帧或接缝重复）+ 内嵌字幕检测（三帧投票）与 PGM 解析 |
-| `shared/director-layer` | 导演四问、景别链、首镜禁空镜、动作-反应镜配对 + 时长规划（段数 = 台词句数 ÷ 3，按情绪四节拍分配，全等长视为催眠效应） |
-| `main/video-prompt` | 视频提示词的固定骨架、中文边界扫描，以及中文 shot 字段到英文的适配层 |
-| `main/prompt-kit` | 创作台提示词基座的运行时读取层（从构建期产物解包） |
-| `main/hand-avoid` | 连语义一起改写字幕动作，让画面不再需要手 |
-| `main/music-audit` | 比较语音频段与全频段响度差，判配乐疑似有人声 |
-| `shared/reference-image` | 参考图统一到目标尺寸（向下对齐 32），避免顶爆显存 |
-| `shared/engine-args` | 拦截会导致 OOM 的引擎启动参数 |
-| `shared/gate` | 14 项 ERROR/WARN 汇总成统一门禁，**ERROR > 0 阻断出包**，一次性收齐所有问题 |
+手机端是桌面端的旁观与审批端，不执行任何工具。桌面端提供通道与配对，Android 端负责连接与展示，两端共享同一套帧格式。
 
-同功能域模块合并维护：`frame-contract` 与 `shot-attribution` 都在判「这一镜取回的东西能不能用」，合为 `scene-integrity`；接缝审计与内嵌字幕都从抽帧算起，合入 `seam-audit`；导演约束与时长规划是「怎么切」和「给多久」，合入 `director-layer`；骨架与适配层合为 `video-prompt`，改骨架不会漏改适配。
-
-### 提示词基座的封装
-
-创作台的方法论与工作流提示词——三套大师方法、7 条系统提示词、v4 骨架固定句、中文映射与英文兜底、手部改写模板、配乐声明与乐器编制——**不以任何可解密形式进仓库**：
-
-- 唯一运行时来源是 `src/generated/prompts.bundle.ts`，由 `scripts/embed-prompts.mjs` 从本机私有源（默认 `%APPDATA%\Morrow-build\prompts\`）现场生成；该目录被 `.gitignore` 忽略，`prebuild` 自动生成，不进仓库、不进源码包。
-- 产物经 gzip + 逐字节异或 + 整串倒序，避免被顺手 `strings` 看穿。**这只是防止一眼看穿，不承担保密职责；真正的保护是产物不发布。**
-- 私有源缺失时构建明确失败，不会静默产出缺提示词的应用。
-- Agent 侧辅助提示词（侧边聊天、经验编辑、经验整理）价值有限，直接写在源码里，不内嵌。
-
-门禁在 `studio.ts` 的出包路径上调用 `evaluateGate`，未通过即 `assertGatePassed` 抛出可行动的异常。检查项清单在 `gate.ts` 的 `GATE_CHECKS`，`missingGateChecks` 会拦住「新增了检查项但忘了接进门禁」。
-
-### 音频与画面
-
-画面轨只提供像素，视频自带音轨一律丢弃；声音只来自重建的四层（对白 / 环境床 / 音效 / 配乐），loudnorm 改双遍稳定在 −18dB 附近。配乐必须是纯器乐，人声会破坏「假语言」判定。
+- 桌面端四个文件加一个占位：`relay.ts` 管设置与生命周期，`relay-channel.ts` 做通道选择与直连探测，`relay-crypto.ts` 管信封、AES-GCM 帧与自签证书，`relay-pairing.ts` 管票据、六位码与设备密钥，`relay-server.ts` 是公网中继的占位实现。
+- 连接范围是同一局域网内的 `wss://` 直连：证书自签，手机在配对时记住指纹并固定，不验证证书链。公网中继只在本机监听，不承载手机流量，跨网络不可用。
+- 通道选择器有三级（局域网直连、中继、推送）。直连持续不可达满宽限期才降级，避免一个丢包让状态来回抖；中继当前不可用，所以实际只有直连与“未连接”。
+- 配对：桌面生成一次性票据（90 秒有效、`MORROWPAIR1.` 文本），手机回传公钥与 nonce；六位码由双方公钥派生、两端本地比对，最多错 3 次；ECDH P-256 协商后经 HKDF-SHA256 派生双向密钥。
+- 帧用 AES-256-GCM，AAD 绑定方向、设备与单调计数。重复计数与篡改分别以 4402 与 4403 关闭连接，4401 表示未授权；这三个关闭码都不重连。
+- Android 端源码不在本仓，位于 `C:\交付成品\MorrowAndroid`。WebSocket 客户端与 RFC 6455 帧编解码是手写的，`SecureChannel` 负责双向密钥、AAD 与防重放；本仓只放 `deliver/` 里的 APK。
+- 手机端没有桌面连接时停在未配对状态，不编造数据；通知、审批与作品页的数据来源见 [MOBILE.md](MOBILE.md)，协议细节见 [PAIRING.md](PAIRING.md)。
+- Android 侧只有 JVM 用例（844 项、57 类），没有仪器测试，也没有真机证据；这是当前交付的已知边界。
 
 ## 设计系统
 
-- **主题**：墨夜（默认）与素纸（light），共享 token，不新增第三套主题。
-- **色彩**：背景、表面、文字、分隔线、强调色与状态色都由 token 驱动；破坏性确认使用低饱和酒红。
-- **字体**：界面 Manrope / 中文字体；正文与文档使用 Newsreader / Noto Serif SC；代码 IBM Plex Mono / JetBrains Mono。
-- **布局**：左侧栏、中心对话/画布、右侧面板；创作台三栏；1px 分隔线；默认 2100×1200，适配 1280–3840。
-- **组件**：页签、开关、状态标签、按钮、Composer、消息与轨迹、权限卡、画布、设置、灵动岛与创作台品牌；输入框、文本域与下拉统一使用 `--control-radius` 微圆角和 `--control-focus-shadow` 内嵌焦点环。
-- **动效**：克制、短时，只用于状态变化与空间关系；减少动态偏好下不阻塞操作。
-- **可访问性**：键盘可达、焦点可见、对比度达标、禁用斜体、窗口缩放不挤压。字号下限为 11px，`npm run audit:ui` 会检查裸字号声明。
+界面只有两套主题，所有排版值都走 token。这样切换字号与主题时不会出现局部写死。
 
-样式集中在 `src/renderer/styles.css`、`components.css` 与各 feature 的 `*.css`。
+- 主题是墨夜（默认）与素纸，共享同一套 token，不新增第三套。破坏性确认使用低饱和酒红。
+- 字号阶梯从两个基值推导：`styles.css` 定义 `--font-ui-size` 与 `--font-code-size`，其余 `--fs-*` 全部用 `var()` 从基值算出。切换字号只改基值。
+- `ui-token-audit` 是硬门槛：CSS 与 TSX 里禁止裸 `font-size: 13px`、裸 `font-weight`、裸 `line-height`、写死的 `letter-spacing` 与 `outline: 2px`；字号必须走 `var(--fs-*)`、继承或相对单位。
+- 焦点环统一 `--focus-ring-width: 2px`；输入框、文本域与下拉使用 `--control-radius` 微圆角与 `--control-focus-shadow` 内嵌焦点环。
+- 动效短、只用于状态变化与空间关系；系统开启减少动效时不阻塞操作；正文不使用斜体。
+- 样式分三处：`src/renderer/styles.css` 放 token 与基础，`components.css` 放通用组件，各 feature 的 `*.css` 放局部样式。文档与导出预览的 iframe 允许保留自身排版字号，审计里单独放行。
 
 ## 安全边界
 
-- **进程隔离**：contextIsolation、sandbox、无 nodeIntegration、禁用 webview；preload 白名单。
-- **CSP**：生产包收紧 CSP；仅应用自身 `index.html` 与受控成品预览协议可加载。
-- **路径**：文件工具限制在工作区；工作区外读取只允许显式附件；写入仍走权限。
-- **命令**：危险命令、越界路径、外部副作用与终端 stdin 逐次审批；命令环境过滤敏感变量。
-- **网页 / MCP / 桌面**：内容按不可信数据处理；浏览器只允许 http(s)，`window.open` 拒绝；MCP 信任按工作区；桌面敏感窗口拒绝。
-- **密钥**：系统安全存储加密，界面不回显，日志脱敏。
-- **网络**：订阅与搜索走明确服务商；本机/局域网模型不误走原生搜索；带 SSRF 防护。
-- **已知边界**：两个 exe 未签名；外部引擎与 FFmpeg 不随包；真实模型质量与账号额度由服务商决定。
+安全边界由进程隔离、路径限制、审批顺序与密钥处理四条线组成。任何一条被绕过，其余三条都补不回来。
+
+- 进程隔离：`contextIsolation`、`sandbox`、关闭 `nodeIntegration`、禁用 webview；preload 只暴露白名单方法。
+- 页面与 CSP：生产包收紧 CSP，只允许应用自身页面与受控预览协议；`window.open` 被拒绝，外链只走系统浏览器。
+- 路径：文件工具限制在工作区；工作区外只允许显式附件的只读访问，写入仍走权限审批。
+- 命令：危险命令、越界路径、外部副作用与终端 stdin 逐次审批；命令环境过滤敏感变量，不把整份环境交给子进程。
+- 不可信内容：网页、MCP 工具结果与桌面窗口内容都按不可信数据处理；浏览器只允许 http(s)；MCP 信任按工作区授予。
+- 密钥：系统安全存储加密，界面不回显，日志脱敏；网络请求带 SSRF 防护，本机与局域网模型不误走厂商原生搜索。
+- 已知边界：两个 exe 未签名；ComfyUI、FFmpeg、TTS 模型与音乐服务不随包；Android 是 debug 构建；公网中继未实现；真实模型质量与账号额度由服务商决定。
 
 ## 构建、测试与打包
 
-```powershell
-npm run typecheck
-npm run audit:ui
-npm run docs:check
-npm run test:suite
-npm run test:unit
-npm run test:e2e
-npm run dist:final
-npm run smoke:packaged
-```
+源码构建有一个容易踩的前置：创作台提示词不在仓库里。`prebuild` 调 `scripts/embed-prompts.mjs`，从 `%APPDATA%\Morrow-build\prompts`（可用 `MORROW_PROMPT_SOURCE` 覆盖）读取私有源并生成 `src/generated/prompts.bundle.ts`。缺源时 `npm run build` 明确失败；干净 clone 只能先跑 `typecheck`（`pretypecheck` 用占位产物），不能直接构建。
 
-- 核心套组：985 项单元加 96 条 Electron 流程，43 个功能域；清单在 `tests/core-coverage.json`（维护预算 985 / 96）。
-- 测试截图写 `tmp/e2e-screens`；文档截图由 `npm run docs:capture` 生成到 `docs/screens`，全部 2100×1200 原图。
-- 打包：`dist:final` 产出便携 exe 与安装包；流程见 [DEVELOPMENT.md](DEVELOPMENT.md)，交付证据见 [VERIFICATION.md](VERIFICATION.md)。
+- `verify` 链是 `typecheck → audit:ui → audit:flex → docs:check → test:suite → test:unit → test:e2e`，任何一步失败都返回非零。
+- 测试真值：985 个单元用例（56 个文件）、96 条 Electron 流程（16 个文件，95 通过加 1 跳过）、43 个功能域。`test:suite` 只做覆盖登记与数量预算的静态校验，不执行用例。
+- 打包：`dist:final` 等于 `npm run build` 加 `dist-portable --two-files`，产出便携版与 NSIS 安装包；`smoke:packaged` 真实启动便携包并检查首屏。
+- CI：`.github/workflows/quality-gates.yml` 只跑 typecheck、audit:ui、docs:check、test:suite。L2（单测、E2E、打包、冒烟）需要自托管 Windows runner，尚未接入；`audit:flex` 只在本地 `verify` 跑。
+- 文档与截图：`docs:capture` 产 27 张、`test:pair-panel` 产 1 张、E2E 顺手产 2 张；`docs:check` 校验链接、锚点、截图尺寸与“每张图被引用”。细节见 [DEVELOPMENT.md](DEVELOPMENT.md)。
