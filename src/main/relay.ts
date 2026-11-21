@@ -229,33 +229,47 @@ export function lanPort(): number | null {
 }
 
 /**
+ * 虚拟网卡名（Hyper-V / VirtualBox / VMware / WSL / VPN / 抓包）。
+ *
+ * 这些网卡通常也有 `192.168.*` 地址，但手机根本路由不到 ——
+ * 本机实测：`vEthernet (Default Switch)` 是 192.168.48.1，
+ * 真正的 WLAN 是 192.168.1.5。只按网段排序会选中前者，
+ * 结果就是「配对成功、连接超时」。
+ */
+const VIRTUAL_ADAPTER = /vEthernet|Virtual|VMware|VirtualBox|Hyper-?V|WSL|Docker|Tailscale|ZeroTier|Bluetooth|Npcap|VPN/i
+
+/** 物理接入网卡名（中英文系统都覆盖），优先级高于未知网卡 */
+const PHYSICAL_ADAPTER = /Wi-?Fi|WLAN|Wireless|Ethernet|以太网|无线|本地连接/i
+
+/**
  * 本机可被同一局域网访问的 IPv4。
  *
- * 选路顺序：`192.168.*` → `10.*` → `172.16–31.*` → 其它非回环地址。
- * 之所以要排序而不是取第一个：Windows 上虚拟网卡（Hyper-V、WSL、VPN）
- * 常常排在物理网卡前面，取第一个会签出一张手机根本路由不到的票据。
- * 回环地址一律排除 —— 它只能在同一台机器上访问，写进票据等于必然失败。
+ * 评分顺序：非虚拟网卡 > 明确是物理网卡 > 私网网段更常见
+ * （`192.168.*` → `10.*` → `172.16–31.*` → 其它）。
+ * 回环与 169.254.*（DHCP 失败）一律排除 —— 它们不可能被手机访问到。
+ * 只剩虚拟网卡时仍然返回它：有地址总比让用户对着一张没有地址的票强，
+ * 但评分保证在有两块网卡时优先物理那块。
  */
 export function firstLanIpv4(): string | null {
-  const candidates: string[] = []
-  for (const list of Object.values(networkInterfaces())) {
+  const candidates: { ip: string; score: number }[] = []
+  for (const [name, list] of Object.entries(networkInterfaces())) {
     for (const net of list ?? []) {
       if (net.family !== 'IPv4' || net.internal) continue
-      // 169.254.* 是自动私有地址（DHCP 失败），不能作为稳定入口
       if (net.address.startsWith('169.254.')) continue
-      candidates.push(net.address)
+      const rank = net.address.startsWith('192.168.')
+        ? 0
+        : net.address.startsWith('10.')
+          ? 1
+          : /^172\.(1[6-9]|2\d|3[01])\./.test(net.address)
+            ? 2
+            : 3
+      const virtual = VIRTUAL_ADAPTER.test(name) ? 1 : 0
+      const unnamed = PHYSICAL_ADAPTER.test(name) ? 0 : 1
+      candidates.push({ ip: net.address, score: virtual * 100 + unnamed * 10 + rank })
     }
   }
-  const rank = (ip: string): number =>
-    ip.startsWith('192.168.')
-      ? 0
-      : ip.startsWith('10.')
-        ? 1
-        : /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
-          ? 2
-          : 3
-  candidates.sort((a, b) => rank(a) - rank(b))
-  return candidates[0] ?? null
+  candidates.sort((a, b) => a.score - b.score)
+  return candidates[0]?.ip ?? null
 }
 
 /**
