@@ -13,12 +13,32 @@ const OBJECT_INFO = {
     input: { required: { unet_name: [['qwen-image-2.1-turbo-Q6_K.gguf'], {}] } }
   },
   UNETLoader: {
-    input: { required: { unet_name: [['minimax_h3_ref2va_dit_16g.safetensors', 'minimax_h3_fl2va_dit_16g.safetensors'], {}] } }
+    input: {
+      required: {
+        unet_name: [
+          [
+            'minimax_h3_image_pruned_w4a8.safetensors',
+            'minimax_music3_dit_int8_convrot.safetensors',
+            'minimax_h3_ref2va_dit_16g.safetensors',
+            'minimax_h3_fl2va_dit_16g.safetensors'
+          ],
+          {}
+        ]
+      }
+    }
   },
   CLIPLoader: {
     input: {
       required: {
-        clip_name: [['qwen3vl_8b_bf16.safetensors', 'qwen3vl_text_encoder.safetensors'], {}],
+        clip_name: [
+          [
+            'qwen3vl_8b_bf16.safetensors',
+            'qwen3vl_32b_minimax_h3_nvfp4.safetensors',
+            'minimax_music3_text_encoder_pruned_int8_convrot.safetensors',
+            'qwen3vl_text_encoder.safetensors'
+          ],
+          {}
+        ],
         type: [['qwen_image', 'minimax'], {}]
       }
     }
@@ -27,7 +47,13 @@ const OBJECT_INFO = {
     input: {
       required: {
         vae_name: [
-          ['qwen_image_2.1_vae_bf16.safetensors', 'minimax_h3_video_vae_fp16.safetensors', 'minimax_h3_audio_vae_fp32.safetensors'],
+          [
+            'qwen_image_2.1_vae_bf16.safetensors',
+            'minimax_h3_image_vae_fp16.safetensors',
+            'minimax_music3_dav.safetensors',
+            'minimax_h3_video_vae_fp16.safetensors',
+            'minimax_h3_audio_vae_fp32.safetensors'
+          ],
           {}
         ]
       }
@@ -35,7 +61,11 @@ const OBJECT_INFO = {
   },
   MiniMaxH3MemoryEfficientSolAttentionPatch: { input: { required: {} } },
   TextEncodeQwenImage21: { input: { required: {} } },
-  MiniMaxH3ReferenceToVideo: { input: { required: {} } }
+  MiniMaxH3ImageConditioning: { input: { required: {} } },
+  MiniMaxH3ReferenceToVideo: { input: { required: {} } },
+  MiniMaxMusic3TextEncode: { input: { required: {} } },
+  EmptyMiniMaxMusic3LatentAudio: { input: { required: {} } },
+  VAEDecodeAudio: { input: { required: {} } }
 }
 
 function json(response, status, payload) {

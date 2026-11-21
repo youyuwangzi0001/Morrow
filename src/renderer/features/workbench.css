@@ -1,0 +1,83 @@
+/* workbench 功能域样式：由 1 个样式表按原引用顺序合并。 */
+
+/* 电脑操作栏：与成品画布共用右侧栏，默认 420px；不再覆盖主对话。 */
+.browser-dock {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  width: 420px;
+  min-width: 320px;
+  max-width: min(960px, 68vw);
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid var(--line-gold);
+  background: var(--bg-elev);
+  animation: browser-dock-in var(--dur-slow) var(--ease-out);
+  container-type: inline-size;
+}
+
+.browser-dock > .browser-surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.browser-dock-resizer {
+  z-index: 199;
+}
+
+/* 手柄是 aside 的同级元素，拖动/悬浮时让位给 1px 香槟金强调线，避免双线。 */
+.browser-dock-resizer:hover ~ .browser-dock,
+.browser-dock-resizer:focus-visible ~ .browser-dock,
+.browser-dock-resizer.is-dragging ~ .browser-dock {
+  border-left-color: transparent;
+}
+
+.browser-dock.is-hidden {
+  display: none;
+}
+
+/* 电脑操作栏打开时，成品画布让位；关闭后原样恢复。 */
+body.is-browser-dock-open .app-main > .canvas-root:not(.browser-dock),
+body.is-browser-dock-open .canvas-resizer {
+  display: none;
+}
+
+.app.is-sidechat-open .browser-dock,
+.app.is-sidechat-open .browser-dock-resizer {
+  display: none;
+}
+
+@keyframes browser-dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 窄屏：右栏放不下对话 + 操作面时退化为全屏，避免把对话挤没。 */
+@media (max-width: 1000px) {
+  .browser-dock {
+    position: fixed;
+    inset: var(--titlebar-h, 44px) 0 0;
+    z-index: var(--z-overlay);
+    width: auto !important;
+    max-width: none;
+    min-width: 0;
+    border-left: 0;
+    animation: none;
+  }
+
+  .browser-dock-resizer {
+    display: none;
+  }
+
+  body.is-browser-dock-open .titlebar {
+    display: none;
+  }
+}

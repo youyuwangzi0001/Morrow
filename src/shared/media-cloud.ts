@@ -1,0 +1,808 @@
+/**
+ * 云端媒体：能力目录、服务商预设与官方配音音色。
+ *
+ * 音色目录原在 media-voices.ts，与预设同属「云端媒体」域，按扁平规范合入本文件。
+ */
+
+// ───── media-voices.ts ─────
+/** 官方配音音色目录；MiniMax 列表抓取自官方文档（2026-11-05），Qwen/OpenAI 为官方系统音色。 */
+
+export interface CloudMediaVoice {
+  id: string
+  label: string
+}
+
+export const OPENAI_TTS_VOICES: CloudMediaVoice[] = [
+  { id: "alloy", label: "Alloy" },
+  { id: "ash", label: "Ash" },
+  { id: "ballad", label: "Ballad" },
+  { id: "coral", label: "Coral" },
+  { id: "echo", label: "Echo" },
+  { id: "fable", label: "Fable" },
+  { id: "nova", label: "Nova" },
+  { id: "onyx", label: "Onyx" },
+  { id: "sage", label: "Sage" },
+  { id: "shimmer", label: "Shimmer" },
+  { id: "verse", label: "Verse" },
+  { id: "marin", label: "Marin" },
+  { id: "cedar", label: "Cedar" }
+]
+
+export const QWEN3_TTS_VOICES: CloudMediaVoice[] = [
+  { id: "Cherry", label: "芊悦 · 阳光亲切女声" },
+  { id: "Serena", label: "苏瑶 · 温柔女声" },
+  { id: "Ethan", label: "晨煦 · 阳光温暖男声" },
+  { id: "Chelsie", label: "千雪 · 二次元女声" },
+  { id: "Momo", label: "茉兔 · 撒娇搞怪女声" },
+  { id: "Vivian", label: "十三 · 可爱小暴躁女声" },
+  { id: "Moon", label: "月白 · 率性帅气男声" },
+  { id: "Maia", label: "四月 · 知性温柔女声" },
+  { id: "Kai", label: "凯 · 耳朵 SPA 男声" },
+  { id: "Nofish", label: "不吃鱼 · 设计师男声" },
+  { id: "Bella", label: "萌宝 · 萝莉女声" },
+  { id: "Jennifer", label: "詹妮弗 · 电影感美式女声" },
+  { id: "Ryan", label: "甜茶 · 高韵律戏剧男声" },
+  { id: "Katerina", label: "卡捷琳娜 · 御姐女声" },
+  { id: "Aiden", label: "艾登 · 美式男声" },
+  { id: "Eldric Sage", label: "沧明子 · 睿智长者男声" },
+  { id: "Mia", label: "乖小妹 · 温顺女声" },
+  { id: "Mochi", label: "沙小弥 · 机灵童声" },
+  { id: "Bellona", label: "燕铮莺 · 英气女声" },
+  { id: "Vincent", label: "田叔 · 沧桑男声" },
+  { id: "Bunny", label: "萌小姬 · 超萌女声" },
+  { id: "Neil", label: "阿闻 · 新闻主播男声" },
+  { id: "Elias", label: "墨讲师 · 讲师女声" },
+  { id: "Arthur", label: "徐大爷 · 故事爷爷男声" },
+  { id: "Nini", label: "邻家妹妹 · 甜美女声" },
+  { id: "Seren", label: "小婉 · 温柔助眠女声" },
+  { id: "Pip", label: "顽屁小孩 · 顽皮童声" },
+  { id: "Stella", label: "少女阿月 · 甜美少女声" },
+  { id: "Bodega", label: "博德加 · 热情西班牙大叔" },
+  { id: "Sonrisa", label: "索尼莎 · 热情拉美大婶" },
+  { id: "Alek", label: "阿列克 · 俄罗斯男声" },
+  { id: "Dolce", label: "多尔切 · 慵懒意大利大叔" },
+  { id: "Sohee", label: "素熙 · 温柔韩语女声" },
+  { id: "Ono Anna", label: "小野杏 · 日语青梅女声" },
+  { id: "Lenn", label: "莱恩 · 理性德国青年" },
+  { id: "Emilien", label: "埃米尔安 · 浪漫法国男声" },
+  { id: "Andre", label: "安德雷 · 磁性沉稳男声" },
+  { id: "Radio Gol", label: "拉迪奥·戈尔 · 足球解说男声" },
+  { id: "Jada", label: "上海-阿珍 · 上海话女声" },
+  { id: "Dylan", label: "北京-晓东 · 北京话男声" },
+  { id: "Li", label: "南京-老李 · 南京话男声" },
+  { id: "Marcus", label: "陕西-秦川 · 陕西话男声" },
+  { id: "Roy", label: "闽南-阿杰 · 闽南话男声" },
+  { id: "Peter", label: "天津-李彼得 · 天津话男声" },
+  { id: "Sunny", label: "四川-晴儿 · 四川话女声" },
+  { id: "Eric", label: "四川-程川 · 四川话男声" },
+  { id: "Rocky", label: "粤语-阿强 · 粤语男声" },
+  { id: "Kiki", label: "粤语-阿清 · 粤语女声" }
+]
+
+export const MINIMAX_SPEECH_VOICES: CloudMediaVoice[] = [
+  { id: "male-qn-qingse", label: "中文 (普通话) · 青涩青年音色" },
+  { id: "male-qn-jingying", label: "中文 (普通话) · 精英青年音色" },
+  { id: "male-qn-badao", label: "中文 (普通话) · 霸道青年音色" },
+  { id: "male-qn-daxuesheng", label: "中文 (普通话) · 青年大学生音色" },
+  { id: "female-shaonv", label: "中文 (普通话) · 少女音色" },
+  { id: "female-yujie", label: "中文 (普通话) · 御姐音色" },
+  { id: "female-chengshu", label: "中文 (普通话) · 成熟女性音色" },
+  { id: "female-tianmei", label: "中文 (普通话) · 甜美女性音色" },
+  { id: "male-qn-qingse-jingpin", label: "中文 (普通话) · 青涩青年音色-beta" },
+  { id: "male-qn-jingying-jingpin", label: "中文 (普通话) · 精英青年音色-beta" },
+  { id: "male-qn-badao-jingpin", label: "中文 (普通话) · 霸道青年音色-beta" },
+  { id: "male-qn-daxuesheng-jingpin", label: "中文 (普通话) · 青年大学生音色-beta" },
+  { id: "female-shaonv-jingpin", label: "中文 (普通话) · 少女音色-beta" },
+  { id: "female-yujie-jingpin", label: "中文 (普通话) · 御姐音色-beta" },
+  { id: "female-chengshu-jingpin", label: "中文 (普通话) · 成熟女性音色-beta" },
+  { id: "female-tianmei-jingpin", label: "中文 (普通话) · 甜美女性音色-beta" },
+  { id: "clever_boy", label: "中文 (普通话) · 聪明男童" },
+  { id: "cute_boy", label: "中文 (普通话) · 可爱男童" },
+  { id: "lovely_girl", label: "中文 (普通话) · 萌萌女童" },
+  { id: "cartoon_pig", label: "中文 (普通话) · 卡通猪小琪" },
+  { id: "bingjiao_didi", label: "中文 (普通话) · 病娇弟弟" },
+  { id: "junlang_nanyou", label: "中文 (普通话) · 俊朗男友" },
+  { id: "chunzhen_xuedi", label: "中文 (普通话) · 纯真学弟" },
+  { id: "lengdan_xiongzhang", label: "中文 (普通话) · 冷淡学长" },
+  { id: "badao_shaoye", label: "中文 (普通话) · 霸道少爷" },
+  { id: "tianxin_xiaoling", label: "中文 (普通话) · 甜心小玲" },
+  { id: "qiaopi_mengmei", label: "中文 (普通话) · 俏皮萌妹" },
+  { id: "wumei_yujie", label: "中文 (普通话) · 妩媚御姐" },
+  { id: "diadia_xuemei", label: "中文 (普通话) · 嗲嗲学妹" },
+  { id: "danya_xuejie", label: "中文 (普通话) · 淡雅学姐" },
+  { id: "Chinese (Mandarin)_Reliable_Executive", label: "中文 (普通话) · 沉稳高管" },
+  { id: "Chinese (Mandarin)_News_Anchor", label: "中文 (普通话) · 新闻女声" },
+  { id: "Chinese (Mandarin)_Mature_Woman", label: "中文 (普通话) · 傲娇御姐" },
+  { id: "Chinese (Mandarin)_Unrestrained_Young_Man", label: "中文 (普通话) · 不羁青年" },
+  { id: "Arrogant_Miss", label: "中文 (普通话) · 嚣张小姐" },
+  { id: "Robot_Armor", label: "中文 (普通话) · 机械战甲" },
+  { id: "Chinese (Mandarin)_Kind-hearted_Antie", label: "中文 (普通话) · 热心大婶" },
+  { id: "Chinese (Mandarin)_HK_Flight_Attendant", label: "中文 (普通话) · 港普空姐" },
+  { id: "Chinese (Mandarin)_Humorous_Elder", label: "中文 (普通话) · 搞笑大爷" },
+  { id: "Chinese (Mandarin)_Gentleman", label: "中文 (普通话) · 温润男声" },
+  { id: "Chinese (Mandarin)_Warm_Bestie", label: "中文 (普通话) · 温暖闺蜜" },
+  { id: "Chinese (Mandarin)_Male_Announcer", label: "中文 (普通话) · 播报男声" },
+  { id: "Chinese (Mandarin)_Sweet_Lady", label: "中文 (普通话) · 甜美女声" },
+  { id: "Chinese (Mandarin)_Southern_Young_Man", label: "中文 (普通话) · 南方小哥" },
+  { id: "Chinese (Mandarin)_Wise_Women", label: "中文 (普通话) · 阅历姐姐" },
+  { id: "Chinese (Mandarin)_Gentle_Youth", label: "中文 (普通话) · 温润青年" },
+  { id: "Chinese (Mandarin)_Warm_Girl", label: "中文 (普通话) · 温暖少女" },
+  { id: "Chinese (Mandarin)_Kind-hearted_Elder", label: "中文 (普通话) · 花甲奶奶" },
+  { id: "Chinese (Mandarin)_Cute_Spirit", label: "中文 (普通话) · 憨憨萌兽" },
+  { id: "Chinese (Mandarin)_Radio_Host", label: "中文 (普通话) · 电台男主播" },
+  { id: "Chinese (Mandarin)_Lyrical_Voice", label: "中文 (普通话) · 抒情男声" },
+  { id: "Chinese (Mandarin)_Straightforward_Boy", label: "中文 (普通话) · 率真弟弟" },
+  { id: "Chinese (Mandarin)_Sincere_Adult", label: "中文 (普通话) · 真诚青年" },
+  { id: "Chinese (Mandarin)_Gentle_Senior", label: "中文 (普通话) · 温柔学姐" },
+  { id: "Chinese (Mandarin)_Stubborn_Friend", label: "中文 (普通话) · 嘴硬竹马" },
+  { id: "Chinese (Mandarin)_Crisp_Girl", label: "中文 (普通话) · 清脆少女" },
+  { id: "Chinese (Mandarin)_Pure-hearted_Boy", label: "中文 (普通话) · 清澈邻家弟弟" },
+  { id: "Chinese (Mandarin)_Soft_Girl", label: "中文 (普通话) · 柔和少女" },
+  { id: "Cantonese_ProfessionalHost（F)", label: "中文 (粤语) · 专业女主持" },
+  { id: "Cantonese_GentleLady", label: "中文 (粤语) · 温柔女声" },
+  { id: "Cantonese_ProfessionalHost（M)", label: "中文 (粤语) · 专业男主持" },
+  { id: "Cantonese_PlayfulMan", label: "中文 (粤语) · 活泼男声" },
+  { id: "Cantonese_CuteGirl", label: "中文 (粤语) · 可爱女孩" },
+  { id: "Cantonese_KindWoman", label: "中文 (粤语) · 善良女声" },
+  { id: "Santa_Claus", label: "英文 · Santa Claus" },
+  { id: "Grinch", label: "英文 · Grinch" },
+  { id: "Rudolph", label: "英文 · Rudolph" },
+  { id: "Arnold", label: "英文 · Arnold" },
+  { id: "Charming_Santa", label: "英文 · Charming Santa" },
+  { id: "Charming_Lady", label: "英文 · Charming Lady" },
+  { id: "Sweet_Girl", label: "英文 · Sweet Girl" },
+  { id: "Cute_Elf", label: "英文 · Cute Elf" },
+  { id: "Attractive_Girl", label: "英文 · Attractive Girl" },
+  { id: "Serene_Woman", label: "英文 · Serene Woman" },
+  { id: "English_Trustworthy_Man", label: "英文 · Trustworthy Man" },
+  { id: "English_Graceful_Lady", label: "英文 · Graceful Lady" },
+  { id: "English_Aussie_Bloke", label: "英文 · Aussie Bloke" },
+  { id: "English_Whispering_girl", label: "英文 · Whispering girl" },
+  { id: "English_Diligent_Man", label: "英文 · Diligent Man" },
+  { id: "English_Gentle-voiced_man", label: "英文 · Gentle-voiced man" },
+  { id: "Japanese_IntellectualSenior", label: "日文 · Intellectual Senior" },
+  { id: "Japanese_DecisivePrincess", label: "日文 · Decisive Princess" },
+  { id: "Japanese_LoyalKnight", label: "日文 · Loyal Knight" },
+  { id: "Japanese_DominantMan", label: "日文 · Dominant Man" },
+  { id: "Japanese_SeriousCommander", label: "日文 · Serious Commander" },
+  { id: "Japanese_ColdQueen", label: "日文 · Cold Queen" },
+  { id: "Japanese_DependableWoman", label: "日文 · Dependable Woman" },
+  { id: "Japanese_GentleButler", label: "日文 · Gentle Butler" },
+  { id: "Japanese_KindLady", label: "日文 · Kind Lady" },
+  { id: "Japanese_CalmLady", label: "日文 · Calm Lady" },
+  { id: "Japanese_OptimisticYouth", label: "日文 · Optimistic Youth" },
+  { id: "Japanese_GenerousIzakayaOwner", label: "日文 · Generous Izakaya Owner" },
+  { id: "Japanese_SportyStudent", label: "日文 · Sporty Student" },
+  { id: "Japanese_InnocentBoy", label: "日文 · Innocent Boy" },
+  { id: "Japanese_GracefulMaiden", label: "日文 · Graceful Maiden" },
+  { id: "Korean_SweetGirl", label: "韩文 · Sweet Girl" },
+  { id: "Korean_CheerfulBoyfriend", label: "韩文 · Cheerful Boyfriend" },
+  { id: "Korean_EnchantingSister", label: "韩文 · Enchanting Sister" },
+  { id: "Korean_ShyGirl", label: "韩文 · Shy Girl" },
+  { id: "Korean_ReliableSister", label: "韩文 · Reliable Sister" },
+  { id: "Korean_StrictBoss", label: "韩文 · Strict Boss" },
+  { id: "Korean_SassyGirl", label: "韩文 · Sassy Girl" },
+  { id: "Korean_ChildhoodFriendGirl", label: "韩文 · Childhood Friend Girl" },
+  { id: "Korean_PlayboyCharmer", label: "韩文 · Playboy Charmer" },
+  { id: "Korean_ElegantPrincess", label: "韩文 · Elegant Princess" },
+  { id: "Korean_BraveFemaleWarrior", label: "韩文 · Brave Female Warrior" },
+  { id: "Korean_BraveYouth", label: "韩文 · Brave Youth" },
+  { id: "Korean_CalmLady", label: "韩文 · Calm Lady" },
+  { id: "Korean_EnthusiasticTeen", label: "韩文 · Enthusiastic Teen" },
+  { id: "Korean_SoothingLady", label: "韩文 · Soothing Lady" },
+  { id: "Korean_IntellectualSenior", label: "韩文 · Intellectual Senior" },
+  { id: "Korean_LonelyWarrior", label: "韩文 · Lonely Warrior" },
+  { id: "Korean_MatureLady", label: "韩文 · Mature Lady" },
+  { id: "Korean_InnocentBoy", label: "韩文 · Innocent Boy" },
+  { id: "Korean_CharmingSister", label: "韩文 · Charming Sister" },
+  { id: "Korean_AthleticStudent", label: "韩文 · Athletic Student" },
+  { id: "Korean_BraveAdventurer", label: "韩文 · Brave Adventurer" },
+  { id: "Korean_CalmGentleman", label: "韩文 · Calm Gentleman" },
+  { id: "Korean_WiseElf", label: "韩文 · Wise Elf" },
+  { id: "Korean_CheerfulCoolJunior", label: "韩文 · Cheerful Cool Junior" },
+  { id: "Korean_DecisiveQueen", label: "韩文 · Decisive Queen" },
+  { id: "Korean_ColdYoungMan", label: "韩文 · Cold Young Man" },
+  { id: "Korean_MysteriousGirl", label: "韩文 · Mysterious Girl" },
+  { id: "Korean_QuirkyGirl", label: "韩文 · Quirky Girl" },
+  { id: "Korean_ConsiderateSenior", label: "韩文 · Considerate Senior" },
+  { id: "Korean_CheerfulLittleSister", label: "韩文 · Cheerful Little Sister" },
+  { id: "Korean_DominantMan", label: "韩文 · Dominant Man" },
+  { id: "Korean_AirheadedGirl", label: "韩文 · Airheaded Girl" },
+  { id: "Korean_ReliableYouth", label: "韩文 · Reliable Youth" },
+  { id: "Korean_FriendlyBigSister", label: "韩文 · Friendly Big Sister" },
+  { id: "Korean_GentleBoss", label: "韩文 · Gentle Boss" },
+  { id: "Korean_ColdGirl", label: "韩文 · Cold Girl" },
+  { id: "Korean_HaughtyLady", label: "韩文 · Haughty Lady" },
+  { id: "Korean_CharmingElderSister", label: "韩文 · Charming Elder Sister" },
+  { id: "Korean_IntellectualMan", label: "韩文 · Intellectual Man" },
+  { id: "Korean_CaringWoman", label: "韩文 · Caring Woman" },
+  { id: "Korean_WiseTeacher", label: "韩文 · Wise Teacher" },
+  { id: "Korean_ConfidentBoss", label: "韩文 · Confident Boss" },
+  { id: "Korean_AthleticGirl", label: "韩文 · Athletic Girl" },
+  { id: "Korean_PossessiveMan", label: "韩文 · Possessive Man" },
+  { id: "Korean_GentleWoman", label: "韩文 · Gentle Woman" },
+  { id: "Korean_CockyGuy", label: "韩文 · Cocky Guy" },
+  { id: "Korean_ThoughtfulWoman", label: "韩文 · Thoughtful Woman" },
+  { id: "Korean_OptimisticYouth", label: "韩文 · Optimistic Youth" },
+  { id: "Spanish_SereneWoman", label: "西班牙文 · Serene Woman" },
+  { id: "Spanish_MaturePartner", label: "西班牙文 · Mature Partner" },
+  { id: "Spanish_CaptivatingStoryteller", label: "西班牙文 · Captivating Storyteller" },
+  { id: "Spanish_Narrator", label: "西班牙文 · Narrator" },
+  { id: "Spanish_WiseScholar", label: "西班牙文 · Wise Scholar" },
+  { id: "Spanish_Kind-heartedGirl", label: "西班牙文 · Kind-hearted Girl" },
+  { id: "Spanish_DeterminedManager", label: "西班牙文 · Determined Manager" },
+  { id: "Spanish_BossyLeader", label: "西班牙文 · Bossy Leader" },
+  { id: "Spanish_ReservedYoungMan", label: "西班牙文 · Reserved Young Man" },
+  { id: "Spanish_ConfidentWoman", label: "西班牙文 · Confident Woman" },
+  { id: "Spanish_ThoughtfulMan", label: "西班牙文 · Thoughtful Man" },
+  { id: "Spanish_Strong-WilledBoy", label: "西班牙文 · Strong-willed Boy" },
+  { id: "Spanish_SophisticatedLady", label: "西班牙文 · Sophisticated Lady" },
+  { id: "Spanish_RationalMan", label: "西班牙文 · Rational Man" },
+  { id: "Spanish_AnimeCharacter", label: "西班牙文 · Anime Character" },
+  { id: "Spanish_Deep-tonedMan", label: "西班牙文 · Deep-toned Man" },
+  { id: "Spanish_Fussyhostess", label: "西班牙文 · Fussy hostess" },
+  { id: "Spanish_SincereTeen", label: "西班牙文 · Sincere Teen" },
+  { id: "Spanish_FrankLady", label: "西班牙文 · Frank Lady" },
+  { id: "Spanish_Comedian", label: "西班牙文 · Comedian" },
+  { id: "Spanish_Debator", label: "西班牙文 · Debator" },
+  { id: "Spanish_ToughBoss", label: "西班牙文 · Tough Boss" },
+  { id: "Spanish_Wiselady", label: "西班牙文 · Wise Lady" },
+  { id: "Spanish_Steadymentor", label: "西班牙文 · Steady Mentor" },
+  { id: "Spanish_Jovialman", label: "西班牙文 · Jovial Man" },
+  { id: "Spanish_SantaClaus", label: "西班牙文 · Santa Claus" },
+  { id: "Spanish_Rudolph", label: "西班牙文 · Rudolph" },
+  { id: "Spanish_Intonategirl", label: "西班牙文 · Intonate Girl" },
+  { id: "Spanish_Arnold", label: "西班牙文 · Arnold" },
+  { id: "Spanish_Ghost", label: "西班牙文 · Ghost" },
+  { id: "Spanish_HumorousElder", label: "西班牙文 · Humorous Elder" },
+  { id: "Spanish_EnergeticBoy", label: "西班牙文 · Energetic Boy" },
+  { id: "Spanish_WhimsicalGirl", label: "西班牙文 · Whimsical Girl" },
+  { id: "Spanish_StrictBoss", label: "西班牙文 · Strict Boss" },
+  { id: "Spanish_ReliableMan", label: "西班牙文 · Reliable Man" },
+  { id: "Spanish_SereneElder", label: "西班牙文 · Serene Elder" },
+  { id: "Spanish_AngryMan", label: "西班牙文 · Angry Man" },
+  { id: "Spanish_AssertiveQueen", label: "西班牙文 · Assertive Queen" },
+  { id: "Spanish_CaringGirlfriend", label: "西班牙文 · Caring Girlfriend" },
+  { id: "Spanish_PowerfulSoldier", label: "西班牙文 · Powerful Soldier" },
+  { id: "Spanish_PassionateWarrior", label: "西班牙文 · Passionate Warrior" },
+  { id: "Spanish_ChattyGirl", label: "西班牙文 · Chatty Girl" },
+  { id: "Spanish_RomanticHusband", label: "西班牙文 · Romantic Husband" },
+  { id: "Spanish_CompellingGirl", label: "西班牙文 · Compelling Girl" },
+  { id: "Spanish_PowerfulVeteran", label: "西班牙文 · Powerful Veteran" },
+  { id: "Spanish_SensibleManager", label: "西班牙文 · Sensible Manager" },
+  { id: "Spanish_ThoughtfulLady", label: "西班牙文 · Thoughtful Lady" },
+  { id: "Portuguese_SentimentalLady", label: "葡萄牙文 · Sentimental Lady" },
+  { id: "Portuguese_BossyLeader", label: "葡萄牙文 · Bossy Leader" },
+  { id: "Portuguese_Wiselady", label: "葡萄牙文 · Wise lady" },
+  { id: "Portuguese_Strong-WilledBoy", label: "葡萄牙文 · Strong-willed Boy" },
+  { id: "Portuguese_Deep-VoicedGentleman", label: "葡萄牙文 · Deep-voiced Gentleman" },
+  { id: "Portuguese_UpsetGirl", label: "葡萄牙文 · Upset Girl" },
+  { id: "Portuguese_PassionateWarrior", label: "葡萄牙文 · Passionate Warrior" },
+  { id: "Portuguese_AnimeCharacter", label: "葡萄牙文 · Anime Character" },
+  { id: "Portuguese_ConfidentWoman", label: "葡萄牙文 · Confident Woman" },
+  { id: "Portuguese_AngryMan", label: "葡萄牙文 · Angry Man" },
+  { id: "Portuguese_CaptivatingStoryteller", label: "葡萄牙文 · Captivating Storyteller" },
+  { id: "Portuguese_Godfather", label: "葡萄牙文 · Godfather" },
+  { id: "Portuguese_ReservedYoungMan", label: "葡萄牙文 · Reserved Young Man" },
+  { id: "Portuguese_SmartYoungGirl", label: "葡萄牙文 · Smart Young Girl" },
+  { id: "Portuguese_Kind-heartedGirl", label: "葡萄牙文 · Kind-hearted Girl" },
+  { id: "Portuguese_Pompouslady", label: "葡萄牙文 · Pompous lady" },
+  { id: "Portuguese_Grinch", label: "葡萄牙文 · Grinch" },
+  { id: "Portuguese_Debator", label: "葡萄牙文 · Debator" },
+  { id: "Portuguese_SweetGirl", label: "葡萄牙文 · Sweet Girl" },
+  { id: "Portuguese_AttractiveGirl", label: "葡萄牙文 · Attractive Girl" },
+  { id: "Portuguese_ThoughtfulMan", label: "葡萄牙文 · Thoughtful Man" },
+  { id: "Portuguese_PlayfulGirl", label: "葡萄牙文 · Playful Girl" },
+  { id: "Portuguese_GorgeousLady", label: "葡萄牙文 · Gorgeous Lady" },
+  { id: "Portuguese_LovelyLady", label: "葡萄牙文 · Lovely Lady" },
+  { id: "Portuguese_SereneWoman", label: "葡萄牙文 · Serene Woman" },
+  { id: "Portuguese_SadTeen", label: "葡萄牙文 · Sad Teen" },
+  { id: "Portuguese_MaturePartner", label: "葡萄牙文 · Mature Partner" },
+  { id: "Portuguese_Comedian", label: "葡萄牙文 · Comedian" },
+  { id: "Portuguese_NaughtySchoolgirl", label: "葡萄牙文 · Naughty Schoolgirl" },
+  { id: "Portuguese_Narrator", label: "葡萄牙文 · Narrator" },
+  { id: "Portuguese_ToughBoss", label: "葡萄牙文 · Tough Boss" },
+  { id: "Portuguese_Fussyhostess", label: "葡萄牙文 · Fussy hostess" },
+  { id: "Portuguese_Dramatist", label: "葡萄牙文 · Dramatist" },
+  { id: "Portuguese_Steadymentor", label: "葡萄牙文 · Steady Mentor" },
+  { id: "Portuguese_Jovialman", label: "葡萄牙文 · Jovial Man" },
+  { id: "Portuguese_CharmingQueen", label: "葡萄牙文 · Charming Queen" },
+  { id: "Portuguese_SantaClaus", label: "葡萄牙文 · Santa Claus" },
+  { id: "Portuguese_Rudolph", label: "葡萄牙文 · Rudolph" },
+  { id: "Portuguese_Arnold", label: "葡萄牙文 · Arnold" },
+  { id: "Portuguese_CharmingSanta", label: "葡萄牙文 · Charming Santa" },
+  { id: "Portuguese_CharmingLady", label: "葡萄牙文 · Charming Lady" },
+  { id: "Portuguese_Ghost", label: "葡萄牙文 · Ghost" },
+  { id: "Portuguese_HumorousElder", label: "葡萄牙文 · Humorous Elder" },
+  { id: "Portuguese_CalmLeader", label: "葡萄牙文 · Calm Leader" },
+  { id: "Portuguese_GentleTeacher", label: "葡萄牙文 · Gentle Teacher" },
+  { id: "Portuguese_EnergeticBoy", label: "葡萄牙文 · Energetic Boy" },
+  { id: "Portuguese_ReliableMan", label: "葡萄牙文 · Reliable Man" },
+  { id: "Portuguese_SereneElder", label: "葡萄牙文 · Serene Elder" },
+  { id: "Portuguese_GrimReaper", label: "葡萄牙文 · Grim Reaper" },
+  { id: "Portuguese_AssertiveQueen", label: "葡萄牙文 · Assertive Queen" },
+  { id: "Portuguese_WhimsicalGirl", label: "葡萄牙文 · Whimsical Girl" },
+  { id: "Portuguese_StressedLady", label: "葡萄牙文 · Stressed Lady" },
+  { id: "Portuguese_FriendlyNeighbor", label: "葡萄牙文 · Friendly Neighbor" },
+  { id: "Portuguese_CaringGirlfriend", label: "葡萄牙文 · Caring Girlfriend" },
+  { id: "Portuguese_PowerfulSoldier", label: "葡萄牙文 · Powerful Soldier" },
+  { id: "Portuguese_FascinatingBoy", label: "葡萄牙文 · Fascinating Boy" },
+  { id: "Portuguese_RomanticHusband", label: "葡萄牙文 · Romantic Husband" },
+  { id: "Portuguese_StrictBoss", label: "葡萄牙文 · Strict Boss" },
+  { id: "Portuguese_InspiringLady", label: "葡萄牙文 · Inspiring Lady" },
+  { id: "Portuguese_PlayfulSpirit", label: "葡萄牙文 · Playful Spirit" },
+  { id: "Portuguese_ElegantGirl", label: "葡萄牙文 · Elegant Girl" },
+  { id: "Portuguese_CompellingGirl", label: "葡萄牙文 · Compelling Girl" },
+  { id: "Portuguese_PowerfulVeteran", label: "葡萄牙文 · Powerful Veteran" },
+  { id: "Portuguese_SensibleManager", label: "葡萄牙文 · Sensible Manager" },
+  { id: "Portuguese_ThoughtfulLady", label: "葡萄牙文 · Thoughtful Lady" },
+  { id: "Portuguese_TheatricalActor", label: "葡萄牙文 · Theatrical Actor" },
+  { id: "Portuguese_FragileBoy", label: "葡萄牙文 · Fragile Boy" },
+  { id: "Portuguese_ChattyGirl", label: "葡萄牙文 · Chatty Girl" },
+  { id: "Portuguese_Conscientiousinstructor", label: "葡萄牙文 · Conscientious Instructor" },
+  { id: "Portuguese_RationalMan", label: "葡萄牙文 · Rational Man" },
+  { id: "Portuguese_WiseScholar", label: "葡萄牙文 · Wise Scholar" },
+  { id: "Portuguese_FrankLady", label: "葡萄牙文 · Frank Lady" },
+  { id: "Portuguese_DeterminedManager", label: "葡萄牙文 · Determined Manager" },
+  { id: "French_Male_Speech_New", label: "法文 · Level-Headed Man" },
+  { id: "French_Female_News Anchor", label: "法文 · Patient Female Presenter" },
+  { id: "French_CasualMan", label: "法文 · Casual Man" },
+  { id: "French_MovieLeadFemale", label: "法文 · Movie Lead Female" },
+  { id: "French_FemaleAnchor", label: "法文 · Female Anchor" },
+  { id: "French_MaleNarrator", label: "法文 · Male Narrator" },
+  { id: "Indonesian_SweetGirl", label: "印尼文 · Sweet Girl" },
+  { id: "Indonesian_ReservedYoungMan", label: "印尼文 · Reserved Young Man" },
+  { id: "Indonesian_CharmingGirl", label: "印尼文 · Charming Girl" },
+  { id: "Indonesian_CalmWoman", label: "印尼文 · Calm Woman" },
+  { id: "Indonesian_ConfidentWoman", label: "印尼文 · Confident Woman" },
+  { id: "Indonesian_CaringMan", label: "印尼文 · Caring Man" },
+  { id: "Indonesian_BossyLeader", label: "印尼文 · Bossy Leader" },
+  { id: "Indonesian_DeterminedBoy", label: "印尼文 · Determined Boy" },
+  { id: "Indonesian_GentleGirl", label: "印尼文 · Gentle Girl" },
+  { id: "German_FriendlyMan", label: "德文 · Friendly Man" },
+  { id: "German_SweetLady", label: "德文 · Sweet Lady" },
+  { id: "German_PlayfulMan", label: "德文 · Playful Man" },
+  { id: "Russian_HandsomeChildhoodFriend", label: "俄文 · Handsome Childhood Friend" },
+  { id: "Russian_BrightHeroine", label: "俄文 · Bright Queen" },
+  { id: "Russian_AmbitiousWoman", label: "俄文 · Ambitious Woman" },
+  { id: "Russian_ReliableMan", label: "俄文 · Reliable Man" },
+  { id: "Russian_CrazyQueen", label: "俄文 · Crazy Girl" },
+  { id: "Russian_PessimisticGirl", label: "俄文 · Pessimistic Girl" },
+  { id: "Russian_AttractiveGuy", label: "俄文 · Attractive Guy" },
+  { id: "Russian_Bad-temperedBoy", label: "俄文 · Bad-tempered Boy" },
+  { id: "Italian_BraveHeroine", label: "意大利文 · Brave Heroine" },
+  { id: "Italian_Narrator", label: "意大利文 · Narrator" },
+  { id: "Italian_WanderingSorcerer", label: "意大利文 · Wandering Sorcerer" },
+  { id: "Italian_DiligentLeader", label: "意大利文 · Diligent Leader" },
+  { id: "Arabic_CalmWoman", label: "阿拉伯文 · Calm Woman" },
+  { id: "Arabic_FriendlyGuy", label: "阿拉伯文 · Friendly Guy" },
+  { id: "Turkish_CalmWoman", label: "土耳其文 · Calm Woman" },
+  { id: "Turkish_Trustworthyman", label: "土耳其文 · Trustworthy man" },
+  { id: "Ukrainian_CalmWoman", label: "乌克兰文 · Calm Woman" },
+  { id: "Ukrainian_WiseScholar", label: "乌克兰文 · Wise Scholar" },
+  { id: "Dutch_kindhearted_girl", label: "荷兰文 · Kind-hearted girl" },
+  { id: "Dutch_bossy_leader", label: "荷兰文 · Bossy leader" },
+  { id: "Vietnamese_kindhearted_girl", label: "越南文 · Kind-hearted girl" },
+  { id: "Thai_male_1_sample8", label: "泰文 · Serene Man" },
+  { id: "Thai_male_2_sample2", label: "泰文 · Friendly Man" },
+  { id: "Thai_female_1_sample1", label: "泰文 · Confident Woman" },
+  { id: "Thai_female_2_sample2", label: "泰文 · Energetic Woman" },
+  { id: "Polish_male_1_sample4", label: "波兰文 · Male Narrator" },
+  { id: "Polish_male_2_sample3", label: "波兰文 · Male Anchor" },
+  { id: "Polish_female_1_sample1", label: "波兰文 · Calm Woman" },
+  { id: "Polish_female_2_sample3", label: "波兰文 · Casual Woman" },
+  { id: "Romanian_male_1_sample2", label: "罗马尼亚文 · Reliable Man" },
+  { id: "Romanian_male_2_sample1", label: "罗马尼亚文 · Energetic Youth" },
+  { id: "Romanian_female_1_sample4", label: "罗马尼亚文 · Optimistic Youth" },
+  { id: "Romanian_female_2_sample1", label: "罗马尼亚文 · Gentle Woman" },
+  { id: "greek_male_1a_v1", label: "希腊文 · Thoughtful Mentor" },
+  { id: "Greek_female_1_sample1", label: "希腊文 · Gentle Lady" },
+  { id: "Greek_female_2_sample3", label: "希腊文 · Girl Next Door" },
+  { id: "czech_male_1_v1", label: "捷克文 · Assured Presenter" },
+  { id: "czech_female_5_v7", label: "捷克文 · Steadfast Narrator" },
+  { id: "czech_female_2_v2", label: "捷克文 · Elegant Lady" },
+  { id: "finnish_male_3_v1", label: "芬兰文 · Upbeat Man" },
+  { id: "finnish_male_1_v2", label: "芬兰文 · Friendly Boy" },
+  { id: "finnish_female_4_v1", label: "芬兰文 · Assetive Woman" },
+  { id: "hindi_male_1_v2", label: "印地文 · Trustworthy Advisor" },
+  { id: "hindi_female_2_v1", label: "印地文 · Tranquil Woman" },
+  { id: "hindi_female_1_v2", label: "印地文 · News Anchor" }
+]
+
+// ───── media-cloud.ts ─────
+/** 云端多媒体生成：只登记有官方文档、能实际调用的接口。 */
+
+export type CloudMediaCapability = 'image' | 'video' | 'speech' | 'music'
+export type CloudMediaRegion = 'domestic' | 'global'
+
+export type CloudMediaProtocol =
+  | 'openai-image'
+  | 'google-gemini-image'
+  | 'stability-image'
+  | 'ark-image'
+  | 'dashscope-image'
+  | 'google-veo'
+  | 'ark-video'
+  | 'minimax-video'
+  | 'openai-speech'
+  | 'elevenlabs-speech'
+  | 'dashscope-speech'
+  | 'minimax-speech'
+  | 'mureka-music'
+  | 'elevenlabs-music'
+
+export interface CloudMediaProvider {
+  id: string
+  capability: CloudMediaCapability
+  protocol: CloudMediaProtocol
+  /** 展示名，例如 OpenAI Images */
+  name: string
+  baseUrl: string
+  model: string
+  /** 配音声线 / 声音 ID；不同服务商含义不同 */
+  voice?: string
+  enabled: boolean
+  apiKeyStored: boolean
+  isBuiltin?: boolean
+}
+
+export interface CloudMediaPreset {
+  id: string
+  capability: CloudMediaCapability
+  protocol: CloudMediaProtocol
+  region: CloudMediaRegion
+  /** 同一类能力下的服务商名，例如 OpenAI */
+  providerName: string
+  name: string
+  description: string
+  baseUrl: string
+  model: string
+  /** 需要用户填 voice ID 时给出提示 */
+  voiceRequired?: boolean
+  /** 可选的默认声线；用户留空时由协议层使用 */
+  defaultVoice?: string
+  /** 官方系统音色；没有固定列表的服务（如 ElevenLabs）不填 */
+  voices?: CloudMediaVoice[]
+  docsUrl: string
+}
+
+export const MEDIA_CAPABILITY_LABEL: Record<CloudMediaCapability, string> = {
+  image: '图片生成',
+  video: '视频生成',
+  speech: '配音生成',
+  music: '配乐生成'
+}
+
+export const MEDIA_CAPABILITY_HINT: Record<CloudMediaCapability, string> = {
+  image: '给分镜、封面或插图生成画面。',
+  video: '把分镜画面升级成带运动的视频。',
+  speech: '把台词合成为可用的配音音轨。',
+  music: '生成可商用的背景音乐或配乐。'
+}
+
+export const MEDIA_REGION_LABEL: Record<CloudMediaRegion, string> = {
+  domestic: '国内',
+  global: '海外'
+}
+
+/**
+ * 截至 2026-11-05 可用的官方接口：
+ * - 国内：火山方舟 Seedream 5.0 / Seedance 2.5、阿里云百炼 Qwen-Image / Qwen3-TTS、MiniMax H3
+ * - 海外：OpenAI Images 2.6 / TTS、Google Nano Banana 2.1 / Veo 3.1、Stability SD3.5、ElevenLabs v4 / Music v2.5
+ *
+ * 不接入没有公开官方 API 的平台；不做“占位可选项”。Imagen 4 已于 2026-08-17 停服，
+ * 图片改用 Gemini 的 Nano Banana 系列。
+ */
+export const CLOUD_MEDIA_PRESETS: CloudMediaPreset[] = [
+  {
+    id: 'seedream-5-5-pro',
+    capability: 'image',
+    protocol: 'ark-image',
+    region: 'domestic',
+    providerName: '字节跳动',
+    name: 'Seedream 5.5 Pro',
+    description: '火山方舟 Seedream 5.5 Pro，5.0 的换代版本；中文文字与写实画面表现更强，按官方张数计费。',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seedream-5-5-pro-261115',
+    docsUrl: 'https://www.volcengine.com/docs/82379/1541523'
+  },
+  {
+    id: 'seedream-5-pro',
+    capability: 'image',
+    protocol: 'ark-image',
+    region: 'domestic',
+    providerName: '字节跳动',
+    name: 'Seedream 5.0 Pro',
+    description: '火山方舟 Seedream 5.0 Pro，中文文字与写实画面表现强；按官方张数计费。',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seedream-5-0-pro-260628',
+    docsUrl: 'https://www.volcengine.com/docs/82379/1541523'
+  },
+  {
+    id: 'seedream-5-flash',
+    capability: 'image',
+    protocol: 'ark-image',
+    region: 'domestic',
+    providerName: '字节跳动',
+    name: 'Seedream 5.0 Flash',
+    description: 'Seedream 5.0 Flash，速度更快、成本更低，适合批量生成分镜。',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seedream-5-0-flash-260915',
+    docsUrl: 'https://www.volcengine.com/docs/82379/1541523'
+  },
+  {
+    id: 'qwen-image-2-pro',
+    capability: 'image',
+    protocol: 'dashscope-image',
+    region: 'domestic',
+    providerName: '阿里云百炼',
+    name: 'Qwen-Image 2.1 Pro',
+    description: '阿里云百炼 Qwen-Image 2.1 Pro，中文排版与写实质感强；也可在模型 ID 改用 2.1 Turbo。',
+    baseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+    model: 'qwen-image-2.1-pro',
+    docsUrl: 'https://help.aliyun.com/zh/model-studio/qwen-image-api'
+  },
+  {
+    id: 'openai-image',
+    capability: 'image',
+    protocol: 'openai-image',
+    region: 'global',
+    providerName: 'OpenAI',
+    name: 'OpenAI Images 2.6',
+    description: 'OpenAI Images 2.6 Sunburst，注重细节与多轮编辑一致性；按图片 Token 计费。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-image-2.6-sunburst',
+    docsUrl: 'https://platform.openai.com/docs/guides/image-generation'
+  },
+  {
+    id: 'openai-image-flare',
+    capability: 'image',
+    protocol: 'openai-image',
+    region: 'global',
+    providerName: 'OpenAI',
+    name: 'OpenAI Images 2.6 Flare',
+    description: 'Images 2.6 Flare 主打速度，低画质设置下最快约 6 秒出图，适合快速预览。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-image-2.6-flare',
+    docsUrl: 'https://platform.openai.com/docs/guides/image-generation'
+  },
+  {
+    id: 'google-nano-banana',
+    capability: 'image',
+    protocol: 'google-gemini-image',
+    region: 'global',
+    providerName: 'Google',
+    name: 'Gemini Nano Banana 2.1',
+    description: 'Gemini API 的 Nano Banana 2.1（2026-10 稳定版）；Imagen 4 已停服。',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-nano-banana-2.1',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/image-generation'
+  },
+  {
+    id: 'stability-image',
+    capability: 'image',
+    protocol: 'stability-image',
+    region: 'global',
+    providerName: 'Stability AI',
+    name: 'Stability SD3.5',
+    description: 'Stability 官方 Stable Image API，默认 SD3.5 Large。',
+    baseUrl: 'https://api.stability.ai',
+    model: 'sd3.5-large',
+    docsUrl: 'https://platform.stability.ai/docs/api-reference'
+  },
+  {
+    id: 'seedance-2-5',
+    capability: 'video',
+    protocol: 'ark-video',
+    region: 'domestic',
+    providerName: '字节跳动',
+    name: 'Seedance 2.5',
+    description: '火山方舟 Seedance 2.5，支持文生视频与首帧图生视频；按官方秒数计费。',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seedance-2-5-260628',
+    docsUrl: 'https://www.volcengine.com/docs/82379/1393047'
+  },
+  {
+    id: 'seedance-2-0',
+    capability: 'video',
+    protocol: 'ark-video',
+    region: 'domestic',
+    providerName: '字节跳动',
+    name: 'Seedance 2.0',
+    description: 'Seedance 2.0 成熟版本，支持首帧图生视频与 480P–4K 输出。',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seedance-2-0-260128',
+    docsUrl: 'https://www.volcengine.com/docs/82379/1393047'
+  },
+  {
+    id: 'minimax-h3',
+    capability: 'video',
+    protocol: 'minimax-video',
+    region: 'domestic',
+    providerName: 'MiniMax',
+    name: 'MiniMax H3',
+    description: 'MiniMax H3 全模态视频模型，原生音画与首帧控制，支持 768P/2K。',
+    baseUrl: 'https://api.minimax.cn',
+    model: 'MiniMax-H3',
+    docsUrl: 'https://platform.minimax.cn/docs/guides/video-generation'
+  },
+  {
+    // 分辨率与时长是各型号各自的合法集合，不能共用一份：
+    // H3 只收 768P/2K 与 4–15 秒，H3-Max 只收 480P/768P 与 5–15 秒，
+    // Hailuo 2.3 只收 768P/1080P，且时长只能是 6 或 10 秒。
+    id: 'minimax-h3-max',
+    capability: 'video',
+    protocol: 'minimax-video',
+    region: 'domestic',
+    providerName: 'MiniMax',
+    name: 'MiniMax H3 Max',
+    description: 'H3 的上限档：只要 480P/768P，时长 5–15 秒，画质优先但分辨率上限低于 H3。',
+    baseUrl: 'https://api.minimax.cn',
+    model: 'MiniMax-H3-Max',
+    docsUrl: 'https://platform.minimax.cn/docs/guides/video-generation'
+  },
+  {
+    id: 'minimax-hailuo-2-3',
+    capability: 'video',
+    protocol: 'minimax-video',
+    region: 'domestic',
+    providerName: 'MiniMax',
+    name: 'MiniMax Hailuo 2.3',
+    description: '海螺 2.3：支持 1080P，但时长只有 6 秒与 10 秒两档，且不接受首尾帧。',
+    baseUrl: 'https://api.minimax.cn',
+    model: 'MiniMax-Hailuo-2.3',
+    docsUrl: 'https://platform.minimax.cn/docs/guides/video-generation'
+  },
+  {
+    id: 'google-veo',
+    capability: 'video',
+    protocol: 'google-veo',
+    region: 'global',
+    providerName: 'Google',
+    name: 'Google Veo 3.1',
+    description: 'Gemini API 的 Veo 3.1 稳定版，支持首帧图生视频与 4/6/8 秒片段。',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'veo-3.1-generate-001',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/veo'
+  },
+  {
+    id: 'qwen3-tts',
+    capability: 'speech',
+    protocol: 'dashscope-speech',
+    region: 'domestic',
+    providerName: '阿里云百炼',
+    name: 'Qwen3-TTS-Flash',
+    description: '阿里云百炼 Qwen3-TTS-Flash，默认 Cherry 音色；支持中文、方言与多语种。',
+    baseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+    model: 'qwen3-tts-flash',
+    defaultVoice: 'Cherry',
+    voices: QWEN3_TTS_VOICES,
+    docsUrl: 'https://help.aliyun.com/zh/model-studio/qwen-tts-api'
+  },
+  {
+    id: 'minimax-speech-2-8',
+    capability: 'speech',
+    protocol: 'minimax-speech',
+    region: 'domestic',
+    providerName: 'MiniMax',
+    name: 'MiniMax Speech 2.8 HD',
+    description: 'MiniMax 同步语音合成，默认 speech-2.8-hd；可在声线栏填 MiniMax voice_id。',
+    baseUrl: 'https://api.minimax.cn',
+    model: 'speech-2.8-hd',
+    defaultVoice: 'female-shaonv',
+    voices: MINIMAX_SPEECH_VOICES,
+    docsUrl: 'https://platform.minimax.cn/docs/guides/models-intro'
+  },
+  {
+    id: 'openai-speech',
+    capability: 'speech',
+    protocol: 'openai-speech',
+    region: 'global',
+    providerName: 'OpenAI',
+    name: 'OpenAI TTS',
+    description: '官方 Audio Speech API，默认 gpt-4o-mini-tts；可填 alloy、nova 等声线。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini-tts',
+    defaultVoice: 'alloy',
+    voices: OPENAI_TTS_VOICES,
+    docsUrl: 'https://platform.openai.com/docs/guides/text-to-speech'
+  },
+  {
+    id: 'elevenlabs-speech',
+    capability: 'speech',
+    protocol: 'elevenlabs-speech',
+    region: 'global',
+    providerName: 'ElevenLabs',
+    name: 'ElevenLabs TTS',
+    description: '官方 Text to Speech API，默认 Eleven v4；需要填账号里的 Voice ID。',
+    baseUrl: 'https://api.elevenlabs.io/v1',
+    model: 'eleven_v4',
+    voiceRequired: true,
+    docsUrl: 'https://elevenlabs.io/docs/api-reference/text-to-speech/convert'
+  },
+  {
+    id: 'mureka-instrumental',
+    capability: 'music',
+    protocol: 'mureka-music',
+    region: 'domestic',
+    providerName: '昆仑万维',
+    name: 'Mureka V9.5 配乐',
+    description: 'Mureka 官方纯音乐 API，auto 使用最新 V9.5；生成完整器乐，时长以服务商返回为准。',
+    baseUrl: 'https://api.mureka.cn',
+    model: 'auto',
+    docsUrl: 'https://platform.mureka.cn/docs/cn/quickstart.html'
+  },
+  {
+    id: 'elevenlabs-music',
+    capability: 'music',
+    protocol: 'elevenlabs-music',
+    region: 'global',
+    providerName: 'ElevenLabs',
+    name: 'ElevenLabs Music',
+    description: '官方 Music API，默认 Music v2.5；商业授权取决于账号套餐。',
+    baseUrl: 'https://api.elevenlabs.io/v1',
+    model: 'music_v2_5',
+    docsUrl: 'https://elevenlabs.io/docs/api-reference/music/compose'
+  }
+]
+
+/** 只迁移上一轮的默认模型；用户自己填过的模型 ID 原样保留。 */
+const LEGACY_DEFAULT_MODELS: Record<string, string[]> = {
+  'openai-image': ['gpt-image-1', 'gpt-image-2.5-sunburst'],
+  'google-veo': ['veo-3.1-generate-preview', 'veo-3.1-fast-generate-preview'],
+  'elevenlabs-speech': ['eleven_multilingual_v2'],
+  'elevenlabs-music': ['music_v2']
+}
+
+export function cloudMediaPreset(id: string): CloudMediaPreset | null {
+  return CLOUD_MEDIA_PRESETS.find((preset) => preset.id === id) ?? null
+}
+
+export function cloudMediaPresetsFor(capability: CloudMediaCapability): CloudMediaPreset[] {
+  return CLOUD_MEDIA_PRESETS.filter((preset) => preset.capability === capability)
+}
+
+export function normalizeCloudMediaProviders(input: unknown): CloudMediaProvider[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  const providers: CloudMediaProvider[] = []
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue
+    const record = raw as Record<string, unknown>
+    const preset = cloudMediaPreset(String(record.id ?? ''))
+    if (!preset || seen.has(preset.id)) continue
+    const baseUrl = typeof record.baseUrl === 'string' ? record.baseUrl.trim() : preset.baseUrl
+    const savedModel = typeof record.model === 'string' ? record.model.trim() : ''
+    const model = savedModel && LEGACY_DEFAULT_MODELS[preset.id]?.includes(savedModel) ? preset.model : savedModel || preset.model
+    if (!/^https?:\/\//i.test(baseUrl) || !model) continue
+    seen.add(preset.id)
+    providers.push({
+      id: preset.id,
+      capability: preset.capability,
+      protocol: preset.protocol,
+      name: preset.name,
+      baseUrl,
+      model: model.slice(0, 200),
+      ...(typeof record.voice === 'string' && record.voice.trim() ? { voice: record.voice.trim().slice(0, 200) } : {}),
+      enabled: record.enabled !== false,
+      apiKeyStored: record.apiKeyStored === true,
+      isBuiltin: true
+    })
+  }
+  return providers
+}
+
+export function normalizeMediaDefaults(input: unknown, providers: CloudMediaProvider[]): Partial<Record<CloudMediaCapability, string>> {
+  if (!input || typeof input !== 'object') return {}
+  const ids = new Set(providers.map((provider) => provider.id))
+  const result: Partial<Record<CloudMediaCapability, string>> = {}
+  for (const capability of Object.keys(MEDIA_CAPABILITY_LABEL) as CloudMediaCapability[]) {
+    const value = (input as Record<string, unknown>)[capability]
+    if (typeof value === 'string' && ids.has(value)) {
+      const provider = providers.find((item) => item.id === value)
+      if (provider?.capability === capability) result[capability] = value
+    }
+  }
+  return result
+}
+
