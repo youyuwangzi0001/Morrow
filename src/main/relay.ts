@@ -7,6 +7,7 @@ import { allowedChannels, checkChannel, bindChannel, dispatch, resetBindings, st
 import { loadDevices, saveDevices, loadOrCreateKey, type LoadedKey, PairingService } from './relay-pairing'
 import { ChannelSelector, type ChannelView, type TierChannel, DirectChannel, ChannelPoller } from './relay-channel'
 import { loadOrCreateTls } from './relay-crypto'
+import { buildPhoneSnapshot, setPhonePublisher } from './phone-bridge'
 
 // ───── src/relay/index.ts ─────
 /**
@@ -42,6 +43,17 @@ let channelPoller: ChannelPoller | null = null
  * 而不是悄悄启动一个只存在于内存里的服务（那会让手机配上之后永远连不上）。
  */
 let pairing: PairingService | null = null
+
+/**
+ * 桌面运行时事件 → 当前 LAN 通道。
+ *
+ * 注册在模块级一次性完成：`directChannel` 什么时候起来都行，事件在
+ * 没有通道时静默丢弃（用户没开远程通道，本来就不该有手机连接）。
+ * 用函数而不是值，避免启动顺序把 publisher 固定成 null。
+ */
+setPhonePublisher((event) => {
+  directChannel?.broadcast('event', event, { runId: event.runId, sessionId: event.sessionId })
+})
 
 /**
  * 取当前配对服务。未启用时返回 null。
@@ -161,7 +173,13 @@ async function startLanStack(service: PairingService, dataDir: string): Promise<
     // 把证书指纹交给配对服务：之后签发的每一张票据都会带上它。
     // 手机拿它做证书固定 —— 自签证书没有可信链，这是唯一正确的机制。
     service.setTlsFingerprint(tls.fingerprint)
-    const direct = new DirectChannel({ pairing: service, tls })
+    const direct = new DirectChannel({
+      pairing: service,
+      tls,
+      // 首连或补漏缓冲不够时，服务端主动下发一份加密快照。
+      // 手机按 `snapshot` 事件一次性对齐状态，不必再发一次请求。
+      snapshot: () => buildPhoneSnapshot()
+    })
     await direct.connect()
     log.info('lan direct listening', { port: direct.port(), fingerprint: tls.fingerprint.slice(0, 12) })
 

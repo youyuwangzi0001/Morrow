@@ -862,6 +862,14 @@ export interface DirectChannelOptions {
   replayCapacity?: number
   /** 注入时钟 */
   now?: () => number
+  /**
+   * 全量快照提供器。
+   *
+   * 手机首次连接（lastSeq=0）或补漏缓冲不足时调用。返回 null = 桌面侧没有
+   * 可提供的状态（例如尚未注册 provider），此时不下发快照，手机保持
+   * 「正在同步」而不是收到一份空状态被误认为「桌面什么都没有」。
+   */
+  snapshot?: () => unknown
   /** 每条帧的日志钩子（测试与诊断用；生产不传） */
   onFrame?: (dir: 'in' | 'out', summary: string) => void
 }
@@ -890,6 +898,7 @@ export class DirectChannel implements TierChannel {
   private readonly host: string
   private readonly now: () => number
   private readonly onFrame?: (dir: 'in' | 'out', summary: string) => void
+  private readonly snapshot?: () => unknown
 
   private readonly replay: ReplayBuffer
   private readonly seq = new SeqAllocator()
@@ -909,6 +918,7 @@ export class DirectChannel implements TierChannel {
     this.host = options.host ?? '0.0.0.0'
     this.now = options.now ?? Date.now
     this.onFrame = options.onFrame
+    this.snapshot = options.snapshot
     this.replay = new ReplayBuffer({ capacity: options.replayCapacity })
   }
 
@@ -1245,6 +1255,39 @@ export class DirectChannel implements TierChannel {
         const sealed = state.channel.seal('desktop-to-phone', JSON.stringify(event))
         state.socket.send(JSON.stringify(sealed))
       }
+    } else {
+      // 缓冲里没有可补的历史（首连 / 桌面刚重启 / 手机落后太多）：
+      // 主动下发全量快照，让手机一次对齐，而不是停在空白页。
+      this.sendSnapshot(state, this.now())
     }
+  }
+
+  /**
+   * 发送一份加密快照（只发给刚完成握手的这一条连接）。
+   *
+   * 快照不写 replay 缓冲：它是「连接时刻的状态」而不是可重放的历史事件。
+   * 因此它会消耗一个 seq 但不进缓冲 —— 手机侧只取 max(lastSeq)，
+   * 后续事件序号继续递增，补漏判断不会被这个空号影响。
+   */
+  private sendSnapshot(state: ClientState, at: number): void {
+    if (!this.snapshot || !state.channel) return
+    let snapshot: unknown
+    try {
+      snapshot = this.snapshot()
+    } catch {
+      // 快照构造失败不能让握手失败：手机可以靠后续增量事件慢慢补齐，
+      // 而握手失败会让它一直重连。
+      return
+    }
+    if (!snapshot) return
+    const envelope = makeEnvelope(
+      this.seq,
+      'event',
+      { runId: 'snapshot', sessionId: '', at },
+      { type: 'snapshot', at, snapshot }
+    )
+    const sealed = state.channel.seal('desktop-to-phone', JSON.stringify(envelope))
+    state.socket.send(JSON.stringify(sealed))
+    this.onFrame?.('out', `seq=${envelope.seq} snapshot -> ${state.deviceId ?? '?'}`)
   }
 }

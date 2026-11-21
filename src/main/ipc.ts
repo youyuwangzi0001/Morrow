@@ -38,6 +38,7 @@ import { getSettingsStore } from './settings'
 import { refreshGlobalShortcut } from './shortcuts'
 import { testProviderConnection } from '@core/index'
 import { getAgentService } from './agent'
+import { setPhoneSnapshotProvider } from './phone-bridge'
 import { applyRelaySettings, currentPairing, lanHint } from './relay'
 import { issuePairTicket, listPairDevices, revokePairDevice } from './relay-pairing'
 import {
@@ -1973,6 +1974,11 @@ export function registerIpcHandlers(): void {
 
   const agentService = (): ReturnType<typeof getAgentService> =>
     getAgentService(getSettingsStore(), getSessionStore())
+
+  // 手机首连时由 LAN 通道调用。放在这里而不是 relay.ts：
+  // 只有 IPC 层同时拿得到 settingsStore / sessionStore 与 agentService 单例，
+  // relay.ts 自己构造会造出第二个 AgentService（两份运行状态）。
+  setPhoneSnapshotProvider(() => agentService().phoneSnapshot())
 
   ipcMain.handle(IPC.chatSend, async (_e, input: Parameters<ReturnType<typeof getAgentService>['send']>[0]): Promise<Result<unknown>> => {
     try {

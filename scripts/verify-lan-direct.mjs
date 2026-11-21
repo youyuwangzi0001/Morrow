@@ -80,7 +80,28 @@ async function main() {
 
   const tls = await loadOrCreateTls({ dataDir, safeStorage })
   const pairing = new PairingService({ secret: randomBytes(32) })
-  const ch = new DirectChannel({ pairing, tls })
+  const ch = new DirectChannel({
+    pairing,
+    tls,
+    // 首连（lastSeq=0、缓冲为空）必须收到全量快照，否则手机只能停在空白页。
+    snapshot: () => ({
+      at: 1_700_000_000_000,
+      activeSessionId: 's1',
+      sessions: [{
+        id: 's1',
+        title: '快照会话',
+        liveMessageId: null,
+        messages: [{ id: 'm1', role: 'user', text: '快照消息', createdAt: 1_700_000_000_000 }],
+        artifacts: [],
+        superAgent: null
+      }],
+      runs: [],
+      approvals: [],
+      artifacts: [],
+      artifactsSessionId: 's1',
+      members: null
+    })
+  })
   await ch.connect()
   const port = ch.port()
 
@@ -99,26 +120,39 @@ async function main() {
   const device = pairing.completePairing(ticket.nonce, phonePub)
 
   const ws = new WebSocket(`wss://127.0.0.1:${port}`, { rejectUnauthorized: false })
-  const welcome = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('welcome 超时')), 5000)
-    ws.once('open', () => {
-      const ts = String(Date.now())
-      const sig = PairingService.signRequest(device.sessionKey, 'lan-phone', 'lan', ts)
-      ws.send(JSON.stringify({ v: 1, kind: 'hello', deviceId: 'lan-phone', ts, sig, lastSeq: 0 }))
-    })
-    ws.once('message', (raw) => {
-      clearTimeout(timer)
-      resolve(JSON.parse(raw.toString()))
-    })
-    ws.once('error', reject)
+  // 从建连第一刻就收帧：welcome 之后的快照可能紧跟着到达，
+  // 先 await welcome 再挂监听会把快照帧丢掉（第一版就是这么漏的）。
+  const inbox = []
+  let resolveWelcome
+  let rejectWelcome
+  const welcomePromise = new Promise((resolve, reject) => {
+    resolveWelcome = resolve
+    rejectWelcome = reject
   })
+  ws.on('message', (raw) => {
+    inbox.push(raw)
+    if (inbox.length === 1) {
+      try {
+        resolveWelcome(JSON.parse(raw.toString()))
+      } catch (err) {
+        rejectWelcome(err)
+      }
+    }
+  })
+  ws.once('open', () => {
+    const ts = String(Date.now())
+    const sig = PairingService.signRequest(device.sessionKey, 'lan-phone', 'lan', ts)
+    ws.send(JSON.stringify({ v: 1, kind: 'hello', deviceId: 'lan-phone', ts, sig, lastSeq: 0 }))
+  })
+  ws.once('error', rejectWelcome)
+  const welcome = await welcomePromise
   check('真 TLS 握手 + hello → welcome', welcome.kind === 'welcome', `fingerprint=${String(welcome.fingerprint).slice(0, 12)}…`)
   check('证书指纹随 welcome 下发（手机据此固定）', typeof welcome.fingerprint === 'string' && welcome.fingerprint.length > 20)
   check('welcome 下发 16 字节连接 salt（加密通道的前提）', Buffer.from(String(welcome.salt ?? ''), 'base64').length === 16, String(welcome.salt ?? '').slice(0, 10) + '…')
   check('welcome 不含任何载荷（明文下发的只能是元数据）', welcome.replay === undefined && welcome.replayCount === undefined)
   check('已鉴权连接被计入', ch.linkCount() === 1)
 
-  // ── 3. 线上真的是密文（中继转发时看到的就是这些字节） ──
+  // ── 3. 首连收到全量快照（加密） ──
   const { SecureChannel } = mod
   const phoneChannel = new SecureChannel({
     sessionKey: device.sessionKey,
@@ -126,30 +160,61 @@ async function main() {
     deviceId: 'lan-phone'
   })
 
-  const rawFrames = []
-  ws.on('message', (raw) => rawFrames.push(raw))
+  /** 等到 inbox 至少有 n 帧（最多等 ms） */
+  const waitFrames = async (n, ms = 3000) => {
+    const started = Date.now()
+    while (inbox.length < n && Date.now() - started < ms) {
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    return inbox.length >= n
+  }
 
+  const gotSnapshot = await waitFrames(2)
+  check('首连后收到快照帧', gotSnapshot, `${inbox.length} 帧`)
+  let snapshotBody = null
+  if (gotSnapshot) {
+    try {
+      snapshotBody = JSON.parse(phoneChannel.open('desktop-to-phone', JSON.parse(inbox[1].toString())).toString('utf8'))
+    } catch (err) {
+      snapshotBody = { error: err.message }
+    }
+  }
+  check(
+    '快照可被手机解开且带会话/消息',
+    snapshotBody?.body?.type === 'snapshot' &&
+      snapshotBody?.body?.snapshot?.sessions?.[0]?.title === '快照会话' &&
+      snapshotBody?.body?.snapshot?.sessions?.[0]?.messages?.[0]?.text === '快照消息',
+    snapshotBody?.error ?? snapshotBody?.body?.type ?? '无'
+  )
+
+  // ── 4. 广播事件加密下发（中继看到的是密文） ──
   const SECRET = 'C:\\交付成品\\Morrow\\私密路径'
-  ch.broadcast('event', { detail: SECRET })
-  await new Promise((r) => setTimeout(r, 200))
+  ch.broadcast('event', { type: 'notice', level: 'info', message: SECRET })
+  const gotEvent = await waitFrames(3)
+  check('广播事件到达手机', gotEvent, `${inbox.length} 帧`)
 
-  const wire = Buffer.concat(rawFrames).toString('utf8')
-  check('线上字节里搜不到广播内容（中继看不到明文）', !wire.includes(SECRET) && !wire.includes('私密路径'), `${rawFrames.length} 帧`)
+  const wire = Buffer.concat(inbox).toString('utf8')
+  check('线上字节里搜不到广播内容（中继看不到明文）', !wire.includes(SECRET) && !wire.includes('私密路径'), `${inbox.length} 帧`)
 
-  const dataFrames = rawFrames.map((b) => JSON.parse(b.toString()))
+  const dataFrames = inbox.slice(1).map((b) => JSON.parse(b.toString()))
   const sealedOk = dataFrames.length > 0 && dataFrames.every((f) => Object.keys(f).sort().join() === 'c,n')
   check('每条后续帧都只有 {n, c} 两个字段', sealedOk, JSON.stringify(dataFrames[0] ?? {}).slice(0, 40))
 
-  let decrypted = ''
+  // 快照已经用 phoneChannel 开过一次（收计数必须按顺序推进），
+  // 所以广播帧从第 3 帧开始解，不能倒回去重开快照帧——那会被判重放。
+  let eventBody = null
   try {
-    decrypted = phoneChannel.open('desktop-to-phone', dataFrames[0]).toString('utf8')
+    for (const frame of dataFrames.slice(1)) {
+      eventBody = JSON.parse(phoneChannel.open('desktop-to-phone', frame).toString('utf8'))
+    }
   } catch (err) {
-    decrypted = `解密失败：${err.message}`
+    eventBody = { error: err.message }
   }
-  // 解出来的正文里应能找到载荷内容。
-  // 注意：这里比对的是**中文部分**而不是完整路径 —— JSON 文本里反斜杠是转义的
-  // （`C:\x` 变成 `C:\\x`），拿原串做 includes 会假失败，这是我第一次写这行时的错。
-  check('手机用 sessionKey + salt 能解开（说明密钥对得上）', decrypted.includes('私密路径'), decrypted.slice(0, 60))
+  check(
+    '手机用 sessionKey + salt 能解开广播事件（说明密钥对得上）',
+    eventBody?.body?.message === SECRET,
+    eventBody?.error ?? eventBody?.body?.type ?? '无'
+  )
 
   // ── 4. 篡改帧被断开（4402） ──
   const tamperWs = new WebSocket(`wss://127.0.0.1:${port}`, { rejectUnauthorized: false })

@@ -18,6 +18,16 @@ import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import type { SettingsStore } from './settings'
 import { getSettingsStore } from './settings'
+import { publishPhoneEvent } from './phone-bridge'
+import {
+  toPhoneEvent,
+  phoneArtifact,
+  phoneMessage,
+  phonePermission,
+  phoneSuperState,
+  SNAPSHOT_MESSAGES_PER_SESSION,
+  type PhoneSnapshot
+} from './phone-events'
 import { newId } from '../core/util'
 import type { SessionStore } from './session'
 import { getSessionStore, deriveMeta } from './session'
@@ -2330,6 +2340,8 @@ export function getEvolutionService(): EvolutionService | null {
 interface PendingPermission {
   resolve: (response: PermissionResponse) => void
   sessionId: string
+  /** 原始请求：手机端快照要列出「待审批」时只能从这里取（resolve 里没有工具名） */
+  request: PermissionRequest
   projectId?: string
   taskId?: string
 }
@@ -2900,6 +2912,64 @@ export class AgentService {
     }
     if (liveMessageId) session.liveMessageId = liveMessageId
     return session
+  }
+
+  /**
+   * 手机端首连/补漏不足时的全量快照。
+   *
+   * 只带手机要展示的字段，且与增量事件同形（见 `phone-events.ts`）：
+   * - `sessions[].messages` 用 `{id, role, text, createdAt}`；
+   * - `artifacts` 用 `{title, path, kind, createdAt, updatedAt}`；
+   * - `approvals` 来自**真实等待中**的权限请求，不是历史记录；
+   * - `members` 用 `super_updated.state` 同形的成员数组。
+   *
+   * 会话取最近 20 个、每个最近 40 条消息：手机是旁观端，不是归档器。
+   */
+  phoneSnapshot(): PhoneSnapshot {
+    const metas = [...this.sessionStore.list()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 20)
+    const sessions = metas.flatMap((meta) => {
+      // 走 snapshotSession：把本轮尚未落盘的流式消息也带上。
+      // 单个会话读失败（文件损坏/半截写入）不能拖垮整份快照 ——
+      // 手机上少一个会话，好过完全收不到快照。
+      let session: Session | null = null
+      try {
+        session = this.snapshotSession(meta.id)
+      } catch {
+        session = null
+      }
+      if (!session) return []
+      return [{
+        id: session.id,
+        title: session.title,
+        liveMessageId: session.liveMessageId ?? null,
+        messages: session.messages.slice(-SNAPSHOT_MESSAGES_PER_SESSION).map(phoneMessage),
+        artifacts: (session.artifacts ?? []).slice(-20).map(phoneArtifact),
+        superAgent: phoneSuperState(session.superAgent)
+      }]
+    })
+    const activeSessionId = metas[0]?.id ?? null
+    const active = sessions.find((item) => item.id === activeSessionId) ?? null
+    return {
+      at: Date.now(),
+      activeSessionId,
+      sessions,
+      runs: [...this.runs.values()].map((run) => ({
+        sessionId: run.sessionId,
+        runId: run.runId,
+        startedAtMillis: run.startedAt,
+        // 步数只在事件里，快照给 0 = 未知（手机显示不确定，不显示 0%）
+        stepCount: 0
+      })),
+      approvals: [...this.permissions.entries()].map(([requestId, pending]) => ({
+        ...phonePermission(pending.request),
+        requestId,
+        sessionId: pending.sessionId,
+        at: pending.request.createdAt
+      })),
+      artifacts: active?.artifacts ?? [],
+      artifactsSessionId: activeSessionId,
+      members: active?.superAgent ?? null
+    }
   }
 
   /** 精确判断某个 run 是否仍在运行（定时任务跟踪用，避免把用户后续轮次算进本次时长） */
@@ -5571,6 +5641,10 @@ export class AgentService {
     if (this.deletedSessions.has(event.sessionId)) return
     // 灵动岛是独立窗口，不能依赖某个主窗口是否还活着：后台/计划/切换会话后的运行也要同步。
     ingestIslandRuntimeEvent(event)
+    // 手机端下行：与窗口是否存在无关 —— 用户可能把桌面最小化了，
+    // 但手机仍应看到进度。裁剪规则见 phone-events.ts。
+    const phoneEvent = toPhoneEvent(event)
+    if (phoneEvent) publishPhoneEvent(phoneEvent)
     if (!window || window.isDestroyed()) return
     window.webContents.send(EVENT_CHANNEL, event)
   }
@@ -5580,6 +5654,7 @@ export class AgentService {
       this.permissions.set(request.id, {
         resolve,
         sessionId: active.sessionId,
+        request,
         ...(request.projectId ? { projectId: request.projectId } : {}),
         ...(request.taskId ? { taskId: request.taskId } : {})
       })

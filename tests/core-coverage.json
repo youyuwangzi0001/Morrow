@@ -1,7 +1,7 @@
 {
   "version": 1,
   "limits": {
-    "unit": 985,
+    "unit": 994,
     "e2e": 96
   },
   "features": [
@@ -265,3 +265,4 @@
     }
   ]
 }
+
