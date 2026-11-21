@@ -10,11 +10,11 @@
 
 | 文件 | 字节 | 大小 | SHA-256 |
 |---|---:|---:|---|
-| `Morrow-0.2.0-portable.exe` | 207,750,144 | 198.13 MiB | `d60421ee9206546b68e1808774cd9273be1bdd2d09ef1e0989362f07e281cf29` |
-| `Morrow-0.2.0-setup.exe` | 157,935,140 | 150.62 MiB | `e65e4bfc8705aa8bcd454b38b581d29b78b4853698587c48f783fbf75b78c9cd` |
-| `Morrow-Android-0.2.0.apk` | 2,307,066 | 2.20 MiB | `8b09a91cfed5c2e019c2b07d84d5e6628dbbcbd3895d123e8536183a9403714e` |
+| `Morrow-0.2.0-portable.exe` | 207,397,888 | 197.79 MiB | `ddf3b14f853845dcb506a01426646880fe928f889199a21ec4c0ec387f02d8fb` |
+| `Morrow-0.2.0-setup.exe` | 157,667,497 | 150.36 MiB | `51de545773f665eb1c597d506db4768ed6cb1b4fbda4d6e018ffd62d287d05de` |
+| `Morrow-Android-0.2.0.apk` | 2,307,066 | 2.20 MiB | `e4fcda532a178136231a36700045093027961d99b16ae151c028999dc707c78c` |
 
-三个文件合计 367,992,350 B（350.95 MiB）。安卓包在本次重打包后复制进 `deliver/`，最终哈希以 `deliver/SHA256SUMS.txt` 为准。
+三个文件合计 367,372,451 B（350.36 MiB）。哈希与 `deliver/SHA256SUMS.txt` 逐条一致。
 
 - 便携版是单文件启动器，内嵌应用 zip；首次运行在 exe 同级解压 `.morrow-runtime-<版本>-<修订>`，之后复用缓存。
 - 安装包是 NSIS 自解压，可选安装目录，创建开始菜单与桌面快捷方式；安装版数据目录是 `%APPDATA%\Morrow`。
@@ -28,19 +28,19 @@
 
 | 项 | 实测 |
 |---|---|
-| 被测文件 | `deliver/Morrow-0.2.0-portable.exe`（207,750,144 B） |
-| 启动参数 | `--no-sandbox --test-mode --remote-debugging-port=9835`，另带独立的 user-data-dir 与 data-dir |
-| CDP 就绪 | Chrome/152.0.7977.167，4,072 ms |
+| 被测文件 | `deliver/Morrow-0.2.0-portable.exe`（207,397,888 B） |
+| 启动参数 | `--no-sandbox --test-mode --remote-debugging-port=8923`，另带独立的 user-data-dir 与 data-dir |
+| CDP 就绪 | Chrome/152.0.7977.167，4,103 ms |
 | 窗口标题 | Morrow |
-| 界面版本 | 首屏显示当前发布版本，确认版本号已进产物 |
+| 界面版本 | 首屏显示 v0.2.0，确认版本号已进产物 |
 | 渲染 | 首屏文本正常，预加载 API 可用 |
 | 运行位置 | 解压到 `deliver/.morrow-runtime-0.2.0-r020` 后启动 |
 | 截图 | `docs/evidence/packaged-smoke.png`（2102×1203） |
-| 总耗时 | 5.2 s |
+| 总耗时 | 5.1 s |
 | 摘要 | `docs/smoke-packaged.json`，`ok: true` |
 
 - 冒烟覆盖的是“能启动、能渲染、能截图、预加载 API 可用”，不覆盖文件写入、模型调用与创作台产线。
-- 摘要里的 `exeSha256` 属于同一打包流程的上一批产物，与本节表格的便携版不是同一字节流；本页的指纹以 `deliver/` 实际文件与 `SHA256SUMS.txt` 为准。
+- `docs/smoke-packaged.json` 里的 `exeSha256` 与本节表格的便携版一致（`ddf3b14f…`），都是本次产物。
 - 冒烟结束后脚本会清理解压出的运行时缓存，避免交付目录被数百 MB 的缓存污染；清理失败会写进摘要，不静默跳过。
 - 安装包没有执行 per-machine 安装，只做了归档完整性检查；未改动本机 `Program Files` 与快捷方式。
 

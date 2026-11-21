@@ -3,11 +3,11 @@
   "versionName": "0.2.0",
   "versionCode": 2,
   "package": "studio.morrow.android",
-  "builtAt": "2026-11-21T18:25:14+08:00",
+  "builtAt": "2026-11-21T19:47:11+08:00",
   "apk": {
     "name": "Morrow-Android-0.2.0.apk",
     "bytes": 2307066,
-    "sha256": "8b09a91cfed5c2e019c2b07d84d5e6628dbbcbd3895d123e8536183a9403714e",
+    "sha256": "e4fcda532a178136231a36700045093027961d99b16ae151c028999dc707c78c",
     "minSdk": 26,
     "targetSdk": 35,
     "compileSdk": 36
