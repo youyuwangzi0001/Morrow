@@ -10,10 +10,10 @@
 
 | 文件 | 字节 | 大小 | SHA-256 |
 |---|---:|---:|---|
-| `Morrow-0.2.0-portable.exe` | 207,418,736 | 197.81 MiB | `0ea73491ef9a663690c97117148950fed21a9e07965237c24c58a30fa29a6eed` |
-| `Morrow-0.2.0-setup.exe` | 157,686,712 | 150.38 MiB | `64a65fad5256498b93aa90e35bb906899693336622758c315003090c3b6d9d82` |
+| `Morrow-0.2.0-portable.exe` | 207,401,472 | 197.79 MiB | `81bbfb039f0eed62fd055cb39051e96372fedfcdcdd07fa07ef474aa613187fe` |
+| `Morrow-0.2.0-setup.exe` | 157,669,018 | 150.36 MiB | `aa16e91d98a6e9bd5464173f26810610bbd7ef329105204e109993ab0ea70f9a` |
 
-两个文件合计 365,105,448 B（348.19 MiB）。哈希与同目录的 `SHA256SUMS.txt` 逐条一致。
+两个文件合计 365,070,490 B（348.16 MiB）。哈希与同目录的 `SHA256SUMS.txt` 逐条一致。
 
 - 便携版是单文件启动器，内嵌应用 zip；首次运行在 exe 同级解压 `.morrow-runtime-<版本>-<修订>`，之后复用缓存。
 - 安装包是 NSIS 自解压，可选安装目录，创建开始菜单与桌面快捷方式；安装版数据目录是 `%APPDATA%\Morrow`。
@@ -27,19 +27,19 @@
 
 | 项 | 实测 |
 |---|---|
-| 被测文件 | `Morrow-0.2.0-portable.exe`（207,418,736 B，`0ea73491…`） |
-| 启动参数 | `--no-sandbox --test-mode --remote-debugging-port=4036`，另带独立的 user-data-dir 与 data-dir |
-| CDP 就绪 | Chrome/152.0.7977.167，6,162 ms |
+| 被测文件 | `Morrow-0.2.0-portable.exe`（207,401,472 B，`81bbfb03…`） |
+| 启动参数 | `--no-sandbox --test-mode --remote-debugging-port=4803`，另带独立的 user-data-dir 与 data-dir |
+| CDP 就绪 | Chrome/152.0.7977.167，6,127 ms |
 | 窗口标题 | Morrow |
 | 界面版本 | 首屏显示 v0.2.0，确认版本号已进产物 |
 | 渲染 | 首屏文本正常，预加载 API 可用 |
 | 运行位置 | 解压到 `.morrow-runtime-0.2.0-r020` 后启动 |
 | 截图 | `tmp/verification/screens/packaged-smoke.png`（本机生成物，不入库） |
-| 总耗时 | 7.2 s |
+| 总耗时 | 7.3 s |
 | 摘要 | `docs/smoke-packaged.json`，`ok: true` |
 
 - 冒烟覆盖的是“能启动、能渲染、能截图、预加载 API 可用”，不覆盖文件写入、模型调用与创作台产线。
-- `docs/smoke-packaged.json` 里的 `exeSha256` 与本节表格的便携版一致（`0ea73491…`），都是本次产物。
+- `docs/smoke-packaged.json` 里的 `exeSha256` 与本节表格的便携版一致（`81bbfb03…`），都是本次产物。
 - 冒烟结束后脚本会清理解压出的运行时缓存，避免交付目录被数百 MB 的缓存污染；清理失败会写进摘要，不静默跳过。
 - 安装包没有执行 per-machine 安装，只做了归档完整性检查；未改动本机 `Program Files` 与快捷方式。
 
@@ -55,6 +55,7 @@
 | 分镜卡的“候选”与“时长”徽标重叠 | 两个徽标各自绝对定位到同一右下角，实测出现交叠 | `tests/e2e/studio.spec.ts` 逐卡比较徽标边界 |
 | 进展浮窗展开时盖住消息操作与画布 | 浮窗悬浮在主区右上角，命中区域压住消息操作行与终端 | `tests/e2e/ui.spec.ts`、`tests/e2e/workspace.spec.ts` 的让位断言 |
 | 安卓真实配对始终 4401，收不到 welcome | 手机侧通道字面量是 `wss`，桌面签名校验的是 `lan`，跨语言握手被拒 | `MorrowAndroid` 的 `CrossDeviceE2ETest`（6 项） |
+| 写入长文件时工具参数被截断后整段作废，还要重写一次 | 上游把参数流切断时不报 `finish_reason=length`，旧逻辑却一律归因「单次输出太长」，把模型引向拆文件的弯路 | `tests/unit/core-runtime.test.ts` 的「先说一句话再断流」与「没有 length 标记」两条用例 |
 
 - 前五条的断言在 `npm run test:unit` 与 `npm run test:e2e` 里随全量执行，不靠人工点按。
 - 最后一条在安卓仓库的 JVM 套组里执行：桌面 Node 的 `DirectChannel` 与 Kotlin 的 `RelaySocketClient` 跑真实握手与加密帧。
@@ -70,8 +71,8 @@
 | `npm run audit:ui` | 通过：0 条裸排版声明，字号令牌全部由基值推导，焦点环 2 px |
 | `npm run audit:flex` | 通过：没有被压成竖排的行内尾部标签 |
 | `npm run docs:check` | 通过：链接与锚点存在，30 张截图均为 2100×1200 且被引用 |
-| `npm run test:suite` | 1026 个单元 / 96 条 Electron / 43 个域，未超预算 |
-| `npm run test:unit` | 50 个文件、1026 项通过 |
+| `npm run test:suite` | 1029 个单元 / 96 条 Electron / 43 个域，未超预算 |
+| `npm run test:unit` | 50 个文件、1029 项通过 |
 | `npm run test:e2e` | 16 个文件、96 条：95 通过、1 跳过、0 失败，9.5 分钟 |
 
 - 唯一跳过的是 `packaged-parallel`，它需要现成的打包产物；跳过项不计入通过。
@@ -159,6 +160,7 @@
 | 2026-11-21 | 安卓补齐事件流、审批生物识别、通知、设置、作品预览与协作干预；单测 1014、安卓 JVM 919、静态验收 265 |
 | 2026-11-21 | 文档体系按扁平结构重写：13 篇正文、双语首页、三张示意图与截图复核，校验脚本同步加固 |
 | 2026-11-23 | 手机端补齐桌面信息同步（命令执行、文件增删改、待办、提示），发送改为等桌面回执；重出桌面双包与安卓 APK，原地覆盖 v0.2.0。单测 1026、安卓 JVM 939、静态验收 276 |
+| 2026-11-23 | 提高写入成功率：写入参数被切断时整轮重发一次、截断归因区分「长度上限」与「上游断流」、长内容强制分段写入；重出桌面双包，原地覆盖 v0.2.0。单测 1029 |
 
 ## 复现
 

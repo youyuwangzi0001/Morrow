@@ -2594,6 +2594,84 @@ describe('providers.test.ts', () => {
       expect(events.some((e) => e.type === 'notice')).toBe(true)
     })
 
+    it('@core:providers 写入类工具的参数被切断时整轮重发，成功后只交出一份完整参数', async () => {
+      let attempts = 0
+      const server = await serve(() => {
+        attempts += 1
+        // 第一次：参数在传输中途被切断（上游没有 finish_reason=length）
+        if (attempts === 1) {
+          return {
+            frames: [
+              { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_w', type: 'function', function: { name: 'write_file', arguments: '{"path":"a.html","content":"<html>截' } }] } }] },
+              { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }
+            ]
+          }
+        }
+        return { frames: openAIToolFrames('call_w', 'write_file', JSON.stringify({ path: 'a.html', content: '<html>完整</html>' })) }
+      })
+      const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1, 1, 1] })
+      const events = await collectEvents(
+        provider.stream({ system: '', messages: [userMessage('写个页面')], tools: [], signal: new AbortController().signal })
+      )
+      // 真的重发了一次，而不是把半截参数交给模型
+      expect(server.requests).toHaveLength(2)
+      expect(events.some((e) => e.type === 'notice' && e.message.includes('切断'))).toBe(true)
+      const ends = events.filter((e) => e.type === 'tool_call_end')
+      expect(ends).toHaveLength(1)
+      if (ends[0]?.type !== 'tool_call_end') throw new Error('缺少 tool_call_end')
+      // 关键：交出去的是完整参数，且没有残留的解析错误
+      expect(ends[0].parseError).toBeUndefined()
+      expect(ends[0].input).toEqual({ path: 'a.html', content: '<html>完整</html>' })
+    })
+
+    it('@core:providers 先说一句话再断流的写入也会重试，且不重复显示正文', async () => {
+      // 对应真实现场：模型先输出「现在开始写生成脚本」，接着参数流被切断
+      let attempts = 0
+      const server = await serve(() => {
+        attempts += 1
+        if (attempts === 1) {
+          return {
+            frames: [
+              { choices: [{ index: 0, delta: { content: '现在开始写生成脚本。' } }] },
+              { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_x', type: 'function', function: { name: 'write_file', arguments: '{"path":"x.html","content":"<!do' } }] } }] },
+              { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }
+            ]
+          }
+        }
+        return {
+          frames: openAIToolFrames('call_x', 'write_file', JSON.stringify({ path: 'x.html', content: '<!doctype html>' }), {
+            text: '现在开始写生成脚本。'
+          })
+        }
+      })
+      const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1, 1] })
+      const events = await collectEvents(
+        provider.stream({ system: '', messages: [userMessage('写')], tools: [], signal: new AbortController().signal })
+      )
+      expect(server.requests).toHaveLength(2)
+      const text = events.filter((e) => e.type === 'text_delta').map((e) => (e.type === 'text_delta' ? e.text : '')).join('')
+      // 正文只出现一次：重试轮重复的开头被剥掉了
+      expect(text).toBe('现在开始写生成脚本。')
+      const end = events.find((e) => e.type === 'tool_call_end')
+      if (end?.type !== 'tool_call_end') throw new Error('缺少 tool_call_end')
+      expect(end.parseError).toBeUndefined()
+      expect(end.input).toEqual({ path: 'x.html', content: '<!doctype html>' })
+    })
+
+    it('@core:providers 没有 length 标记的断流不再被说成「单次输出太长」', async () => {
+      const truncated = '{"path":"a.html","content":"<html>截'
+      const server = await serve(() => ({ frames: openAIToolFrames('call_t', 'write_file', truncated) }))
+      const provider = new OpenAICompatProvider(config({ baseUrl: server.baseUrl }), 'k', 'm', { retryDelays: [1] })
+      const events = await collectEvents(
+        provider.stream({ system: '', messages: [userMessage('写')], tools: [], signal: new AbortController().signal })
+      )
+      const end = events.find((e) => e.type === 'tool_call_end')
+      if (end?.type !== 'tool_call_end') throw new Error('缺少 tool_call_end')
+      // 重试用尽后仍不完整：归因必须是「流被切断」，不能误导模型去拆小内容
+      expect(end.parseError).toContain('没有报告长度上限')
+      expect(end.parseError).not.toContain('单次输出太长')
+    })
+
     it('@core:providers 429 自动退避重试并发出 notice', async () => {
       let attempts = 0
       const server = await serve(() => {

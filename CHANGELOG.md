@@ -2,6 +2,30 @@
 
 Morrow 的版本按发布线记录。每节先给完整中文，再给完整英文；两段内容对应，但不逐句对照。
 
+## 提高长文件写入成功率（2026-11-23）
+
+版本号仍为 0.2.0（原地覆盖本次发布）。这一轮只解决一件事：写长文件时别再因为参数被截断而整段作废。
+
+### 中文
+
+**变更概览**：写入参数被切断自动重发 · 截断归因不再误导 · 长内容强制分段
+
+- **参数被切断时自动重发一次**：上游把工具参数流切断时不一定会报长度上限。现在 `write_file`、`write_xlsx` 遇到这种情况会整轮重发一次，参数事件先缓冲、确认完整才交给工具层，半截参数不会变成一个失败的工具卡。
+- **已经说过话也会重发**：真实失败里模型往往先说一句「现在开始写」，这句话不该成为放弃重试的理由。重试轮的重复正文会被剥掉，同一段话不会出现两次。
+- **归因不再一律说「太长」**：只有上游真报了 `finish_reason=length` 才归因为达到长度上限；其余情况明确说明是输出流被切断，避免模型去做拆文件这种无效补救。
+- **长内容强制分段**：`write_file` 的说明改为「单次 4KB / 100 行以内，其余用 append 续写」；单次写入超过 4KB 时结果里附一句分段提醒，让下一段自然改用追加。
+- **实测依据**：失败那轮实际只输出约 9k token（思考 35,980 字符 + 正文 70 字符），远低于当时设置的 256k 上限，所以问题不在写入上限，而在参数流被切断后的错误处置。
+
+### English
+
+**Summary**: truncated write arguments are retried automatically · truncation attribution no longer misleads · long content is written in segments
+
+- **One automatic re-request when arguments are cut**: an upstream that severs the tool-argument stream does not always report a length limit. `write_file` and `write_xlsx` now re-request the whole turn once in that case, buffering argument events until they are known to be complete so a half-written argument never becomes a failed tool card.
+- **It retries even after text was streamed**: in the real failure the model first said "now writing the script", which is no reason to abandon the retry. Duplicated text from the retry is stripped, so the same paragraph never appears twice.
+- **Attribution no longer always says "too long"**: only an upstream `finish_reason=length` is reported as hitting the output limit; everything else states plainly that the output stream was cut, so the model is not sent down a pointless split-the-file detour.
+- **Long content is written in segments**: the `write_file` description now asks for at most 4 KB / 100 lines per call with `append` for the rest, and a segment hint is attached when a single write exceeds 4 KB.
+- **Measured**: the failing turn produced roughly 9k tokens (35,980 characters of thinking plus 70 characters of text), far below the 256k limit configured at the time — so the bottleneck was the handling of a severed argument stream, not the write limit.
+
 ## 大工作区可用与配对确认（2026-11-23）
 
 版本号仍为 0.2.0（原地覆盖本次发布）。这一轮解决「工作区一大就起不了协作成员」，并把手机配对补成一次真正落盘的双向确认。

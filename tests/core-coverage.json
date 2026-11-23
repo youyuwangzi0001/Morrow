@@ -1,7 +1,7 @@
 {
   "version": 1,
   "limits": {
-    "unit": 1026,
+    "unit": 1029,
     "e2e": 96
   },
   "features": [
@@ -43,7 +43,7 @@
     },
     {
       "id": "providers",
-      "title": "模型协议、流式响应、思考与用量",
+      "title": "模型协议、流式响应、思考与用量（含写入参数被切断时的整轮重发与截断归因）",
       "unit": true,
       "e2e": false
     },

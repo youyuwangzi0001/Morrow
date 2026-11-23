@@ -236,6 +236,13 @@ type StreamOpener = (
 type Opener = (firstByteMs: number) => AsyncGenerator<ProviderStreamEvent>
 
 /**
+ * 参数被切断后值得整轮重发的工具：写文件 / 写表格这类「内容本身很长」的参数，
+ * 切断后交给模型只会触发一轮「拆小重写」的弯路。读取类、命令类不在这里，
+ * 它们的参数短，切断多半是连接问题，交给既有的续接与自修复路径更合适。
+ */
+const ARGS_RETRY_TOOLS = new Set(['write_file', 'write_xlsx'])
+
+/**
  * 流式续接：已产出文本后连接中断时，不丢掉已收到的内容。
  * - Anthropic 用 assistant 预填继续同一条回复；
  * - OpenAI 兼容接口把已收到文本作为 assistant 前缀，再请模型接着写；
@@ -459,6 +466,89 @@ export async function* streamWithRetry(
       }
       await sleep(delay, opts.signal)
     }
+  }
+}
+
+/** 续接/重试包装：工具参数在流中途被切断时，重发一次而不把错误甩给模型 */
+export async function* streamWithArgsRetry(
+  open: Opener,
+  opts: {
+    policy: RetryPolicy
+    signal: AbortSignal
+    providerId?: string
+    firstByteDeadline?: number
+    /** 只有这些工具的参数被切断才值得重试（写入类），其余保持原有自修复路径 */
+    retryableTools: Set<string>
+  }
+): AsyncGenerator<ProviderStreamEvent> {
+  let attempt = 0
+  let deadline = opts.firstByteDeadline ?? firstByteDeadline()
+  // 已经真正发给用户的正文。重试时要把这段从新输出里剥掉，否则同一段话会出现两次。
+  let emittedText = ''
+  // 参数重试最多一次：每次重试都要整轮重新生成，代价远高于普通连接重试。
+  const maxArgsRetries = Math.min(1, opts.policy.maxRetries)
+  for (;;) {
+    const retrying = attempt > 0
+    // 参数事件按索引缓冲：确认参数完整后才发给上层，
+    // 否则重试时会先把半截参数变成一个「失败的工具卡」。
+    const buffered = new Map<number, ProviderStreamEvent[]>()
+    let pendingText = ''
+    let brokenTool: string | null = null
+    let sawFrame = false
+    for await (const event of open(remainingFirstByteBudget(deadline))) {
+      sawFrame = true
+      if (event.type === 'text_delta') {
+        // 首轮边收边显示；重试轮先攒着，等确认不再重试时再去重输出。
+        if (retrying) pendingText += event.text
+        else {
+          emittedText += event.text
+          yield event
+        }
+        continue
+      }
+      if (event.type === 'tool_call_start' || event.type === 'tool_call_delta') {
+        const list = buffered.get(event.index) ?? []
+        list.push(event)
+        buffered.set(event.index, list)
+        continue
+      }
+      if (event.type === 'tool_call_end') {
+        const list = buffered.get(event.index) ?? []
+        list.push(event)
+        buffered.set(event.index, list)
+        if (event.parseError && opts.retryableTools.has(event.name)) brokenTool = event.name
+        continue
+      }
+      yield event
+    }
+    // 写入类工具的参数被切断：整轮重发。即使已经输出过正文也要重发 ——
+    // 真实失败里模型往往先说一句「现在开始写」，那句话不是放弃重试的理由。
+    if (brokenTool && attempt < maxArgsRetries) {
+      attempt += 1
+      const delay = retryDelay(opts.policy, attempt - 1)
+      yield {
+        type: 'notice',
+        level: 'warn',
+        message: `${brokenTool} 的参数在传输中被切断，正在重新生成（第 ${attempt}/${maxArgsRetries} 次，约 ${Math.max(1, Math.round(delay / 1000))} 秒后）…`
+      }
+      await sleep(delay, opts.signal)
+      if (sawFrame) deadline = firstByteDeadline()
+      continue
+    }
+    // 重试轮的正文：只补发首轮没显示过的部分，重复的开头直接丢掉。
+    if (retrying && pendingText) {
+      const extra = !emittedText
+        ? pendingText
+        : pendingText.startsWith(emittedText)
+          ? pendingText.slice(emittedText.length)
+          : ''
+      if (extra) {
+        emittedText += extra
+        yield { type: 'text_delta', text: extra }
+      }
+    }
+    for (const list of buffered.values()) for (const event of list) yield event
+    return
   }
 }
 
@@ -993,23 +1083,29 @@ export class AnthropicProvider implements Provider {
 
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
     const policy: RetryPolicy = this.retryPolicy
-    if (req.responseFormat) {
-      return streamWithRetry((firstByteMs) => this.attempt(req, firstByteMs), {
-        policy,
-        signal: req.signal,
-        providerId: this.id
-      })
-    }
-    return streamWithContinuation(
-      req,
-      (nextRequest, firstByteMs) => this.attempt(nextRequest, firstByteMs),
-      {
-        policy,
-        signal: req.signal,
-        providerId: this.id,
-        buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'anthropic')
-      }
-    )
+    const open: Opener = (firstByteMs) =>
+      req.responseFormat
+        ? streamWithRetry((nextFirstByteMs: number) => this.attempt(req, nextFirstByteMs), {
+            policy,
+            signal: req.signal,
+            providerId: this.id
+          })
+        : streamWithContinuation(
+            req,
+            (nextRequest, nextFirstByteMs) => this.attempt(nextRequest, nextFirstByteMs),
+            {
+              policy,
+              signal: req.signal,
+              providerId: this.id,
+              buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'anthropic')
+            }
+          )
+    return streamWithArgsRetry(open, {
+      policy,
+      signal: req.signal,
+      providerId: this.id,
+      retryableTools: ARGS_RETRY_TOOLS
+    })
   }
 
   private async *attempt(req: ProviderStreamRequest, firstByteMs: number): AsyncGenerator<ProviderStreamEvent> {
@@ -1513,6 +1609,12 @@ function toolArgsParseError(issue: ToolArgsIssue | undefined, opts: { finishReas
   if (opts.finishReason === 'length') {
     return '模型输出达到长度上限（finish_reason=length），工具参数被截断，不是完整 JSON'
   }
+  // 没有 length 标记却断了：这是上游把参数流切断，不是模型写得太长。
+  // 出错片段仍要带回去，否则模型看不到自己写坏在哪里，只会盲目重试。
+  if (issue?.error.includes('截断')) {
+    const note = '模型输出的工具参数在结尾被截断，但上游没有报告长度上限（不是写得太长，是输出流被切断了）'
+    return issue.sample ? `${note}；出错位置附近：${issue.sample}` : note
+  }
   const reason = issue?.error ?? '模型输出的工具参数不是合法 JSON'
   return issue?.sample ? `模型输出的工具参数不是合法 JSON：${reason}；出错位置附近：${issue.sample}` : `模型输出的工具参数不是合法 JSON：${reason}`
 }
@@ -1553,23 +1655,30 @@ export class OpenAICompatProvider implements Provider {
 
   stream(req: ProviderStreamRequest): AsyncIterable<ProviderStreamEvent> {
     const policy: RetryPolicy = this.retryPolicy
-    if (req.responseFormat) {
-      return streamWithRetry((firstByteMs) => this.attempt(req, firstByteMs), {
-        policy,
-        signal: req.signal,
-        providerId: this.id
-      })
-    }
-    return streamWithContinuation(
-      req,
-      (nextRequest, firstByteMs) => this.attempt(nextRequest, firstByteMs),
-      {
-        policy,
-        signal: req.signal,
-        providerId: this.id,
-        buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'openai')
-      }
-    )
+    // 重发时重建整条流：generator 只能消费一次，不能复用同一个实例。
+    const open: Opener = (firstByteMs) =>
+      req.responseFormat
+        ? streamWithRetry((nextFirstByteMs: number) => this.attempt(req, nextFirstByteMs), {
+            policy,
+            signal: req.signal,
+            providerId: this.id
+          })
+        : streamWithContinuation(
+            req,
+            (nextRequest, nextFirstByteMs) => this.attempt(nextRequest, nextFirstByteMs),
+            {
+              policy,
+              signal: req.signal,
+              providerId: this.id,
+              buildContinuation: (base, partialText) => continuationRequest(base, partialText, 'openai')
+            }
+          )
+    return streamWithArgsRetry(open, {
+      policy,
+      signal: req.signal,
+      providerId: this.id,
+      retryableTools: ARGS_RETRY_TOOLS
+    })
   }
 
   private async *attempt(req: ProviderStreamRequest, firstByteMs: number): AsyncGenerator<ProviderStreamEvent> {

@@ -280,7 +280,9 @@ function diagnoseToolArgs(text: string, message: string): ToolArgsIssue {
   const sample = sampleAround(text, atMatch ? Number(atMatch[1]) : -1)
   const build = (error: string): ToolArgsIssue => (sample ? { error, sample } : { error })
   if (TRUNCATED_ERROR.test(message)) {
-    return build('参数 JSON 在结尾被截断（缺少结尾的引号、括号或花括号），通常是单次输出太长')
+    // 只说「在结尾断了」：截断可能来自长度上限，也可能来自上游把参数流切断。
+    // 在不知道 finish_reason 的这里断言「太长」会把模型引向错误的补救动作。
+    return build('参数 JSON 在结尾被截断（缺少结尾的引号、括号或花括号），模型输出在这里中断了')
   }
   if (BAD_CONTROL_ERROR.test(message)) {
     return build('参数 JSON 的字符串里有真实换行或制表符，必须写成转义序列，不能直接换行')

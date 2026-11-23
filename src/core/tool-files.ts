@@ -467,6 +467,12 @@ const MAX_READ_BYTES = 4 * 1024 * 1024
 
 const MAX_WRITE_CHARS = 2 * 1024 * 1024
 
+/**
+ * 单次写入的建议上限。超过它并不算错（工具仍然照写），但会在结果里提示分段：
+ * 长内容一次性输出更容易被输出上限或上游断流截断，而那时代价是整段内容作废。
+ */
+const WRITE_SEGMENT_HINT_CHARS = 4 * 1024
+
 /** 快照只为 diff/预览保留这个大小以内的文本；更大的文件仍完整备份，但用流式哈希避免整文件读入内存 */
 const MAX_SNAPSHOT_TEXT_BYTES = 2 * 1024 * 1024
 
@@ -758,10 +764,11 @@ export const writeFileTool: ToolImpl = {
   definition: {
     name: 'write_file',
     description:
-      '把文本内容写入工作区内的文件（会创建缺失的父目录；已存在的文件默认被覆盖）。' +
+      '把文本内容写入工作区内的文件（会创建缺失的父目录；已存在的文件默认会被覆盖）。' +
       'append=true 时追加到文件末尾（文件不存在则创建）。写入前会自动备份旧内容用于撤销。' +
-      '内容较长（>约 4KB / 100 行）时建议分次写：先写骨架，再用 append=true 分段追加，避免单次输出被长度上限截断。' +
-      '生成 HTML/Markdown 等成品时，内容要完整、可直接使用。',
+      '【长内容必须分段】单次 content 控制在 4KB / 100 行以内：先写第一段，之后每段都用 append=true 续写，' +
+      '直到文件完整。一次写太长会让模型输出被长度上限或上游断流截断，整段内容作废、还要重写。' +
+      '生成 HTML/Markdown 等成品时，分段写完后内容要完整、可直接使用。',
     parameters: {
       type: 'object',
       properties: {
@@ -839,7 +846,11 @@ export const writeFileTool: ToolImpl = {
           }`
         : `${afterLines ?? writtenLines} 行 · ${formatBytes(writtenBytes)}`,
       diff ? `改动 ${diffSummary(diff)}` : '',
-      snapshot ? '旧内容已备份，可撤销。' : ''
+      snapshot ? '旧内容已备份，可撤销。' : '',
+      // 分段提示只在「这次就写了很多」时出现：写短文件时它只是噪音。
+      !append && rawContent.length > WRITE_SEGMENT_HINT_CHARS
+        ? `提醒：这次写了 ${rawContent.length} 字符。后续如果还要补内容，请用 append=true 逐段追加；一次性重写超长内容更容易被输出上限或上游断流截断。`
+        : ''
     ].filter(Boolean)
     const meta: Record<string, unknown> = {
       snapshotId: snapshot?.snapshotId ?? null,
